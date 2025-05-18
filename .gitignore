@@ -1,0 +1,22 @@
+# Ignore Gradle project-specific cache directory
+.gradle
+
+# Ignore Gradle build output directory
+build
+
+# Kotlin
+.kotlin
+
+# IntelliJ
+# Ignore everything by default
+.idea/
+
+# Except these files, which can be shared
+!.idea/workspace.xml
+!.idea/misc.xml
+!.idea/modules.xml
+!.idea/vcs.xml
+!.idea/libraries/
+
+# Android
+local.properties
