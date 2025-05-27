@@ -1,7 +1,9 @@
 CREATE TABLE bookmarks(
-  id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-  sura INTEGER NOT NULL,
-  ayah INTEGER NOT NULL,
+  local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  sura INTEGER,
+  ayah INTEGER,
+  page INTEGER,
+  remote_id TEXT,
   last_updated INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL
 );
 
@@ -9,4 +11,4 @@ getBookmarks:
     SELECT * FROM bookmarks;
 
 addBookmark:
-    INSERT INTO bookmarks (sura, ayah) VALUES (?, ?);
+    INSERT INTO bookmarks (sura, ayah, page, remote_id) VALUES (?, ?, ?, ?);
