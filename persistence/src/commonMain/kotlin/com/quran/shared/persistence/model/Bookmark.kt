@@ -7,7 +7,6 @@ enum class BookmarkLocalMutation {
 }
 
 data class Bookmark(
-    val id: Long,
     val sura: Int?,
     val ayah: Int?,
     val page: Int?,
