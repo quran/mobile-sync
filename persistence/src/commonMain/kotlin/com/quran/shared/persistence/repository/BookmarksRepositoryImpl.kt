@@ -1,31 +1,39 @@
 package com.quran.shared.persistence.repository
 
 import app.cash.sqldelight.coroutines.asFlow
+import com.quran.shared.persistence.Bookmarks
+import com.quran.shared.persistence.Bookmarks_mutations
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.BookmarkLocalMutation
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 
 class BookmarksRepositoryImpl(
     private val database: QuranDatabase
 ) : BookmarkRepository {
     override fun getAllBookmarks(): Flow<List<Bookmark>> {
-        return database.bookmarks_mutationsQueries.getBookmarksMutations()
+        val persistedFlow = database.bookmarksQueries.getBookmarks()
             .asFlow()
             .map { query ->
-                query.executeAsList()
-                    .map { mutation ->
-                        Bookmark(
-                        sura = mutation.sura?.toInt(),
-                        ayah = mutation.ayah?.toInt(),
-                        page = mutation.page?.toInt(),
-                        remoteId = mutation.remote_id,
-                        localMutation = if (mutation.deleted == 1L) BookmarkLocalMutation.DELETED else BookmarkLocalMutation.CREATED,
-                        lastUpdated = mutation.created_at
-                    )
-                    }
+                query.executeAsList().map { it.toBookmark() }
             }
+        val mutatedFlow = database.bookmarks_mutationsQueries.getBookmarksMutations()
+            .asFlow()
+            .map { query ->
+                query.executeAsList().map { it.toBookmark() }
+            }
+
+        return persistedFlow.combine(mutatedFlow) { persistedBookmarks, mutatedBookmarks ->
+            val deletedRemoteIDs = mutatedBookmarks
+                .filter { it.localMutation == BookmarkLocalMutation.DELETED }
+                .mapNotNull { it.remoteId }
+                .toSet()
+
+            persistedBookmarks.filter { it.remoteId !in deletedRemoteIDs } +
+                    mutatedBookmarks.filter { it.remoteId !in deletedRemoteIDs }
+        }
     }
 
     override suspend fun addPageBookmark(page: Int) {
@@ -59,4 +67,22 @@ class BookmarksRepositoryImpl(
     override suspend fun deleteAyahBookmark(sura: Int, ayah: Int) {
         TODO("Not yet implemented")
     }
-} 
+}
+
+private fun Bookmarks_mutations.toBookmark(): Bookmark = Bookmark(
+    sura = sura?.toInt(),
+    ayah = ayah?.toInt(),
+    page = page?.toInt(),
+    remoteId = remote_id,
+    localMutation = if (deleted == 1L) BookmarkLocalMutation.DELETED else BookmarkLocalMutation.CREATED,
+    lastUpdated = created_at
+)
+
+private fun Bookmarks.toBookmark(): Bookmark = Bookmark(
+    sura = sura?.toInt(),
+    ayah = ayah?.toInt(),
+    page = page?.toInt(),
+    remoteId = remote_id,
+    localMutation = BookmarkLocalMutation.NONE,
+    lastUpdated = created_at
+)

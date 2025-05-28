@@ -48,6 +48,21 @@ class BookmarkRepositoryTest {
     }
 
     @Test
+    fun `getAllBookmarks merges items from persisted and mutations databases`() = runTest {
+        database.bookmarks_mutationsQueries.createBookmark(null, null, 11, null)
+        database.bookmarksQueries.addBookmark("rem_id_1", 2, 50, null, 10_000L)
+        database.bookmarksQueries.addBookmark("rem_id_2", null, null, 50, 10_001L)
+        database.bookmarks_mutationsQueries.createMarkAsDeletedRecord(2, 50, null, remote_id = "rem_id_1")
+
+        val bookmarks = repository.getAllBookmarks().first()
+        assertTrue(bookmarks.count() == 2,
+            "Expected that one mutation should cancel of the persisted bookmarks")
+        assertEquals(bookmarks.mapNotNull { it.page }.toSet(), setOf(11, 50))
+        assertTrue(bookmarks.mapNotNull { it.ayah }.isEmpty())
+        assertTrue(bookmarks.mapNotNull { it.sura }.isEmpty())
+    }
+
+    @Test
     fun `adding bookmarks on an empty list`() = runTest {
         repository.addPageBookmark(10)
         var bookmarks = database.bookmarks_mutationsQueries.getBookmarksMutations().executeAsList()
