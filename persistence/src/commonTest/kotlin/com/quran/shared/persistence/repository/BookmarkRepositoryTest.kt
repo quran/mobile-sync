@@ -3,12 +3,12 @@ package com.quran.shared.persistence.repository
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.quran.shared.persistence.QuranDatabase
-import com.quran.shared.persistence.model.Bookmark
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class BookmarkRepositoryTest {
@@ -38,73 +38,30 @@ class BookmarkRepositoryTest {
     }
 
     @Test
-    fun `addPageBookmark adds page bookmark to database`() = runTest {
-        val page = 1
-        val bookmark = repository.addPageBookmark(page)
-        assertEquals(page, bookmark.page)
+    fun `getAllBookmarks returns items from the database`() = runTest {
+        database.bookmarks_mutationsQueries.createBookmark(null, null, 11, null)
+        database.bookmarks_mutationsQueries.createBookmark(1, 2, null, null)
+        val bookmarks = repository.getAllBookmarks().first()
+        assertTrue(bookmarks.count() == 2)
+        assertTrue(bookmarks[0].isPageBookmark)
+        assertTrue(bookmarks[1].isAyahBookmark)
     }
 
     @Test
-    fun `addAyahBookmark adds ayah bookmark to database`() = runTest {
-//        val sura = 1
-//        val ayah = 1
-//        val bookmark = repository.addAyahBookmark(sura, ayah)
-//        assertEquals(sura, bookmark.sura)
-//        assertEquals(ayah, bookmark.ayah)
-        assertTrue(false)
-    }
+    fun `adding bookmarks on an empty list`() = runTest {
+        repository.addPageBookmark(10)
+        var bookmarks = database.bookmarks_mutationsQueries.getBookmarksMutations().executeAsList()
+        assertTrue(bookmarks.count() == 1)
+        assertTrue(bookmarks[0].page == 10L)
+        assertNull(bookmarks[0].ayah)
+        assertNull(bookmarks[0].sura)
 
-    @Test
-    fun `addAll adds multiple bookmarks to database`() = runTest {
-//        val bookmarks = listOf(
-//            Bookmark(page = 1),
-//            Bookmark(sura = 1, ayah = 1)
-//        )
-//        repository.addAll(bookmarks)
-//        val result = repository.getAllBookmarks().first()
-//        assertEquals(bookmarks.size, result.size)
-    }
-
-    @Test
-    fun `fetchMutatedBookmarks returns empty list when no mutations exist`() = runTest {
-//        val mutations = repository.fetchMutatedBookmarks()
-//        assertTrue(mutations.isEmpty())
-    }
-
-    @Test
-    fun `persistedRemoteUpdates marks mutations as persisted`() = runTest {
-//        val mutations = listOf(
-//            Bookmark(page = 1),
-//            Bookmark(sura = 1, ayah = 1)
-//        )
-//        repository.persistedRemoteUpdates(mutations)
-//        val result = repository.fetchMutatedBookmarks()
-//        assertTrue(result.isEmpty())
-    }
-
-    @Test
-    fun `clearLocalMutations removes all mutations from database`() = runTest {
-//        repository.clearLocalMutations()
-//        val mutations = repository.fetchMutatedBookmarks()
-//        assertTrue(mutations.isEmpty())
-    }
-
-    @Test
-    fun `deletePageBookmark removes page bookmark from database`() = runTest {
-//        val page = 1
-//        repository.addPageBookmark(page)
-//        repository.deletePageBookmark(page)
-//        val bookmarks = repository.getAllBookmarks().first()
-//        assertTrue(bookmarks.isEmpty())
-    }
-
-    @Test
-    fun `deleteAyahBookmark removes ayah bookmark from database`() = runTest {
-//        val sura = 1
-//        val ayah = 1
-//        repository.addAyahBookmark(sura, ayah)
-//        repository.deleteAyahBookmark(sura, ayah)
-//        val bookmarks = repository.getAllBookmarks().first()
-//        assertTrue(bookmarks.isEmpty())
+        repository.addAyahBookmark(1, 5)
+        repository.addAyahBookmark(2, 50)
+        bookmarks = database.bookmarks_mutationsQueries.getBookmarksMutations().executeAsList()
+        assertTrue(bookmarks.count() == 3)
+        assertEquals(bookmarks.map { it.page }, listOf(10L, null, null))
+        assertEquals(bookmarks.map { it.sura }, listOf(null, 1L, 2L))
+        assertEquals(bookmarks.map { it.ayah }, listOf(null, 5L, 50L))
     }
 } 

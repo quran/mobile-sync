@@ -8,9 +8,9 @@ interface BookmarkRepository {
     // region Fetch, add and delete
     fun getAllBookmarks(): Flow<List<Bookmark>>
 
-    suspend fun addPageBookmark(page: Int): Bookmark
+    suspend fun addPageBookmark(page: Int)
 
-    suspend fun addAyahBookmark(sura: Int, ayah: Int): Bookmark
+    suspend fun addAyahBookmark(sura: Int, ayah: Int)
 
     suspend fun deletePageBookmark(page: Int)
 
