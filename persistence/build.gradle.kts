@@ -26,6 +26,13 @@ kotlin {
             implementation(libs.sqldelight.extensions)
         }
 
+        commonTest.dependencies {
+            implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.sqldelight.sqlite.driver)
+            implementation("app.cash.sqldelight:jdbc-driver")
+        }
+
         androidMain.dependencies {
             implementation(libs.sqldelight.android.driver)
         }
@@ -56,6 +63,12 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
     }
 }
 
