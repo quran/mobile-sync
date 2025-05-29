@@ -3,6 +3,8 @@ package com.quran.shared.persistence.repository
 import com.quran.shared.persistence.model.Bookmark
 import kotlinx.coroutines.flow.Flow
 
+class DuplicateBookmarkException(message: String) : Exception(message)
+
 interface BookmarkRepository {
 
     // region Fetch, add and delete

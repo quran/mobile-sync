@@ -28,3 +28,9 @@ batchInsertBookmarkMutations:
 
 deleteBookmarkMutation:
     DELETE FROM bookmarks_mutations WHERE local_id = ?;
+
+recordsForPage:
+    SELECT * FROM bookmarks_mutations WHERE page = ?;
+
+recordsForAyah:
+    SELECT * FROM bookmarks_mutations WHERE sura = ? AND ayah = ?;

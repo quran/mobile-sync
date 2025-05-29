@@ -10,6 +10,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 class BookmarkRepositoryTest {
     private lateinit var driver: SqlDriver
@@ -79,4 +80,35 @@ class BookmarkRepositoryTest {
         assertEquals(bookmarks.map { it.sura }, listOf(null, 1L, 2L))
         assertEquals(bookmarks.map { it.ayah }, listOf(null, 5L, 50L))
     }
-} 
+
+    @Test
+    fun `adding should not duplicate bookmarks`() = runTest {
+        // Add initial page bookmark
+        database.bookmarks_mutationsQueries.createBookmark(null, null, 12, null)
+        
+        // Try to add the same page bookmark again
+        assertFailsWith<DuplicateBookmarkException> {
+            repository.addPageBookmark(12)
+        }
+        
+        // Verify only one bookmark exists
+        val bookmarks = repository.getAllBookmarks().first()
+        assertEquals(1, bookmarks.size, "Should only have one bookmark")
+        assertEquals(12, bookmarks[0].page, "Should be page 12")
+        assertTrue(bookmarks[0].isPageBookmark, "Should be a page bookmark")
+        
+        // Add an ayah bookmark
+        repository.addAyahBookmark(1, 1)
+        
+        // Try to add the same ayah bookmark multiple times
+        assertFailsWith<DuplicateBookmarkException> {
+            repository.addAyahBookmark(1, 1)
+        }
+
+        // Verify only one ayah bookmark was added
+        val updatedBookmarks = repository.getAllBookmarks().first()
+        assertEquals(2, updatedBookmarks.size, "Should have two bookmarks total")
+        assertEquals(1, updatedBookmarks.count { it.isAyahBookmark }, "Should have one ayah bookmark")
+        assertEquals(1, updatedBookmarks.count { it.isPageBookmark }, "Should have one page bookmark")
+    }
+}

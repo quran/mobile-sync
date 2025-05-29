@@ -37,10 +37,20 @@ class BookmarksRepositoryImpl(
     }
 
     override suspend fun addPageBookmark(page: Int) {
+        val bookmarks = database.bookmarks_mutationsQueries.recordsForPage(page.toLong())
+            .executeAsList()
+        if (bookmarks.isNotEmpty() && !bookmarks.none { it.deleted == 0L }) {
+            throw DuplicateBookmarkException("A bookmark already exists for page $page")
+        }
         database.bookmarks_mutationsQueries.createBookmark(null, null, page.toLong(), null)
     }
 
     override suspend fun addAyahBookmark(sura: Int, ayah: Int) {
+        val bookmarks = database.bookmarks_mutationsQueries.recordsForAyah(sura.toLong(), ayah.toLong())
+            .executeAsList()
+        if (bookmarks.isNotEmpty() && !bookmarks.none{ it.deleted == 0L }) {
+            throw DuplicateBookmarkException("A bookmark already exists for ayah #$ayah of sura #$sura")
+        }
         database.bookmarks_mutationsQueries.createBookmark(sura.toLong(), ayah.toLong(), null, null)
     }
 
