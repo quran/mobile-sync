@@ -42,6 +42,12 @@ class BookmarksRepositoryImpl(
         if (bookmarks.isNotEmpty() && !bookmarks.none { it.deleted == 0L }) {
             throw DuplicateBookmarkException("A bookmark already exists for page $page")
         }
+        val persistedBookmarks = database.bookmarksQueries.getBookmarksForPage(page.toLong())
+            .executeAsList()
+        if (persistedBookmarks.isNotEmpty()) {
+            // TODO: It remains to check if that is deleted.
+            throw DuplicateBookmarkException("A bookmark already exists for page $page")
+        }
         database.bookmarks_mutationsQueries.createBookmark(null, null, page.toLong(), null)
     }
 
@@ -49,6 +55,14 @@ class BookmarksRepositoryImpl(
         val bookmarks = database.bookmarks_mutationsQueries.recordsForAyah(sura.toLong(), ayah.toLong())
             .executeAsList()
         if (bookmarks.isNotEmpty() && !bookmarks.none{ it.deleted == 0L }) {
+            throw DuplicateBookmarkException("A bookmark already exists for ayah #$ayah of sura #$sura")
+        }
+        val persistedBookmarks = database.bookmarksQueries.getBookmarksForAyah(
+            sura = sura.toLong(),
+            ayah = ayah.toLong()
+        ).executeAsList()
+        if (persistedBookmarks.isNotEmpty()) {
+            // TODO: It remains to check if that is deleted.
             throw DuplicateBookmarkException("A bookmark already exists for ayah #$ayah of sura #$sura")
         }
         database.bookmarks_mutationsQueries.createBookmark(sura.toLong(), ayah.toLong(), null, null)

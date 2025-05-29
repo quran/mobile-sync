@@ -15,3 +15,9 @@ addBookmark:
 batchInsertBookmarks:
     INSERT INTO bookmarks (remote_id, sura, ayah, page, created_at)
     VALUES (?, ?, ?, ?, ?);
+
+getBookmarksForPage:
+    SELECT * FROM bookmarks WHERE page = ?;
+
+getBookmarksForAyah:
+    SELECT * FROM bookmarks WHERE sura = ? AND ayah = ?;

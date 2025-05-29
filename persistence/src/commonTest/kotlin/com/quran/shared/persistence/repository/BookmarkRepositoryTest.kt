@@ -110,5 +110,15 @@ class BookmarkRepositoryTest {
         assertEquals(2, updatedBookmarks.size, "Should have two bookmarks total")
         assertEquals(1, updatedBookmarks.count { it.isAyahBookmark }, "Should have one ayah bookmark")
         assertEquals(1, updatedBookmarks.count { it.isPageBookmark }, "Should have one page bookmark")
+
+        database.bookmarksQueries.addBookmark("rem_id_1", null, null, 105, 10_000L)
+        database.bookmarksQueries.addBookmark("rem_id_2", 9, 50, null, 10_050L)
+
+        assertFailsWith<DuplicateBookmarkException>{
+            repository.addPageBookmark(105)
+        }
+        assertFailsWith<DuplicateBookmarkException> {
+            repository.addAyahBookmark(9, 50)
+        }
     }
 }
