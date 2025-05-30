@@ -74,7 +74,7 @@ class BookmarksRepositoryImpl(
         val mutatedBookmarks = database.bookmarks_mutationsQueries.recordsForPage(page.toLong())
             .executeAsList()
 
-        delete(persistedBookmarks, mutatedBookmarks)
+        delete(persistedBookmarks, mutatedBookmarks, "on page $page")
     }
 
     override suspend fun deleteAyahBookmark(sura: Int, ayah: Int) {
@@ -83,18 +83,30 @@ class BookmarksRepositoryImpl(
         val mutatedBookmarks = database.bookmarks_mutationsQueries.recordsForAyah(sura.toLong(), ayah.toLong())
             .executeAsList()
 
-        delete(persistedBookmarks, mutatedBookmarks)
+        delete(persistedBookmarks, mutatedBookmarks, "on ayah $ayah of sura $sura")
     }
 
-    fun delete(persisted: List<Bookmarks>, mutated: List<Bookmarks_mutations>) {
+    private fun delete(persisted: List<Bookmarks>, mutated: List<Bookmarks_mutations>, description: String) {
         val deletedBookmark = mutated.firstOrNull{ it.deleted == 1L }
         val createdBookmark = mutated.firstOrNull{ it.deleted == 0L }
+        val persistedBookmark = persisted.firstOrNull()
 
         if (createdBookmark != null) {
             database.bookmarks_mutationsQueries.deleteBookmarkMutation(createdBookmark.local_id)
         }
-        else if (deletedBookmark == null) {
-            throw BookmarkNotFoundException("There's no bookmark with ")
+        else if (deletedBookmark != null) {
+            throw BookmarkNotFoundException("There's no bookmark $description")
+        }
+        else if (persistedBookmark != null) {
+            database.bookmarks_mutationsQueries.createMarkAsDeletedRecord(
+                persistedBookmark.sura,
+                persistedBookmark.ayah,
+                persistedBookmark.page,
+                persistedBookmark.remote_id
+            )
+        }
+        else {
+            throw BookmarkNotFoundException("There's no bookmark $description")
         }
     }
 

@@ -4,6 +4,7 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.quran.shared.persistence.QuranDatabase
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -154,5 +155,35 @@ class BookmarkRepositoryTest {
         bookmarks = repository.getAllBookmarks().first()
         assertEquals(1, bookmarks.size)
         assertTrue(bookmarks[0].sura == 2 && bookmarks[0].ayah == 2)
+    }
+
+    @Test
+    fun `deleting bookmarks from persisted bookmarks`() = runTest {
+        database.bookmarksQueries.addBookmark("rem_id_1", null, null, 10, 10_000L)
+        database.bookmarksQueries.addBookmark("rem_id_2", null, null, 15, 10_005L)
+        database.bookmarksQueries.addBookmark("rem_id_3", 20, 3, null, 200_000L)
+
+        repository.deletePageBookmark(10)
+        repository.deleteAyahBookmark(20, 3)
+
+        val bookmarks = repository.getAllBookmarks().first()
+        assertTrue(bookmarks.count() == 1)
+        assertEquals(15, bookmarks[0].page)
+
+        assertFailsWith<BookmarkNotFoundException> {
+            // Deleting a non-existent bookmark
+            repository.deleteAyahBookmark(10, 5)
+        }
+        assertFailsWith<BookmarkNotFoundException> {
+            // Deleting a deleted bookmark
+            repository.deletePageBookmark(10)
+        }
+
+        val mutations = database.bookmarks_mutationsQueries.getBookmarksMutations().executeAsList()
+        assertEquals(listOf(10L), mutations.mapNotNull { it.page })
+        assertEquals(listOf(20L), mutations.mapNotNull { it.sura })
+        assertEquals(listOf(3L), mutations.mapNotNull { it.ayah })
+        assertEquals(setOf("rem_id_1", "rem_id_3"), mutations.map { it.remote_id }.toSet(),
+            "Expected the remote IDs to be recorded in the mutations table.")
     }
 }
