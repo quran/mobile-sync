@@ -186,4 +186,23 @@ class BookmarkRepositoryTest {
         assertEquals(setOf("rem_id_1", "rem_id_3"), mutations.map { it.remote_id }.toSet(),
             "Expected the remote IDs to be recorded in the mutations table.")
     }
+
+    @Test
+    fun `adding a bookmark after deleting a persisted bookmark like it`() = runTest {
+        database.bookmarks_mutationsQueries.createMarkAsDeletedRecord(null, null, 15, "rem_id_1")
+        database.bookmarks_mutationsQueries.createBookmark(2, 50, null, null)
+
+        repository.addPageBookmark(15)
+
+        val bookmarks = repository.getAllBookmarks().first()
+        assertEquals(2, bookmarks.count())
+        assertEquals(listOf(15), bookmarks.mapNotNull { it.page })
+        assertEquals(listOf(2), bookmarks.mapNotNull { it.sura })
+
+        val mutatedBookmarksPage15 = database.bookmarks_mutationsQueries.recordsForPage(15L)
+            .executeAsList()
+        assertEquals(2, mutatedBookmarksPage15.count())
+        assertEquals("rem_id_1", mutatedBookmarksPage15.firstOrNull { it.deleted == 1L }?.remote_id,
+            "Remote ID should be set for the deleted bookmark")
+    }
 }
