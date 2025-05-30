@@ -115,14 +115,16 @@ class BookmarksRepositoryImpl(
     }
 
     override suspend fun fetchMutatedBookmarks(): List<Bookmark> {
-        TODO("Not yet implemented")
-    }
-
-    override suspend fun persistedRemoteUpdates(mutations: List<Bookmark>) {
-        TODO("Not yet implemented")
+        return database.bookmarks_mutationsQueries.getBookmarksMutations()
+            .executeAsList()
+            .map { it.toBookmark() }
     }
 
     override suspend fun clearLocalMutations() {
+        database.bookmarks_mutationsQueries.clearBookmarkMutations()
+    }
+
+    override suspend fun persistRemoteUpdates(mutations: List<Bookmark>) {
         TODO("Not yet implemented")
     }
 }

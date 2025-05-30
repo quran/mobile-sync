@@ -3,8 +3,8 @@ package com.quran.shared.persistence.repository
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.quran.shared.persistence.QuranDatabase
+import com.quran.shared.persistence.model.BookmarkLocalMutation
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -204,5 +204,62 @@ class BookmarkRepositoryTest {
         assertEquals(2, mutatedBookmarksPage15.count())
         assertEquals("rem_id_1", mutatedBookmarksPage15.firstOrNull { it.deleted == 1L }?.remote_id,
             "Remote ID should be set for the deleted bookmark")
+    }
+
+    @Test
+    fun `fetchMutatedBookmarks returns empty list when no mutations exist`() = runTest {
+        val result = repository.fetchMutatedBookmarks()
+        assertTrue(result.isEmpty())
+    }
+
+    @Test
+    fun `fetchMutatedBookmarks returns all mutated bookmarks`() = runTest {
+        // Create some test mutations
+        database.bookmarks_mutationsQueries.createBookmark(
+            sura = 1L,
+            ayah = 1L,
+            page = null,
+            remote_id = null
+        )
+        database.bookmarks_mutationsQueries.createBookmark(
+            sura = 2L,
+            ayah = 2L,
+            page = null,
+            remote_id = "remote-1"
+        )
+
+        val result = repository.fetchMutatedBookmarks()
+        
+        assertEquals(2, result.size)
+        assertTrue(result.any { it.sura == 1 && it.ayah == 1 && it.localMutation == BookmarkLocalMutation.CREATED })
+        assertTrue(result.any { it.sura == 2 && it.ayah == 2 && it.localMutation == BookmarkLocalMutation.CREATED })
+    }
+
+    @Test
+    fun `clearLocalMutations removes all mutations`() = runTest {
+        // Create some test mutations
+        database.bookmarks_mutationsQueries.createBookmark(
+            sura = 1L,
+            ayah = 1L,
+            page = null,
+            remote_id = null
+        )
+        database.bookmarks_mutationsQueries.createBookmark(
+            sura = 2L,
+            ayah = 2L,
+            page = null,
+            remote_id = "remote-1"
+        )
+
+        // Verify mutations exist
+        val beforeClear = repository.fetchMutatedBookmarks()
+        assertEquals(2, beforeClear.size)
+
+        // Clear mutations
+        repository.clearLocalMutations()
+
+        // Verify mutations are gone
+        val afterClear = repository.fetchMutatedBookmarks()
+        assertTrue(afterClear.isEmpty())
     }
 }

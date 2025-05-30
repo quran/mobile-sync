@@ -25,7 +25,7 @@ interface BookmarkRepository {
     // region Synchronization-related
     suspend fun fetchMutatedBookmarks(): List<Bookmark>
 
-    suspend fun persistedRemoteUpdates(mutations: List<Bookmark>)
+    suspend fun persistRemoteUpdates(mutations: List<Bookmark>)
 
     suspend fun clearLocalMutations()
     // endregion
