@@ -19,7 +19,7 @@ interface BookmarkRepository {
 
     suspend fun deleteAyahBookmark(sura: Int, ayah: Int)
 
-    suspend fun addAll(bookmarks: List<Bookmark>)
+    suspend fun migrateBookmarks(bookmarks: List<Bookmark>)
     // endregion
 
     // region Synchronization-related

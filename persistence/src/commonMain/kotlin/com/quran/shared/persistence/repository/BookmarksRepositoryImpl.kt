@@ -110,8 +110,40 @@ class BookmarksRepositoryImpl(
         }
     }
 
-    override suspend fun addAll(bookmarks: List<Bookmark>) {
-        TODO("Not yet implemented")
+    override suspend fun migrateBookmarks(bookmarks: List<Bookmark>) {
+        // Check if mutations table is empty
+        val existingMutations = database.bookmarks_mutationsQueries.getBookmarksMutations().executeAsList()
+        if (existingMutations.isNotEmpty()) {
+            throw IllegalStateException("Cannot migrate bookmarks: mutations table is not empty. Found ${existingMutations.size} mutations.")
+        }
+
+        // Check if bookmarks table is empty
+        val existingBookmarks = database.bookmarksQueries.getBookmarks().executeAsList()
+        if (existingBookmarks.isNotEmpty()) {
+            throw IllegalStateException("Cannot migrate bookmarks: bookmarks table is not empty. Found ${existingBookmarks.size} bookmarks.")
+        }
+
+        // Validate that all bookmarks are from the old system (no remote IDs)
+        val bookmarksWithRemoteId = bookmarks.filter { it.remoteId != null }
+        if (bookmarksWithRemoteId.isNotEmpty()) {
+            throw IllegalArgumentException("Cannot migrate bookmarks with remote IDs. Found ${bookmarksWithRemoteId.size} bookmarks with remote IDs.")
+        }
+
+        val deletedBookmarks = bookmarks.filter { it.localMutation == BookmarkLocalMutation.DELETED }
+        if (deletedBookmarks.isNotEmpty()) {
+            throw IllegalArgumentException("Cannot migrate deleted bookmarks. Found ${deletedBookmarks.size} bookmarks marked as deleted.")
+        }
+
+        database.bookmarks_mutationsQueries.transaction {
+            bookmarks.forEach { bookmark ->
+                database.bookmarks_mutationsQueries.createBookmark(
+                    sura = bookmark.sura?.toLong(),
+                    ayah = bookmark.ayah?.toLong(),
+                    page = bookmark.page?.toLong(),
+                    remote_id = null
+                )
+            }
+        }
     }
 
     override suspend fun fetchMutatedBookmarks(): List<Bookmark> {

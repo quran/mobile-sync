@@ -350,4 +350,59 @@ class BookmarkRepositoryTest {
         assertEquals("remote-4", newAyahBookmark?.remote_id)
         assertEquals(2002L, newAyahBookmark?.created_at)
     }
+
+    @Test
+    fun `migrateBookmarks succeeds when mutations table is empty`() = runTest {
+        val bookmarks = listOf(
+            Bookmark(page = 1, sura = null, ayah = null, remoteId = null, localMutation = BookmarkLocalMutation.CREATED, lastUpdated = 1000L),
+            Bookmark(page = null, sura = 1, ayah = 1, remoteId = null, localMutation = BookmarkLocalMutation.CREATED, lastUpdated = 1001L)
+        )
+
+        repository.migrateBookmarks(bookmarks)
+
+        val mutations = database.bookmarks_mutationsQueries.getBookmarksMutations().executeAsList()
+        assertEquals(2, mutations.size)
+        
+        val pageBookmark = mutations.find { it.page == 1L }
+        assertEquals(0L, pageBookmark?.deleted, "Should be marked as created")
+
+        val ayahBookmark = mutations.find { it.sura == 1L && it.ayah == 1L }
+        assertEquals(0L, ayahBookmark?.deleted, "Should be marked as created")
+    }
+
+    @Test
+    fun `migrateBookmarks fails when either table is not empty`() = runTest {
+        val bookmarks = listOf(
+            Bookmark(page = 1, sura = null, ayah = null, remoteId = null, localMutation = BookmarkLocalMutation.CREATED, lastUpdated = 1000L)
+        )
+
+        database.bookmarks_mutationsQueries.createBookmark(null, null, 1L, "existing-1")
+        assertFails("Should fail if mutations table is not empty") {
+            repository.migrateBookmarks(bookmarks)
+        }
+
+        database.bookmarks_mutationsQueries.clearBookmarkMutations()
+
+        database.bookmarksQueries.addBookmark("existing-1", null, null, 1L, 1000L)
+        assertFails("Should fail if persisted table is not empty") {
+            repository.migrateBookmarks(bookmarks)
+        }
+    }
+
+    @Test
+    fun `migrateBookmarks fails when bookmarks have remote IDs or are marked as deleted`() = runTest {
+        val bookmarksWithRemoteId = listOf(
+            Bookmark(page = 1, sura = null, ayah = null, remoteId = "remote-1", localMutation = BookmarkLocalMutation.CREATED, lastUpdated = 1000L)
+        )
+        assertFails("Should fail if bookmarks have remote IDs") {
+            repository.migrateBookmarks(bookmarksWithRemoteId)
+        }
+
+        val deletedBookmarks = listOf(
+            Bookmark(page = 1, sura = null, ayah = null, remoteId = null, localMutation = BookmarkLocalMutation.DELETED, lastUpdated = 1000L)
+        )
+        assertFails("Should fail if bookmarks have DELETED as mutation.") {
+            repository.migrateBookmarks(deletedBookmarks)
+        }
+    }
 }
