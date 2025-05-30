@@ -21,3 +21,6 @@ getBookmarksForPage:
 
 getBookmarksForAyah:
     SELECT * FROM bookmarks WHERE sura = ? AND ayah = ?;
+
+deleteBookmarkByRemoteId:
+    DELETE FROM bookmarks WHERE remote_id = ?;

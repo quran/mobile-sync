@@ -125,7 +125,35 @@ class BookmarksRepositoryImpl(
     }
 
     override suspend fun persistRemoteUpdates(mutations: List<Bookmark>) {
-        TODO("Not yet implemented")
+        // Validate all bookmarks have remote IDs
+        val invalidBookmarks = mutations.filter { it.remoteId == null }
+        if (invalidBookmarks.isNotEmpty()) {
+            throw IllegalArgumentException("All bookmarks must have a remote ID. Found ${invalidBookmarks.size} bookmarks without remote IDs.")
+        }
+
+        // Separate mutations by type
+        val toDelete = mutations.filter { it.localMutation == BookmarkLocalMutation.DELETED }
+        val toCreate = mutations.filter { it.localMutation == BookmarkLocalMutation.CREATED }
+
+        // TODO: Guard against inputted bookmarks with NONE as a mutation. 
+
+        database.bookmarksQueries.transaction {
+            // Handle deletions first
+            toDelete.forEach { bookmark ->
+                database.bookmarksQueries.deleteBookmarkByRemoteId(bookmark.remoteId!!)
+            }
+
+            // Handle creations
+            toCreate.forEach { bookmark ->
+                database.bookmarksQueries.addBookmark(
+                    remote_id = bookmark.remoteId!!,
+                    sura = bookmark.sura?.toLong(),
+                    ayah = bookmark.ayah?.toLong(),
+                    page = bookmark.page?.toLong(),
+                    created_at = bookmark.lastUpdated
+                )
+            }
+        }
     }
 }
 
