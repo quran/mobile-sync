@@ -121,4 +121,38 @@ class BookmarkRepositoryTest {
             repository.addAyahBookmark(9, 50)
         }
     }
+
+    @Test
+    fun `deleting bookmarks removes them from the database`() = runTest {
+        // Add some bookmarks first
+        database.bookmarks_mutationsQueries.createBookmark(null, null, 12, null)
+        database.bookmarks_mutationsQueries.createBookmark(1, 1, null, null)
+        database.bookmarks_mutationsQueries.createBookmark(2, 2, null, null)
+        
+        // Delete a page bookmark
+        repository.deletePageBookmark(12)
+        var bookmarks = repository.getAllBookmarks().first()
+        assertEquals(2, bookmarks.size, "Should have two bookmarks after deleting page bookmark")
+        assertTrue(bookmarks.none { it.page == 12 }, "Page bookmark should be deleted")
+        
+        // Delete an ayah bookmark
+        repository.deleteAyahBookmark(1, 1)
+        bookmarks = repository.getAllBookmarks().first()
+        assertEquals(1, bookmarks.size, "Should have one bookmark after deleting ayah bookmark")
+        assertTrue(bookmarks.none { it.sura == 1 && it.ayah == 1 }, "Ayah bookmark should be deleted")
+        
+        // Try to delete non-existent bookmarks
+        assertFailsWith<BookmarkNotFoundException> {
+            repository.deletePageBookmark(999) // Non-existent page
+        }
+
+        assertFailsWith<BookmarkNotFoundException> {
+            repository.deleteAyahBookmark(999, 999) // Non-existent ayah
+        }
+
+        // Verify state hasn't changed
+        bookmarks = repository.getAllBookmarks().first()
+        assertEquals(1, bookmarks.size)
+        assertTrue(bookmarks[0].sura == 2 && bookmarks[0].ayah == 2)
+    }
 }

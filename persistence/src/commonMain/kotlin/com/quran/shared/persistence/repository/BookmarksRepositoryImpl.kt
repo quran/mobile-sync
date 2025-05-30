@@ -68,6 +68,36 @@ class BookmarksRepositoryImpl(
         database.bookmarks_mutationsQueries.createBookmark(sura.toLong(), ayah.toLong(), null, null)
     }
 
+    override suspend fun deletePageBookmark(page: Int) {
+        val persistedBookmarks = database.bookmarksQueries.getBookmarksForPage(page.toLong())
+            .executeAsList()
+        val mutatedBookmarks = database.bookmarks_mutationsQueries.recordsForPage(page.toLong())
+            .executeAsList()
+
+        delete(persistedBookmarks, mutatedBookmarks)
+    }
+
+    override suspend fun deleteAyahBookmark(sura: Int, ayah: Int) {
+        val persistedBookmarks = database.bookmarksQueries.getBookmarksForAyah(sura.toLong(), ayah.toLong())
+            .executeAsList()
+        val mutatedBookmarks = database.bookmarks_mutationsQueries.recordsForAyah(sura.toLong(), ayah.toLong())
+            .executeAsList()
+
+        delete(persistedBookmarks, mutatedBookmarks)
+    }
+
+    fun delete(persisted: List<Bookmarks>, mutated: List<Bookmarks_mutations>) {
+        val deletedBookmark = mutated.firstOrNull{ it.deleted == 1L }
+        val createdBookmark = mutated.firstOrNull{ it.deleted == 0L }
+
+        if (createdBookmark != null) {
+            database.bookmarks_mutationsQueries.deleteBookmarkMutation(createdBookmark.local_id)
+        }
+        else if (deletedBookmark == null) {
+            throw BookmarkNotFoundException("There's no bookmark with ")
+        }
+    }
+
     override suspend fun addAll(bookmarks: List<Bookmark>) {
         TODO("Not yet implemented")
     }
@@ -81,14 +111,6 @@ class BookmarksRepositoryImpl(
     }
 
     override suspend fun clearLocalMutations() {
-        TODO("Not yet implemented")
-    }
-
-    override suspend fun deletePageBookmark(page: Int) {
-        TODO("Not yet implemented")
-    }
-
-    override suspend fun deleteAyahBookmark(sura: Int, ayah: Int) {
         TODO("Not yet implemented")
     }
 }
