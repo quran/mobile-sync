@@ -12,15 +12,8 @@ getBookmarks:
 addBookmark:
     INSERT INTO bookmarks (remote_id, sura, ayah, page, created_at) VALUES (?, ?, ?, ?, ?);
 
-batchInsertBookmarks:
-    INSERT INTO bookmarks (remote_id, sura, ayah, page, created_at)
-    VALUES (?, ?, ?, ?, ?);
-
-getBookmarksForPage:
-    SELECT * FROM bookmarks WHERE page = ?;
-
-getBookmarksForAyah:
-    SELECT * FROM bookmarks WHERE sura = ? AND ayah = ?;
+getBookmarksFor:
+    SELECT * FROM bookmarks WHERE page = ? AND sura = ? AND ayah = ?;
 
 deleteBookmarkByRemoteId:
     DELETE FROM bookmarks WHERE remote_id = ?;

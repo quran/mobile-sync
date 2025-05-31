@@ -201,7 +201,8 @@ class BookmarkRepositoryTest {
         assertEquals(listOf(15), bookmarks.mapNotNull { it.page })
         assertEquals(listOf(2), bookmarks.mapNotNull { it.sura })
 
-        val mutatedBookmarksPage15 = database.bookmarks_mutationsQueries.recordsForPage(15L)
+        val mutatedBookmarksPage15 = database.bookmarks_mutationsQueries
+            .getBookmarksMutationsFor(page = 15L, null, null)
             .executeAsList()
         assertEquals(2, mutatedBookmarksPage15.count())
         assertEquals("rem_id_1", mutatedBookmarksPage15.firstOrNull { it.deleted == 1L }?.remote_id,

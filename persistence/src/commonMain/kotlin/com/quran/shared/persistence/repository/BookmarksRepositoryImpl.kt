@@ -37,65 +37,54 @@ class BookmarksRepositoryImpl(
     }
 
     override suspend fun addPageBookmark(page: Int) {
-        val bookmarks = database.bookmarks_mutationsQueries.recordsForPage(page.toLong())
-            .executeAsList()
-        if (bookmarks.isNotEmpty() && !bookmarks.none { it.deleted == 0L }) {
-            throw DuplicateBookmarkException("A bookmark already exists for page $page")
-        }
-        val persistedBookmarks = database.bookmarksQueries.getBookmarksForPage(page.toLong())
-            .executeAsList()
-        if (persistedBookmarks.isNotEmpty()) {
-            // TODO: It remains to check if that is deleted.
-            throw DuplicateBookmarkException("A bookmark already exists for page $page")
-        }
-        database.bookmarks_mutationsQueries.createBookmark(null, null, page.toLong(), null)
+        addBookmark(page, null, null)
     }
 
     override suspend fun addAyahBookmark(sura: Int, ayah: Int) {
-        val bookmarks = database.bookmarks_mutationsQueries.recordsForAyah(sura.toLong(), ayah.toLong())
+        addBookmark(null, sura, ayah)
+    }
+
+    private fun addBookmark(page: Int?, sura: Int?, ayah: Int?) {
+        val mutatedBookmarks = database.bookmarks_mutationsQueries
+            .getBookmarksMutationsFor(page?.toLong(), sura?.toLong(), ayah?.toLong())
             .executeAsList()
-        if (bookmarks.isNotEmpty() && !bookmarks.none{ it.deleted == 0L }) {
-            throw DuplicateBookmarkException("A bookmark already exists for ayah #$ayah of sura #$sura")
+        if (mutatedBookmarks.isNotEmpty() && !mutatedBookmarks.none{ it.deleted == 0L }) {
+            throw DuplicateBookmarkException("A bookmark already exists for page #$page or ayah #$ayah of sura #$sura")
         }
-        val persistedBookmarks = database.bookmarksQueries.getBookmarksForAyah(
-            sura = sura.toLong(),
-            ayah = ayah.toLong()
-        ).executeAsList()
+        val persistedBookmarks = database.bookmarksQueries
+            .getBookmarksFor(page?.toLong(), sura?.toLong(), ayah?.toLong())
+            .executeAsList()
         if (persistedBookmarks.isNotEmpty()) {
-            // TODO: It remains to check if that is deleted.
-            throw DuplicateBookmarkException("A bookmark already exists for ayah #$ayah of sura #$sura")
+            throw DuplicateBookmarkException("A bookmark already exists for page #$page or ayah #$ayah of sura #$sura")
         }
-        database.bookmarks_mutationsQueries.createBookmark(sura.toLong(), ayah.toLong(), null, null)
+        database.bookmarks_mutationsQueries.createBookmark(sura?.toLong(), ayah?.toLong(), page?.toLong(), null)
     }
 
     override suspend fun deletePageBookmark(page: Int) {
-        val persistedBookmarks = database.bookmarksQueries.getBookmarksForPage(page.toLong())
-            .executeAsList()
-        val mutatedBookmarks = database.bookmarks_mutationsQueries.recordsForPage(page.toLong())
-            .executeAsList()
-
-        delete(persistedBookmarks, mutatedBookmarks, "on page $page")
+        delete(page, null, null)
     }
 
     override suspend fun deleteAyahBookmark(sura: Int, ayah: Int) {
-        val persistedBookmarks = database.bookmarksQueries.getBookmarksForAyah(sura.toLong(), ayah.toLong())
-            .executeAsList()
-        val mutatedBookmarks = database.bookmarks_mutationsQueries.recordsForAyah(sura.toLong(), ayah.toLong())
-            .executeAsList()
-
-        delete(persistedBookmarks, mutatedBookmarks, "on ayah $ayah of sura $sura")
+        delete(null, sura, ayah)
     }
 
-    private fun delete(persisted: List<Bookmarks>, mutated: List<Bookmarks_mutations>, description: String) {
-        val deletedBookmark = mutated.firstOrNull{ it.deleted == 1L }
-        val createdBookmark = mutated.firstOrNull{ it.deleted == 0L }
-        val persistedBookmark = persisted.firstOrNull()
+    private fun delete(page: Int?, sura: Int?, ayah: Int?) {
+        val persistedBookmarks = database.bookmarksQueries
+            .getBookmarksFor(page?.toLong(), sura?.toLong(), ayah?.toLong())
+            .executeAsList()
+        val mutatedBookmarks = database.bookmarks_mutationsQueries
+            .getBookmarksMutationsFor(page?.toLong(), sura?.toLong(), ayah?.toLong())
+            .executeAsList()
+
+        val deletedBookmark = mutatedBookmarks.firstOrNull{ it.deleted == 1L }
+        val createdBookmark = mutatedBookmarks.firstOrNull{ it.deleted == 0L }
+        val persistedBookmark = persistedBookmarks.firstOrNull()
 
         if (createdBookmark != null) {
             database.bookmarks_mutationsQueries.deleteBookmarkMutation(createdBookmark.local_id)
         }
         else if (deletedBookmark != null) {
-            throw BookmarkNotFoundException("There's no bookmark $description")
+            throw BookmarkNotFoundException("There's no bookmark page #$page or ayah #$ayah of sura #$sura")
         }
         else if (persistedBookmark != null) {
             database.bookmarks_mutationsQueries.createMarkAsDeletedRecord(
@@ -106,7 +95,7 @@ class BookmarksRepositoryImpl(
             )
         }
         else {
-            throw BookmarkNotFoundException("There's no bookmark $description")
+            throw BookmarkNotFoundException("There's no bookmark page #$page or ayah #$ayah of sura #$sura")
         }
     }
 
