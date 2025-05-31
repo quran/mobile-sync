@@ -14,6 +14,13 @@ data class Bookmark(
     val localMutation: BookmarkLocalMutation,
     val lastUpdated: Long
 ) {
+    init {
+        require(
+            (page != null && sura == null && ayah == null) ||
+            (page == null && sura != null && ayah != null)
+        ) { "Bookmark must be either a page bookmark or an ayah bookmark" }
+    }
+
     val isPageBookmark: Boolean
         get() = page != null && sura == null && ayah == null
 
