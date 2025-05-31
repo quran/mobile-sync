@@ -42,16 +42,6 @@ class BookmarkRepositoryTest {
     }
 
     @Test
-    fun `getAllBookmarks returns items from the database`() = runTest {
-        database.bookmarks_mutationsQueries.createBookmark(null, null, 11, null)
-        database.bookmarks_mutationsQueries.createBookmark(1, 2, null, null)
-        val bookmarks = repository.getAllBookmarks().first()
-        assertTrue(bookmarks.count() == 2)
-        assertTrue(bookmarks[0].isPageBookmark)
-        assertTrue(bookmarks[1].isAyahBookmark)
-    }
-
-    @Test
     fun `getAllBookmarks merges items from persisted and mutations databases`() = runTest {
         database.bookmarks_mutationsQueries.createBookmark(null, null, 11, null)
         database.bookmarksQueries.addBookmark("rem_id_1", 2, 50, null, 10_000L)
@@ -405,5 +395,33 @@ class BookmarkRepositoryTest {
         assertFails("Should fail if bookmarks have DELETED as mutation.") {
             repository.migrateBookmarks(deletedBookmarks)
         }
+    }
+
+    @Test
+    fun `getAllBookmarks flow updates as mutations occur`() = runTest {
+        val bookmarksFlow = repository.getAllBookmarks()
+        
+        // Initial state should be empty
+        assertTrue(bookmarksFlow.first().isEmpty(), "Initial state should be empty")
+
+        // Add a page bookmark
+        repository.addPageBookmark(1)
+        var bookmarks = bookmarksFlow.first()
+        assertEquals(1, bookmarks.size, "Should have one bookmark after adding")
+        assertEquals(1, bookmarks[0].page, "Should be page 1")
+        assertEquals(BookmarkLocalMutation.CREATED, bookmarks[0].localMutation, "Should be marked as created")
+
+        // Add an ayah bookmark
+        repository.addAyahBookmark(1, 1)
+        bookmarks = bookmarksFlow.first()
+        assertEquals(2, bookmarks.size, "Should have two bookmarks after adding ayah")
+        assertTrue(bookmarks.any { it.page == 1 }, "Should have page bookmark")
+        assertTrue(bookmarks.any { it.sura == 1 && it.ayah == 1 }, "Should have ayah bookmark")
+
+        // Delete the page bookmark
+        repository.deletePageBookmark(1)
+        bookmarks = bookmarksFlow.first()
+        assertEquals(1, bookmarks.size, "Should have one bookmark after deletion")
+        assertTrue(bookmarks[0].sura == 1 && bookmarks[0].ayah == 1, "Should only have ayah bookmark")
     }
 }
