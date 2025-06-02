@@ -15,10 +15,10 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.assertFailsWith
 
-class BookmarkRepositoryTest {
+class BookmarksRepositoryTest {
     private lateinit var driver: SqlDriver
     private lateinit var database: QuranDatabase
-    private lateinit var repository: BookmarkRepository
+    private lateinit var repository: BookmarksRepository
 
     @BeforeTest
     fun setup() {

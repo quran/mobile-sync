@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 class DuplicateBookmarkException(message: String) : Exception(message)
 class BookmarkNotFoundException(message: String) : Exception(message)
 
-interface BookmarkRepository {
+interface BookmarksRepository {
 
     // region Basic Operations
     /**

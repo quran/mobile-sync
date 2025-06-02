@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.map
 
 class BookmarksRepositoryImpl(
     private val database: QuranDatabase
-) : BookmarkRepository {
+) : BookmarksRepository {
     override fun getAllBookmarks(): Flow<List<Bookmark>> {
         val persistedFlow = database.bookmarksQueries.getBookmarks()
             .asFlow()
