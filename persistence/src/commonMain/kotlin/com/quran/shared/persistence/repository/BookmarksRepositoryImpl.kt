@@ -133,12 +133,11 @@ class BookmarksRepositoryImpl(
 
             database.bookmarks_mutationsQueries.transaction {
                 bookmarks.forEach { bookmark ->
-                    database.bookmarks_mutationsQueries.createBookmark(
-                        sura = bookmark.sura?.toLong(),
-                        ayah = bookmark.ayah?.toLong(),
-                        page = bookmark.page?.toLong(),
-                        remote_id = null
-                    )
+                    val (page, sura, ayah) = when (bookmark) {
+                        is Bookmark.PageBookmark -> Triple(bookmark.page.toLong(), null, null)
+                        is Bookmark.AyahBookmark -> Triple(null, bookmark.sura.toLong(), bookmark.ayah.toLong())
+                    }
+                    database.bookmarks_mutationsQueries.createBookmark(sura, ayah, page, null)
                 }
             }
         }
@@ -180,11 +179,15 @@ class BookmarksRepositoryImpl(
 
                 // Handle creations
                 toCreate.forEach { bookmark ->
+                    val (page, sura, ayah) = when (bookmark) {
+                        is Bookmark.PageBookmark -> Triple(bookmark.page.toLong(), null, null)
+                        is Bookmark.AyahBookmark -> Triple(null, bookmark.sura.toLong(), bookmark.ayah.toLong())
+                    }
                     database.bookmarksQueries.addBookmark(
                         remote_id = bookmark.remoteId!!,
-                        sura = bookmark.sura?.toLong(),
-                        ayah = bookmark.ayah?.toLong(),
-                        page = bookmark.page?.toLong(),
+                        sura = sura,
+                        ayah = ayah,
+                        page = page,
                         created_at = bookmark.lastUpdated
                     )
                 }
@@ -193,20 +196,40 @@ class BookmarksRepositoryImpl(
     }
 }
 
-private fun Bookmarks_mutations.toBookmark(): Bookmark = Bookmark(
-    sura = sura?.toInt(),
-    ayah = ayah?.toInt(),
-    page = page?.toInt(),
-    remoteId = remote_id,
-    localMutation = if (deleted == 1L) BookmarkLocalMutation.DELETED else BookmarkLocalMutation.CREATED,
-    lastUpdated = created_at
-)
+private fun Bookmarks_mutations.toBookmark(): Bookmark {
+    return if (page != null) {
+        Bookmark.PageBookmark(
+            page = page.toInt(),
+            remoteId = remote_id,
+            localMutation = if (deleted == 1L) BookmarkLocalMutation.DELETED else BookmarkLocalMutation.CREATED,
+            lastUpdated = created_at
+        )
+    } else {
+        Bookmark.AyahBookmark(
+            sura = sura!!.toInt(),
+            ayah = ayah!!.toInt(),
+            remoteId = remote_id,
+            localMutation = if (deleted == 1L) BookmarkLocalMutation.DELETED else BookmarkLocalMutation.CREATED,
+            lastUpdated = created_at
+        )
+    }
+}
 
-private fun Bookmarks.toBookmark(): Bookmark = Bookmark(
-    sura = sura?.toInt(),
-    ayah = ayah?.toInt(),
-    page = page?.toInt(),
-    remoteId = remote_id,
-    localMutation = BookmarkLocalMutation.NONE,
-    lastUpdated = created_at
-)
+private fun Bookmarks.toBookmark(): Bookmark {
+    return if (page != null) {
+        Bookmark.PageBookmark(
+            page = page.toInt(),
+            remoteId = remote_id,
+            localMutation = BookmarkLocalMutation.NONE,
+            lastUpdated = created_at
+        )
+    } else {
+        Bookmark.AyahBookmark(
+            sura = sura!!.toInt(),
+            ayah = ayah!!.toInt(),
+            remoteId = remote_id,
+            localMutation = BookmarkLocalMutation.NONE,
+            lastUpdated = created_at
+        )
+    }
+}

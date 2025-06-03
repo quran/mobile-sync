@@ -50,7 +50,7 @@ interface BookmarksRepository {
     /**
      * Persists updates from remote storage to local storage. 
      *
-     * The mutation property is used to decide wether to insert or delete a record. 
+     * The mutation property is used to decide whether to insert or delete a record.
      *
      * @param mutations List of bookmarks with their remote IDs and mutation states
      * @throws IllegalArgumentException if any bookmark has no remote ID
