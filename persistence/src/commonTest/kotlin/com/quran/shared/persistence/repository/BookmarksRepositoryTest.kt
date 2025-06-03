@@ -403,4 +403,22 @@ class BookmarksRepositoryTest {
         val remainingBookmark = bookmarks[0] as Bookmark.AyahBookmark
         assertTrue(remainingBookmark.sura == 1 && remainingBookmark.ayah == 1, "Should only have ayah bookmark")
     }
+
+    @Test
+    fun `getPageBookmarks and getAyahBookmarks return correct bookmarks and handle mutations`() = runTest {
+        // Given
+        database.bookmarksQueries.addBookmark("page1", null, null, 1L, 1000)
+        database.bookmarksQueries.addBookmark("ayah1", 1, 1, null, 2000)
+        repository.addPageBookmark(2)
+        repository.addAyahBookmark(1, 2)
+        repository.deletePageBookmark(1)
+
+        // Then
+        val pageBookmarks = repository.getPageBookmarks().first()
+        val ayahBookmarks = repository.getAyahBookmarks().first()
+
+        println(pageBookmarks)
+        assertEquals(1, pageBookmarks.size)
+        assertEquals(2, ayahBookmarks.size)
+    }
 }

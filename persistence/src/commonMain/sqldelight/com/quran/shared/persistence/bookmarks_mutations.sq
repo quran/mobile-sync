@@ -18,6 +18,12 @@ CREATE TABLE bookmarks_mutations(
 getBookmarksMutations:
     SELECT * FROM bookmarks_mutations ORDER BY created_at DESC;
 
+getPageBookmarkMutations:
+    SELECT local_id, sura, ayah, page, remote_id, deleted, created_at FROM bookmarks_mutations WHERE page IS NOT NULL ORDER BY created_at DESC;
+
+getAyahBookmarkMutations:
+    SELECT * FROM bookmarks_mutations WHERE sura IS NOT NULL AND ayah IS NOT NULL ORDER BY created_at DESC;
+
 createBookmark:
     INSERT INTO bookmarks_mutations (sura, ayah, page, remote_id, deleted)
     VALUES (?, ?, ?, ?, 0);

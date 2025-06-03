@@ -1,8 +1,6 @@
 package com.quran.shared.persistence.repository
 
 import app.cash.sqldelight.coroutines.asFlow
-import com.quran.shared.persistence.Bookmarks
-import com.quran.shared.persistence.Bookmarks_mutations
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.BookmarkLocalMutation
@@ -28,15 +26,51 @@ class BookmarksRepositoryImpl(
                 query.executeAsList().map { it.toBookmark() }
             }
 
-        return persistedFlow.combine(mutatedFlow) { persistedBookmarks, mutatedBookmarks ->
-            val deletedRemoteIDs = mutatedBookmarks
-                .filter { it.localMutation == BookmarkLocalMutation.DELETED }
-                .mapNotNull { it.remoteId }
-                .toSet()
+        return merge(persistedFlow, mutatedFlow)
+    }
 
-            persistedBookmarks.filter { it.remoteId !in deletedRemoteIDs } +
-                    mutatedBookmarks.filter { it.remoteId !in deletedRemoteIDs }
-        }
+    override fun getPageBookmarks(): Flow<List<Bookmark.PageBookmark>> {
+        // sqldelight created different return types for these queries, so we couldn't
+        // share the full logic with the other fetching methods.
+        val persistedFlow = database.bookmarksQueries.getPageBookmarks()
+            .asFlow()
+            .map { query ->
+                query.executeAsList().map { it.toPageBookmark() }
+            }
+        val mutatedFlow = database.bookmarks_mutationsQueries.getPageBookmarkMutations()
+            .asFlow()
+            .map { query ->
+                query.executeAsList().map { it.toPageBookmark() }
+            }
+
+        return merge(persistedFlow, mutatedFlow)
+    }
+
+    override fun getAyahBookmarks(): Flow<List<Bookmark.AyahBookmark>> {
+        val persistedFlow = database.bookmarksQueries.getAyahBookmarks()
+            .asFlow()
+            .map { query ->
+                query.executeAsList().map { it.toAyahBookmark() }
+            }
+        val mutatedFlow = database.bookmarks_mutationsQueries.getAyahBookmarkMutations()
+            .asFlow()
+            .map { query ->
+                query.executeAsList().map { it.toAyahBookmark() }
+            }
+
+        return merge(persistedFlow, mutatedFlow)
+    }
+
+    private fun <T: Bookmark>merge(
+        persisted: Flow<List<T>>,
+        mutated: Flow<List<T>>): Flow<List<T>> = persisted.combine(mutated) { persistedBookmarks, mutatedBookmarks ->
+        val deletedRemoteIDs = mutatedBookmarks
+            .filter { it.localMutation == BookmarkLocalMutation.DELETED }
+            .mapNotNull { it.remoteId }
+            .toSet()
+
+        persistedBookmarks.filter { it.remoteId !in deletedRemoteIDs } +
+                mutatedBookmarks.filter { it.remoteId !in deletedRemoteIDs }
     }
 
     override suspend fun addPageBookmark(page: Int) {
@@ -193,43 +227,5 @@ class BookmarksRepositoryImpl(
                 }
             }
         }
-    }
-}
-
-private fun Bookmarks_mutations.toBookmark(): Bookmark {
-    return if (page != null) {
-        Bookmark.PageBookmark(
-            page = page.toInt(),
-            remoteId = remote_id,
-            localMutation = if (deleted == 1L) BookmarkLocalMutation.DELETED else BookmarkLocalMutation.CREATED,
-            lastUpdated = created_at
-        )
-    } else {
-        Bookmark.AyahBookmark(
-            sura = sura!!.toInt(),
-            ayah = ayah!!.toInt(),
-            remoteId = remote_id,
-            localMutation = if (deleted == 1L) BookmarkLocalMutation.DELETED else BookmarkLocalMutation.CREATED,
-            lastUpdated = created_at
-        )
-    }
-}
-
-private fun Bookmarks.toBookmark(): Bookmark {
-    return if (page != null) {
-        Bookmark.PageBookmark(
-            page = page.toInt(),
-            remoteId = remote_id,
-            localMutation = BookmarkLocalMutation.NONE,
-            lastUpdated = created_at
-        )
-    } else {
-        Bookmark.AyahBookmark(
-            sura = sura!!.toInt(),
-            ayah = ayah!!.toInt(),
-            remoteId = remote_id,
-            localMutation = BookmarkLocalMutation.NONE,
-            lastUpdated = created_at
-        )
     }
 }

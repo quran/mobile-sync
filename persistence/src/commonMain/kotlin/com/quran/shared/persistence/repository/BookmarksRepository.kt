@@ -10,10 +10,13 @@ interface BookmarksRepository {
 
     // region Basic Operations
     /**
-     * Returns a Flow of all bookmarks, including both local and remote bookmarks.
-     * The Flow will emit new values whenever bookmarks are added, deleted, or synchronized.
+     * Returns a Flow of all bookmarks, reflecting the latest state of the data.
      */
     fun getAllBookmarks(): Flow<List<Bookmark>>
+
+    fun getPageBookmarks(): Flow<List<Bookmark.PageBookmark>>
+
+    fun getAyahBookmarks(): Flow<List<Bookmark.AyahBookmark>>
 
     /**
      * Adds a bookmark for a specific page.
