@@ -24,10 +24,10 @@ class BookmarksRepositoryImpl(
         val mutatedFlow = database.bookmarks_mutationsQueries.getBookmarksMutations()
             .asFlow()
             .map { query ->
-                query.executeAsList().map { it.toBookmark() }
+                query.executeAsList().map { it.toBookmarkMutation() }
             }
 
-        return merge(persistedFlow, mutatedFlow)
+        return merge(persistedFlow, mutatedFlow) { it.toBookmark() }
     }
 
     override fun getPageBookmarks(): Flow<List<Bookmark.PageBookmark>> {
@@ -41,10 +41,10 @@ class BookmarksRepositoryImpl(
         val mutatedFlow = database.bookmarks_mutationsQueries.getPageBookmarkMutations()
             .asFlow()
             .map { query ->
-                query.executeAsList().map { it.toPageBookmark() }
+                query.executeAsList().map { it.toBookmarkMutation() }
             }
 
-        return merge(persistedFlow, mutatedFlow)
+        return merge(persistedFlow, mutatedFlow) { it.toPageBookmark() }
     }
 
     override fun getAyahBookmarks(): Flow<List<Bookmark.AyahBookmark>> {
@@ -56,22 +56,26 @@ class BookmarksRepositoryImpl(
         val mutatedFlow = database.bookmarks_mutationsQueries.getAyahBookmarkMutations()
             .asFlow()
             .map { query ->
-                query.executeAsList().map { it.toAyahBookmark() }
+                query.executeAsList().map { it.toBookmarkMutation() }
             }
 
-        return merge(persistedFlow, mutatedFlow)
+        return merge(persistedFlow, mutatedFlow) { it.toAyahBookmark() }
     }
 
     private fun <T: Bookmark>merge(
         persisted: Flow<List<T>>,
-        mutated: Flow<List<T>>): Flow<List<T>> = persisted.combine(mutated) { persistedBookmarks, mutatedBookmarks ->
+        mutated: Flow<List<BookmarkMutation>>,
+        mapper: (BookmarkMutation) -> T?
+    ): Flow<List<T>> = persisted.combine(mutated) { persistedBookmarks, mutatedBookmarks ->
         val deletedRemoteIDs = mutatedBookmarks
             .filter { it.remoteId != null } // TODO: This is confusing, but it's equivalent to the required result.
             .mapNotNull { it.remoteId }
             .toSet()
 
         persistedBookmarks.filter { it.remoteId !in deletedRemoteIDs } +
-                mutatedBookmarks.filter { it.remoteId !in deletedRemoteIDs }
+                mutatedBookmarks
+                    .filter { it.mutationType == BookmarkMutationType.CREATED }
+                    .mapNotNull(mapper)
     }
 
     override suspend fun addPageBookmark(page: Int) {

@@ -66,17 +66,51 @@ fun GetAyahBookmarks.toAyahBookmark(): Bookmark.AyahBookmark = Bookmark.AyahBook
     lastUpdated = created_at
 )
 
-fun GetPageBookmarkMutations.toPageBookmark(): Bookmark.PageBookmark = Bookmark.PageBookmark(
+fun GetPageBookmarkMutations.toBookmarkMutation(): BookmarkMutation = BookmarkMutation(
     page = page.toInt(),
     remoteId = remote_id,
+    mutationType = deleted.toMutationType(),
     lastUpdated = created_at
 )
 
-fun GetAyahBookmarkMutations.toAyahBookmark(): Bookmark.AyahBookmark = Bookmark.AyahBookmark(
-    ayah = ayah.toInt(),
+fun GetAyahBookmarkMutations.toBookmarkMutation(): BookmarkMutation = BookmarkMutation(
     sura = sura.toInt(),
+    ayah = ayah.toInt(),
     remoteId = remote_id,
+    mutationType = deleted.toMutationType(),
     lastUpdated = created_at
 )
 
 private fun Long.toMutationType(): BookmarkMutationType = if (this == 0L) BookmarkMutationType.CREATED else BookmarkMutationType.DELETED
+
+fun BookmarkMutation.toBookmark(): Bookmark? = when {
+    page != null -> Bookmark.PageBookmark(
+        page = page,
+        remoteId = remoteId,
+        lastUpdated = lastUpdated
+    )
+    sura != null && ayah != null -> Bookmark.AyahBookmark(
+        sura = sura,
+        ayah = ayah,
+        remoteId = remoteId,
+        lastUpdated = lastUpdated
+    )
+    else -> null
+}
+
+fun BookmarkMutation.toPageBookmark(): Bookmark.PageBookmark? = if (page != null) {
+    Bookmark.PageBookmark(
+        page = page,
+        remoteId = remoteId,
+        lastUpdated = lastUpdated
+    )
+} else null
+
+fun BookmarkMutation.toAyahBookmark(): Bookmark.AyahBookmark? = if (sura != null && ayah != null) {
+    Bookmark.AyahBookmark(
+        sura = sura,
+        ayah = ayah,
+        remoteId = remoteId,
+        lastUpdated = lastUpdated
+    )
+} else null
