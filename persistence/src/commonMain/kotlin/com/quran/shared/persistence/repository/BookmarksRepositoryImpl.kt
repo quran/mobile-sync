@@ -3,7 +3,8 @@ package com.quran.shared.persistence.repository
 import app.cash.sqldelight.coroutines.asFlow
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.model.Bookmark
-import com.quran.shared.persistence.model.BookmarkLocalMutation
+import com.quran.shared.persistence.model.BookmarkMutation
+import com.quran.shared.persistence.model.BookmarkMutationType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -13,7 +14,7 @@ import kotlinx.coroutines.IO
 
 class BookmarksRepositoryImpl(
     private val database: QuranDatabase
-) : BookmarksRepository {
+) : BookmarksRepository, BookmarksSynchronizationRepository {
     override fun getAllBookmarks(): Flow<List<Bookmark>> {
         val persistedFlow = database.bookmarksQueries.getBookmarks()
             .asFlow()
@@ -65,7 +66,7 @@ class BookmarksRepositoryImpl(
         persisted: Flow<List<T>>,
         mutated: Flow<List<T>>): Flow<List<T>> = persisted.combine(mutated) { persistedBookmarks, mutatedBookmarks ->
         val deletedRemoteIDs = mutatedBookmarks
-            .filter { it.localMutation == BookmarkLocalMutation.DELETED }
+            .filter { it.remoteId != null } // TODO: This is confusing, but it's equivalent to the required result.
             .mapNotNull { it.remoteId }
             .toSet()
 
@@ -160,11 +161,6 @@ class BookmarksRepositoryImpl(
                 throw IllegalArgumentException("Cannot migrate bookmarks with remote IDs. Found ${bookmarksWithRemoteId.size} bookmarks with remote IDs.")
             }
 
-            val deletedBookmarks = bookmarks.filter { it.localMutation == BookmarkLocalMutation.DELETED }
-            if (deletedBookmarks.isNotEmpty()) {
-                throw IllegalArgumentException("Cannot migrate deleted bookmarks. Found ${deletedBookmarks.size} bookmarks marked as deleted.")
-            }
-
             database.bookmarks_mutationsQueries.transaction {
                 bookmarks.forEach { bookmark ->
                     val (page, sura, ayah) = when (bookmark) {
@@ -177,11 +173,11 @@ class BookmarksRepositoryImpl(
         }
     }
 
-    override suspend fun fetchMutatedBookmarks(): List<Bookmark> {
+    override suspend fun fetchMutatedBookmarks(): List<BookmarkMutation> {
         return withContext(Dispatchers.IO) {
             database.bookmarks_mutationsQueries.getBookmarksMutations()
                 .executeAsList()
-                .map { it.toBookmark() }
+                .map { it.toBookmarkMutation() }
         }
     }
 
@@ -191,7 +187,7 @@ class BookmarksRepositoryImpl(
         }
     }
 
-    override suspend fun persistRemoteUpdates(mutations: List<Bookmark>) {
+    override suspend fun persistRemoteUpdates(mutations: List<BookmarkMutation>) {
         withContext(Dispatchers.IO) {
             // Validate all bookmarks have remote IDs
             val invalidBookmarks = mutations.filter { it.remoteId == null }
@@ -200,29 +196,23 @@ class BookmarksRepositoryImpl(
             }
 
             // Separate mutations by type
-            val toDelete = mutations.filter { it.localMutation == BookmarkLocalMutation.DELETED }
-            val toCreate = mutations.filter { it.localMutation == BookmarkLocalMutation.CREATED }
-
-            // TODO: Guard against inputted bookmarks with NONE as a mutation. 
+            val toDelete = mutations.filter { it.mutationType == BookmarkMutationType.DELETED }
+            val toCreate = mutations.filter { it.mutationType == BookmarkMutationType.CREATED }
 
             database.bookmarksQueries.transaction {
                 // Handle deletions first
-                toDelete.forEach { bookmark ->
-                    database.bookmarksQueries.deleteBookmarkByRemoteId(bookmark.remoteId!!)
+                toDelete.forEach { mutation ->
+                    database.bookmarksQueries.deleteBookmarkByRemoteId(mutation.remoteId!!)
                 }
 
                 // Handle creations
-                toCreate.forEach { bookmark ->
-                    val (page, sura, ayah) = when (bookmark) {
-                        is Bookmark.PageBookmark -> Triple(bookmark.page.toLong(), null, null)
-                        is Bookmark.AyahBookmark -> Triple(null, bookmark.sura.toLong(), bookmark.ayah.toLong())
-                    }
+                toCreate.forEach { mutation ->
                     database.bookmarksQueries.addBookmark(
-                        remote_id = bookmark.remoteId!!,
-                        sura = sura,
-                        ayah = ayah,
-                        page = page,
-                        created_at = bookmark.lastUpdated
+                        remote_id = mutation.remoteId!!,
+                        sura = mutation.sura?.toLong(),
+                        ayah = mutation.ayah?.toLong(),
+                        page = mutation.page?.toLong(),
+                        created_at = mutation.lastUpdated
                     )
                 }
             }

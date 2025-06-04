@@ -1,10 +1,34 @@
 package com.quran.shared.persistence.repository
 
 import com.quran.shared.persistence.model.Bookmark
+import com.quran.shared.persistence.model.BookmarkMutation
 import kotlinx.coroutines.flow.Flow
 
 class DuplicateBookmarkException(message: String) : Exception(message)
 class BookmarkNotFoundException(message: String) : Exception(message)
+
+interface BookmarksSynchronizationRepository {
+    /**
+     * Returns a list of bookmarks that have been mutated locally (created or deleted)
+     * that need to be synchronized with remote storage.
+     */
+    suspend fun fetchMutatedBookmarks(): List<BookmarkMutation>
+
+    /**
+     * Persists updates from remote storage to local storage. 
+     *
+     * The mutation type is used to decide whether to insert or delete a record.
+     *
+     * @param mutations List of bookmarks with their remote IDs and mutation states
+     * @throws IllegalArgumentException if any bookmark has no remote ID
+     */
+    suspend fun persistRemoteUpdates(mutations: List<BookmarkMutation>)
+
+    /**
+     * Clears all local mutations, typically called after successful synchronization.
+     */
+    suspend fun clearLocalMutations()
+}
 
 interface BookmarksRepository {
 
@@ -41,29 +65,6 @@ interface BookmarksRepository {
      * @throws BookmarkNotFoundException if no bookmark exists for this ayah
      */
     suspend fun deleteAyahBookmark(sura: Int, ayah: Int)
-    // endregion
-
-    // region Synchronization
-    /**
-     * Returns a list of bookmarks that have been mutated locally (created or deleted)
-     * that need to be synchronized with remote storage.
-     */
-    suspend fun fetchMutatedBookmarks(): List<Bookmark>
-
-    /**
-     * Persists updates from remote storage to local storage. 
-     *
-     * The mutation property is used to decide whether to insert or delete a record.
-     *
-     * @param mutations List of bookmarks with their remote IDs and mutation states
-     * @throws IllegalArgumentException if any bookmark has no remote ID
-     */
-    suspend fun persistRemoteUpdates(mutations: List<Bookmark>)
-
-    /**
-     * Clears all local mutations, typically called after successful synchronization.
-     */
-    suspend fun clearLocalMutations()
     // endregion
 
     // region Migration
