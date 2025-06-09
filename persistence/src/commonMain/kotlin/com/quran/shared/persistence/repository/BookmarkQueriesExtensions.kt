@@ -17,13 +17,15 @@ fun Bookmarks_mutations.toBookmark(): Bookmark {
             remoteId = remote_id,
             lastUpdated = created_at
         )
-    } else {
+    } else if (ayah != null && sura != null) {
         Bookmark.AyahBookmark(
-            sura = sura!!.toInt(),
-            ayah = ayah!!.toInt(),
+            sura = sura.toInt(),
+            ayah = ayah.toInt(),
             remoteId = remote_id,
             lastUpdated = created_at
         )
+    } else {
+        error("Unexpected bookmark's state: page, ayah and sura are all null.")
     }
 }
 
