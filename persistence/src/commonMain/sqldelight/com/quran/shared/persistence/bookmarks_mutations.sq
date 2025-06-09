@@ -1,4 +1,4 @@
-CREATE TABLE bookmarks_mutations(
+CREATE TABLE bookmark_mutation(
   local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   sura INTEGER,
   ayah INTEGER,
@@ -16,27 +16,27 @@ CREATE TABLE bookmarks_mutations(
 );
 
 getBookmarksMutations:
-    SELECT * FROM bookmarks_mutations ORDER BY created_at DESC;
+    SELECT * FROM bookmark_mutation ORDER BY created_at DESC;
 
 getPageBookmarkMutations:
-    SELECT local_id, sura, ayah, page, remote_id, deleted, created_at FROM bookmarks_mutations WHERE page IS NOT NULL ORDER BY created_at DESC;
+    SELECT local_id, sura, ayah, page, remote_id, deleted, created_at FROM bookmark_mutation WHERE page IS NOT NULL ORDER BY created_at DESC;
 
 getAyahBookmarkMutations:
-    SELECT * FROM bookmarks_mutations WHERE sura IS NOT NULL AND ayah IS NOT NULL ORDER BY created_at DESC;
+    SELECT * FROM bookmark_mutation WHERE sura IS NOT NULL AND ayah IS NOT NULL ORDER BY created_at DESC;
 
 createBookmark:
-    INSERT INTO bookmarks_mutations (sura, ayah, page, remote_id, deleted)
+    INSERT INTO bookmark_mutation (sura, ayah, page, remote_id, deleted)
     VALUES (?, ?, ?, ?, 0);
 
 createMarkAsDeletedRecord:
-    INSERT INTO bookmarks_mutations (sura, ayah, page, remote_id, deleted)
+    INSERT INTO bookmark_mutation (sura, ayah, page, remote_id, deleted)
     VALUES (?, ?, ?, ?, 1);
 
 clearBookmarkMutations:
-    DELETE FROM bookmarks_mutations;
+    DELETE FROM bookmark_mutation;
 
 deleteBookmarkMutation:
-    DELETE FROM bookmarks_mutations WHERE local_id = ?;
+    DELETE FROM bookmark_mutation WHERE local_id = ?;
 
 getBookmarksMutationsFor:
-    SELECT * FROM bookmarks_mutations WHERE page = ? AND sura = ? AND ayah = ?;
+    SELECT * FROM bookmark_mutation WHERE page = ? AND sura = ? AND ayah = ?;

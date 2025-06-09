@@ -1,7 +1,5 @@
 package com.quran.shared.persistence.repository
 
-import com.quran.shared.persistence.Bookmarks
-import com.quran.shared.persistence.Bookmarks_mutations
 import com.quran.shared.persistence.GetAyahBookmarkMutations
 import com.quran.shared.persistence.GetAyahBookmarks
 import com.quran.shared.persistence.GetPageBookmarkMutations
@@ -9,8 +7,10 @@ import com.quran.shared.persistence.GetPageBookmarks
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.BookmarkMutation
 import com.quran.shared.persistence.model.BookmarkMutationType
+import com.quran.shared.persistence.model.DatabaseBookmark
+import com.quran.shared.persistence.model.DatabaseBookmarkMutation
 
-fun Bookmarks_mutations.toBookmark(): Bookmark {
+fun DatabaseBookmarkMutation.toBookmark(): Bookmark {
     return if (page != null) {
         Bookmark.PageBookmark(
             page = page.toInt(),
@@ -29,7 +29,7 @@ fun Bookmarks_mutations.toBookmark(): Bookmark {
     }
 }
 
-fun Bookmarks_mutations.toBookmarkMutation(): BookmarkMutation = BookmarkMutation(
+fun DatabaseBookmarkMutation.toBookmarkMutation(): BookmarkMutation = BookmarkMutation(
     page = page?.toInt(),
     sura = sura?.toInt(),
     ayah = ayah?.toInt(),
@@ -38,7 +38,7 @@ fun Bookmarks_mutations.toBookmarkMutation(): BookmarkMutation = BookmarkMutatio
     lastUpdated = created_at
 )
 
-fun Bookmarks.toBookmark(): Bookmark {
+fun DatabaseBookmark.toBookmark(): Bookmark {
     return if (page != null) {
         Bookmark.PageBookmark(
             page = page.toInt(),
