@@ -24,6 +24,7 @@ kotlin {
         commonMain.dependencies {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.sqldelight.extensions)
+            implementation("co.touchlab:kermit:2.0.0")
         }
 
         commonTest.dependencies {

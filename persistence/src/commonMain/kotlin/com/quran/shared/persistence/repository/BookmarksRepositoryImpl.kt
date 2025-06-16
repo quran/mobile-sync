@@ -1,6 +1,7 @@
 package com.quran.shared.persistence.repository
 
 import app.cash.sqldelight.coroutines.asFlow
+import co.touchlab.kermit.Logger
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.BookmarkMutation
@@ -15,6 +16,8 @@ import kotlinx.coroutines.IO
 class BookmarksRepositoryImpl(
     private val database: QuranDatabase
 ) : BookmarksRepository, BookmarksSynchronizationRepository {
+    private val logger = Logger.withTag("BookmarksRepository")
+
     override fun getAllBookmarks(): Flow<List<Bookmark>> {
         val persistedFlow = database.bookmarksQueries.getBookmarks()
             .asFlow()
@@ -79,10 +82,12 @@ class BookmarksRepositoryImpl(
     }
 
     override suspend fun addPageBookmark(page: Int) {
+        logger.i { "Adding page bookmark for page $page" }
         addBookmark(page, null, null)
     }
 
     override suspend fun addAyahBookmark(sura: Int, ayah: Int) {
+        logger.i { "Adding ayah bookmark for sura $sura, ayah $ayah" }
         addBookmark(null, sura, ayah)
     }
 
@@ -92,24 +97,29 @@ class BookmarksRepositoryImpl(
                 .getBookmarksMutationsFor(page?.toLong(), sura?.toLong(), ayah?.toLong())
                 .executeAsList()
             if (mutatedBookmarks.isNotEmpty() && !mutatedBookmarks.none{ it.deleted == 0L }) {
+                logger.e { "Duplicate bookmark found for page=$page, sura=$sura, ayah=$ayah" }
                 throw DuplicateBookmarkException("A bookmark already exists for page #$page or ayah #$ayah of sura #$sura")
             }
             val persistedBookmarks = database.bookmarksQueries
                 .getBookmarksFor(page?.toLong(), sura?.toLong(), ayah?.toLong())
                 .executeAsList()
             if (persistedBookmarks.isNotEmpty()) {
+                logger.e { "Duplicate bookmark found in persisted storage for page=$page, sura=$sura, ayah=$ayah" }
                 throw DuplicateBookmarkException("A bookmark already exists for page #$page or ayah #$ayah of sura #$sura")
             }
             database.bookmarks_mutationsQueries.createBookmark(sura?.toLong(), ayah?.toLong(), page?.toLong(), null)
+            logger.d { "Successfully created bookmark mutation for page=$page, sura=$sura, ayah=$ayah" }
         }
     }
 
     override suspend fun deletePageBookmark(page: Int) {
-        delete(page, null, null)
+        logger.i { "Deleting page bookmark for page $page" }
+        delete(page = page, ayah = null, sura =  null)
     }
 
     override suspend fun deleteAyahBookmark(sura: Int, ayah: Int) {
-        delete(null, sura, ayah)
+        logger.i { "Deleting ayah bookmark for sura $sura, ayah $ayah" }
+        delete(page = null, sura = sura, ayah = ayah)
     }
 
     private suspend fun delete(page: Int?, sura: Int?, ayah: Int?) {
@@ -126,12 +136,15 @@ class BookmarksRepositoryImpl(
             val persistedBookmark = persistedBookmarks.firstOrNull()
 
             if (createdBookmark != null) {
+                logger.d { "Deleting created bookmark mutation for page=$page, sura=$sura, ayah=$ayah" }
                 database.bookmarks_mutationsQueries.deleteBookmarkMutation(createdBookmark.local_id)
             }
             else if (deletedBookmark != null) {
+                logger.w { "Bookmark not found for deletion: page=$page, sura=$sura, ayah=$ayah" }
                 throw BookmarkNotFoundException("There's no bookmark page #$page or ayah #$ayah of sura #$sura")
             }
             else if (persistedBookmark != null) {
+                logger.d { "Creating deletion mutation for persisted bookmark: page=$page, sura=$sura, ayah=$ayah" }
                 database.bookmarks_mutationsQueries.createMarkAsDeletedRecord(
                     persistedBookmark.sura,
                     persistedBookmark.ayah,
@@ -140,6 +153,7 @@ class BookmarksRepositoryImpl(
                 )
             }
             else {
+                logger.w { "Bookmark not found for deletion: page=$page, sura=$sura, ayah=$ayah" }
                 throw BookmarkNotFoundException("There's no bookmark page #$page or ayah #$ayah of sura #$sura")
             }
         }
@@ -186,16 +200,19 @@ class BookmarksRepositoryImpl(
     }
 
     override suspend fun clearLocalMutations() {
+        logger.i { "Clearing all local mutations" }
         withContext(Dispatchers.IO) {
             database.bookmarks_mutationsQueries.clearBookmarkMutations()
         }
     }
 
     override suspend fun persistRemoteUpdates(mutations: List<BookmarkMutation>) {
+        logger.i { "Persisting ${mutations.size} remote updates" }
         withContext(Dispatchers.IO) {
             // Validate all bookmarks have remote IDs
             val invalidBookmarks = mutations.filter { it.remoteId == null }
             if (invalidBookmarks.isNotEmpty()) {
+                logger.e { "Found ${invalidBookmarks.size} bookmarks without remote IDs" }
                 throw IllegalArgumentException("All bookmarks must have a remote ID. Found ${invalidBookmarks.size} bookmarks without remote IDs.")
             }
 
@@ -206,11 +223,13 @@ class BookmarksRepositoryImpl(
             database.bookmarksQueries.transaction {
                 // Handle deletions first
                 toDelete.forEach { mutation ->
+                    logger.d { "Deleting bookmark with remote ID: ${mutation.remoteId}" }
                     database.bookmarksQueries.deleteBookmarkByRemoteId(mutation.remoteId!!)
                 }
 
                 // Handle creations
                 toCreate.forEach { mutation ->
+                    logger.d { "Creating bookmark with remote ID: ${mutation.remoteId}" }
                     database.bookmarksQueries.addBookmark(
                         remote_id = mutation.remoteId!!,
                         sura = mutation.sura?.toLong(),
@@ -220,6 +239,7 @@ class BookmarksRepositoryImpl(
                     )
                 }
             }
+            logger.i { "Successfully persisted all remote updates" }
         }
     }
 }
