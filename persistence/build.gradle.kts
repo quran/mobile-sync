@@ -30,8 +30,23 @@ kotlin {
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
+        }
+
+        androidUnitTest.dependencies {
             implementation(libs.sqldelight.sqlite.driver)
-            implementation("app.cash.sqldelight:jdbc-driver")
+            implementation(libs.sqldelight.jdbc.driver)
+        }
+
+        iosX64Test.dependencies {
+            implementation(libs.sqldelight.native.driver)
+        }
+
+        iosArm64Test.dependencies {
+            implementation(libs.sqldelight.native.driver)
+        }
+
+        iosSimulatorArm64Test.dependencies {
+            implementation(libs.sqldelight.native.driver)
         }
 
         androidMain.dependencies {

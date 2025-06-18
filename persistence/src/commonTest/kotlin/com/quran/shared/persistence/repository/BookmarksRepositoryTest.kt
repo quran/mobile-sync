@@ -1,13 +1,14 @@
 package com.quran.shared.persistence.repository
 
 import app.cash.sqldelight.db.SqlDriver
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.quran.shared.persistence.QuranDatabase
+import com.quran.shared.persistence.TestDatabaseDriver
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.BookmarkMutation
 import com.quran.shared.persistence.model.BookmarkMutationType
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -24,11 +25,11 @@ class BookmarksRepositoryTest {
 
     @BeforeTest
     fun setup() {
-        // Create in-memory database
-        driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        
-        // Create tables
-        QuranDatabase.Schema.create(driver)
+        // Create in-memory database using platform-specific driver
+        // Due to differences to how schema is handled between iOS and
+        // Android target, schema creation is delegated to the driver factory's
+        // actual implementations.
+        driver = TestDatabaseDriver().createDriver()
         
         // Initialize database
         database = QuranDatabase(driver)
@@ -36,6 +37,11 @@ class BookmarksRepositoryTest {
         // Initialize repository
         repository = BookmarksRepositoryImpl(database)
         syncRepository = BookmarksRepositoryImpl(database)
+    }
+
+    @AfterTest
+    fun tearDown() {
+        driver.close()
     }
 
     @Test
