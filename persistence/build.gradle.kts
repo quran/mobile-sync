@@ -24,7 +24,7 @@ kotlin {
         commonMain.dependencies {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.sqldelight.extensions)
-            implementation("co.touchlab:kermit:2.0.0")
+            implementation(libs.kermit)
         }
 
         commonTest.dependencies {
@@ -55,15 +55,15 @@ kotlin {
 
 android {
     namespace = "com.quran.shared.persistence"
-    compileSdk = 35
+    compileSdk = libs.versions.android.compile.sdk.get().toInt()
 
     defaultConfig {
-        minSdk = 21
+        minSdk = libs.versions.android.min.sdk.get().toInt()
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.valueOf("VERSION_${libs.versions.android.java.version.get()}")
+        targetCompatibility = JavaVersion.valueOf("VERSION_${libs.versions.android.java.version.get()}")
     }
 
     testOptions {
@@ -85,12 +85,12 @@ sqldelight {
 mavenPublishing {
     publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL)
     signAllPublications()
-    coordinates(group.toString(), "persistence", version.toString())
+    coordinates(libs.versions.project.group.get(), "persistence", libs.versions.project.version.get())
 
     pom {
         name = "Quran.com Persistence Layer"
         description = "A library for sharing data between iOS and Android mobile apps"
-        inceptionYear = "2025"
-        url = "https://github.com/quran/mobile-data"
+        inceptionYear = libs.versions.project.inception.year.get()
+        url = libs.versions.project.url.get()
     }
 }
