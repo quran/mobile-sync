@@ -1,30 +1,62 @@
 CREATE TABLE bookmark(
-  remote_id TEXT NOT NULL PRIMARY KEY,
+  local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  remote_id TEXT,
   sura INTEGER,
   ayah INTEGER,
   page INTEGER,
-  created_at INTEGER NOT NULL,
+  created_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
+  deleted INTEGER NOT NULL DEFAULT 0,
   -- Ensure either page or (sura, ayah) is set, but not both
   CHECK (
     (page IS NOT NULL AND sura IS NULL AND ayah IS NULL) OR
     (page IS NULL AND sura IS NOT NULL AND ayah IS NOT NULL)
-  )
+  ),
+  -- Ensure deleted is either 0 or 1
+  CHECK (deleted IN (0, 1))
 );
 
 getBookmarks:
-    SELECT * FROM bookmark ORDER BY created_at DESC;
+    SELECT * FROM bookmark WHERE deleted = 0 ORDER BY created_at DESC;
 
 getPageBookmarks:
-    SELECT * FROM bookmark WHERE page IS NOT NULL ORDER BY created_at DESC;
+    SELECT * FROM bookmark WHERE page IS NOT NULL AND deleted = 0 ORDER BY created_at DESC;
 
 getAyahBookmarks:
-    SELECT * FROM bookmark WHERE sura IS NOT NULL AND ayah IS NOT NULL ORDER BY created_at DESC;
+    SELECT * FROM bookmark WHERE sura IS NOT NULL AND ayah IS NOT NULL AND deleted = 0 ORDER BY created_at DESC;
 
-addBookmark:
-    INSERT INTO bookmark (remote_id, sura, ayah, page, created_at) VALUES (?, ?, ?, ?, ?);
+createRemoteBookmark:
+    INSERT INTO bookmark (remote_id, sura, ayah, page, deleted)
+    VALUES (?, ?, ?, ?, 0);
+
+createLocalBookmark:
+    INSERT INTO bookmark (remote_id, sura, ayah, page, deleted)
+    VALUES (NULL, ?, ?, ?, 0);
 
 getBookmarksFor:
-    SELECT * FROM bookmark WHERE page = ? AND sura = ? AND ayah = ?;
+    SELECT * FROM bookmark WHERE page = ? AND sura = ? AND ayah = ? AND deleted = 0;
 
-deleteBookmarkByRemoteId:
-    DELETE FROM bookmark WHERE remote_id = ?;
+getUnsyncedBookmarks:
+    SELECT * FROM bookmark WHERE remote_id IS NULL ORDER BY created_at DESC;
+
+updateBookmarkRemoteId:
+    UPDATE bookmark SET remote_id = ? WHERE local_id = ?;
+
+updateBookmarkDeleted:
+    UPDATE bookmark SET deleted = ? WHERE local_id = ?;
+
+setDeleted:
+    UPDATE bookmark SET deleted = 1 WHERE local_id = ?;
+
+deleteBookmarkById:
+    DELETE FROM bookmark WHERE local_id = ?;
+
+clearLocalMutations:
+    DELETE FROM bookmark WHERE remote_id IS NULL;
+
+-- Queries for conflict resolution
+getBookmarkByRemoteId:
+    SELECT * FROM bookmark WHERE remote_id = ?;
+
+getBookmarkByLocation:
+    SELECT * FROM bookmark WHERE (page = ? AND sura IS NULL AND ayah IS NULL) OR
+                               (page IS NULL AND sura = ? AND ayah = ?);
