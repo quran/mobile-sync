@@ -4,7 +4,7 @@ kotlin = "2.1.21"
 
 maven-publish = "0.32.0"
 
-compose = "2025.05.00"
+compose = "2025.06.01"
 coroutines = "1.10.2"
 sqldelight = "2.1.0"
 
