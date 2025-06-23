@@ -36,7 +36,7 @@ getBookmarksFor:
     SELECT * FROM bookmark WHERE page = ? AND sura = ? AND ayah = ? AND deleted = 0;
 
 getUnsyncedBookmarks:
-    SELECT * FROM bookmark WHERE remote_id IS NULL ORDER BY created_at DESC;
+    SELECT * FROM bookmark WHERE remote_id IS NULL OR deleted = 1 ORDER BY created_at DESC;
 
 updateBookmarkRemoteId:
     UPDATE bookmark SET remote_id = ? WHERE local_id = ?;

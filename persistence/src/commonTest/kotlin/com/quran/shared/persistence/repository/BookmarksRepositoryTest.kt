@@ -202,19 +202,27 @@ class BookmarksRepositoryTest {
     }
 
     @Test
-    fun `fetchMutatedBookmarks returns all unsynced bookmarks`() = runTest {
+    fun `fetchMutatedBookmarks returns all mutated bookmarks`() = runTest {
         val emptyResult = syncRepository.fetchMutatedBookmarks()
+        database.bookmarksQueries.createRemoteBookmark("rem-id-1", null, null, 10L)
         assertTrue(emptyResult.isEmpty(), "Expected to return nothing when no mutations have been added.")
-        
-        // Create some test bookmarks (local = unsynced)
+
         repository.addAyahBookmark(1, 1)
         repository.addAyahBookmark(2, 2)
 
+        repository.deletePageBookmark(10)
+
         val result = syncRepository.fetchMutatedBookmarks()
         
-        assertEquals(2, result.size)
+        assertEquals(3, result.size)
         assertTrue(result.any { it.sura == 1 && it.ayah == 1 && it.mutationType == BookmarkMutationType.CREATED })
         assertTrue(result.any { it.sura == 2 && it.ayah == 2 && it.mutationType == BookmarkMutationType.CREATED })
+        assertTrue(result.any { it.page == 10 && it.mutationType == BookmarkMutationType.DELETED })
+    }
+
+    @Test
+    fun `setToSyncedState clears local mutations`() = runTest {
+
     }
 
     @Test
