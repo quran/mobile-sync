@@ -2,12 +2,12 @@ package com.quran.shared.persistence.repository
 
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.model.Bookmark
-import com.quran.shared.persistence.model.BookmarkMutation
 import com.quran.shared.persistence.model.BookmarkMutationType
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.*
 import com.quran.shared.persistence.TestDatabaseDriver
+import com.quran.shared.persistence.model.BookmarkMutation
 
 class BookmarksRepositoryTest {
     private lateinit var database: QuranDatabase
@@ -44,7 +44,7 @@ class BookmarksRepositoryTest {
         database.bookmarksQueries.createRemoteBookmark("rem_id_1", null, null, 11)
         database.bookmarksQueries.createRemoteBookmark("rem_id_2", 2, 50, null)
         // Mark one as deleted
-        database.bookmarksQueries.updateBookmarkDeleted(deleted = 1L, local_id = 1L)
+        database.bookmarksQueries.setDeleted(1L)
 
         val bookmarks = repository.getAllBookmarks().first()
         assertEquals(1, bookmarks.size, "Expected only non-deleted bookmarks")
@@ -187,7 +187,7 @@ class BookmarksRepositoryTest {
     fun `adding a bookmark after deleting a remote bookmark like it`() = runTest {
         // Add a remote bookmark and mark it as deleted
         database.bookmarksQueries.createRemoteBookmark("rem_id_1", null, null, 15)
-        database.bookmarksQueries.updateBookmarkDeleted(1L, 1L)
+        database.bookmarksQueries.setDeleted(1L)
         
         // Add another bookmark
         repository.addAyahBookmark(2, 50)
@@ -221,83 +221,60 @@ class BookmarksRepositoryTest {
     }
 
     @Test
-    fun `setToSyncedState clears local mutations`() = runTest {
+    fun `setToSyncedState clears local state and persist updates`() = runTest {
+        // Setup:
+        //   - Add some synced bookmarks (i.e. remote bookmarks)
+        database.bookmarksQueries.createRemoteBookmark("remote-1", null, null, 10L)
+        database.bookmarksQueries.createRemoteBookmark("remote-2", 1L, 5L, null)
+        database.bookmarksQueries.createRemoteBookmark("remote-3", null, null, 20L)
+        database.bookmarksQueries.createRemoteBookmark("remote-4", 3L, 15L, null) // Additional synced bookmark
+        database.bookmarksQueries.createRemoteBookmark("remote-5", null, null, 40L) // Additional synced bookmark
 
-    }
+        //   - Add mutations (create new bookmarks, and delete two of the synced bookmarks)
+        repository.addAyahBookmark(2, 10) // Local creation
+        repository.addPageBookmark(30) // Local creation
+        repository.deletePageBookmark(10) // Local deletion of remote bookmark
+        repository.deleteAyahBookmark(1, 5) // Local deletion of remote bookmark
 
-    @Test
-    fun `clearLocalMutations removes all non-synced bookmarks`() = runTest {
-        // Create some test bookmarks
-        repository.addAyahBookmark(1, 1)
-        repository.addAyahBookmark(2, 2)
-
-        val beforeClear = syncRepository.fetchMutatedBookmarks()
-        assertEquals(2, beforeClear.size)
-
-        // Clear local bookmarks
-        syncRepository.clearLocalMutations()
-
-        // Verify local bookmarks are removed
-        val afterClear = syncRepository.fetchMutatedBookmarks()
-        assertEquals(0, afterClear.size, "Local bookmarks should be removed")
-    }
-
-    @Test
-    fun `persistRemoteUpdates persists bookmarks without local mutations`() = runTest {
-        val remoteBookmarks = listOf(
-            BookmarkMutation(page = 2, remoteId = "remote-2", mutationType = BookmarkMutationType.CREATED, lastUpdated = 1001L),
-            BookmarkMutation(sura = 1, ayah = 1, remoteId = "remote-3", mutationType = BookmarkMutationType.CREATED, lastUpdated = 1002L)
+        // Action:
+        //   - Call setToSyncedState with a list of mutations.
+        //   - This list should mimic two of the mutations above (one creation and one deletion),
+        //     and should ignore others.
+        val confirmedMutations = listOf(
+            // Confirm the page bookmark creation
+            BookmarkMutation(page = 30, remoteId = "remote-30", mutationType = BookmarkMutationType.CREATED, lastUpdated = 2000L),
+            // Confirm the page bookmark deletion
+            BookmarkMutation(page = 10, remoteId = "remote-1", mutationType = BookmarkMutationType.DELETED, lastUpdated = 2001L),
+            // Confirm creation of a new bookmark (different from local mutations)
+            BookmarkMutation(page = 50, remoteId = "remote-50", mutationType = BookmarkMutationType.CREATED, lastUpdated = 2002L),
+            // Confirm deletion of an existing bookmark (different from local mutations)
+            BookmarkMutation(sura = 3, ayah = 15, remoteId = "remote-4", mutationType = BookmarkMutationType.DELETED, lastUpdated = 2003L)
         )
 
-        syncRepository.persistRemoteUpdates(remoteBookmarks)
+        syncRepository.setToSyncedState(confirmedMutations)
 
-        val persistedBookmarks = database.bookmarksQueries.getBookmarks().executeAsList()
-        assertEquals(2, persistedBookmarks.size)
-        assertTrue(persistedBookmarks.any { it.page == 2L }, "Should persist page bookmark")
-        assertTrue(persistedBookmarks.any { it.sura == 1L && it.ayah == 1L }, "Should persist ayah bookmark")
-    }
+        // Assert:
+        //   - The final state of the returned bookmarks
+        val finalBookmarks = repository.getAllBookmarks().first()
+//        print()
+        assertEquals(5, finalBookmarks.size, "Should have 5 bookmarks after sync")
 
-    @Test
-    fun `persistRemoteUpdates throws when bookmarks have no remote ID`() = runTest {
-        val remoteBookmarks = listOf(
-            BookmarkMutation(page = 1, remoteId = null, mutationType = BookmarkMutationType.CREATED, lastUpdated = 1000L),
-            BookmarkMutation(sura = 1, ayah = 1, remoteId = "remote-2", mutationType = BookmarkMutationType.CREATED, lastUpdated = 1001L)
-        )
+        // Should have the correct set of pages
+        val finalPages = finalBookmarks.filterIsInstance<Bookmark.PageBookmark>().map { it.page }.toSet()
+        assertEquals(setOf(20, 30, 40, 50), finalPages, "Should have correct set of pages")
 
-        assertFails {
-            syncRepository.persistRemoteUpdates(remoteBookmarks)
-        }
-    }
+        // Should have the correct set of ayahs
+        val finalAyahs = finalBookmarks.filterIsInstance<Bookmark.AyahBookmark>().map { it.sura to it.ayah }.toSet()
+        assertEquals(setOf(1 to 5), finalAyahs, "Should have correct set of ayahs")
 
-    @Test
-    fun `persistRemoteUpdates handles deletions and creations with timestamps`() = runTest {
-        // First add some existing bookmarks
-        database.bookmarksQueries.createRemoteBookmark("remote-1", null, null, 1L)
-        database.bookmarksQueries.createRemoteBookmark("remote-2", 1L, 1L, null)
+        // Should have the correct set of remote IDs
+        val finalRemoteIds = finalBookmarks.mapNotNull { it.remoteId }.toSet()
+        assertEquals(setOf("remote-2", "remote-3", "remote-5", "remote-30", "remote-50"), finalRemoteIds, "Should have correct set of remote IDs")
 
-        val remoteBookmarks = listOf(
-            // Delete existing page bookmark
-            BookmarkMutation(page = 1, remoteId = "remote-1", mutationType = BookmarkMutationType.DELETED, lastUpdated = 2000L),
-            // Create new page bookmark
-            BookmarkMutation(page = 2, remoteId = "remote-3", mutationType = BookmarkMutationType.CREATED, lastUpdated = 2001L),
-            // Create new ayah bookmark
-            BookmarkMutation(sura = 2, ayah = 2, remoteId = "remote-4", mutationType = BookmarkMutationType.CREATED, lastUpdated = 2002L)
-        )
-
-        syncRepository.persistRemoteUpdates(remoteBookmarks)
-
-        val persistedBookmarks = database.bookmarksQueries.getBookmarks().executeAsList()
-        assertEquals(3, persistedBookmarks.size, "Should have 2 bookmarks (1 deleted, 2 new)")
-
-        // Verify deleted bookmark is gone
-        assertTrue(persistedBookmarks.none { it.remote_id == "remote-1" })
-
-        // Verify new bookmarks with their timestamps
-        val newPageBookmark = persistedBookmarks.find { it.page == 2L }
-        assertEquals("remote-3", newPageBookmark?.remote_id)
-
-        val newAyahBookmark = persistedBookmarks.find { it.sura == 2L && it.ayah == 2L }
-        assertEquals("remote-4", newAyahBookmark?.remote_id)
+        // The DB should have no mutated bookmarks
+        val remainingMutations = syncRepository.fetchMutatedBookmarks()
+        println(remainingMutations)
+        assertEquals(0, remainingMutations.size, "Should have no remaining mutations.")
     }
 
     @Test

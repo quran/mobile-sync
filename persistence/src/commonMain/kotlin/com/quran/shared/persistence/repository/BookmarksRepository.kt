@@ -15,19 +15,17 @@ interface BookmarksSynchronizationRepository {
     suspend fun fetchMutatedBookmarks(): List<BookmarkMutation>
 
     /**
-     * Persists updates from remote storage to local storage. 
+     * Persists updates from remote storage to local storage, and clears any local mutations.
+     *
+     * The responsibility to reconcile possible conflicts between the remote updates and the local
+     * mutations is not handled by this repository.
      *
      * The mutation type is used to decide whether to insert or delete a record.
      *
      * @param mutations List of bookmarks with their remote IDs and mutation states
      * @throws IllegalArgumentException if any bookmark has no remote ID
      */
-    suspend fun persistRemoteUpdates(mutations: List<BookmarkMutation>)
-
-    /**
-     * Clears all local mutations, typically called after successful synchronization.
-     */
-    suspend fun clearLocalMutations()
+    suspend fun setToSyncedState(updatesToPersist: List<BookmarkMutation>)
 }
 
 interface BookmarksRepository {

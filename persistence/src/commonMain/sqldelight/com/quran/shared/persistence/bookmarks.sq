@@ -35,14 +35,9 @@ createLocalBookmark:
 getBookmarksFor:
     SELECT * FROM bookmark WHERE page = ? AND sura = ? AND ayah = ? AND deleted = 0;
 
+-- TODO: Rename
 getUnsyncedBookmarks:
     SELECT * FROM bookmark WHERE remote_id IS NULL OR deleted = 1 ORDER BY created_at DESC;
-
-updateBookmarkRemoteId:
-    UPDATE bookmark SET remote_id = ? WHERE local_id = ?;
-
-updateBookmarkDeleted:
-    UPDATE bookmark SET deleted = ? WHERE local_id = ?;
 
 setDeleted:
     UPDATE bookmark SET deleted = 1 WHERE local_id = ?;
@@ -50,8 +45,11 @@ setDeleted:
 deleteBookmarkById:
     DELETE FROM bookmark WHERE local_id = ?;
 
-clearLocalMutations:
+removeLocallyAddedBookmarks:
     DELETE FROM bookmark WHERE remote_id IS NULL;
+
+resetMarkedAsDeletedBookmarks:
+    UPDATE bookmark SET deleted = 0;
 
 -- Queries for conflict resolution
 getBookmarkByRemoteId:

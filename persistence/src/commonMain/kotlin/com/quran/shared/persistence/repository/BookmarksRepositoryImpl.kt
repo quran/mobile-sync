@@ -145,132 +145,40 @@ class BookmarksRepositoryImpl(
         }
     }
 
-    override suspend fun clearLocalMutations() {
-        logger.i { "Clearing all local mutations" }
-        withContext(Dispatchers.IO) {
-            database.bookmarksQueries.clearLocalMutations()
-        }
-    }
-
-    override suspend fun persistRemoteUpdates(mutations: List<BookmarkMutation>) {
-        logger.i { "Persisting ${mutations.size} remote updates" }
+    override suspend fun setToSyncedState(updatesToPersist: List<BookmarkMutation>) {
+        logger.i { "Setting to synced state with ${updatesToPersist.size} updates to persist" }
         withContext(Dispatchers.IO) {
             // Validate all bookmarks have remote IDs
-            val invalidBookmarks = mutations.filter { it.remoteId == null }
+            val invalidBookmarks = updatesToPersist.filter { it.remoteId == null }
             if (invalidBookmarks.isNotEmpty()) {
                 logger.e { "Found ${invalidBookmarks.size} bookmarks without remote IDs" }
                 throw IllegalArgumentException("All bookmarks must have a remote ID. Found ${invalidBookmarks.size} bookmarks without remote IDs.")
             }
 
             database.bookmarksQueries.transaction {
-                mutations.forEach { mutation ->
-                    handleRemoteMutation(mutation)
-                }
-            }
-        }
-    }
+                database.bookmarksQueries.removeLocallyAddedBookmarks()
+                database.bookmarksQueries.resetMarkedAsDeletedBookmarks()
+                logger.d { "Cleared local mutations" }
 
-    private fun handleRemoteMutation(mutation: BookmarkMutation) {
-        // First check if we have a bookmark with this remote ID
-        val existingByRemoteId = mutation.remoteId?.let { remoteId ->
-            database.bookmarksQueries.getBookmarkByRemoteId(remoteId).executeAsOneOrNull()
-        }
-
-        // Then check if we have any bookmarks at this location
-        val existingByLocation = database.bookmarksQueries.getBookmarkByLocation(
-            mutation.page?.toLong(),
-            mutation.sura?.toLong(),
-            mutation.ayah?.toLong()
-        ).executeAsList()
-
-        when {
-            // Case 1: We have a bookmark with this remote ID
-            existingByRemoteId != null -> {
-                handleExistingRemoteBookmark(existingByRemoteId, mutation)
-            }
-            // Case 2: We have local bookmarks at this location
-            existingByLocation.isNotEmpty() -> {
-                handleLocalBookmarksAtLocation(existingByLocation, mutation)
-            }
-            // Case 3: No conflicts, just add the remote bookmark
-            else -> {
-                addRemoteBookmark(mutation)
-            }
-        }
-    }
-
-    private fun handleExistingRemoteBookmark(existing: com.quran.shared.persistence.Bookmark, mutation: BookmarkMutation) {
-        when (mutation.mutationType) {
-            BookmarkMutationType.DELETED -> {
-                // Remote wants to delete this bookmark
-                database.bookmarksQueries.updateBookmarkDeleted(
-                    deleted = 1L,
-                    local_id = existing.local_id
-                )
-            }
-            BookmarkMutationType.CREATED -> {
-                // Remote wants to update this bookmark
-                if (existing.deleted == 1L) {
-                    // If it was deleted locally, restore it
-                    database.bookmarksQueries.updateBookmarkDeleted(
-                        deleted = 0L,
-                        local_id = existing.local_id
-                    )
-                }
-                // Remote update takes precedence - no additional action needed
-            }
-        }
-    }
-
-    private fun handleLocalBookmarksAtLocation(localBookmarks: List<com.quran.shared.persistence.Bookmark>, mutation: BookmarkMutation) {
-        when (mutation.mutationType) {
-            BookmarkMutationType.DELETED -> {
-                // Remote wants to delete all bookmarks at this location
-                localBookmarks.forEach { local ->
-                    database.bookmarksQueries.updateBookmarkDeleted(
-                        deleted = 1L,
-                        local_id = local.local_id
-                    )
-                }
-            }
-            BookmarkMutationType.CREATED -> {
-                // Remote wants to create a bookmark at this location
-                // If we have local unsynced changes, we need to resolve the conflict
-                val unsyncedLocal = localBookmarks.filter { it.remote_id == null }
-                if (unsyncedLocal.isNotEmpty()) {
-                    // For now, we'll take the most recent change
-                    // In a real app, you might want to show a UI to let the user choose
-                    val mostRecent = unsyncedLocal.maxByOrNull { it.created_at }
-                    if (mostRecent != null) {
-                        if (mostRecent.created_at > mutation.lastUpdated) {
-                            // Local change is more recent, keep it and assign the remote ID
-                            database.bookmarksQueries.updateBookmarkRemoteId(
+                updatesToPersist.forEach { mutation ->
+                    when (mutation.mutationType) {
+                        BookmarkMutationType.CREATED -> {
+                            database.bookmarksQueries.createRemoteBookmark(
                                 remote_id = mutation.remoteId,
-                                local_id = mostRecent.local_id
+                                sura = mutation.sura?.toLong(),
+                                ayah = mutation.ayah?.toLong(),
+                                page = mutation.page?.toLong()
                             )
-                        } else {
-                            // Remote change is more recent, update local
-                            database.bookmarksQueries.updateBookmarkDeleted(
-                                deleted = 0L,
-                                local_id = mostRecent.local_id
-                            )
-                            addRemoteBookmark(mutation)
+                        }
+                        BookmarkMutationType.DELETED -> {
+                            val existingBookmark = database.bookmarksQueries.getBookmarkByRemoteId(mutation.remoteId!!).executeAsOneOrNull()
+                            if (existingBookmark != null) {
+                                database.bookmarksQueries.deleteBookmarkById(existingBookmark.local_id)
+                            }
                         }
                     }
-                } else {
-                    // No local unsynced changes, just add the remote bookmark
-                    addRemoteBookmark(mutation)
                 }
             }
         }
-    }
-
-    private fun addRemoteBookmark(mutation: BookmarkMutation) {
-        database.bookmarksQueries.createRemoteBookmark(
-            remote_id = mutation.remoteId,
-            sura = mutation.sura?.toLong(),
-            ayah = mutation.ayah?.toLong(),
-            page = mutation.page?.toLong()
-        )
     }
 }
