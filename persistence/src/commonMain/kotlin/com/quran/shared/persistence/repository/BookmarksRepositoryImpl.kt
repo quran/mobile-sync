@@ -3,7 +3,7 @@ package com.quran.shared.persistence.repository
 import app.cash.sqldelight.coroutines.asFlow
 import co.touchlab.kermit.Logger
 import com.quran.shared.persistence.QuranDatabase
-import com.quran.shared.persistence.model.Bookmark
+import com.quran.shared.persistence.model.PageBookmark
 import com.quran.shared.persistence.model.BookmarkMutation
 import com.quran.shared.persistence.model.BookmarkMutationType
 import kotlinx.coroutines.flow.Flow
@@ -17,7 +17,7 @@ class BookmarksRepositoryImpl(
 ) : BookmarksRepository, BookmarksSynchronizationRepository {
     private val logger = Logger.withTag("BookmarksRepository")
 
-    override fun getAllBookmarks(): Flow<List<Bookmark>> {
+    override fun getAllBookmarks(): Flow<List<PageBookmark>> {
         return database.bookmarksQueries.getBookmarks()
             .asFlow()
             .map { query ->
@@ -25,89 +25,63 @@ class BookmarksRepositoryImpl(
             }
     }
 
-    override fun getPageBookmarks(): Flow<List<Bookmark.PageBookmark>> {
-        return database.bookmarksQueries.getPageBookmarks()
-            .asFlow()
-            .map { query ->
-                query.executeAsList().map { it.toPageBookmark() }
-            }
-    }
-
-    override fun getAyahBookmarks(): Flow<List<Bookmark.AyahBookmark>> {
-        return database.bookmarksQueries.getAyahBookmarks()
-            .asFlow()
-            .map { query ->
-                query.executeAsList().map { it.toAyahBookmark() }
-            }
-    }
-
     override suspend fun addPageBookmark(page: Int) {
         logger.i { "Adding page bookmark for page $page" }
-        addBookmark(page, null, null)
+        addBookmark(page)
     }
 
-    override suspend fun addAyahBookmark(sura: Int, ayah: Int) {
-        logger.i { "Adding ayah bookmark for sura $sura, ayah $ayah" }
-        addBookmark(null, sura, ayah)
-    }
-
-    private suspend fun addBookmark(page: Int?, sura: Int?, ayah: Int?) {
+    private suspend fun addBookmark(page: Int) {
         withContext(Dispatchers.IO) {
             val existingBookmarks = database.bookmarksQueries
-                .getBookmarksFor(page?.toLong(), sura?.toLong(), ayah?.toLong())
+                .getBookmarksFor(page.toLong(), null, null)
                 .executeAsList()
             
             if (existingBookmarks.isNotEmpty()) {
-                logger.e { "Duplicate bookmark found for page=$page, sura=$sura, ayah=$ayah" }
-                throw DuplicateBookmarkException("A bookmark already exists for page #$page or ayah #$ayah of sura #$sura")
+                logger.e { "Duplicate bookmark found for page=$page" }
+                throw DuplicateBookmarkException("A bookmark already exists for page #$page")
             }
 
             // TODO: Well, if we have a remote bookmark that is marked as deleted for the same
             // place as the input, how should we deal with that?
             database.bookmarksQueries.createLocalBookmark(
-                sura = sura?.toLong(),
-                ayah = ayah?.toLong(),
-                page = page?.toLong()
+                sura = null,
+                ayah = null,
+                page = page.toLong()
             )
-            logger.d { "Successfully created bookmark for page=$page, sura=$sura, ayah=$ayah" }
+            logger.d { "Successfully created bookmark for page=$page" }
         }
     }
 
     override suspend fun deletePageBookmark(page: Int) {
         logger.i { "Deleting page bookmark for page $page" }
-        delete(page = page, ayah = null, sura =  null)
+        delete(page = page)
     }
 
-    override suspend fun deleteAyahBookmark(sura: Int, ayah: Int) {
-        logger.i { "Deleting ayah bookmark for sura $sura, ayah $ayah" }
-        delete(page = null, sura = sura, ayah = ayah)
-    }
-
-    private suspend fun delete(page: Int?, sura: Int?, ayah: Int?) {
+    private suspend fun delete(page: Int) {
         withContext(Dispatchers.IO) {
             val existingBookmarks = database.bookmarksQueries
-                .getBookmarksFor(page?.toLong(), sura?.toLong(), ayah?.toLong())
+                .getBookmarksFor(page.toLong(), null, null)
                 .executeAsList()
 
             if (existingBookmarks.isEmpty()) {
-                logger.w { "Bookmark not found for deletion: page=$page, sura=$sura, ayah=$ayah" }
-                throw BookmarkNotFoundException("There's no bookmark page #$page or ayah #$ayah of sura #$sura")
+                logger.w { "Bookmark not found for deletion: page=$page" }
+                throw BookmarkNotFoundException("There's no bookmark for page #$page")
             }
 
             val bookmark = existingBookmarks.first()
             if (bookmark.remote_id == null) {
                 // Local-only bookmark: delete immediately
-                logger.d { "Deleting local-only bookmark: page=$page, sura=$sura, ayah=$ayah" }
+                logger.d { "Deleting local-only bookmark: page=$page" }
                 database.bookmarksQueries.deleteBookmarkById(bookmark.local_id)
             } else {
                 // Synced bookmark: mark as deleted
-                logger.d { "Marking synced bookmark as deleted: page=$page, sura=$sura, ayah=$ayah" }
+                logger.d { "Marking synced bookmark as deleted: page=$page" }
                 database.bookmarksQueries.setDeleted(bookmark.local_id)
             }
         }
     }
 
-    override suspend fun migrateBookmarks(bookmarks: List<Bookmark>) {
+    override suspend fun migrateBookmarks(bookmarks: List<PageBookmark>) {
         withContext(Dispatchers.IO) {
             // Check if bookmarks table is empty
             val existingBookmarks = database.bookmarksQueries.getBookmarks().executeAsList()
@@ -123,14 +97,10 @@ class BookmarksRepositoryImpl(
 
             database.bookmarksQueries.transaction {
                 bookmarks.forEach { bookmark ->
-                    val (page, sura, ayah) = when (bookmark) {
-                        is Bookmark.PageBookmark -> Triple(bookmark.page.toLong(), null, null)
-                        is Bookmark.AyahBookmark -> Triple(null, bookmark.sura.toLong(), bookmark.ayah.toLong())
-                    }
                     database.bookmarksQueries.createLocalBookmark(
-                        sura = sura,
-                        ayah = ayah,
-                        page = page
+                        sura = null,
+                        ayah = null,
+                        page = bookmark.page.toLong()
                     )
                 }
             }
@@ -165,8 +135,8 @@ class BookmarksRepositoryImpl(
                         BookmarkMutationType.CREATED -> {
                             database.bookmarksQueries.createRemoteBookmark(
                                 remote_id = mutation.remoteId,
-                                sura = mutation.sura?.toLong(),
-                                ayah = mutation.ayah?.toLong(),
+                                sura = null,
+                                ayah = null,
                                 page = mutation.page?.toLong()
                             )
                         }

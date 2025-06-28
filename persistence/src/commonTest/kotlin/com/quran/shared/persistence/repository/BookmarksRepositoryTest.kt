@@ -1,7 +1,7 @@
 package com.quran.shared.persistence.repository
 
 import com.quran.shared.persistence.QuranDatabase
-import com.quran.shared.persistence.model.Bookmark
+import com.quran.shared.persistence.model.PageBookmark
 import com.quran.shared.persistence.model.BookmarkMutationType
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -28,27 +28,26 @@ class BookmarksRepositoryTest {
     }
 
     @Test
-    fun `getAllBookmarks returns all bookmarks from single table`() = runTest {
+    fun `getAllBookmarks returns bookmarks`() = runTest {
         database.bookmarksQueries.createLocalBookmark(null, null, 11)
-        database.bookmarksQueries.createRemoteBookmark("rem_id_1", 2, 50, null)
+        database.bookmarksQueries.createRemoteBookmark("rem_id_1", null, null, 50)
         database.bookmarksQueries.createLocalBookmark(null, null, 50)
 
         val bookmarks = repository.getAllBookmarks().first()
         assertEquals(3, bookmarks.size, "Expected 3 bookmarks")
-        assertEquals(bookmarks.filterIsInstance<Bookmark.PageBookmark>().map { it.page }.toSet(), setOf(11, 50))
-        assertEquals(1, bookmarks.filterIsInstance<Bookmark.AyahBookmark>().size)
+        assertEquals(bookmarks.map { it.page }.toSet(), setOf(11, 50))
     }
 
     @Test
     fun `getAllBookmarks excludes deleted bookmarks`() = runTest {
         database.bookmarksQueries.createRemoteBookmark("rem_id_1", null, null, 11)
-        database.bookmarksQueries.createRemoteBookmark("rem_id_2", 2, 50, null)
+        database.bookmarksQueries.createRemoteBookmark("rem_id_2", null, null, 50)
         // Mark one as deleted
         database.bookmarksQueries.setDeleted(1L)
 
         val bookmarks = repository.getAllBookmarks().first()
         assertEquals(1, bookmarks.size, "Expected only non-deleted bookmarks")
-        assertTrue(bookmarks[0] is Bookmark.AyahBookmark)
+        assertEquals(50, bookmarks[0].page)
     }
 
     @Test
@@ -57,17 +56,13 @@ class BookmarksRepositoryTest {
         var bookmarks = database.bookmarksQueries.getBookmarks().executeAsList()
         assertEquals(1, bookmarks.size)
         assertEquals(10L, bookmarks[0].page)
-        assertNull(bookmarks[0].ayah)
-        assertNull(bookmarks[0].sura)
         assertNull(bookmarks[0].remote_id, "Locally added bookmarks should not have remote IDs (not synced yet)")
 
-        repository.addAyahBookmark(1, 5)
-        repository.addAyahBookmark(2, 50)
+        repository.addPageBookmark(20)
+        repository.addPageBookmark(30)
         bookmarks = database.bookmarksQueries.getBookmarks().executeAsList()
         assertEquals(3, bookmarks.size)
-        assertEquals(listOf(10L, null, null), bookmarks.map { it.page })
-        assertEquals(listOf(null, 1L, 2L), bookmarks.map { it.sura })
-        assertEquals(listOf(null, 5L, 50L), bookmarks.map { it.ayah })
+        assertEquals(listOf(10L, 20L, 30L), bookmarks.map { it.page })
         
         // Verify all locally added bookmarks don't have remote IDs (not synced yet)
         bookmarks.forEach { bookmark ->
@@ -88,93 +83,72 @@ class BookmarksRepositoryTest {
         // Verify only one bookmark exists
         val bookmarks = repository.getAllBookmarks().first()
         assertEquals(1, bookmarks.size, "Should only have one bookmark")
-        assertTrue(bookmarks[0] is Bookmark.PageBookmark, "Should be a page bookmark")
-        assertEquals(12, (bookmarks[0] as Bookmark.PageBookmark).page, "Should be page 12")
-        
-        // Add an ayah bookmark
-        repository.addAyahBookmark(1, 1)
-        
-        // Try to add the same ayah bookmark multiple times
-        assertFailsWith<DuplicateBookmarkException> {
-            repository.addAyahBookmark(1, 1)
-        }
-
-        // Verify only one ayah bookmark was added
-        val updatedBookmarks = repository.getAllBookmarks().first()
-        assertEquals(2, updatedBookmarks.size, "Should have two bookmarks total")
-        assertEquals(1, updatedBookmarks.filterIsInstance<Bookmark.AyahBookmark>().size, "Should have one ayah bookmark")
-        assertEquals(1, updatedBookmarks.filterIsInstance<Bookmark.PageBookmark>().size, "Should have one page bookmark")
+        assertEquals(12, bookmarks[0].page, "Should only have page 12")
 
         // Test with remote bookmarks
         database.bookmarksQueries.createRemoteBookmark("rem_id_1", null, null, 105)
-        database.bookmarksQueries.createRemoteBookmark("rem_id_2", 9, 50, null)
 
         assertFailsWith<DuplicateBookmarkException>{
             repository.addPageBookmark(105)
         }
-        assertFailsWith<DuplicateBookmarkException> {
-            repository.addAyahBookmark(9, 50)
-        }
     }
 
     @Test
-    fun `deleting bookmarks removes them from the database`() = runTest {
+    fun `deleting local bookmarks removes them from the database`() = runTest {
         repository.addPageBookmark(12)
-        repository.addAyahBookmark(1, 1)
-        repository.addAyahBookmark(2, 2)
+        repository.addPageBookmark(13)
+        repository.addPageBookmark(14)
         
         // Delete a page bookmark
         repository.deletePageBookmark(12)
         var bookmarks = repository.getAllBookmarks().first()
         assertEquals(2, bookmarks.size, "Should have two bookmarks after deleting page bookmark")
-        assertTrue(bookmarks.none { it is Bookmark.PageBookmark && it.page == 12 }, "Page bookmark should be deleted")
+        assertTrue(bookmarks.none { it.page == 12 }, "Page bookmark should be deleted")
         
-        // Delete an ayah bookmark
-        repository.deleteAyahBookmark(1, 1)
+        // Delete another page bookmark
+        repository.deletePageBookmark(13)
         bookmarks = repository.getAllBookmarks().first()
-        assertEquals(1, bookmarks.size, "Should have one bookmark after deleting ayah bookmark")
-        assertTrue(bookmarks.none { it is Bookmark.AyahBookmark && it.sura == 1 && it.ayah == 1 }, "Ayah bookmark should be deleted")
-        
+        assertEquals(1, bookmarks.size, "Should have one bookmark after deleting second page bookmark")
+        assertTrue(bookmarks.none { it.page == 13 }, "Expected page 13 bookmark to be deleted")
+
         // Try to delete non-existent bookmarks
         assertFailsWith<BookmarkNotFoundException> {
             repository.deletePageBookmark(999) // Non-existent page
         }
 
-        assertFailsWith<BookmarkNotFoundException> {
-            repository.deleteAyahBookmark(999, 999) // Non-existent ayah
-        }
-
         // Verify state hasn't changed
         bookmarks = repository.getAllBookmarks().first()
         assertEquals(1, bookmarks.size)
-        val remainingBookmark = bookmarks[0] as Bookmark.AyahBookmark
-        assertTrue(remainingBookmark.sura == 2 && remainingBookmark.ayah == 2)
+        assertEquals(14, bookmarks[0].page, "Other bookmarks should be returned")
+
+        // Verify that no un-synced bookmark records are returned for deleted bookmarks
+        val unSyncedRecords = database.bookmarksQueries.getUnsyncedBookmarks().executeAsList()
+        assertEquals(1, unSyncedRecords.count(), "Only one is expected now")
+        assertEquals(setOf(14L), unSyncedRecords.map { it.page }.toSet())
     }
 
     @Test
     fun `deleting bookmarks from remote bookmarks`() = runTest {
         database.bookmarksQueries.createRemoteBookmark("rem_id_1", null, null, 10)
         database.bookmarksQueries.createRemoteBookmark("rem_id_2", null, null, 15)
-        database.bookmarksQueries.createRemoteBookmark("rem_id_3", 20, 3, null)
+        database.bookmarksQueries.createRemoteBookmark("rem_id_3", null, null, 20)
 
         repository.deletePageBookmark(10)
-        repository.deleteAyahBookmark(20, 3)
+        repository.deletePageBookmark(20)
 
         val bookmarks = repository.getAllBookmarks().first()
         assertEquals(1, bookmarks.size)
-        assertTrue(bookmarks[0] is Bookmark.PageBookmark)
-        assertEquals(15, (bookmarks[0] as Bookmark.PageBookmark).page)
+        assertEquals(15, bookmarks[0].page)
 
         assertFailsWith<BookmarkNotFoundException> {
             // Deleting a non-existent bookmark
-            repository.deleteAyahBookmark(10, 5)
+            repository.deletePageBookmark(999)
         }
         assertFailsWith<BookmarkNotFoundException> {
             // Deleting a deleted bookmark
             repository.deletePageBookmark(10)
         }
-
-        // Verify deleted bookmarks are marked as deleted
+        
         val allBookmarks = database.bookmarksQueries.getBookmarks().executeAsList()
         assertEquals(1, allBookmarks.size, "Should only have one non-deleted bookmark")
         
@@ -190,15 +164,14 @@ class BookmarksRepositoryTest {
         database.bookmarksQueries.setDeleted(1L)
         
         // Add another bookmark
-        repository.addAyahBookmark(2, 50)
+        repository.addPageBookmark(25)
 
         // Try to add a bookmark at the same location as the deleted one
         repository.addPageBookmark(15)
 
         val bookmarks = repository.getAllBookmarks().first()
         assertEquals(2, bookmarks.size)
-        assertEquals(listOf(15), bookmarks.filterIsInstance<Bookmark.PageBookmark>().map { it.page })
-        assertEquals(listOf(2), bookmarks.filterIsInstance<Bookmark.AyahBookmark>().map { it.sura })
+        assertEquals(listOf(15, 25), bookmarks.map { it.page }.sorted())
     }
 
     @Test
@@ -207,16 +180,16 @@ class BookmarksRepositoryTest {
         database.bookmarksQueries.createRemoteBookmark("rem-id-1", null, null, 10L)
         assertTrue(emptyResult.isEmpty(), "Expected to return nothing when no mutations have been added.")
 
-        repository.addAyahBookmark(1, 1)
-        repository.addAyahBookmark(2, 2)
+        repository.addPageBookmark(1)
+        repository.addPageBookmark(2)
 
         repository.deletePageBookmark(10)
 
         val result = syncRepository.fetchMutatedBookmarks()
         
         assertEquals(3, result.size)
-        assertTrue(result.any { it.sura == 1 && it.ayah == 1 && it.mutationType == BookmarkMutationType.CREATED })
-        assertTrue(result.any { it.sura == 2 && it.ayah == 2 && it.mutationType == BookmarkMutationType.CREATED })
+        assertTrue(result.any { it.page == 1 && it.mutationType == BookmarkMutationType.CREATED })
+        assertTrue(result.any { it.page == 2 && it.mutationType == BookmarkMutationType.CREATED })
         assertTrue(result.any { it.page == 10 && it.mutationType == BookmarkMutationType.DELETED })
     }
 
@@ -225,16 +198,16 @@ class BookmarksRepositoryTest {
         // Setup:
         //   - Add some synced bookmarks (i.e. remote bookmarks)
         database.bookmarksQueries.createRemoteBookmark("remote-1", null, null, 10L)
-        database.bookmarksQueries.createRemoteBookmark("remote-2", 1L, 5L, null)
-        database.bookmarksQueries.createRemoteBookmark("remote-3", null, null, 20L)
-        database.bookmarksQueries.createRemoteBookmark("remote-4", 3L, 15L, null) // Additional synced bookmark
-        database.bookmarksQueries.createRemoteBookmark("remote-5", null, null, 40L) // Additional synced bookmark
+        database.bookmarksQueries.createRemoteBookmark("remote-2", null, null, 20L)
+        database.bookmarksQueries.createRemoteBookmark("remote-3", null, null, 30L)
+        database.bookmarksQueries.createRemoteBookmark("remote-4", null, null, 40L) // Additional synced bookmark
+        database.bookmarksQueries.createRemoteBookmark("remote-5", null, null, 50L) // Additional synced bookmark
 
         //   - Add mutations (create new bookmarks, and delete two of the synced bookmarks)
-        repository.addAyahBookmark(2, 10) // Local creation
-        repository.addPageBookmark(30) // Local creation
+        repository.addPageBookmark(60) // Local creation
+        repository.addPageBookmark(70) // Local creation
         repository.deletePageBookmark(10) // Local deletion of remote bookmark
-        repository.deleteAyahBookmark(1, 5) // Local deletion of remote bookmark
+        repository.deletePageBookmark(20) // Local deletion of remote bookmark
 
         // Action:
         //   - Call setToSyncedState with a list of mutations.
@@ -242,13 +215,13 @@ class BookmarksRepositoryTest {
         //     and should ignore others.
         val confirmedMutations = listOf(
             // Confirm the page bookmark creation
-            BookmarkMutation(page = 30, remoteId = "remote-30", mutationType = BookmarkMutationType.CREATED, lastUpdated = 2000L),
+            BookmarkMutation(page = 60, remoteId = "remote-60", mutationType = BookmarkMutationType.CREATED, lastUpdated = 2000L),
             // Confirm the page bookmark deletion
             BookmarkMutation(page = 10, remoteId = "remote-1", mutationType = BookmarkMutationType.DELETED, lastUpdated = 2001L),
             // Confirm creation of a new bookmark (different from local mutations)
-            BookmarkMutation(page = 50, remoteId = "remote-50", mutationType = BookmarkMutationType.CREATED, lastUpdated = 2002L),
+            BookmarkMutation(page = 80, remoteId = "remote-80", mutationType = BookmarkMutationType.CREATED, lastUpdated = 2002L),
             // Confirm deletion of an existing bookmark (different from local mutations)
-            BookmarkMutation(sura = 3, ayah = 15, remoteId = "remote-4", mutationType = BookmarkMutationType.DELETED, lastUpdated = 2003L)
+            BookmarkMutation(page = 40, remoteId = "remote-4", mutationType = BookmarkMutationType.DELETED, lastUpdated = 2003L)
         )
 
         syncRepository.setToSyncedState(confirmedMutations)
@@ -256,20 +229,11 @@ class BookmarksRepositoryTest {
         // Assert:
         //   - The final state of the returned bookmarks
         val finalBookmarks = repository.getAllBookmarks().first()
-//        print()
         assertEquals(5, finalBookmarks.size, "Should have 5 bookmarks after sync")
 
         // Should have the correct set of pages
-        val finalPages = finalBookmarks.filterIsInstance<Bookmark.PageBookmark>().map { it.page }.toSet()
-        assertEquals(setOf(20, 30, 40, 50), finalPages, "Should have correct set of pages")
-
-        // Should have the correct set of ayahs
-        val finalAyahs = finalBookmarks.filterIsInstance<Bookmark.AyahBookmark>().map { it.sura to it.ayah }.toSet()
-        assertEquals(setOf(1 to 5), finalAyahs, "Should have correct set of ayahs")
-
-        // Should have the correct set of remote IDs
-        val finalRemoteIds = finalBookmarks.mapNotNull { it.remoteId }.toSet()
-        assertEquals(setOf("remote-2", "remote-3", "remote-5", "remote-30", "remote-50"), finalRemoteIds, "Should have correct set of remote IDs")
+        val finalPages = finalBookmarks.map { it.page }.toSet()
+        assertEquals(setOf(20, 30, 50, 60, 80), finalPages, "Should have correct set of pages")
 
         // The DB should have no mutated bookmarks
         val remainingMutations = syncRepository.fetchMutatedBookmarks()
@@ -280,8 +244,8 @@ class BookmarksRepositoryTest {
     @Test
     fun `migrateBookmarks succeeds when table is empty`() = runTest {
         val bookmarks = listOf(
-            Bookmark.PageBookmark(page = 1, remoteId = null, lastUpdated = 1000L),
-            Bookmark.AyahBookmark(sura = 1, ayah = 1, remoteId = null, lastUpdated = 1001L)
+            PageBookmark(page = 1, lastUpdated = 1000L),
+            PageBookmark(page = 2, lastUpdated = 1001L)
         )
 
         repository.migrateBookmarks(bookmarks)
@@ -289,19 +253,19 @@ class BookmarksRepositoryTest {
         val migratedBookmarks = database.bookmarksQueries.getBookmarks().executeAsList()
         assertEquals(2, migratedBookmarks.size)
         
-        val pageBookmark = migratedBookmarks.find { it.page == 1L }
-        assertEquals(0L, pageBookmark?.deleted, "Should not be marked as deleted")
-        assertNull(pageBookmark?.remote_id, "Should not have remote ID")
+        val pageBookmark1 = migratedBookmarks.find { it.page == 1L }
+        assertEquals(0L, pageBookmark1?.deleted, "Should not be marked as deleted")
+        assertNull(pageBookmark1?.remote_id, "Should not have remote ID")
 
-        val ayahBookmark = migratedBookmarks.find { it.sura == 1L && it.ayah == 1L }
-        assertEquals(0L, ayahBookmark?.deleted, "Should note  be marked as deleted")
-        assertNull(ayahBookmark?.remote_id, "Should not have remote ID")
+        val pageBookmark2 = migratedBookmarks.find { it.page == 2L }
+        assertEquals(0L, pageBookmark2?.deleted, "Should not be marked as deleted")
+        assertNull(pageBookmark2?.remote_id, "Should not have remote ID")
     }
 
     @Test
     fun `migrateBookmarks fails when table is not empty`() = runTest {
         val bookmarks = listOf(
-            Bookmark.PageBookmark(page = 1, remoteId = null, lastUpdated = 1000L)
+            PageBookmark(page = 1, lastUpdated = 1000L)
         )
 
         database.bookmarksQueries.createRemoteBookmark("existing-1", null, null, 1L)
@@ -313,7 +277,7 @@ class BookmarksRepositoryTest {
     @Test
     fun `migrateBookmarks fails when bookmarks have remote IDs`() = runTest {
         val bookmarksWithRemoteId = listOf(
-            Bookmark.PageBookmark(page = 1, remoteId = "remote-1", lastUpdated = 1000L)
+            PageBookmark(page = 1, lastUpdated = 1000L, remoteId = "remote-1")
         )
         assertFails("Should fail if bookmarks have remote IDs") {
             repository.migrateBookmarks(bookmarksWithRemoteId)
@@ -331,23 +295,20 @@ class BookmarksRepositoryTest {
         repository.addPageBookmark(1)
         var bookmarks = bookmarksFlow.first()
         assertEquals(1, bookmarks.size, "Should have one bookmark after adding")
-        assertTrue(bookmarks[0] is Bookmark.PageBookmark, "Should be a page bookmark")
-        assertEquals(1, (bookmarks[0] as Bookmark.PageBookmark).page, "Should be page 1")
+        assertEquals(1, bookmarks[0].page, "Should be page 1")
 
-        // Add an ayah bookmark
-        repository.addAyahBookmark(1, 1)
+        // Add another page bookmark
+        repository.addPageBookmark(2)
         bookmarks = bookmarksFlow.first()
-        assertEquals(2, bookmarks.size, "Should have two bookmarks after adding ayah")
-        assertTrue(bookmarks.any { it is Bookmark.PageBookmark && it.page == 1 }, "Should have page bookmark")
-        assertTrue(bookmarks.any { it is Bookmark.AyahBookmark && it.sura == 1 && it.ayah == 1 }, "Should have ayah bookmark")
+        assertEquals(2, bookmarks.size, "Should have two bookmarks after adding second page")
+        assertTrue(bookmarks.any { it.page == 1 }, "Should have page bookmark 1")
+        assertTrue(bookmarks.any { it.page == 2 }, "Should have page bookmark 2")
 
-        // Delete the page bookmark
+        // Delete the first page bookmark
         repository.deletePageBookmark(1)
         bookmarks = bookmarksFlow.first()
         assertEquals(1, bookmarks.size, "Should have one bookmark after deletion")
-        assertTrue(bookmarks[0] is Bookmark.AyahBookmark, "Should be an ayah bookmark")
-        val remainingBookmark = bookmarks[0] as Bookmark.AyahBookmark
-        assertTrue(remainingBookmark.sura == 1 && remainingBookmark.ayah == 1, "Should only have ayah bookmark")
+        assertEquals(2, bookmarks[0].page, "Should only have page bookmark 2")
     }
 
     private fun createInMemoryDatabase(): QuranDatabase {
