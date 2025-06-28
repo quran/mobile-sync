@@ -15,8 +15,6 @@ fun DatabaseBookmark.toBookmark(): PageBookmark {
 
 fun DatabaseBookmark.toBookmarkMutation(): BookmarkMutation = BookmarkMutation(
     page = page.toInt(),
-    sura = null,
-    ayah = null,
     remoteId = remote_id,
     mutationType = if (deleted == 1L) BookmarkMutationType.DELETED else BookmarkMutationType.CREATED,
     lastUpdated = created_at

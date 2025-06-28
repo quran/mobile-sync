@@ -127,8 +127,7 @@ class BookmarksRepositoryImpl(
                         BookmarkMutationType.CREATED -> {
                             database.bookmarksQueries.createRemoteBookmark(
                                 remote_id = mutation.remoteId,
-                                // TODO: The mutation type will need to be updated as well.
-                                page = mutation.page!!.toLong()
+                                page = mutation.page.toLong()
                             )
                         }
                         BookmarkMutationType.DELETED -> {
