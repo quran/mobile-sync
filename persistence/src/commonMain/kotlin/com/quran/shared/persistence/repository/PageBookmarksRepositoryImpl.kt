@@ -12,10 +12,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 
-class BookmarksRepositoryImpl(
+class PageBookmarksRepositoryImpl(
     private val database: QuranDatabase
-) : BookmarksRepository, BookmarksSynchronizationRepository {
-    private val logger = Logger.withTag("BookmarksRepository")
+) : PageBookmarksRepository, BookmarksSynchronizationRepository {
+    private val logger = Logger.withTag("PageBookmarksRepository")
 
     override fun getAllBookmarks(): Flow<List<PageBookmark>> {
         return database.bookmarksQueries.getBookmarks()

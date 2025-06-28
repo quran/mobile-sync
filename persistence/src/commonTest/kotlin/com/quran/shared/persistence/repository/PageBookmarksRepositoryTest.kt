@@ -9,15 +9,15 @@ import kotlin.test.*
 import com.quran.shared.persistence.TestDatabaseDriver
 import com.quran.shared.persistence.model.BookmarkMutation
 
-class BookmarksRepositoryTest {
+class PageBookmarksRepositoryTest {
     private lateinit var database: QuranDatabase
-    private lateinit var repository: BookmarksRepository
+    private lateinit var repository: PageBookmarksRepository
     private lateinit var syncRepository: BookmarksSynchronizationRepository
 
     @BeforeTest
     fun setup() {
         database = createInMemoryDatabase()
-        repository = BookmarksRepositoryImpl(database)
+        repository = PageBookmarksRepositoryImpl(database)
         syncRepository = repository as BookmarksSynchronizationRepository
     }
 

@@ -28,7 +28,7 @@ interface BookmarksSynchronizationRepository {
     suspend fun setToSyncedState(updatesToPersist: List<BookmarkMutation>)
 }
 
-interface BookmarksRepository {
+interface PageBookmarksRepository {
 
     // region Basic Operations
     /**
