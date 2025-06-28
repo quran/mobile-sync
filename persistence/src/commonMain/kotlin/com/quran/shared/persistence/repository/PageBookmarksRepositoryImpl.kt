@@ -32,19 +32,21 @@ class PageBookmarksRepositoryImpl(
 
     private suspend fun addBookmark(page: Int) {
         withContext(Dispatchers.IO) {
-            val existingBookmarks = database.bookmarksQueries
-                .getBookmarksFor(page.toLong())
+            val existingRecords = database.bookmarksQueries
+                .getAllRecordsFor(page.toLong())
                 .executeAsList()
-            
-            if (existingBookmarks.isNotEmpty()) {
+            if (existingRecords.isNotEmpty() && existingRecords[0].deleted == 0L) {
                 logger.e { "Duplicate bookmark found for page=$page" }
                 throw DuplicateBookmarkException("A bookmark already exists for page #$page")
             }
-
-            // TODO: Well, if we have a remote bookmark that is marked as deleted for the same
-            // place as the input, how should we deal with that?
-            database.bookmarksQueries.createLocalBookmark(page.toLong())
-            logger.d { "Successfully created bookmark for page=$page" }
+            else if (existingRecords.isNotEmpty() && existingRecords[0].deleted == 1L) {
+                logger.d { "Restoring deleted bookmark for page=$page" }
+                database.bookmarksQueries.resetDeleted(existingRecords[0].local_id)
+            }
+            else {
+                database.bookmarksQueries.createLocalBookmark(page.toLong())
+                logger.d { "Successfully created bookmark for page=$page" }
+            }
         }
     }
 

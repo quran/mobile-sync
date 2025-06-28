@@ -172,6 +172,10 @@ class PageBookmarksRepositoryTest {
         val bookmarks = repository.getAllBookmarks().first()
         assertEquals(2, bookmarks.size)
         assertEquals(listOf(15, 25), bookmarks.map { it.page }.sorted())
+
+        val allRecordsPage15 = database.bookmarksQueries.getAllRecordsFor(15L).executeAsList()
+        assertEquals(1, allRecordsPage15.count(), "Should only have one record for page 15")
+        assertEquals(0L, allRecordsPage15[0].deleted, "Re-adding should restore delete flag to false")
     }
 
     @Test

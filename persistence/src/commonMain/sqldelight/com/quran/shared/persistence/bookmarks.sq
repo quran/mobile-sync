@@ -29,6 +29,9 @@ getUnsyncedBookmarks:
 setDeleted:
     UPDATE bookmark SET deleted = 1 WHERE local_id = ?;
 
+resetDeleted:
+    UPDATE bookmark SET deleted = 0 WHERE local_id = ?;
+
 deleteBookmarkById:
     DELETE FROM bookmark WHERE local_id = ?;
 
