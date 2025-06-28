@@ -33,7 +33,7 @@ class BookmarksRepositoryImpl(
     private suspend fun addBookmark(page: Int) {
         withContext(Dispatchers.IO) {
             val existingBookmarks = database.bookmarksQueries
-                .getBookmarksFor(page.toLong(), null, null)
+                .getBookmarksFor(page.toLong())
                 .executeAsList()
             
             if (existingBookmarks.isNotEmpty()) {
@@ -43,11 +43,7 @@ class BookmarksRepositoryImpl(
 
             // TODO: Well, if we have a remote bookmark that is marked as deleted for the same
             // place as the input, how should we deal with that?
-            database.bookmarksQueries.createLocalBookmark(
-                sura = null,
-                ayah = null,
-                page = page.toLong()
-            )
+            database.bookmarksQueries.createLocalBookmark(page.toLong())
             logger.d { "Successfully created bookmark for page=$page" }
         }
     }
@@ -60,7 +56,7 @@ class BookmarksRepositoryImpl(
     private suspend fun delete(page: Int) {
         withContext(Dispatchers.IO) {
             val existingBookmarks = database.bookmarksQueries
-                .getBookmarksFor(page.toLong(), null, null)
+                .getBookmarksFor(page.toLong())
                 .executeAsList()
 
             if (existingBookmarks.isEmpty()) {
@@ -97,11 +93,7 @@ class BookmarksRepositoryImpl(
 
             database.bookmarksQueries.transaction {
                 bookmarks.forEach { bookmark ->
-                    database.bookmarksQueries.createLocalBookmark(
-                        sura = null,
-                        ayah = null,
-                        page = bookmark.page.toLong()
-                    )
+                    database.bookmarksQueries.createLocalBookmark(bookmark.page.toLong())
                 }
             }
         }
@@ -135,9 +127,8 @@ class BookmarksRepositoryImpl(
                         BookmarkMutationType.CREATED -> {
                             database.bookmarksQueries.createRemoteBookmark(
                                 remote_id = mutation.remoteId,
-                                sura = null,
-                                ayah = null,
-                                page = mutation.page?.toLong()
+                                // TODO: The mutation type will need to be updated as well.
+                                page = mutation.page!!.toLong()
                             )
                         }
                         BookmarkMutationType.DELETED -> {
