@@ -2,23 +2,23 @@ package com.quran.shared.persistence.repository
 
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.model.PageBookmark
-import com.quran.shared.persistence.model.BookmarkMutationType
+import com.quran.shared.persistence.model.PageBookmarkMutationType
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.*
 import com.quran.shared.persistence.TestDatabaseDriver
-import com.quran.shared.persistence.model.BookmarkMutation
+import com.quran.shared.persistence.model.PageBookmarkMutation
 
 class PageBookmarksRepositoryTest {
     private lateinit var database: QuranDatabase
     private lateinit var repository: PageBookmarksRepository
-    private lateinit var syncRepository: BookmarksSynchronizationRepository
+    private lateinit var syncRepository: PageBookmarksSynchronizationRepository
 
     @BeforeTest
     fun setup() {
         database = createInMemoryDatabase()
         repository = PageBookmarksRepositoryImpl(database)
-        syncRepository = repository as BookmarksSynchronizationRepository
+        syncRepository = repository as PageBookmarksSynchronizationRepository
     }
 
     @Test
@@ -76,7 +76,7 @@ class PageBookmarksRepositoryTest {
         repository.addPageBookmark(12)
         
         // Try to add the same page bookmark again
-        assertFailsWith<DuplicateBookmarkException> {
+        assertFailsWith<DuplicatePageBookmarkException> {
             repository.addPageBookmark(12)
         }
         
@@ -88,7 +88,7 @@ class PageBookmarksRepositoryTest {
         // Test with remote bookmarks
         database.bookmarksQueries.createRemoteBookmark("rem_id_1", 105)
 
-        assertFailsWith<DuplicateBookmarkException>{
+        assertFailsWith<DuplicatePageBookmarkException>{
             repository.addPageBookmark(105)
         }
     }
@@ -112,7 +112,7 @@ class PageBookmarksRepositoryTest {
         assertTrue(bookmarks.none { it.page == 13 }, "Expected page 13 bookmark to be deleted")
 
         // Try to delete non-existent bookmarks
-        assertFailsWith<BookmarkNotFoundException> {
+        assertFailsWith<PageBookmarkNotFoundException> {
             repository.deletePageBookmark(999) // Non-existent page
         }
 
@@ -140,11 +140,11 @@ class PageBookmarksRepositoryTest {
         assertEquals(1, bookmarks.size)
         assertEquals(15, bookmarks[0].page)
 
-        assertFailsWith<BookmarkNotFoundException> {
+        assertFailsWith<PageBookmarkNotFoundException> {
             // Deleting a non-existent bookmark
             repository.deletePageBookmark(999)
         }
-        assertFailsWith<BookmarkNotFoundException> {
+        assertFailsWith<PageBookmarkNotFoundException> {
             // Deleting a deleted bookmark
             repository.deletePageBookmark(10)
         }
@@ -192,9 +192,9 @@ class PageBookmarksRepositoryTest {
         val result = syncRepository.fetchMutatedBookmarks()
         
         assertEquals(3, result.size)
-        assertTrue(result.any { it.page == 1 && it.mutationType == BookmarkMutationType.CREATED })
-        assertTrue(result.any { it.page == 2 && it.mutationType == BookmarkMutationType.CREATED })
-        assertTrue(result.any { it.page == 10 && it.mutationType == BookmarkMutationType.DELETED })
+        assertTrue(result.any { it.page == 1 && it.mutationType == PageBookmarkMutationType.CREATED })
+        assertTrue(result.any { it.page == 2 && it.mutationType == PageBookmarkMutationType.CREATED })
+        assertTrue(result.any { it.page == 10 && it.mutationType == PageBookmarkMutationType.DELETED })
     }
 
     @Test
@@ -219,13 +219,13 @@ class PageBookmarksRepositoryTest {
         //     and should ignore others.
         val confirmedMutations = listOf(
             // Confirm the page bookmark creation
-            BookmarkMutation(page = 60, remoteId = "remote-60", mutationType = BookmarkMutationType.CREATED, lastUpdated = 2000L),
+            PageBookmarkMutation(page = 60, remoteId = "remote-60", mutationType = PageBookmarkMutationType.CREATED, lastUpdated = 2000L),
             // Confirm the page bookmark deletion
-            BookmarkMutation(page = 10, remoteId = "remote-1", mutationType = BookmarkMutationType.DELETED, lastUpdated = 2001L),
+            PageBookmarkMutation(page = 10, remoteId = "remote-1", mutationType = PageBookmarkMutationType.DELETED, lastUpdated = 2001L),
             // Confirm creation of a new bookmark (different from local mutations)
-            BookmarkMutation(page = 80, remoteId = "remote-80", mutationType = BookmarkMutationType.CREATED, lastUpdated = 2002L),
+            PageBookmarkMutation(page = 80, remoteId = "remote-80", mutationType = PageBookmarkMutationType.CREATED, lastUpdated = 2002L),
             // Confirm deletion of an existing bookmark (different from local mutations)
-            BookmarkMutation(page = 40, remoteId = "remote-4", mutationType = BookmarkMutationType.DELETED, lastUpdated = 2003L)
+            PageBookmarkMutation(page = 40, remoteId = "remote-4", mutationType = PageBookmarkMutationType.DELETED, lastUpdated = 2003L)
         )
 
         syncRepository.setToSyncedState(confirmedMutations)

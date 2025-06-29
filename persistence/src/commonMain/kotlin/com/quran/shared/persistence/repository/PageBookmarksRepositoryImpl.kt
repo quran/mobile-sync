@@ -4,8 +4,10 @@ import app.cash.sqldelight.coroutines.asFlow
 import co.touchlab.kermit.Logger
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.model.PageBookmark
-import com.quran.shared.persistence.model.BookmarkMutation
-import com.quran.shared.persistence.model.BookmarkMutationType
+import com.quran.shared.persistence.model.PageBookmarkMutation
+import com.quran.shared.persistence.model.PageBookmarkMutationType
+import com.quran.shared.persistence.repository.toBookmark
+import com.quran.shared.persistence.repository.toBookmarkMutation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
@@ -14,7 +16,7 @@ import kotlinx.coroutines.IO
 
 class PageBookmarksRepositoryImpl(
     private val database: QuranDatabase
-) : PageBookmarksRepository, BookmarksSynchronizationRepository {
+) : PageBookmarksRepository, PageBookmarksSynchronizationRepository {
     private val logger = Logger.withTag("PageBookmarksRepository")
 
     override fun getAllBookmarks(): Flow<List<PageBookmark>> {
@@ -35,9 +37,10 @@ class PageBookmarksRepositoryImpl(
             val existingRecords = database.bookmarksQueries
                 .getAllRecordsFor(page.toLong())
                 .executeAsList()
+
             if (existingRecords.isNotEmpty() && existingRecords[0].deleted == 0L) {
                 logger.e { "Duplicate bookmark found for page=$page" }
-                throw DuplicateBookmarkException("A bookmark already exists for page #$page")
+                throw DuplicatePageBookmarkException("A bookmark already exists for page #$page")
             }
             else if (existingRecords.isNotEmpty() && existingRecords[0].deleted == 1L) {
                 logger.d { "Restoring deleted bookmark for page=$page" }
@@ -63,7 +66,7 @@ class PageBookmarksRepositoryImpl(
 
             if (existingBookmarks.isEmpty()) {
                 logger.w { "Bookmark not found for deletion: page=$page" }
-                throw BookmarkNotFoundException("There's no bookmark for page #$page")
+                throw PageBookmarkNotFoundException("There's no bookmark for page #$page")
             }
 
             database.bookmarksQueries.deleteBookmark(page.toLong())
@@ -92,7 +95,7 @@ class PageBookmarksRepositoryImpl(
         }
     }
 
-    override suspend fun fetchMutatedBookmarks(): List<BookmarkMutation> {
+    override suspend fun fetchMutatedBookmarks(): List<PageBookmarkMutation> {
         return withContext(Dispatchers.IO) {
             database.bookmarksQueries.getUnsyncedBookmarks()
                 .executeAsList()
@@ -100,7 +103,7 @@ class PageBookmarksRepositoryImpl(
         }
     }
 
-    override suspend fun setToSyncedState(updatesToPersist: List<BookmarkMutation>) {
+    override suspend fun setToSyncedState(updatesToPersist: List<PageBookmarkMutation>) {
         logger.i { "Setting to synced state with ${updatesToPersist.size} updates to persist" }
         withContext(Dispatchers.IO) {
             database.bookmarksQueries.transaction {
@@ -113,13 +116,13 @@ class PageBookmarksRepositoryImpl(
                         throw IllegalArgumentException("Persisted remote bookmarks must have a remote ID. Details: ${mutation}")
                     }
                     when (mutation.mutationType) {
-                        BookmarkMutationType.CREATED -> {
+                        PageBookmarkMutationType.CREATED -> {
                             database.bookmarksQueries.createRemoteBookmark(
                                 remote_id = mutation.remoteId,
                                 page = mutation.page.toLong()
                             )
                         }
-                        BookmarkMutationType.DELETED -> {
+                        PageBookmarkMutationType.DELETED -> {
                             database.bookmarksQueries.deleteByRemoteID(mutation.remoteId)
                         }
                     }

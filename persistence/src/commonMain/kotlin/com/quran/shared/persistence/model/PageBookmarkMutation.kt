@@ -1,13 +1,13 @@
 package com.quran.shared.persistence.model
 
-enum class BookmarkMutationType {
+enum class PageBookmarkMutationType {
     CREATED,
     DELETED
 }
 
-data class BookmarkMutation(
+data class PageBookmarkMutation(
     val page: Int,
     val remoteId: String? = null,
-    val mutationType: BookmarkMutationType,
+    val mutationType: PageBookmarkMutationType,
     val lastUpdated: Long
 )
