@@ -66,16 +66,7 @@ class PageBookmarksRepositoryImpl(
                 throw BookmarkNotFoundException("There's no bookmark for page #$page")
             }
 
-            val bookmark = existingBookmarks.first()
-            if (bookmark.remote_id == null) {
-                // Local-only bookmark: delete immediately
-                logger.d { "Deleting local-only bookmark: page=$page" }
-                database.bookmarksQueries.deleteBookmarkById(bookmark.local_id)
-            } else {
-                // Synced bookmark: mark as deleted
-                logger.d { "Marking synced bookmark as deleted: page=$page" }
-                database.bookmarksQueries.setDeleted(bookmark.local_id)
-            }
+            database.bookmarksQueries.deleteBookmark(page.toLong())
         }
     }
 

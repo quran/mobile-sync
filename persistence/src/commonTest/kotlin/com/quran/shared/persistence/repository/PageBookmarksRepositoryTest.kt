@@ -128,7 +128,7 @@ class PageBookmarksRepositoryTest {
     }
 
     @Test
-    fun `deleting bookmarks from remote bookmarks`() = runTest {
+    fun `deleting remote bookmarks`() = runTest {
         database.bookmarksQueries.createRemoteBookmark("rem_id_1", 10)
         database.bookmarksQueries.createRemoteBookmark("rem_id_2", 15)
         database.bookmarksQueries.createRemoteBookmark("rem_id_3", 20)
