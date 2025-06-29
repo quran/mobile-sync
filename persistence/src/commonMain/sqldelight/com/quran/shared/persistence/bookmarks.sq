@@ -32,25 +32,19 @@ setDeleted:
 resetDeleted:
     UPDATE bookmark SET deleted = 0 WHERE local_id = ?;
 
-deleteBookmarkById:
-    DELETE FROM bookmark WHERE local_id = ?;
-
 -- Removes the record of a local bookmark or marks it as deleted if it's remote.
  deleteBookmark {
      DELETE FROM bookmark WHERE page=:page AND remote_id IS NULL;
      UPDATE bookmark SET deleted = 1 WHERE page=:page AND remote_id IS NOT NULL;
  }
 
--- TODO: Merge the following two.
-removeLocallyAddedBookmarks:
+ deleteByRemoteID:
+    DELETE FROM bookmark WHERE remote_id=? AND remote_id IS NOT NULL;
+
+clearLocalMutations {
     DELETE FROM bookmark WHERE remote_id IS NULL;
-
-resetMarkedAsDeletedBookmarks:
     UPDATE bookmark SET deleted = 0;
-
--- Queries for conflict resolution
-getBookmarkByRemoteId:
-    SELECT * FROM bookmark WHERE remote_id = ?;
+}
 
 -- Returns all records for the given page, whether it's deleted or not.
 getAllRecordsFor:

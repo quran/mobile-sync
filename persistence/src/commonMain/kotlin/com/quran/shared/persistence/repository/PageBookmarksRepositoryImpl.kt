@@ -103,19 +103,15 @@ class PageBookmarksRepositoryImpl(
     override suspend fun setToSyncedState(updatesToPersist: List<BookmarkMutation>) {
         logger.i { "Setting to synced state with ${updatesToPersist.size} updates to persist" }
         withContext(Dispatchers.IO) {
-            // Validate all bookmarks have remote IDs
-            val invalidBookmarks = updatesToPersist.filter { it.remoteId == null }
-            if (invalidBookmarks.isNotEmpty()) {
-                logger.e { "Found ${invalidBookmarks.size} bookmarks without remote IDs" }
-                throw IllegalArgumentException("All bookmarks must have a remote ID. Found ${invalidBookmarks.size} bookmarks without remote IDs.")
-            }
-
             database.bookmarksQueries.transaction {
-                database.bookmarksQueries.removeLocallyAddedBookmarks()
-                database.bookmarksQueries.resetMarkedAsDeletedBookmarks()
+                database.bookmarksQueries.clearLocalMutations()
                 logger.d { "Cleared local mutations" }
 
                 updatesToPersist.forEach { mutation ->
+                    if (mutation.remoteId == null) {
+                        logger.e { "Asked to persist a remote bookmark without a remote ID. Page: ${mutation.page}" }
+                        throw IllegalArgumentException("Persisted remote bookmarks must have a remote ID. Details: ${mutation}")
+                    }
                     when (mutation.mutationType) {
                         BookmarkMutationType.CREATED -> {
                             database.bookmarksQueries.createRemoteBookmark(
@@ -124,10 +120,7 @@ class PageBookmarksRepositoryImpl(
                             )
                         }
                         BookmarkMutationType.DELETED -> {
-                            val existingBookmark = database.bookmarksQueries.getBookmarkByRemoteId(mutation.remoteId!!).executeAsOneOrNull()
-                            if (existingBookmark != null) {
-                                database.bookmarksQueries.deleteBookmarkById(existingBookmark.local_id)
-                            }
+                            database.bookmarksQueries.deleteByRemoteID(mutation.remoteId)
                         }
                     }
                 }
