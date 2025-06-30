@@ -29,13 +29,13 @@ class PageBookmarksRepositoryTest {
 
     @Test
     fun `getAllBookmarks returns bookmarks`() = runTest {
-        database.bookmarksQueries.createLocalBookmark(11)
+        database.bookmarksQueries.addNewBookmark(11)
         database.bookmarksQueries.createRemoteBookmark("rem_id_1", 50)
-        database.bookmarksQueries.createLocalBookmark(50)
+        database.bookmarksQueries.addNewBookmark(60)
 
         val bookmarks = repository.getAllBookmarks().first()
         assertEquals(3, bookmarks.size, "Expected 3 bookmarks")
-        assertEquals(bookmarks.map { it.page }.toSet(), setOf(11, 50))
+        assertEquals(bookmarks.map { it.page }.toSet(), setOf(11, 50, 60))
     }
 
     @Test
@@ -76,21 +76,20 @@ class PageBookmarksRepositoryTest {
         repository.addPageBookmark(12)
         
         // Try to add the same page bookmark again
-        assertFailsWith<DuplicatePageBookmarkException> {
-            repository.addPageBookmark(12)
-        }
+        repository.addPageBookmark(12)
         
         // Verify only one bookmark exists
-        val bookmarks = repository.getAllBookmarks().first()
+        var bookmarks = repository.getAllBookmarks().first()
         assertEquals(1, bookmarks.size, "Should only have one bookmark")
         assertEquals(12, bookmarks[0].page, "Should only have page 12")
 
         // Test with remote bookmarks
         database.bookmarksQueries.createRemoteBookmark("rem_id_1", 105)
+        repository.addPageBookmark(105)
 
-        assertFailsWith<DuplicatePageBookmarkException>{
-            repository.addPageBookmark(105)
-        }
+        bookmarks = repository.getAllBookmarks().first()
+        assertEquals(2, bookmarks.size, "Should only have one bookmark")
+        assertEquals(setOf(12, 105), bookmarks.map{ it.page }.toSet(), "Expected bookmarked pages")
     }
 
     @Test

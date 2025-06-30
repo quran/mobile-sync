@@ -1,7 +1,7 @@
 CREATE TABLE bookmark(
   local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   remote_id TEXT,
-  page INTEGER NOT NULL,
+  page INTEGER NOT NULL UNIQUE,
   created_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
   deleted INTEGER NOT NULL DEFAULT 0,
   -- Ensure deleted is either 0 or 1
@@ -18,6 +18,12 @@ createRemoteBookmark:
 createLocalBookmark:
     INSERT INTO bookmark (remote_id, page, deleted)
     VALUES (NULL, ?, 0);
+
+addNewBookmark {
+    INSERT OR IGNORE INTO bookmark (remote_id, page, deleted)
+    VALUES (NULL, :page, 0);
+    UPDATE bookmark SET deleted = 0 WHERE page = :page;
+}
 
 getBookmarksFor:
     SELECT * FROM bookmark WHERE page = ? AND deleted = 0;

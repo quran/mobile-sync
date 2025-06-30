@@ -6,8 +6,6 @@ import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.model.PageBookmark
 import com.quran.shared.persistence.model.PageBookmarkMutation
 import com.quran.shared.persistence.model.PageBookmarkMutationType
-import com.quran.shared.persistence.repository.toBookmark
-import com.quran.shared.persistence.repository.toBookmarkMutation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
@@ -29,27 +27,8 @@ class PageBookmarksRepositoryImpl(
 
     override suspend fun addPageBookmark(page: Int) {
         logger.i { "Adding page bookmark for page $page" }
-        addBookmark(page)
-    }
-
-    private suspend fun addBookmark(page: Int) {
         withContext(Dispatchers.IO) {
-            val existingRecords = database.bookmarksQueries
-                .getAllRecordsFor(page.toLong())
-                .executeAsList()
-
-            if (existingRecords.isNotEmpty() && existingRecords[0].deleted == 0L) {
-                logger.e { "Duplicate bookmark found for page=$page" }
-                throw DuplicatePageBookmarkException("A bookmark already exists for page #$page")
-            }
-            else if (existingRecords.isNotEmpty() && existingRecords[0].deleted == 1L) {
-                logger.d { "Restoring deleted bookmark for page=$page" }
-                database.bookmarksQueries.resetDeleted(existingRecords[0].local_id)
-            }
-            else {
-                database.bookmarksQueries.createLocalBookmark(page.toLong())
-                logger.d { "Successfully created bookmark for page=$page" }
-            }
+            database.bookmarksQueries.addNewBookmark(page.toLong())
         }
     }
 
@@ -89,7 +68,7 @@ class PageBookmarksRepositoryImpl(
 
             database.bookmarksQueries.transaction {
                 bookmarks.forEach { bookmark ->
-                    database.bookmarksQueries.createLocalBookmark(bookmark.page.toLong())
+                    database.bookmarksQueries.addNewBookmark(bookmark.page.toLong())
                 }
             }
         }
@@ -113,7 +92,7 @@ class PageBookmarksRepositoryImpl(
                 updatesToPersist.forEach { mutation ->
                     if (mutation.remoteId == null) {
                         logger.e { "Asked to persist a remote bookmark without a remote ID. Page: ${mutation.page}" }
-                        throw IllegalArgumentException("Persisted remote bookmarks must have a remote ID. Details: ${mutation}")
+                        throw IllegalArgumentException("Persisted remote bookmarks must have a remote ID. Details: $mutation")
                     }
                     when (mutation.mutationType) {
                         PageBookmarkMutationType.CREATED -> {
