@@ -1,5 +1,5 @@
 package com.quran.shared.persistence.model
 
-import com.quran.shared.persistence.Bookmark
+import com.quran.shared.persistence.Page_bookmark
 
-typealias DatabasePageBookmark = Bookmark 
+typealias DatabasePageBookmark = Page_bookmark
