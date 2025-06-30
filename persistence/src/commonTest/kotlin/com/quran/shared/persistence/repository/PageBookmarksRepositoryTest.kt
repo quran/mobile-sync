@@ -111,9 +111,7 @@ class PageBookmarksRepositoryTest {
         assertTrue(bookmarks.none { it.page == 13 }, "Expected page 13 bookmark to be deleted")
 
         // Try to delete non-existent bookmarks
-        assertFailsWith<PageBookmarkNotFoundException> {
-            repository.deletePageBookmark(999) // Non-existent page
-        }
+        repository.deletePageBookmark(999) // Non-existent page
 
         // Verify state hasn't changed
         bookmarks = repository.getAllBookmarks().first()
@@ -139,14 +137,8 @@ class PageBookmarksRepositoryTest {
         assertEquals(1, bookmarks.size)
         assertEquals(15, bookmarks[0].page)
 
-        assertFailsWith<PageBookmarkNotFoundException> {
-            // Deleting a non-existent bookmark
-            repository.deletePageBookmark(999)
-        }
-        assertFailsWith<PageBookmarkNotFoundException> {
-            // Deleting a deleted bookmark
-            repository.deletePageBookmark(10)
-        }
+        // Delete again
+        repository.deletePageBookmark(10)
         
         val allBookmarks = database.bookmarksQueries.getBookmarks().executeAsList()
         assertEquals(1, allBookmarks.size, "Should only have one non-deleted bookmark")

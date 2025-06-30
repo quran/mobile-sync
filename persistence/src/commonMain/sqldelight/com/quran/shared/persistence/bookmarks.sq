@@ -15,10 +15,6 @@ createRemoteBookmark:
     INSERT INTO page_bookmark (remote_id, page, deleted)
     VALUES (?, ?, 0);
 
-createLocalBookmark:
-    INSERT INTO page_bookmark (remote_id, page, deleted)
-    VALUES (NULL, ?, 0);
-
 addNewBookmark {
     INSERT OR IGNORE INTO page_bookmark (remote_id, page, deleted)
     VALUES (NULL, :page, 0);
@@ -34,9 +30,6 @@ getUnsyncedBookmarks:
 
 setDeleted:
     UPDATE page_bookmark SET deleted = 1 WHERE local_id = ?;
-
-resetDeleted:
-    UPDATE page_bookmark SET deleted = 0 WHERE local_id = ?;
 
 -- Removes the record of a local bookmark or marks it as deleted if it's remote.
  deleteBookmark {

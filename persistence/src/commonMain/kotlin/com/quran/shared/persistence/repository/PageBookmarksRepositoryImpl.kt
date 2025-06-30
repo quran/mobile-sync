@@ -34,20 +34,7 @@ class PageBookmarksRepositoryImpl(
 
     override suspend fun deletePageBookmark(page: Int) {
         logger.i { "Deleting page bookmark for page $page" }
-        delete(page = page)
-    }
-
-    private suspend fun delete(page: Int) {
         withContext(Dispatchers.IO) {
-            val existingBookmarks = database.bookmarksQueries
-                .getBookmarksFor(page.toLong())
-                .executeAsList()
-
-            if (existingBookmarks.isEmpty()) {
-                logger.w { "Bookmark not found for deletion: page=$page" }
-                throw PageBookmarkNotFoundException("There's no bookmark for page #$page")
-            }
-
             database.bookmarksQueries.deleteBookmark(page.toLong())
         }
     }
