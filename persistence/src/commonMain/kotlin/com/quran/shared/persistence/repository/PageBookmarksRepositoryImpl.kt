@@ -6,6 +6,7 @@ import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.model.PageBookmark
 import com.quran.shared.persistence.model.PageBookmarkMutation
 import com.quran.shared.persistence.model.PageBookmarkMutationType
+import com.quran.shared.persistence.repository.toBookmarkMutation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext

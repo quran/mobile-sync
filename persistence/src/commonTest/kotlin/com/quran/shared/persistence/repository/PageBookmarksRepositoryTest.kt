@@ -186,6 +186,16 @@ class PageBookmarksRepositoryTest {
         assertTrue(result.any { it.page == 1 && it.mutationType == PageBookmarkMutationType.CREATED })
         assertTrue(result.any { it.page == 2 && it.mutationType == PageBookmarkMutationType.CREATED })
         assertTrue(result.any { it.page == 10 && it.mutationType == PageBookmarkMutationType.DELETED })
+        
+        // Assert that all returned mutations have non-null local IDs and match the database
+        result.forEach { mutation ->
+            assertNotNull(mutation.localId, "Local ID should not be null for mutation on page ${mutation.page}")
+            
+            // Get the corresponding database record and verify the local ID matches
+            val dbRecords = database.bookmarksQueries.getAllRecordsFor(mutation.page.toLong()).executeAsList()
+            val matchingRecord = dbRecords.find { it.local_id == mutation.localId }
+            assertNotNull(matchingRecord, "Should find database record with matching local ID ${mutation.localId} for page ${mutation.page}")
+        }
     }
 
     @Test
@@ -210,13 +220,13 @@ class PageBookmarksRepositoryTest {
         //     and should ignore others.
         val confirmedMutations = listOf(
             // Confirm the page bookmark creation
-            PageBookmarkMutation(page = 60, remoteId = "remote-60", mutationType = PageBookmarkMutationType.CREATED, lastUpdated = 2000L),
+            PageBookmarkMutation.createRemoteMutation(page = 60, remoteId = "remote-60", mutationType = PageBookmarkMutationType.CREATED, lastUpdated = 2000L),
             // Confirm the page bookmark deletion
-            PageBookmarkMutation(page = 10, remoteId = "remote-1", mutationType = PageBookmarkMutationType.DELETED, lastUpdated = 2001L),
+            PageBookmarkMutation.createRemoteMutation(page = 10, remoteId = "remote-1", mutationType = PageBookmarkMutationType.DELETED, lastUpdated = 2001L),
             // Confirm creation of a new bookmark (different from local mutations)
-            PageBookmarkMutation(page = 80, remoteId = "remote-80", mutationType = PageBookmarkMutationType.CREATED, lastUpdated = 2002L),
+            PageBookmarkMutation.createRemoteMutation(page = 80, remoteId = "remote-80", mutationType = PageBookmarkMutationType.CREATED, lastUpdated = 2002L),
             // Confirm deletion of an existing bookmark (different from local mutations)
-            PageBookmarkMutation(page = 40, remoteId = "remote-4", mutationType = PageBookmarkMutationType.DELETED, lastUpdated = 2003L)
+            PageBookmarkMutation.createRemoteMutation(page = 40, remoteId = "remote-4", mutationType = PageBookmarkMutationType.DELETED, lastUpdated = 2003L)
         )
 
         syncRepository.setToSyncedState(confirmedMutations)

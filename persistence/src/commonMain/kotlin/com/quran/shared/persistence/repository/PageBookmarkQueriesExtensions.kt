@@ -15,6 +15,7 @@ fun DatabasePageBookmark.toBookmark(): PageBookmark {
 
 fun DatabasePageBookmark.toBookmarkMutation(): PageBookmarkMutation = PageBookmarkMutation(
     page = page.toInt(),
+    localId = local_id,
     remoteId = remote_id,
     mutationType = if (deleted == 1L) PageBookmarkMutationType.DELETED else PageBookmarkMutationType.CREATED,
     lastUpdated = created_at
