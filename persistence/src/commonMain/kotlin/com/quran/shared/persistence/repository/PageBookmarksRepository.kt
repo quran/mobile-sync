@@ -15,13 +15,18 @@ interface PageBookmarksSynchronizationRepository {
     suspend fun fetchMutatedBookmarks(): List<PageBookmarkMutation>
 
     /**
-     * Persists the remote state of bookmarks after successful synchronization.
+     * Persists the remote state of bookmarks after a successful synchronization operation.
      * This method should be called after the remote server has confirmed the changes.
      *
-     * @param updatesToPersist List of bookmarks with their remote IDs and mutation states
-     * @throws IllegalArgumentException if any bookmark has no remote ID
+     * @param updatesToPersist List of bookmarks with their remote IDs and mutation states to be
+     * persisted.
+     * @param localMutationsToClear List of local mutations to be cleared. An item of this list
+     * denotes either a mutation that was committed remotely, or a mutation that overridden. If it
+     * was committed, a counterpart is expected in `updatesToPersists` to persist it as a remote
+     * bookmark.
      */
-    suspend fun setToSyncedState(updatesToPersist: List<PageBookmarkMutation>)
+    suspend fun applyRemoteChanges(updatesToPersist: List<PageBookmarkMutation>,
+                                   localMutationsToClear: List<PageBookmarkMutation>)
 }
 
 interface PageBookmarksRepository {

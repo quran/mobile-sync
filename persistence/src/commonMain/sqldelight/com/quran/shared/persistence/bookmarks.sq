@@ -15,14 +15,15 @@ createRemoteBookmark:
     INSERT INTO page_bookmark (remote_id, page, deleted)
     VALUES (?, ?, 0);
 
+persistRemoteBookmark:
+    INSERT OR REPLACE INTO page_bookmark (remote_id, page, created_at, deleted)
+    VALUES (?, ?, ?, 0);
+
 addNewBookmark {
     INSERT OR IGNORE INTO page_bookmark (remote_id, page, deleted)
     VALUES (NULL, :page, 0);
     UPDATE page_bookmark SET deleted = 0 WHERE page = :page;
 }
-
-getBookmarksFor:
-    SELECT * FROM page_bookmark WHERE page = ? AND deleted = 0;
 
 -- TODO: Rename
 getUnsyncedBookmarks:
@@ -31,10 +32,17 @@ getUnsyncedBookmarks:
 setDeleted:
     UPDATE page_bookmark SET deleted = 1 WHERE local_id = ?;
 
+resetDeleted:
+    UPDATE page_bookmark SET deleted = 0 WHERE local_id = ?;
+
 -- Removes the record of a local bookmark or marks it as deleted if it's remote.
  deleteBookmark {
      DELETE FROM page_bookmark WHERE page=:page AND remote_id IS NULL;
      UPDATE page_bookmark SET deleted = 1 WHERE page=:page AND remote_id IS NOT NULL;
+ }
+
+ hardDeleteBookmarkFor {
+    DELETE FROM page_bookmark WHERE page=:page;
  }
 
  deleteByRemoteID:
@@ -43,6 +51,11 @@ setDeleted:
 clearLocalMutations {
     DELETE FROM page_bookmark WHERE remote_id IS NULL;
     UPDATE page_bookmark SET deleted = 0;
+}
+
+clearLocalMutationFor {
+    DELETE FROM page_bookmark WHERE remote_id IS NULL AND local_id = :id;
+    UPDATE page_bookmark SET deleted = 0 WHERE local_id = :id;
 }
 
 -- Returns all records for the given page, whether it's deleted or not.

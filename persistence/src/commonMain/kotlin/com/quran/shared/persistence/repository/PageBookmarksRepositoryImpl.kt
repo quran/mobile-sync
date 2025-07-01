@@ -70,27 +70,41 @@ class PageBookmarksRepositoryImpl(
         }
     }
 
-    override suspend fun setToSyncedState(updatesToPersist: List<PageBookmarkMutation>) {
-        logger.i { "Setting to synced state with ${updatesToPersist.size} updates to persist" }
-        withContext(Dispatchers.IO) {
+    override suspend fun applyRemoteChanges(
+        updatesToPersist: List<PageBookmarkMutation>,
+        localMutationsToClear: List<PageBookmarkMutation>
+    ) {
+        logger.i { "Applying remote changes with ${updatesToPersist.size} updates to persist and ${localMutationsToClear.size} local mutations to clear" }
+        return withContext(Dispatchers.IO) {
             database.bookmarksQueries.transaction {
-                database.bookmarksQueries.clearLocalMutations()
-                logger.d { "Cleared local mutations" }
-
-                updatesToPersist.forEach { mutation ->
-                    if (mutation.remoteId == null) {
-                        logger.e { "Asked to persist a remote bookmark without a remote ID. Page: ${mutation.page}" }
-                        throw IllegalArgumentException("Persisted remote bookmarks must have a remote ID. Details: $mutation")
+                // Clear local mutations
+                // TODO: Should check that passed local IDs are valid
+                localMutationsToClear.forEach { local ->
+                    if (local.localId == null) {
+                        logger.e { "Local mutation without local ID: $local" }
+                        throw IllegalArgumentException("Local mutations must have local ID")
                     }
-                    when (mutation.mutationType) {
+
+                    database.bookmarksQueries.clearLocalMutationFor(id = local.localId)
+                }
+                
+                // Apply remote updates
+                updatesToPersist.forEach { remote ->
+                    if (remote.remoteId == null) {
+                        logger.e { "Remote mutation without remote ID: $remote" }
+                        throw IllegalArgumentException("Remote mutations must have remote ID")
+                    }
+                    
+                    when (remote.mutationType) {
                         PageBookmarkMutationType.CREATED -> {
-                            database.bookmarksQueries.createRemoteBookmark(
-                                remote_id = mutation.remoteId,
-                                page = mutation.page.toLong()
+                            database.bookmarksQueries.persistRemoteBookmark(
+                                remote_id = remote.remoteId,
+                                page = remote.page.toLong(),
+                                created_at = remote.lastUpdated
                             )
                         }
                         PageBookmarkMutationType.DELETED -> {
-                            database.bookmarksQueries.deleteByRemoteID(mutation.remoteId)
+                            database.bookmarksQueries.hardDeleteBookmarkFor(page = remote.page.toLong())
                         }
                     }
                 }
