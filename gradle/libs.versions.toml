@@ -1,6 +1,7 @@
 [versions]
 agp = "8.11.0"
 kotlin = "2.2.0"
+kermit = "2.0.0"
 
 maven-publish = "0.33.0"
 
@@ -8,12 +9,31 @@ compose = "2025.06.01"
 coroutines = "1.10.2"
 sqldelight = "2.1.0"
 
+# Android configuration
+android-compile-sdk = "35"
+android-min-sdk = "21"
+android-java-version = "17"
+
+# Project metadata
+project-group = "com.quran"
+project-version = "1.0.0"
+project-inception-year = "2025"
+project-url = "https://github.com/quran/mobile-data"
+
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+
+kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+kotlin-test-junit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
+
+kermit = { module = "co.touchlab:kermit", version.ref = "kermit" }
+sqldelight-jdbc-driver = { module = "app.cash.sqldelight:jdbc-driver", version.ref = "sqldelight" }
 
 sqldelight-extensions = { module = "app.cash.sqldelight:coroutines-extensions", version.ref = "sqldelight" }
 sqldelight-android-driver = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
 sqldelight-native-driver = { module = "app.cash.sqldelight:native-driver", version.ref = "sqldelight" }
+sqldelight-sqlite-driver = { module = "app.cash.sqldelight:sqlite-driver", version.ref = "sqldelight" }
 
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose" }
 compose-foundation = { module = "androidx.compose.foundation:foundation" }
