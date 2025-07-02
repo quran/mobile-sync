@@ -30,7 +30,7 @@ class DatabaseManager {
   
   // Add a new bookmark
   func addBookmark(sura: Int64, ayah: Int64) {
-    bookmarkQueries.addBookmark(sura: sura, ayah: ayah)
+    bookmarkQueries.addBookmark(remote_id: nil, sura: sura, ayah: ayah, page: nil)
   }
   
   // Add a random bookmark
