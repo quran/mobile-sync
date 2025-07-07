@@ -31,6 +31,10 @@ kotlin {
             implementation(libs.kotlin.test)
          }
       }
+
+      commonMain.dependencies {
+         api(projects.mutationsDefinitions)
+      }
    }
    // don't show warnings for expect/actual classes
    targets.configureEach {
