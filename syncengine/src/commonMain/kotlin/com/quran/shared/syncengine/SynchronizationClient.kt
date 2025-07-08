@@ -6,8 +6,6 @@ import com.quran.shared.mutations.RemoteModelMutation
 data class PageBookmark(val id: String, val page: Int, val lastModified: Long)
 
 interface LocalMutationsFetcher<Model> {
-    // TODO: We must allow to input the local IDs, but we shouldn't let that leak into
-    // the reported remoted mutations.
     suspend fun fetchLocalMutations(token: Long): List<LocalModelMutation<Model>>
 }
 
@@ -26,8 +24,22 @@ class PageBookmarksSynchronizationConfigurations(
     val resultNotifier: ResultNotifier<PageBookmark>
 )
 
+interface AuthenticationDataFetcher {
+    suspend fun fetchAuthenticationHeaders(): Map<String, String>
+}
+
 interface SynchronizationClient {
     fun localDataUpdated()
-    // Or move that to a builder.
-    fun setBookmarksConfigurations(configurations: PageBookmarksSynchronizationConfigurations)
+    fun applicationStarted()
+}
+
+sealed class SynchronizationClientBuilder {
+    companion object {
+        fun build(
+            authFetcher: AuthenticationDataFetcher,
+            // TODO: This will probably be changed to optional.
+            bookmarksConfigurations: PageBookmarksSynchronizationConfigurations): SynchronizationClient {
+            TODO()
+        }
+    }
 }
