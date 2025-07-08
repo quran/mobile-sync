@@ -37,9 +37,8 @@ sealed class SynchronizationClientBuilder {
     companion object {
         fun build(
             authFetcher: AuthenticationDataFetcher,
-            // TODO: This will probably be changed to optional.
             bookmarksConfigurations: PageBookmarksSynchronizationConfigurations): SynchronizationClient {
-            TODO()
+            return SynchronizationClientImpl(bookmarksConfigurations, authFetcher)
         }
     }
 }
