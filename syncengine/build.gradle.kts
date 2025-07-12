@@ -23,8 +23,31 @@ kotlin {
       val commonMain by getting {
          dependencies {
             implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.ktor.client.core)
+            implementation(libs.ktor.client.content.negotiation)
+            implementation(libs.ktor.client.logging)
+            implementation(libs.ktor.serialization.json)
          }
       }
+
+      val androidMain by getting {
+         dependencies {
+            implementation(libs.ktor.client.okhttp)
+         }
+      }
+
+      val iosX64Main by getting
+      val iosArm64Main by getting
+      val iosSimulatorArm64Main by getting
+      val iosMain by creating {
+         dependsOn(commonMain)
+         dependencies {
+            implementation(libs.ktor.client.darwin)
+         }
+      }
+      iosX64Main.dependsOn(iosMain)
+      iosArm64Main.dependsOn(iosMain)
+      iosSimulatorArm64Main.dependsOn(iosMain)
 
       val commonTest by getting {
          dependencies {
