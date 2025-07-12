@@ -6,7 +6,7 @@ import com.quran.shared.mutations.RemoteModelMutation
 data class PageBookmark(val id: String, val page: Int, val lastModified: Long)
 
 interface LocalMutationsFetcher<Model> {
-    suspend fun fetchLocalMutations(token: Long): List<LocalModelMutation<Model>>
+    suspend fun fetchLocalMutations(lastModified: Long): List<LocalModelMutation<Model>>
 }
 
 interface ResultNotifier<Model> {
@@ -17,11 +17,16 @@ interface ResultNotifier<Model> {
     )
 }
 
+interface LocalModificationDateFetcher {
+    suspend fun localLastModificationDate(): Long?
+}
+
 // This will be duplicated per each model type (or generalized), as defined by the BE.
 class PageBookmarksSynchronizationConfigurations(
     // Probably, add configurations to select bookmark types to process.
     val localMutationsFetcher: LocalMutationsFetcher<PageBookmark>,
-    val resultNotifier: ResultNotifier<PageBookmark>
+    val resultNotifier: ResultNotifier<PageBookmark>,
+    val localModificationDateFetcher: LocalModificationDateFetcher
 )
 
 interface AuthenticationDataFetcher {
