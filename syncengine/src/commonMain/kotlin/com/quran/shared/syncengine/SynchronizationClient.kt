@@ -38,12 +38,15 @@ interface SynchronizationClient {
     fun applicationStarted()
 }
 
+data class SynchronizationEnvironment(val endPointURL: String)
+
 sealed class SynchronizationClientBuilder {
     companion object {
         fun build(
+            environment: SynchronizationEnvironment,
             authFetcher: AuthenticationDataFetcher,
             bookmarksConfigurations: PageBookmarksSynchronizationConfigurations): SynchronizationClient {
-            return SynchronizationClientImpl(bookmarksConfigurations, authFetcher)
+            return SynchronizationClientImpl(environment, bookmarksConfigurations, authFetcher)
         }
     }
 }

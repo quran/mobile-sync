@@ -7,10 +7,13 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.launch
 
 internal class SynchronizationClientImpl(
-    val bookmarksConfigurations: PageBookmarksSynchronizationConfigurations,
-    val authenticationDataFetcher: AuthenticationDataFetcher): SynchronizationClient {
+    private val environment: SynchronizationEnvironment,
+    private val bookmarksConfigurations: PageBookmarksSynchronizationConfigurations,
+    private val authenticationDataFetcher: AuthenticationDataFetcher): SynchronizationClient {
 
-        private val scope = CoroutineScope(Dispatchers.IO)
+    private var authHeaders: Map<String, String>? = null
+    private val httpClient = HttpClientFactory.createHttpClient()
+    private val scope = CoroutineScope(Dispatchers.IO)
 
     override fun localDataUpdated() {
         // TODO: Will need to schedule this.
@@ -62,12 +65,25 @@ internal class SynchronizationClientImpl(
     }
 
     private suspend fun fetchRemoteModifications(lastModificationDate: Long): MutationsResponse {
-        TODO()
+        val authHeaders = getAuthHeaders()
+        val url = environment.endPointURL
+        val request = GetMutationsRequest(httpClient, url)
+        return request.getMutations(lastModificationDate, authHeaders)
     }
 
     private suspend fun pushLocalMutations(
         mutations: List<LocalModelMutation<PageBookmark>>,
         lastModificationDate: Long): MutationsResponse {
-        TODO()
+        val authHeaders = getAuthHeaders()
+        val url = environment.endPointURL
+        val request = PostMutationsRequestClient(httpClient, url)
+        return request.postMutations(mutations, lastModificationDate, authHeaders)
     }
+
+    private suspend fun getAuthHeaders(): Map<String, String> {
+        if (this.authHeaders == null) {
+            this.authHeaders = authenticationDataFetcher.fetchAuthenticationHeaders()
+        }
+        return this.authHeaders ?: mapOf()
+     }
 }
