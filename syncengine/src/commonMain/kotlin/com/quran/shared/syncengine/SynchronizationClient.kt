@@ -46,7 +46,12 @@ sealed class SynchronizationClientBuilder {
             environment: SynchronizationEnvironment,
             authFetcher: AuthenticationDataFetcher,
             bookmarksConfigurations: PageBookmarksSynchronizationConfigurations): SynchronizationClient {
-            return SynchronizationClientImpl(environment, bookmarksConfigurations, authFetcher)
+            return SynchronizationClientImpl(
+                environment,
+                HttpClientFactory.createHttpClient(),
+                bookmarksConfigurations,
+                authFetcher
+            )
         }
     }
 }

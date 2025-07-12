@@ -50,7 +50,7 @@ class GetMutationsRequest(
                     append(key, value)
                 }
             }
-            parameter("lastModificationDate", lastModificationDate)
+            parameter("mutationsSince", lastModificationDate)
         }.body()
         
         return apiResponse.data.toMutationsResponse()
