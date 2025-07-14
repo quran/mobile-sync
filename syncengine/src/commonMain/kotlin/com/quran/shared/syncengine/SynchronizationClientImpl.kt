@@ -59,7 +59,7 @@ internal class SynchronizationClientImpl(
         val remoteIDs = remoteModifications.map { it.remoteID }.toSet()
         val remotePages = remoteModifications.map { it.model.page }.toSet()
         val filteredLocalMutations = localMutations.filter { local ->
-            remotePages.contains(local.model.page).not() && remoteIDs.contains(local.remoteID)
+            remotePages.contains(local.model.page).not() && remoteIDs.contains(local.remoteID).not()
         }
         logger.d { "Filtered local mutations from ${localMutations.size} to ${filteredLocalMutations.size}" }
 
