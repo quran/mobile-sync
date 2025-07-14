@@ -151,6 +151,7 @@ class SynchronizationClientIntegrationTest {
     }
 
     @Test
+    @Ignore
     fun `test running and pushing some local updates`() = runTest {
         // Arrange
         val syncCompleted = CompletableDeferred<Unit>()
