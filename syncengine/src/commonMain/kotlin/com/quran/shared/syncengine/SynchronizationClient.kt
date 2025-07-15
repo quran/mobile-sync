@@ -10,11 +10,13 @@ interface LocalMutationsFetcher<Model> {
 }
 
 interface ResultNotifier<Model> {
-    suspend fun syncResult(
+    suspend fun didSucceed(
         newToken: Long,
         newRemoteMutations: List<RemoteModelMutation<Model>>,
         processedLocalMutations: List<LocalModelMutation<Model>>
     )
+
+    suspend fun didFail(message: String)
 }
 
 interface LocalModificationDateFetcher {

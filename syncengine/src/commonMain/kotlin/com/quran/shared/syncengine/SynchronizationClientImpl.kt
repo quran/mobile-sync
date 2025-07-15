@@ -35,47 +35,45 @@ internal class SynchronizationClientImpl(
     }
 
     private suspend fun startSyncOperation() {
-        logger.i { "Starting sync operation" }
-        // fetch local changes
-        // fetch remote changes
-        // upon conflict, ignore local changes
-        // push local changes
-        // retrieve new objects created by pushing local changes
-        // deliver local changes, and time stamp
-        val lastModificationDate = bookmarksConfigurations.localModificationDateFetcher
-            .localLastModificationDate() ?: 0L
-        logger.d { "Last modification date: $lastModificationDate" }
-        
-        val localMutations = bookmarksConfigurations.localMutationsFetcher
-            .fetchLocalMutations(lastModificationDate)
-        logger.d { "Found ${localMutations.size} local mutations" }
+        try {
+            logger.i { "Starting sync operation" }
+            val lastModificationDate = bookmarksConfigurations.localModificationDateFetcher
+                .localLastModificationDate() ?: 0L
 
-        val fetchRemoteModificationsResult = fetchRemoteModifications(lastModificationDate)
-        val remoteModifications = fetchRemoteModificationsResult.mutations
-        val updatedModificationDate = fetchRemoteModificationsResult.lastModificationDate
-        logger.d { "Fetched ${remoteModifications.size} remote modifications, updated modification date: $updatedModificationDate" }
+            val localMutations = bookmarksConfigurations.localMutationsFetcher
+                .fetchLocalMutations(lastModificationDate)
 
-        // Get the list of local mutations not overridden by the BE.
-        val remoteIDs = remoteModifications.map { it.remoteID }.toSet()
-        val remotePages = remoteModifications.map { it.model.page }.toSet()
-        val filteredLocalMutations = localMutations.filter { local ->
-            remotePages.contains(local.model.page).not() && remoteIDs.contains(local.remoteID).not()
+            val fetchRemoteModificationsResult = fetchRemoteModifications(lastModificationDate)
+
+            val remoteModifications = fetchRemoteModificationsResult.mutations
+            val updatedModificationDate = fetchRemoteModificationsResult.lastModificationDate
+            logger.d { "Fetched ${remoteModifications.size} remote modifications, updated modification date: $updatedModificationDate" }
+
+            // Get the list of local mutations not overridden by the BE.
+            val remoteIDs = remoteModifications.map { it.remoteID }.toSet()
+            val remotePages = remoteModifications.map { it.model.page }.toSet()
+            val filteredLocalMutations = localMutations.filter { local ->
+                remotePages.contains(local.model.page).not() && remoteIDs.contains(local.remoteID).not()
+            }
+            logger.d { "Filtered local mutations from ${localMutations.size} to ${filteredLocalMutations.size}" }
+
+            val pushMutationsResult = pushLocalMutations(filteredLocalMutations, updatedModificationDate)
+            val pushedRemoteMutations = pushMutationsResult.mutations
+            logger.d { "Pushed ${filteredLocalMutations.size} local mutations, received ${pushedRemoteMutations.size} pushed remote mutations" }
+
+            val mergedRemoteModelMutation = pushedRemoteMutations + remoteModifications
+            logger.d { "Merged remote mutations: ${mergedRemoteModelMutation.size} total" }
+
+            logger.i { "Sync operation completed, notifying result with ${mergedRemoteModelMutation.size} remote mutations and ${localMutations.size} local mutations" }
+            bookmarksConfigurations.resultNotifier.didSucceed(
+                pushMutationsResult.lastModificationDate,
+                mergedRemoteModelMutation,
+                localMutations
+            )
+        } catch (e: Exception) {
+            logger.e(e) { "Sync operation failed: ${e.message}" }
+            bookmarksConfigurations.resultNotifier.didFail("Sync operation failed: ${e.message}")
         }
-        logger.d { "Filtered local mutations from ${localMutations.size} to ${filteredLocalMutations.size}" }
-
-        val pushMutationsResult = pushLocalMutations(filteredLocalMutations, updatedModificationDate)
-        val pushedRemoteMutations = pushMutationsResult.mutations
-        logger.d { "Pushed ${filteredLocalMutations.size} local mutations, received ${pushedRemoteMutations.size} pushed remote mutations" }
-
-        val mergedRemoteModelMutation = pushedRemoteMutations + remoteModifications
-        logger.d { "Merged remote mutations: ${mergedRemoteModelMutation.size} total" }
-
-        logger.i { "Sync operation completed, notifying result with ${mergedRemoteModelMutation.size} remote mutations and ${localMutations.size} local mutations" }
-        bookmarksConfigurations.resultNotifier.syncResult(
-            pushMutationsResult.lastModificationDate,
-            mergedRemoteModelMutation,
-            localMutations
-        )
     }
 
     private suspend fun fetchRemoteModifications(lastModificationDate: Long): MutationsResponse {
@@ -96,7 +94,7 @@ internal class SynchronizationClientImpl(
         logger.d { "Pushing ${mutations.size} local mutations to ${environment.endPointURL} with last modification date: $lastModificationDate" }
         val authHeaders = getAuthHeaders()
         val url = environment.endPointURL
-        val request = PostMutationsRequestClient(httpClient, url)
+        val request = PostMutationsRequest(httpClient, url)
         return request.postMutations(mutations, lastModificationDate, authHeaders)
     }
 

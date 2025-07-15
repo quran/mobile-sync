@@ -10,11 +10,13 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runTest
+import kotlin.test.assertFails
+import kotlin.test.fail
 
 class SynchronizationClientIntegrationTest {
 
-    private val accessToken = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjE0ZDQ1ZDI4LTY1ZDgtNDMyYi04Y2EzLTZmZjM5MjEyYWQ0YiIsInR5cCI6IkpXVCJ9.eyJhdWQiOltdLCJjbGllbnRfaWQiOiI5NTRlYjU0OS0zNTY2LTRmOWEtYjY1Zi1mYTYxYmY5YTllMzciLCJleHAiOjE3NTI0Mzk3NzYsImV4dCI6e30sImlhdCI6MTc1MjQzNjE3NiwiaXNzIjoiaHR0cHM6Ly90ZXN0aW5nLW9hdXRoMi5xdXJhbi5mb3VuZGF0aW9uIiwianRpIjoiMGJlMTU5OWUtMTY5Ni00M2E2LWEwNDYtOGMxMTFmZjUxYjRlIiwibmJmIjoxNzUyNDM2MTc2LCJzY3AiOlsib3BlbmlkIiwicHJvZmlsZSIsImJvb2ttYXJrIiwic3luYyJdLCJzdWIiOiJjZmY2ZGFhNy05NzZlLTRlYmMtOWViOC1iMTY4ZTlmNTNiYmIifQ.RxqZPXeW9D-mu9SgMl56alqKDwyED0JEx4CYPJPq2nbvK4bOHMzxRokFTS6TX4Fjh6SLRbqdxuYioyAdIZP2FUW8d3xuLrw6DDem4C_TjeaQk1faUL9-ZMLUPRQV3VF3zDfdaSL7yg9rcU-_2ul4vhArNVB15qvMSvcL2ShVUrRWAFhpxcOuMsyRQ8F2w7qVdpF8xMvXVUE55f6PzsMJu5qq8aCvEWcsewl06V2UkvDnDex3XoqA9tQIgkO4jcfS7p_ooJdpRWRKo2Nn50iEVUycUKysFKxYvz3SvjXtVh2OniaEihyL6ps2fystSM00GequNua5sqzx6fQkA1JyHVr2XHam5gvkfT_1Hr6XphzreMqkqtt0EoQm98MLULdAL81KckBJT5X4iezfsewMd6UnIFXy9hFstgv9A5IFzFntSig696XJU_B-vwQ8Pa297bVQEFTXY5jUVwpE8rI_GY8-XSRch8O_b3vaVfkiC-uhU8kDgUREhE7cMi0cCnHZe3F2W0LkM6UIcbkgMVRSwEIAWN024nx6KEgPrj_FAWK33KMvcY_xctnj-W_hFLSrMOwljxpe8b0j5jGI8zH4uHf4I3F1WZEkS8h0CmT5gpKgTBIw9ZsQHjYdnqHfh9YgvksdXyG6Tl5iujTXNHtiX7rDUDOjtMcomVQCZYGuKxw"
-    private val clientId = "954eb549-3566-4f9a-b65f-fa61bf9a9e37"
+    private val accessToken = ""
+    private val clientId = ""
     private val baseUrl = "https://apis-testing.quran.foundation"
     private val lastModificationDate: Long? = 1752432810198L
 
@@ -57,7 +59,13 @@ class SynchronizationClientIntegrationTest {
         expectedProcessedPages: Set<Int>? = null
     ): ResultNotifier<PageBookmark> {
         return object : ResultNotifier<PageBookmark> {
-            override suspend fun syncResult(
+
+            override suspend fun didFail(message: String) {
+                println("Got a failure. $message")
+                syncCompleted.complete(Unit)
+            }
+
+            override suspend fun didSucceed(
                 newToken: Long,
                 newRemoteMutations: List<RemoteModelMutation<PageBookmark>>,
                 processedLocalMutations: List<LocalModelMutation<PageBookmark>>
