@@ -11,52 +11,62 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.serialization.Serializable
 
-@Serializable
-data class PostMutationsRequest(
-    val mutations: List<PostMutationRequest>
-)
-
-@Serializable
-data class PostMutationRequest(
-    val type: String,
-    val resource: String,
-    val resourceId: String?,
-    val data: PostMutationData
-)
-
-@Serializable
-data class PostMutationData(
-    val type: String,
-    val key: Int,
-    val mushaf: Int
-)
-
-@Serializable
-data class PostMutationsResponse(
-    val success: Boolean,
-    val data: PostMutationsResponseData
-)
-
-@Serializable
-data class PostMutationsResponseData(
-    val lastMutationAt: Long,
-    val mutations: List<PostMutationResponse>
-)
-
-@Serializable
-data class PostMutationResponse(
-    val type: String,
-    val resource: String,
-    val data: PostMutationData,
-    val resourceId: String,
-    val createdAt: Long
-)
-
-class PostMutationsRequestClient(
+class PostMutationsRequest(
     private val httpClient: HttpClient,
     private val url: String
 ) {
     private val logger = Logger.withTag("PostMutationsRequestClient")
+    
+    // region: JSON Mapping.
+    @Serializable
+    private data class PostMutationsRequestData(
+        val mutations: List<PostMutationRequestData>
+    )
+
+    @Serializable
+    private data class PostMutationRequestData(
+        val type: String,
+        val resource: String,
+        val resourceId: String?,
+        val data: MutatedResourceData
+    )
+
+    @Serializable
+    private data class MutatedResourceData(
+        val type: String,
+        val key: Int,
+        val mushaf: Int
+    )
+
+    @Serializable
+    private data class PostMutationsResponse(
+        val success: Boolean,
+        val data: PostMutationsResponseData
+    )
+
+    @Serializable
+    private data class PostMutationsResponseData(
+        val lastMutationAt: Long,
+        val mutations: List<PostMutationResponse>
+    )
+
+    @Serializable
+    private data class PostMutationResponse(
+        val type: String,
+        val resource: String,
+        val data: MutatedResourceData,
+        val resourceId: String,
+        val createdAt: Long
+    )
+
+    @Serializable
+    private data class ErrorResponse(
+        val message: String,
+        val type: String,
+        val success: Boolean
+    )
+    // endregion
+    
     suspend fun postMutations(
         mutations: List<LocalModelMutation<PageBookmark>>,
         lastModificationDate: Long,
@@ -65,7 +75,7 @@ class PostMutationsRequestClient(
         logger.i { "Starting POST mutations request to $url" }
         logger.d { "Last modification date: $lastModificationDate" }
 
-        val requestBody = PostMutationsRequest(
+        val requestBody = PostMutationsRequestData(
             mutations = mutations.map { localMutation ->
                 val mutationType = when (localMutation.mutation) {
                     Mutation.CREATED -> "CREATE"
@@ -73,11 +83,11 @@ class PostMutationsRequestClient(
                     Mutation.MODIFIED -> "UPDATE"
                 }
 
-                PostMutationRequest(
+                PostMutationRequestData(
                     type = mutationType,
                     resource = "BOOKMARK",
                     resourceId = localMutation.remoteID,
-                    data = PostMutationData(
+                    data = MutatedResourceData(
                         type = "page",
                         key = localMutation.model.page,
                         mushaf = 1
@@ -103,7 +113,17 @@ class PostMutationsRequestClient(
         if (!httpResponse.status.isSuccess()) {
             val errorBody = httpResponse.bodyAsText()
             logger.e { "HTTP error response: status=${httpResponse.status}, body=$errorBody" }
-            throw RuntimeException("HTTP request failed with status ${httpResponse.status}: $errorBody")
+            
+            val errorMessage = try {
+                val errorResponse: ErrorResponse = httpResponse.body()
+                errorResponse.message
+            } catch (e: Exception) {
+                logger.w { "Failed to parse error response, using raw body: ${e.message}" }
+                errorBody
+            }
+            
+            // TODO: To be replaced with a specific exception class.
+            throw RuntimeException("HTTP request failed with status ${httpResponse.status}: $errorMessage")
         }
         
         val response: PostMutationsResponse = httpResponse.body()
@@ -126,46 +146,46 @@ class PostMutationsRequestClient(
         
         return result
     }
-}
-
-private fun PostMutationsResponseData.toMutationsResponse(): MutationsResponse {
-    val logger = Logger.withTag("PostMutationsResponseConverter")
     
-    logger.d { "Converting PostMutationsResponseData to MutationsResponse" }
-    logger.d { "Input: lastMutationAt=$lastMutationAt, mutations count=${mutations.size}" }
-    
-    val mutations = mutations.map { postMutation ->
-        val pageBookmark = PageBookmark(
-            id = postMutation.resourceId,
-            page = postMutation.data.key,
-            lastModified = postMutation.createdAt
-        )
+    private fun PostMutationsResponseData.toMutationsResponse(): MutationsResponse {
+        val logger = Logger.withTag("PostMutationsResponseConverter")
         
-        val mutation = when (postMutation.type) {
-            "CREATE" -> Mutation.CREATED
-            "DELETE" -> Mutation.DELETED
-            "UPDATE" -> Mutation.MODIFIED
-            else -> {
-                logger.e { "Unknown mutation type: ${postMutation.type}" }
-                throw IllegalArgumentException("Unknown mutation type: ${postMutation.type}")
+        logger.d { "Converting PostMutationsResponseData to MutationsResponse" }
+        logger.d { "Input: lastMutationAt=$lastMutationAt, mutations count=${mutations.size}" }
+        
+        val mutations = mutations.map { postMutation ->
+            val pageBookmark = PageBookmark(
+                id = postMutation.resourceId,
+                page = postMutation.data.key,
+                lastModified = postMutation.createdAt
+            )
+            
+            val mutation = when (postMutation.type) {
+                "CREATE" -> Mutation.CREATED
+                "DELETE" -> Mutation.DELETED
+                "UPDATE" -> Mutation.MODIFIED
+                else -> {
+                    logger.e { "Unknown mutation type: ${postMutation.type}" }
+                    throw IllegalArgumentException("Unknown mutation type: ${postMutation.type}")
+                }
             }
+            
+            logger.d { "Converting mutation: type=${postMutation.type} -> ${mutation}, page=${postMutation.data.key}, resourceId=${postMutation.resourceId}" }
+            
+            RemoteModelMutation(
+                model = pageBookmark,
+                remoteID = postMutation.resourceId,
+                mutation = mutation
+            )
         }
         
-        logger.d { "Converting mutation: type=${postMutation.type} -> ${mutation}, page=${postMutation.data.key}, resourceId=${postMutation.resourceId}" }
-        
-        RemoteModelMutation(
-            model = pageBookmark,
-            remoteID = postMutation.resourceId,
-            mutation = mutation
+        val result = MutationsResponse(
+            lastModificationDate = lastMutationAt,
+            mutations = mutations
         )
+        
+        logger.d { "Conversion complete: lastModificationDate=${result.lastModificationDate}, mutations count=${result.mutations.size}" }
+        
+        return result
     }
-    
-    val result = MutationsResponse(
-        lastModificationDate = lastMutationAt,
-        mutations = mutations
-    )
-    
-    logger.d { "Conversion complete: lastModificationDate=${result.lastModificationDate}, mutations count=${result.mutations.size}" }
-    
-    return result
 }
