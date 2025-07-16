@@ -1,0 +1,10 @@
+package com.quran.shared.syncengine
+
+import io.ktor.client.*
+import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.plugins.logging.*
+import io.ktor.serialization.kotlinx.json.*
+
+expect object HttpClientFactory {
+    fun createHttpClient(): HttpClient
+} 
