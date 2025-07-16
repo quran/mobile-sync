@@ -6,7 +6,7 @@ kermit = "2.0.0"
 
 maven-publish = "0.33.0"
 
-compose = "2025.06.01"
+compose = "2025.07.00"
 coroutines = "1.10.2"
 sqldelight = "2.1.0"
 ktor = "2.3.12"
