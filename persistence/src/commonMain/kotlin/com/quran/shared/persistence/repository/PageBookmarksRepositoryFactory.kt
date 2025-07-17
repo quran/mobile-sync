@@ -17,7 +17,8 @@ class PageBookmarksRepositoryFactory {
          * @param driverFactory The driver factory to use for database creation
          * @return PageBookmarksRepository A new repository instance
          */
-        fun createRepository(driverFactory: DriverFactory): PageBookmarksRepository[object Object]      val database = makeDatabase(driverFactory)
+        fun createRepository(driverFactory: DriverFactory): PageBookmarksRepository {
+            val database = makeDatabase(driverFactory)
             return PageBookmarksRepositoryImpl(database)
         }
 
@@ -28,7 +29,8 @@ class PageBookmarksRepositoryFactory {
          * @param driverFactory The driver factory to use for database creation
          * @return PageBookmarksSynchronizationRepository A new synchronization repository instance
          */
-        fun createSynchronizationRepository(driverFactory: DriverFactory): PageBookmarksSynchronizationRepository[object Object]      val database = makeDatabase(driverFactory)
+        fun createSynchronizationRepository(driverFactory: DriverFactory): PageBookmarksSynchronizationRepository {
+            val database = makeDatabase(driverFactory)
             return PageBookmarksRepositoryImpl(database)
         }
     }
