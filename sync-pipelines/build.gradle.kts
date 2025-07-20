@@ -22,6 +22,9 @@ kotlin {
         val commonMain by getting {
             dependencies {
                 implementation(libs.kotlinx.coroutines.core)
+                api(projects.syncengine)
+                api(projects.persistence)
+                api(projects.mutationsDefinitions)
             }
         }
 
