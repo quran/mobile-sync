@@ -26,6 +26,25 @@ kotlin {
     }
 }
 
+// Task to create XCFramework
+tasks.register("createXCFramework") {
+    dependsOn("linkReleaseFrameworkIosArm64")
+    dependsOn("linkReleaseFrameworkIosSimulatorArm64")
+    
+    doLast {
+        val xcframeworkDir = file("build/XCFrameworks/release")
+        xcframeworkDir.mkdirs()
+        
+        exec {
+            commandLine("xcodebuild", "-create-xcframework",
+                "-framework", "build/bin/iosArm64/releaseFramework/Shared.framework",
+                "-framework", "build/bin/iosSimulatorArm64/releaseFramework/Shared.framework",
+                "-output", "build/XCFrameworks/release/Shared.xcframework"
+            )
+        }
+    }
+}
+
 mavenPublishing {
     publishToMavenCentral()
     signAllPublications()
