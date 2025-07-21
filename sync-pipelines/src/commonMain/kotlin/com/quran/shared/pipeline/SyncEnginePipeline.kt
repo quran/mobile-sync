@@ -80,14 +80,14 @@ private class ResultReceiver(
     ) {
         val mappedRemotes = newRemoteMutations.map { remoteMutation ->
             RemoteModelMutation(
-                model = remoteMutation.model.toPersistence(),
+                model = remoteMutation.model.toPersistence(remoteMutation.remoteID),
                 remoteID = remoteMutation.remoteID,
                 mutation = remoteMutation.mutation
             )
         }
         val mappedLocals = processedLocalMutations.map { localMutation ->
             LocalModelMutation(
-                model = localMutation.model.toPersistence(),
+                model = localMutation.model.toPersistence(localMutation.remoteID),
                 localID = localMutation.localID,
                 remoteID = localMutation.remoteID,
                 mutation = localMutation.mutation
@@ -99,17 +99,21 @@ private class ResultReceiver(
 }
 
 private fun com.quran.shared.persistence.model.PageBookmark.toSyncEngine(): PageBookmark {
+    if (localId == null) {
+        throw RuntimeException("Transforming a Persistence's PageBookmark without a local ID.")
+    }
     return PageBookmark(
         page = this.page,
-        id = this.remoteId ?: "", // Makes no sense
+        id = this.localId!!, // Makes no sense
         lastModified = this.lastUpdated
         )
 }
 
-private  fun PageBookmark.toPersistence(): com.quran.shared.persistence.model.PageBookmark {
+private fun PageBookmark.toPersistence(remoteID: String?): com.quran.shared.persistence.model.PageBookmark {
     return com.quran.shared.persistence.model.PageBookmark(
         page = this.page,
         lastUpdated = this.lastModified,
-        remoteId = this.id
+        remoteId = remoteID,
+        localId = this.id
     )
 }
