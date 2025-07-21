@@ -48,12 +48,6 @@ class PageBookmarksRepositoryImpl(
                 throw IllegalStateException("Cannot migrate bookmarks: bookmarks table is not empty. Found ${existingBookmarks.size} bookmarks.")
             }
 
-            // Validate that all bookmarks are from the old system (no remote IDs)
-            val bookmarksWithRemoteId = bookmarks.filter { it.remoteId != null }
-            if (bookmarksWithRemoteId.isNotEmpty()) {
-                throw IllegalArgumentException("Cannot migrate bookmarks with remote IDs. Found ${bookmarksWithRemoteId.size} bookmarks with remote IDs.")
-            }
-
             database.bookmarksQueries.transaction {
                 bookmarks.forEach { bookmark ->
                     database.bookmarksQueries.addNewBookmark(bookmark.page.toLong())

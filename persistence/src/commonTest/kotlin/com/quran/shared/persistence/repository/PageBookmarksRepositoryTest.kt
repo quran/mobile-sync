@@ -233,13 +233,15 @@ class PageBookmarksRepositoryTest {
     }
 
     @Test
-    fun `migrateBookmarks fails when bookmarks have remote IDs`() = runTest {
-        val bookmarksWithRemoteId = listOf(
-            PageBookmark(page = 1, lastUpdated = 1000L, remoteId = "remote-1", localId = null)
+    fun `migrateBookmarks succeeds with any bookmarks`() = runTest {
+        val bookmarks = listOf(
+            PageBookmark(page = 1, lastUpdated = 1000L, localId = null)
         )
-        assertFails("Should fail if bookmarks have remote IDs") {
-            repository.migrateBookmarks(bookmarksWithRemoteId)
-        }
+        repository.migrateBookmarks(bookmarks)
+        
+        val migratedBookmarks = database.bookmarksQueries.getBookmarks().executeAsList()
+        assertEquals(1, migratedBookmarks.size)
+        assertEquals(1L, migratedBookmarks[0].page)
     }
 
     @Test
