@@ -15,6 +15,7 @@ kotlin {
 
             export(projects.syncengine)
             export(projects.persistence)
+            export(projects.syncPipelines)
         }
     }
 
@@ -22,6 +23,7 @@ kotlin {
         commonMain.dependencies {
             api(projects.syncengine)
             api(projects.persistence)
+            api(projects.syncPipelines)
         }
     }
 }
