@@ -9,7 +9,8 @@ fun DatabasePageBookmark.toBookmark(): PageBookmark {
     return PageBookmark(
         page = page.toInt(),
         lastUpdated = created_at,
-        remoteId = remote_id
+        remoteId = remote_id,
+        localId = local_id.toString()
     )
 }
 
