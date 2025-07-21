@@ -4,7 +4,7 @@ kotlin = "2.2.0"
 kotlinx-serialization = "1.6.3"
 kermit = "2.0.0"
 
-maven-publish = "0.33.0"
+maven-publish = "0.34.0"
 
 compose = "2025.06.01"
 coroutines = "1.10.2"
