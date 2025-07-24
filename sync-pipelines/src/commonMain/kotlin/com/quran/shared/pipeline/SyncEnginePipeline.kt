@@ -1,5 +1,6 @@
 package com.quran.shared.pipeline
 
+import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.repository.PageBookmarksSynchronizationRepository
@@ -93,6 +94,9 @@ private class ResultReceiver(
                 mutation = localMutation.mutation
             )
         }
+
+        Logger.i { "Persisting ${mappedLocals.count()} remote updates, and clearing ${mappedLocals.count()} local updates." }
+        
         repository.applyRemoteChanges(mappedRemotes, mappedLocals)
         callback.synchronizationDone(newToken)
     }
@@ -104,15 +108,16 @@ private fun com.quran.shared.persistence.model.PageBookmark.toSyncEngine(): Page
     }
     return PageBookmark(
         page = this.page,
-        id = this.localId!!, // Makes no sense
-        lastModified = this.lastUpdated
+        id = this.localId!!,
+        // TODO: Should this be moved to synengine instead?
+        lastModified = this.lastUpdated * 1000 // BE deals in nano-seconds timestamps.
         )
 }
 
 private fun PageBookmark.toPersistence(): com.quran.shared.persistence.model.PageBookmark {
     return com.quran.shared.persistence.model.PageBookmark(
         page = this.page,
-        lastUpdated = this.lastModified,
+        lastUpdated = this.lastModified / 1000,
         localId = this.id
     )
 }
