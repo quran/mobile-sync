@@ -89,7 +89,7 @@ class PageBookmarksRepositoryImpl(
                             )
                         }
                         Mutation.DELETED -> {
-                            database.bookmarksQueries.hardDeleteBookmarkFor(page = model.page.toLong())
+                            database.bookmarksQueries.hardDeleteBookmarkFor(remoteID = remote.remoteID)
                         }
                         Mutation.MODIFIED -> {
                             throw RuntimeException("Unexpected MODIFIED remote modification for page bookmarks.")
