@@ -87,11 +87,14 @@ class PostMutationsRequest(
                     type = mutationType,
                     resource = "BOOKMARK",
                     resourceId = localMutation.remoteID,
-                    data = MutatedResourceData(
-                        type = "page",
-                        key = localMutation.model.page,
-                        mushaf = 1
-                    )
+
+                    data = if (localMutation.mutation == Mutation.DELETED) {null} else {
+                        MutatedResourceData(
+                            type = "page",
+                            key = localMutation.model.page,
+                            mushaf = 1
+                        )
+                    }
                 )
             }
         )
