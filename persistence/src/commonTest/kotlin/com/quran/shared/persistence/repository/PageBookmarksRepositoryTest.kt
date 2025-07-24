@@ -2,12 +2,13 @@ package com.quran.shared.persistence.repository
 
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.model.PageBookmark
-import com.quran.shared.persistence.model.PageBookmarkMutationType
+import com.quran.shared.mutations.LocalModelMutation
+import com.quran.shared.mutations.RemoteModelMutation
+import com.quran.shared.mutations.Mutation
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.*
 import com.quran.shared.persistence.TestDatabaseDriver
-import com.quran.shared.persistence.model.PageBookmarkMutation
 
 class PageBookmarksRepositoryTest {
     private lateinit var database: QuranDatabase
@@ -183,28 +184,26 @@ class PageBookmarksRepositoryTest {
         val result = syncRepository.fetchMutatedBookmarks()
         
         assertEquals(3, result.size)
-        assertTrue(result.any { it.page == 1 && it.mutationType == PageBookmarkMutationType.CREATED })
-        assertTrue(result.any { it.page == 2 && it.mutationType == PageBookmarkMutationType.CREATED })
-        assertTrue(result.any { it.page == 10 && it.mutationType == PageBookmarkMutationType.DELETED })
+        assertTrue(result.any { it.model.page == 1 && it.mutation == Mutation.CREATED })
+        assertTrue(result.any { it.model.page == 2 && it.mutation == Mutation.CREATED })
+        assertTrue(result.any { it.model.page == 10 && it.mutation == Mutation.DELETED })
         
         // Assert that all returned mutations have non-null local IDs and match the database
         result.forEach { mutation ->
-            assertNotNull(mutation.localId, "Local ID should not be null for mutation on page ${mutation.page}")
+            assertNotNull(mutation.localID, "Local ID should not be null for mutation on page ${mutation.model.page}")
             
             // Get the corresponding database record and verify the local ID matches
-            val dbRecords = database.bookmarksQueries.getAllRecordsFor(mutation.page.toLong()).executeAsList()
-            val matchingRecord = dbRecords.find { it.local_id == mutation.localId }
-            assertNotNull(matchingRecord, "Should find database record with matching local ID ${mutation.localId} for page ${mutation.page}")
+            val dbRecords = database.bookmarksQueries.getAllRecordsFor(mutation.model.page.toLong()).executeAsList()
+            val matchingRecord = dbRecords.find { it.local_id.toString() == mutation.localID }
+            assertNotNull(matchingRecord, "Should find database record with matching local ID ${mutation.localID} for page ${mutation.model.page}")
         }
     }
-
-
 
     @Test
     fun `migrateBookmarks succeeds when table is empty`() = runTest {
         val bookmarks = listOf(
-            PageBookmark(page = 1, lastUpdated = 1000L),
-            PageBookmark(page = 2, lastUpdated = 1001L)
+            PageBookmark(page = 1, lastUpdated = 1000L, localId = null),
+            PageBookmark(page = 2, lastUpdated = 1001L, localId = null)
         )
 
         repository.migrateBookmarks(bookmarks)
@@ -224,7 +223,7 @@ class PageBookmarksRepositoryTest {
     @Test
     fun `migrateBookmarks fails when table is not empty`() = runTest {
         val bookmarks = listOf(
-            PageBookmark(page = 1, lastUpdated = 1000L)
+            PageBookmark(page = 1, lastUpdated = 1000L, localId = null)
         )
 
         database.bookmarksQueries.createRemoteBookmark("existing-1", 1L)
@@ -234,13 +233,15 @@ class PageBookmarksRepositoryTest {
     }
 
     @Test
-    fun `migrateBookmarks fails when bookmarks have remote IDs`() = runTest {
-        val bookmarksWithRemoteId = listOf(
-            PageBookmark(page = 1, lastUpdated = 1000L, remoteId = "remote-1")
+    fun `migrateBookmarks succeeds with any bookmarks`() = runTest {
+        val bookmarks = listOf(
+            PageBookmark(page = 1, lastUpdated = 1000L, localId = null)
         )
-        assertFails("Should fail if bookmarks have remote IDs") {
-            repository.migrateBookmarks(bookmarksWithRemoteId)
-        }
+        repository.migrateBookmarks(bookmarks)
+        
+        val migratedBookmarks = database.bookmarksQueries.getBookmarks().executeAsList()
+        assertEquals(1, migratedBookmarks.size)
+        assertEquals(1L, migratedBookmarks[0].page)
     }
 
     @Test
@@ -286,9 +287,21 @@ class PageBookmarksRepositoryTest {
         
         // Action: Apply remote changes - commit the local mutations
         val updatesToPersist = listOf(
-            PageBookmarkMutation.createRemoteMutation(page = 10, remoteId = "remote-10", mutationType = PageBookmarkMutationType.CREATED, lastUpdated = 1000L),
-            PageBookmarkMutation.createRemoteMutation(page = 20, remoteId = "remote-20", mutationType = PageBookmarkMutationType.CREATED, lastUpdated = 1001L),
-            PageBookmarkMutation.createRemoteMutation(page = 30, remoteId = "remote-30", mutationType = PageBookmarkMutationType.DELETED, lastUpdated = 1002L)
+            RemoteModelMutation(
+                model = PageBookmark(page = 10, lastUpdated = 1000L, localId = null),
+                remoteID = "remote-10",
+                mutation = Mutation.CREATED
+            ),
+            RemoteModelMutation(
+                model = PageBookmark(page = 20, lastUpdated = 1001L, localId = null),
+                remoteID = "remote-20",
+                mutation = Mutation.CREATED
+            ),
+            RemoteModelMutation(
+                model = PageBookmark(page = 30, lastUpdated = 1002L, localId = null),
+                remoteID = "remote-30",
+                mutation = Mutation.DELETED
+            )
         )
         
         syncRepository.applyRemoteChanges(updatesToPersist, localMutations)
@@ -326,8 +339,16 @@ class PageBookmarksRepositoryTest {
         // Action: Apply remote changes - mix of committed and overridden
         val updatesToPersist = listOf(
             // Committed mutations (local state matches remote)
-            PageBookmarkMutation.createRemoteMutation(page = 10, remoteId = "remote-10", mutationType = PageBookmarkMutationType.CREATED, lastUpdated = 1000L),
-            PageBookmarkMutation.createRemoteMutation(page = 30, remoteId = "remote-30", mutationType = PageBookmarkMutationType.DELETED, lastUpdated = 1001L)
+            RemoteModelMutation(
+                model = PageBookmark(page = 10, lastUpdated = 1000L, localId = null),
+                remoteID = "remote-10",
+                mutation = Mutation.CREATED
+            ),
+            RemoteModelMutation(
+                model = PageBookmark(page = 30, lastUpdated = 1001L, localId = null),
+                remoteID = "remote-30",
+                mutation = Mutation.DELETED
+            )
         )
 
         syncRepository.applyRemoteChanges(updatesToPersist, localMutations)
@@ -363,11 +384,27 @@ class PageBookmarksRepositoryTest {
         
         // Action: Apply remote changes including new mutations not in local list
         val updatesToPersist = listOf(
-            PageBookmarkMutation.createRemoteMutation(page = 10, remoteId = "remote-10", mutationType = PageBookmarkMutationType.CREATED, lastUpdated = 1000L),
-            PageBookmarkMutation.createRemoteMutation(page = 20, remoteId = "remote-20", mutationType = PageBookmarkMutationType.DELETED, lastUpdated = 1001L),
+            RemoteModelMutation(
+                model = PageBookmark(page = 10, lastUpdated = 1000L, localId = null),
+                remoteID = "remote-10",
+                mutation = Mutation.CREATED
+            ),
+            RemoteModelMutation(
+                model = PageBookmark(page = 20, lastUpdated = 1001L, localId = null),
+                remoteID = "remote-20",
+                mutation = Mutation.DELETED
+            ),
             // New remote mutations not in local mutations
-            PageBookmarkMutation.createRemoteMutation(page = 30, remoteId = "remote-30", mutationType = PageBookmarkMutationType.CREATED, lastUpdated = 1002L),
-            PageBookmarkMutation.createRemoteMutation(page = 40, remoteId = "remote-40", mutationType = PageBookmarkMutationType.DELETED, lastUpdated = 1003L)
+            RemoteModelMutation(
+                model = PageBookmark(page = 30, lastUpdated = 1002L, localId = null),
+                remoteID = "remote-30",
+                mutation = Mutation.CREATED
+            ),
+            RemoteModelMutation(
+                model = PageBookmark(page = 40, lastUpdated = 1003L, localId = null),
+                remoteID = "remote-40",
+                mutation = Mutation.DELETED
+            )
         )
         
         syncRepository.applyRemoteChanges(updatesToPersist, localMutations)
@@ -425,8 +462,16 @@ class PageBookmarksRepositoryTest {
         
         // Action: Apply remote changes for local mutations only
         val updatesToPersist = listOf(
-            PageBookmarkMutation.createRemoteMutation(page = 40, remoteId = "remote-40", mutationType = PageBookmarkMutationType.CREATED, lastUpdated = 1000L),
-            PageBookmarkMutation.createRemoteMutation(page = 20, remoteId = "remote-20", mutationType = PageBookmarkMutationType.DELETED, lastUpdated = 1001L)
+            RemoteModelMutation(
+                model = PageBookmark(page = 40, lastUpdated = 1000L, localId = null),
+                remoteID = "remote-40",
+                mutation = Mutation.CREATED
+            ),
+            RemoteModelMutation(
+                model = PageBookmark(page = 20, lastUpdated = 1001L, localId = null),
+                remoteID = "remote-20",
+                mutation = Mutation.DELETED
+            )
         )
         
         syncRepository.applyRemoteChanges(updatesToPersist, localMutations)
@@ -443,6 +488,25 @@ class PageBookmarksRepositoryTest {
         // Verify existing remote bookmarks are preserved
         val dbBookmarks = database.bookmarksQueries.getBookmarks().executeAsList()
         assertEquals(setOf("remote-10", "remote-30", "remote-40"), dbBookmarks.map { it.remote_id }.toSet())
+    }
+
+    @Test
+    fun `PageBookmark localId is properly populated from database`() = runTest {
+        // Add a bookmark and verify localId is set
+        repository.addPageBookmark(10)
+        
+        val bookmarks = repository.getAllBookmarks().first()
+        assertEquals(1, bookmarks.size)
+        
+        val bookmark = bookmarks[0]
+        assertEquals(10, bookmark.page)
+        assertNotNull(bookmark.localId, "localId should not be null")
+        assertTrue(bookmark.localId!!.isNotEmpty(), "localId should not be empty")
+        
+        // Verify the localId matches the database local_id
+        val dbBookmarks = database.bookmarksQueries.getBookmarks().executeAsList()
+        assertEquals(1, dbBookmarks.size)
+        assertEquals(dbBookmarks[0].local_id.toString(), bookmark.localId)
     }
 
     private fun createInMemoryDatabase(): QuranDatabase {

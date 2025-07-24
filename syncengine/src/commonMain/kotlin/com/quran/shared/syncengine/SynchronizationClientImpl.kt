@@ -2,6 +2,8 @@ package com.quran.shared.syncengine
 
 import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.LocalModelMutation
+import com.quran.shared.mutations.Mutation
+import com.quran.shared.mutations.RemoteModelMutation
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -46,6 +48,17 @@ internal class SynchronizationClientImpl(
             val fetchRemoteModificationsResult = fetchRemoteModifications(lastModificationDate)
 
             val remoteModifications = fetchRemoteModificationsResult.mutations
+                .map { mutation ->
+                    if (mutation.mutation == Mutation.MODIFIED) {
+                        RemoteModelMutation(
+                            model = mutation.model,
+                            remoteID = mutation.remoteID,
+                            mutation = Mutation.CREATED
+                        )
+                    } else {
+                        mutation
+                    }
+                }
             val updatedModificationDate = fetchRemoteModificationsResult.lastModificationDate
             logger.d { "Fetched ${remoteModifications.size} remote modifications, updated modification date: $updatedModificationDate" }
 

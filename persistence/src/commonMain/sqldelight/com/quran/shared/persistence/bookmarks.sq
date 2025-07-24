@@ -42,7 +42,7 @@ resetDeleted:
  }
 
  hardDeleteBookmarkFor {
-    DELETE FROM page_bookmark WHERE page=:page;
+    DELETE FROM page_bookmark WHERE remote_id=:remoteID;
  }
 
  deleteByRemoteID:
