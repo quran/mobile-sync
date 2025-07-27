@@ -95,7 +95,7 @@ private class ResultReceiver(
             )
         }
 
-        Logger.i { "Persisting ${mappedLocals.count()} remote updates, and clearing ${mappedLocals.count()} local updates." }
+        Logger.i { "Persisting ${mappedRemotes.count()} remote updates, and clearing ${mappedLocals.count()} local updates." }
         
         repository.applyRemoteChanges(mappedRemotes, mappedLocals)
         callback.synchronizationDone(newToken)
