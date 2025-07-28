@@ -67,13 +67,13 @@ android {
 
 mavenPublishing {
     signAllPublications()
-    coordinates(libs.versions.project.group.get(), "syncengine", libs.versions.project.version.get())
+    coordinates(libs.versions.project.group.get(), "sync-pipelines", libs.versions.project.version.get())
 
     pom {
-        name = "Quran.com Sync Engine"
-        description = "A library for synchronizing data with Quran.com"
+        name = "Quran.com Sync Integration-Pipeline"
+        description = "A library for integrating syncengine and persistence"
         inceptionYear = "2025"
-        url = "https://github.com/quran/syncengine"
+        url = "https://github.com/quran/mobile-sync/"
     }
 }
 
