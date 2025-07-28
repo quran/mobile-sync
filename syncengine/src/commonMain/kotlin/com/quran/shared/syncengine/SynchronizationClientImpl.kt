@@ -48,17 +48,6 @@ internal class SynchronizationClientImpl(
             val fetchRemoteModificationsResult = fetchRemoteModifications(lastModificationDate)
 
             val remoteModifications = fetchRemoteModificationsResult.mutations
-                .map { mutation ->
-                    if (mutation.mutation == Mutation.MODIFIED) {
-                        RemoteModelMutation(
-                            model = mutation.model,
-                            remoteID = mutation.remoteID,
-                            mutation = Mutation.CREATED
-                        )
-                    } else {
-                        mutation
-                    }
-                }
             val updatedModificationDate = fetchRemoteModificationsResult.lastModificationDate
             logger.d { "Fetched ${remoteModifications.size} remote modifications, updated modification date: $updatedModificationDate" }
 
