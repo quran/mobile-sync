@@ -2,7 +2,6 @@ package com.quran.shared.syncengine
 
 import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.LocalModelMutation
-import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
@@ -76,6 +75,12 @@ internal class SynchronizationClientImpl(
             logger.e(e) { "Sync operation failed: ${e.message}" }
             bookmarksConfigurations.resultNotifier.didFail("Sync operation failed: ${e.message}")
         }
+    }
+
+    private suspend fun detectConflicts(
+        remoteModelMutation: List<RemoteModelMutation<PageBookmark>>,
+        localModelMutation: List<LocalModelMutation<PageBookmark>>) {
+
     }
 
     private suspend fun fetchRemoteModifications(lastModificationDate: Long): MutationsResponse {
