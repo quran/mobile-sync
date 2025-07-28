@@ -63,13 +63,13 @@ android {
 
 mavenPublishing {
    signAllPublications()
-   coordinates(libs.versions.project.group.get(), "syncengine", libs.versions.project.version.get())
+   coordinates(libs.versions.project.group.get(), "mutations-definitions", libs.versions.project.version.get())
 
    pom {
-      name = "Quran.com Sync Engine"
-      description = "A library for synchronizing data with Quran.com"
+      name = "Quran.com Mutations Definitions"
+      description = "Type declarations that can be used for mutations tracking."
       inceptionYear = "2025"
-      url = "https://github.com/quran/syncengine"
+      url = "https://github.com/quran/mobile-sync"
    }
 }
 

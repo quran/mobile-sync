@@ -94,7 +94,7 @@ android {
 }
 
 mavenPublishing {
-   publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL)
+   publishToMavenCentral()
    signAllPublications()
    coordinates(libs.versions.project.group.get(), "syncengine", libs.versions.project.version.get())
 
@@ -102,6 +102,6 @@ mavenPublishing {
       name = "Quran.com Sync Engine"
       description = "A library for synchronizing data with Quran.com"
       inceptionYear = "2025"
-      url = "https://github.com/quran/syncengine"
+      url = "https://github.com/quran/mobile-sync/"
    }
 }
