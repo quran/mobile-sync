@@ -3,8 +3,13 @@ package com.quran.shared.syncengine
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
 
+data class ConflictGroup<Model>(
+    val localMutations: List<LocalModelMutation<Model>>,
+    val conflictingRemoteMutations: List<RemoteModelMutation<Model>>
+)
+
 data class ConflictDetectionResult<Model>(
-    val conflicts: List<ModelConflict<Model>>,
+    val conflictGroups: List<ConflictGroup<Model>>,
     val nonConflictingRemoteMutations: List<RemoteModelMutation<Model>>,
     val nonConflictingLocalMutations: List<LocalModelMutation<Model>>
 )
@@ -20,22 +25,21 @@ class ConflictDetector(
 
         val remoteMutationsByPages = remoteModelMutations.groupBy { it.model.page }
 
-        val conflicts: MutableList<ModelConflict<PageBookmark>> = mutableListOf()
+        val conflictGroups: MutableList<ConflictGroup<PageBookmark>> = mutableListOf()
         val conflictingRemoteIDs: MutableSet<String> = mutableSetOf()
         val conflictingLocalIDs: MutableSet<String> = mutableSetOf()
-        localModelMutations.forEach { localMutation ->
-            remoteMutationsByRemoteID[localMutation.remoteID]?.let {
-
-            }
-
-            remoteMutationsByPages[localMutation.model.page]?.let {
-                // TODO: Deal with lists.
-                val remote = it.last()!!
-                conflictingRemoteIDs.add(remote.remoteID)
-                conflictingLocalIDs.add(localMutation.localID)
-                conflicts += ModelConflict(
-                    remoteModelMutation = remote,
-                    localModelMutation = localMutation
+        
+        // Group local mutations by page
+        val localMutationsByPage = localModelMutations.groupBy { it.model.page }
+        
+        localMutationsByPage.forEach { (page, localMutations) ->
+            remoteMutationsByPages[page]?.let { remoteMutations ->
+                // Handle multiple remote mutations for the same page
+                conflictingRemoteIDs.addAll(remoteMutations.map { it.remoteID })
+                conflictingLocalIDs.addAll(localMutations.map { it.localID })
+                conflictGroups += ConflictGroup(
+                    localMutations = localMutations,
+                    conflictingRemoteMutations = remoteMutations
                 )
             }
         }
@@ -44,7 +48,7 @@ class ConflictDetector(
         val remainingLocalMutations = localModelMutations.filterNot { conflictingLocalIDs.contains(it.localID) }
 
         return ConflictDetectionResult(
-            conflicts = conflicts,
+            conflictGroups = conflictGroups,
             nonConflictingLocalMutations = remainingLocalMutations,
             nonConflictingRemoteMutations = remainingRemoteMutations
         )
