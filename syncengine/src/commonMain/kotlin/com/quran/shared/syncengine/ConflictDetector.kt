@@ -4,14 +4,6 @@ import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
 
 /**
- * Represents a group of conflicting local and remote mutations for the same resource.
- */
-data class ConflictGroup<Model>(
-    val localMutations: List<LocalModelMutation<Model>>,
-    val remoteMutations: List<RemoteModelMutation<Model>>
-)
-
-/**
  * Result of conflict detection containing all conflict groups and non-conflicting mutations.
  * 
  * @param conflictGroups Groups of mutations that have conflicts
@@ -108,7 +100,7 @@ class ConflictDetector(
         
         return conflictingRemotes.distinctBy { it.remoteID }
     }
-
+    
     /**
      * Extracts all conflicting remote and local IDs from conflict groups.
      */
@@ -125,7 +117,7 @@ class ConflictDetector(
             
         return Pair(conflictingRemoteIDs, conflictingLocalIDs)
     }
-
+    
     private fun buildResult(
         conflictGroups: List<ConflictGroup<PageBookmark>>,
         conflictingIDs: Pair<Set<String>, Set<String>>
