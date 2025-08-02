@@ -57,27 +57,6 @@ class ConflictResolver(val conflictGroups: List<ConflictGroup<PageBookmark>>) {
                 mutationsToPush = mutationsToPush
             )
         }
-        else if (remoteDeletion != null && localCreation != null) {
-            // Remote deletion vs local creation
-            val mutationsToPersist = mutableListOf<RemoteModelMutation<PageBookmark>>()
-            val mutationsToPush = mutableListOf<LocalModelMutation<PageBookmark>>()
-            
-            mutationsToPersist.add(remoteDeletion)
-
-            if (remoteCreation != null) {
-                // persist both remote mutations, ignore local
-                mutationsToPersist.add(remoteCreation)
-            }
-            else {
-                // persist remoteDeletion, push localCreation
-                mutationsToPush.add(localCreation)
-            }
-            
-            return ConflictResolutionResult(
-                mutationsToPersist = mutationsToPersist,
-                mutationsToPush = mutationsToPush
-            )
-        }
         else if (localDeletion != null) {
             // Only local deletion (no remote deletion)
             // Push all local mutations
