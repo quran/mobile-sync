@@ -79,8 +79,7 @@ internal class SynchronizationClientImpl(
 
     private suspend fun detectConflicts(
         remoteModelMutation: List<RemoteModelMutation<PageBookmark>>,
-        localModelMutation: List<LocalModelMutation<PageBookmark>>) {
-
+        localModelMutation: List<LocalModelMutation<PageBookmark>>){
     }
 
     private suspend fun fetchRemoteModifications(lastModificationDate: Long): MutationsResponse {
