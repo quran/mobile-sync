@@ -57,14 +57,6 @@ class ConflictResolver(val conflictGroups: List<ConflictGroup<PageBookmark>>) {
                 mutationsToPush = mutationsToPush
             )
         }
-        else if (localDeletion != null) {
-            // Only local deletion (no remote deletion)
-            // Push all local mutations
-            return ConflictResolutionResult(
-                mutationsToPersist = listOf(),
-                mutationsToPush = conflictGroup.localMutations
-            )
-        }
         else if (remoteCreation != null && localCreation != null) {
             // Both sides have creations (no deletions)
             // Persist remote creation, ignore local
