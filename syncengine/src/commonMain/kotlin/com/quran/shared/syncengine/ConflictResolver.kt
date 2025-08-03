@@ -16,62 +16,101 @@ private fun <Model> ConflictResolutionResult<Model>.mergeWith(other: ConflictRes
     )
 }
 
-class ConflictResolver(val conflictGroups: List<ConflictGroup<PageBookmark>>) {
+class ConflictResolver(private val conflictGroups: List<ConflictGroup<PageBookmark>>) {
 
     fun resolve(): ConflictResolutionResult<PageBookmark> {
         if (conflictGroups.isNotEmpty()) {
             return conflictGroups.map { processConflict(it) }
-                .reduce { one, two -> one.mergeWith(two) }
+                .reduce { one, other -> one.mergeWith(other) }
         }
         else {
-            return ConflictResolutionResult(mutationsToPush = listOf(), mutationsToPersist = listOf())
+            return ConflictResolutionResult(listOf(), listOf())
         }
     }
 
     private fun processConflict(conflictGroup: ConflictGroup<PageBookmark>): ConflictResolutionResult<PageBookmark> {
-        val remoteDeletion = conflictGroup.remoteMutations.firstOrNull { it.mutation == Mutation.DELETED }
-        val localDeletion = conflictGroup.localMutations.firstOrNull { it.mutation == Mutation.DELETED }
-
-        val remoteCreation = conflictGroup.remoteMutations.firstOrNull { it.mutation == Mutation.CREATED }
-        val localCreation = conflictGroup.localMutations.firstOrNull { it.mutation == Mutation.CREATED }
-
-        if (remoteDeletion != null && localDeletion != null) {
-            // Both sides have deletions
-            val mutationsToPersist = mutableListOf<RemoteModelMutation<PageBookmark>>()
-            val mutationsToPush = mutableListOf<LocalModelMutation<PageBookmark>>()
-            
-            mutationsToPersist.add(remoteDeletion)
-
-            if (remoteCreation != null) {
-                // persist both remote mutations, ignore local mutations
-                mutationsToPersist.add(remoteCreation)
-            }
-            else if (localCreation != null) {
-                // persist remoteDeletion, push localCreation
-                mutationsToPush.add(localCreation)
-            }
-            // else: only persist remoteDeletion, ignore the rest
-            
+        if (conflictGroup.mustHave(Mutation.CREATED, MutationSide.BOTH).only() ||
+            conflictGroup.mustHave(Mutation.DELETED, MutationSide.BOTH).only() ||
+            conflictGroup.mustHave(Mutation.DELETED, MutationSide.BOTH)
+                .and(Mutation.CREATED, MutationSide.REMOTE)
+                .only() ||
+            conflictGroup.mustHave(Mutation.CREATED, MutationSide.BOTH)
+                .and(Mutation.DELETED, MutationSide.BOTH)
+                .only()) {
             return ConflictResolutionResult(
-                mutationsToPersist = mutationsToPersist,
-                mutationsToPush = mutationsToPush
+                mutationsToPush = listOf(),
+                mutationsToPersist = conflictGroup.remoteMutations
             )
         }
-        else if (remoteCreation != null && localCreation != null) {
-            // Both sides have creations (no deletions)
-            // Persist remote creation, ignore local
+        else if (conflictGroup.mustHave(Mutation.DELETED, MutationSide.BOTH)
+            .and(Mutation.CREATED, MutationSide.LOCAL)
+            .only()) {
             return ConflictResolutionResult(
-                mutationsToPersist = listOf(remoteCreation),
-                mutationsToPush = listOf()
+                mutationsToPush = conflictGroup.localMutations.filter { it.mutation == Mutation.CREATED },
+                mutationsToPersist = conflictGroup.remoteMutations
             )
         }
         else {
+            // TODO: Consider an error for this.
             // This shouldn't happen if ConflictDetector is working correctly
             // Return empty result as fallback
-            return ConflictResolutionResult(
-                mutationsToPersist = listOf(),
-                mutationsToPush = listOf()
-            )
+            return ConflictResolutionResult(listOf(), listOf())
         }
     }
+}
+
+private enum class MutationSide {
+    REMOTE, LOCAL, BOTH
+}
+
+private fun <Model> ConflictGroup<Model>.mustHave(
+    mutation: Mutation,
+    side: MutationSide
+): ConflictPredicate<Model> {
+    if (side == MutationSide.REMOTE) {
+        val instance = remoteMutations.firstOrNull { it.mutation == mutation }
+        if (instance == null) {
+            return ConflictPredicate(hasFailed = true, conflictGroup = this)
+        }
+        else {
+            val newGroup = ConflictGroup(
+                remoteMutations = remoteMutations.minus(instance),
+                localMutations = localMutations
+            )
+            return ConflictPredicate(hasFailed = false, conflictGroup = newGroup)
+        }
+    }
+    else if (side == MutationSide.LOCAL){
+        val instance = localMutations.firstOrNull { it.mutation == mutation }
+        if (instance == null) {
+            return ConflictPredicate(hasFailed = true, conflictGroup = this)
+        }
+        else {
+            val newGroup = ConflictGroup(
+                remoteMutations = remoteMutations,
+                localMutations = localMutations.minus(instance)
+            )
+            return ConflictPredicate(hasFailed = false, conflictGroup = newGroup)
+        }
+    }
+    else {
+        return mustHave(mutation, MutationSide.REMOTE).and(mutation, MutationSide.LOCAL)
+    }
+}
+
+private class ConflictPredicate<Model>(
+    private val hasFailed: Boolean,
+    private val conflictGroup: ConflictGroup<Model>
+    ) {
+
+    fun and(mutation: Mutation, side: MutationSide): ConflictPredicate<Model> {
+        if (hasFailed) {
+            return this
+        }
+        return conflictGroup.mustHave(mutation, side)
+    }
+
+    fun only(): Boolean =!hasFailed
+            && conflictGroup.remoteMutations.isEmpty()
+            && conflictGroup.localMutations.isEmpty()
 }
