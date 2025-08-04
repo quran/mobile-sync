@@ -50,36 +50,45 @@ internal class SynchronizationClientImpl(
             val updatedModificationDate = fetchRemoteModificationsResult.lastModificationDate
             logger.d { "Fetched ${remoteModifications.size} remote modifications, updated modification date: $updatedModificationDate" }
 
-            // Get the list of local mutations not overridden by the BE.
-            val remoteIDs = remoteModifications.map { it.remoteID }.toSet()
-            val remotePages = remoteModifications.map { it.model.page }.toSet()
-            val filteredLocalMutations = localMutations.filter { local ->
-                remotePages.contains(local.model.page).not() && remoteIDs.contains(local.remoteID).not()
-            }
-            logger.d { "Filtered local mutations from ${localMutations.size} to ${filteredLocalMutations.size}" }
+            // Use ConflictDetector to detect conflicts
+            val conflictDetector = ConflictDetector(remoteModifications, localMutations)
+            val conflictDetectionResult = conflictDetector.getConflicts()
+            
+            logger.d { "Conflict detection completed: ${conflictDetectionResult.conflictGroups.size} conflict groups, " +
+                "${conflictDetectionResult.otherRemoteMutations.size} non-conflicting remote mutations, " +
+                "${conflictDetectionResult.otherLocalMutations.size} non-conflicting local mutations" }
 
-            val pushMutationsResult = pushLocalMutations(filteredLocalMutations, updatedModificationDate)
+            // Use ConflictResolver to resolve conflicts
+            val conflictResolver = ConflictResolver(conflictDetectionResult.conflictGroups)
+            val conflictResolutionResult = conflictResolver.resolve()
+            
+            logger.d { "Conflict resolution completed: ${conflictResolutionResult.mutationsToPersist.size} mutations to persist, " +
+                "${conflictResolutionResult.mutationsToPush.size} mutations to push" }
+
+            // Combine non-conflicting local mutations from detector with mutations to push from resolver
+            val allLocalMutationsToPush = conflictDetectionResult.otherLocalMutations + conflictResolutionResult.mutationsToPush
+            
+            // Push all local mutations that need to be pushed
+            val pushMutationsResult = pushLocalMutations(allLocalMutationsToPush, updatedModificationDate)
             val pushedRemoteMutations = pushMutationsResult.mutations
-            logger.d { "Pushed ${filteredLocalMutations.size} local mutations, received ${pushedRemoteMutations.size} pushed remote mutations" }
+            logger.d { "Pushed ${allLocalMutationsToPush.size} local mutations, received ${pushedRemoteMutations.size} pushed remote mutations" }
 
-            val mergedRemoteModelMutation = pushedRemoteMutations + remoteModifications
-            logger.d { "Merged remote mutations: ${mergedRemoteModelMutation.size} total" }
+            // Combine all remote mutations: non-conflicting from detector + mutations to persist from resolver + pushed mutations
+            val allRemoteMutations = conflictDetectionResult.otherRemoteMutations + 
+                conflictResolutionResult.mutationsToPersist + 
+                pushedRemoteMutations
+            logger.d { "Combined remote mutations: ${allRemoteMutations.size} total" }
 
-            logger.i { "Sync operation completed, notifying result with ${mergedRemoteModelMutation.size} remote mutations and ${localMutations.size} local mutations" }
+            logger.i { "Sync operation completed, notifying result with ${allRemoteMutations.size} remote mutations and ${localMutations.size} local mutations" }
             bookmarksConfigurations.resultNotifier.didSucceed(
                 pushMutationsResult.lastModificationDate,
-                mergedRemoteModelMutation,
+                allRemoteMutations,
                 localMutations
             )
         } catch (e: Exception) {
             logger.e(e) { "Sync operation failed: ${e.message}" }
             bookmarksConfigurations.resultNotifier.didFail("Sync operation failed: ${e.message}")
         }
-    }
-
-    private suspend fun detectConflicts(
-        remoteModelMutation: List<RemoteModelMutation<PageBookmark>>,
-        localModelMutation: List<LocalModelMutation<PageBookmark>>){
     }
 
     private suspend fun fetchRemoteModifications(lastModificationDate: Long): MutationsResponse {
