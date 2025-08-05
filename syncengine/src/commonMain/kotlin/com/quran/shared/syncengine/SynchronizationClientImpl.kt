@@ -3,6 +3,7 @@ package com.quran.shared.syncengine
 import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
+import com.quran.shared.mutations.Mutation
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,7 +42,7 @@ internal class SynchronizationClientImpl(
             val lastModificationDate = bookmarksConfigurations.localModificationDateFetcher
                 .localLastModificationDate() ?: 0L
 
-            val localMutations = bookmarksConfigurations.localMutationsFetcher
+            val localMutations = bookmarksConfigurations.localDataFetcher
                 .fetchLocalMutations(lastModificationDate)
 
             val fetchRemoteModificationsResult = fetchRemoteModifications(lastModificationDate)
@@ -50,8 +51,13 @@ internal class SynchronizationClientImpl(
             val updatedModificationDate = fetchRemoteModificationsResult.lastModificationDate
             logger.d { "Fetched ${remoteModifications.size} remote modifications, updated modification date: $updatedModificationDate" }
 
+            // Preprocess remote mutations to filter out DELETE and MODIFIED mutations for non-existent local resources
+            val preprocessor = RemoteMutationsPreprocessor(bookmarksConfigurations.localDataFetcher)
+            val preprocessedRemoteMutations = preprocessor.preprocess(remoteModifications)
+            logger.d { "Preprocessed remote mutations: ${preprocessedRemoteMutations.size} out of ${remoteModifications.size} mutations" }
+
             // Use ConflictDetector to detect conflicts
-            val conflictDetector = ConflictDetector(remoteModifications, localMutations)
+            val conflictDetector = ConflictDetector(preprocessedRemoteMutations, localMutations)
             val conflictDetectionResult = conflictDetector.getConflicts()
             
             logger.d { "Conflict detection completed: ${conflictDetectionResult.conflictGroups.size} conflict groups, " +

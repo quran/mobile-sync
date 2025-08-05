@@ -43,11 +43,16 @@ class SynchronizationClientIntegrationTest {
         }
     }
 
-    private fun createLocalMutationsFetcher(mutations: List<LocalModelMutation<PageBookmark>>): LocalMutationsFetcher<PageBookmark> {
-        return object : LocalMutationsFetcher<PageBookmark> {
+    private fun createLocalMutationsFetcher(mutations: List<LocalModelMutation<PageBookmark>>): LocalDataFetcher<PageBookmark> {
+        return object : LocalDataFetcher<PageBookmark> {
             override suspend fun fetchLocalMutations(lastModified: Long): List<LocalModelMutation<PageBookmark>> {
                 println("Mock fetcher called with lastModified: $lastModified")
                 return mutations
+            }
+            
+            override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> {
+                // Mock implementation - return true for all remote IDs for testing
+                return remoteIDs.associateWith { true }
             }
         }
     }
@@ -95,12 +100,12 @@ class SynchronizationClientIntegrationTest {
     }
 
     private fun createBookmarksConfigurations(
-        localMutationsFetcher: LocalMutationsFetcher<PageBookmark>,
+        localDataFetcher: LocalDataFetcher<PageBookmark>,
         resultNotifier: ResultNotifier<PageBookmark>,
         localModificationDateFetcher: LocalModificationDateFetcher
     ): PageBookmarksSynchronizationConfigurations {
         return PageBookmarksSynchronizationConfigurations(
-            localMutationsFetcher = localMutationsFetcher,
+            localDataFetcher = localDataFetcher,
             resultNotifier = resultNotifier,
             localModificationDateFetcher = localModificationDateFetcher
         )
@@ -135,7 +140,7 @@ class SynchronizationClientIntegrationTest {
         )
         
         val bookmarksConfigurations = createBookmarksConfigurations(
-            localMutationsFetcher = localMutationsFetcher,
+            localDataFetcher = localMutationsFetcher,
             resultNotifier = resultNotifier,
             localModificationDateFetcher = localModificationDateFetcher
         )
@@ -198,7 +203,7 @@ class SynchronizationClientIntegrationTest {
         )
         
         val bookmarksConfigurations = createBookmarksConfigurations(
-            localMutationsFetcher = localMutationsFetcher,
+            localDataFetcher = localMutationsFetcher,
             resultNotifier = resultNotifier,
             localModificationDateFetcher = localModificationDateFetcher
         )

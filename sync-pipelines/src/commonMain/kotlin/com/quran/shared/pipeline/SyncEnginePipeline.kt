@@ -6,7 +6,7 @@ import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.repository.PageBookmarksSynchronizationRepository
 import com.quran.shared.syncengine.AuthenticationDataFetcher
 import com.quran.shared.syncengine.LocalModificationDateFetcher
-import com.quran.shared.syncengine.LocalMutationsFetcher
+import com.quran.shared.syncengine.LocalDataFetcher
 import com.quran.shared.syncengine.PageBookmark
 import com.quran.shared.syncengine.PageBookmarksSynchronizationConfigurations
 import com.quran.shared.syncengine.ResultNotifier
@@ -34,7 +34,7 @@ public class SyncEnginePipeline(
         val bookmarksConf = PageBookmarksSynchronizationConfigurations(
             localModificationDateFetcher = localModificationDateFetcher,
             resultNotifier = ResultReceiver(bookmarksRepository, callback),
-            localMutationsFetcher = RepositoryReader(bookmarksRepository)
+            localDataFetcher = RepositoryDataFetcher(bookmarksRepository)
         )
         val syncClient = SynchronizationClientBuilder.build(
             environment = environment,
@@ -52,7 +52,7 @@ public class SyncEnginePipeline(
     }
 }
 
-private class RepositoryReader(val bookmarksRepository: PageBookmarksSynchronizationRepository): LocalMutationsFetcher<PageBookmark> {
+private class RepositoryDataFetcher(val bookmarksRepository: PageBookmarksSynchronizationRepository): LocalDataFetcher<PageBookmark> {
 
     override suspend fun fetchLocalMutations(lastModified: Long): List<LocalModelMutation<PageBookmark>> {
         return bookmarksRepository.fetchMutatedBookmarks().map { repoMutation ->
@@ -63,6 +63,13 @@ private class RepositoryReader(val bookmarksRepository: PageBookmarksSynchroniza
                 mutation = repoMutation.mutation
             )
         }
+    }
+
+    override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> {
+        // Empty implementation - returns false for all remote IDs
+        // This means all DELETE and MODIFIED mutations will be filtered out
+        // TODO: Implement actual persistence-based existence checking
+        return remoteIDs.associateWith { false }
     }
 }
 
