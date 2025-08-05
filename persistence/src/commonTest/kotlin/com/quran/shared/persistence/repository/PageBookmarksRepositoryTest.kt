@@ -509,6 +509,46 @@ class PageBookmarksRepositoryTest {
         assertEquals(dbBookmarks[0].local_id.toString(), bookmark.localId)
     }
 
+    @Test
+    fun `test remoteResourcesExist returns correct existence map`() = runTest {
+        // Arrange
+        // Add some remote bookmarks
+        repository.addPageBookmark(1) // This will be local
+        repository.addPageBookmark(2) // This will be local
+        
+        // Simulate remote bookmarks by directly persisting them
+        // Note: In a real scenario, these would come from applyRemoteChanges
+        val remoteBookmark1 = RemoteModelMutation(
+            model = PageBookmark(3, 1000L, null),
+            remoteID = "remote-1",
+            mutation = Mutation.CREATED
+        )
+        val remoteBookmark2 = RemoteModelMutation(
+            model = PageBookmark(4, 1000L, null),
+            remoteID = "remote-2",
+            mutation = Mutation.CREATED
+        )
+        
+        syncRepository.applyRemoteChanges(listOf(remoteBookmark1, remoteBookmark2), emptyList())
+        
+        // Act & Assert - Test with existing and non-existing remote IDs
+        val existenceMap = syncRepository.remoteResourcesExist(listOf("remote-1", "remote-2", "non-existent"))
+        assertEquals(3, existenceMap.size, "Should return existence for all requested remote IDs")
+        assertTrue(existenceMap["remote-1"] == true, "remote-1 should exist")
+        assertTrue(existenceMap["remote-2"] == true, "remote-2 should exist")
+        assertTrue(existenceMap["non-existent"] == false, "non-existent should not exist")
+        
+        // Test with empty list
+        val emptyExistenceMap = syncRepository.remoteResourcesExist(emptyList())
+        assertTrue(emptyExistenceMap.isEmpty(), "Should return empty map for empty input")
+        
+        // Test with only non-existent remote IDs
+        val nonExistentExistenceMap = syncRepository.remoteResourcesExist(listOf("non-existent-1", "non-existent-2"))
+        assertEquals(2, nonExistentExistenceMap.size, "Should return existence for all requested remote IDs")
+        assertTrue(nonExistentExistenceMap["non-existent-1"] == false, "non-existent-1 should not exist")
+        assertTrue(nonExistentExistenceMap["non-existent-2"] == false, "non-existent-2 should not exist")
+    }
+    
     private fun createInMemoryDatabase(): QuranDatabase {
         // Create in-memory database using platform-specific driver
         // Due to differences to how schema is handled between iOS and

@@ -66,10 +66,7 @@ private class RepositoryDataFetcher(val bookmarksRepository: PageBookmarksSynchr
     }
 
     override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> {
-        // Empty implementation - returns false for all remote IDs
-        // This means all DELETE and MODIFIED mutations will be filtered out
-        // TODO: Implement actual persistence-based existence checking
-        return remoteIDs.associateWith { false }
+        return bookmarksRepository.remoteResourcesExist(remoteIDs)
     }
 }
 

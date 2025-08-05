@@ -28,6 +28,8 @@ interface PageBookmarksSynchronizationRepository {
      */
     suspend fun applyRemoteChanges(updatesToPersist: List<RemoteModelMutation<PageBookmark>>,
                                    localMutationsToClear: List<LocalModelMutation<PageBookmark>>)
+
+    suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean>
 }
 
 interface PageBookmarksRepository {

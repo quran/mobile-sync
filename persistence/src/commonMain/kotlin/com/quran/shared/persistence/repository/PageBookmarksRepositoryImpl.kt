@@ -99,4 +99,21 @@ class PageBookmarksRepositoryImpl(
             }
         }
     }
+
+    override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> {
+        if (remoteIDs.isEmpty()) {
+            return emptyMap()
+        }
+
+        return withContext(Dispatchers.IO) {
+            val existentIDs = database.bookmarksQueries.checkRemoteIDsExistence(remoteIDs)
+                .executeAsList()
+                .map { it.remote_id }
+                .toSet()
+
+            remoteIDs.map { Pair(it, existentIDs.contains(it)) }
+                .associateBy { it.first }
+                .mapValues { it.value.second }
+        }
+    }
 }
