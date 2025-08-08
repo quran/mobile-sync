@@ -157,9 +157,7 @@ class PostMutationsRequest(
             val mutation = when (postMutation.type) {
                 "CREATE" -> Mutation.CREATED
                 "DELETE" -> Mutation.DELETED
-                // The server may still respond with UPDATE mutation types. They are not expected
-                // for bookmarks.
-                "UPDATE" -> Mutation.CREATED
+                "UPDATE" -> Mutation.MODIFIED
                 else -> {
                     logger.e { "Unknown mutation type: ${postMutation.type}" }
                     throw IllegalArgumentException("Unknown mutation type: ${postMutation.type}")

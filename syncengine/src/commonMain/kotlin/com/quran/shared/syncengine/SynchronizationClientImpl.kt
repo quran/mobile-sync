@@ -2,8 +2,8 @@ package com.quran.shared.syncengine
 
 import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.LocalModelMutation
-import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.mutations.Mutation
+import com.quran.shared.mutations.RemoteModelMutation
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -51,9 +51,24 @@ internal class SynchronizationClientImpl(
             val updatedModificationDate = fetchRemoteModificationsResult.lastModificationDate
             logger.d { "Fetched ${remoteModifications.size} remote modifications, updated modification date: $updatedModificationDate" }
 
+            // Convert UPDATE mutations to CREATE mutations as a quick fix for BE errors
+            val convertedRemoteMutations = remoteModifications.map { remoteMutation ->
+                if (remoteMutation.mutation == Mutation.MODIFIED) {
+                    logger.d { "Converting UPDATE mutation to CREATE for resource ${remoteMutation.remoteID}" }
+                    RemoteModelMutation(
+                        model = remoteMutation.model,
+                        remoteID = remoteMutation.remoteID,
+                        mutation = Mutation.CREATED
+                    )
+                } else {
+                    remoteMutation
+                }
+            }
+            logger.d { "Converted ${remoteModifications.count { it.mutation == Mutation.MODIFIED }} UPDATE mutations to CREATE mutations" }
+
             // Preprocess remote mutations to filter out DELETE and MODIFIED mutations for non-existent local resources
             val preprocessor = RemoteMutationsPreprocessor(bookmarksConfigurations.localDataFetcher)
-            val preprocessedRemoteMutations = preprocessor.preprocess(remoteModifications)
+            val preprocessedRemoteMutations = preprocessor.preprocess(convertedRemoteMutations)
             logger.d { "Preprocessed remote mutations: ${preprocessedRemoteMutations.size} out of ${remoteModifications.size} mutations" }
 
             // Use ConflictDetector to detect conflicts
@@ -79,10 +94,25 @@ internal class SynchronizationClientImpl(
             val pushedRemoteMutations = pushMutationsResult.mutations
             logger.d { "Pushed ${allLocalMutationsToPush.size} local mutations, received ${pushedRemoteMutations.size} pushed remote mutations" }
 
+            // Convert UPDATE mutations to CREATE mutations in pushed remote mutations as well
+            val convertedPushedRemoteMutations = pushedRemoteMutations.map { remoteMutation ->
+                if (remoteMutation.mutation == Mutation.MODIFIED) {
+                    logger.d { "Converting pushed UPDATE mutation to CREATE for resource ${remoteMutation.remoteID}" }
+                    RemoteModelMutation(
+                        model = remoteMutation.model,
+                        remoteID = remoteMutation.remoteID,
+                        mutation = Mutation.CREATED
+                    )
+                } else {
+                    remoteMutation
+                }
+            }
+            logger.d { "Converted ${pushedRemoteMutations.count { it.mutation == Mutation.MODIFIED }} pushed UPDATE mutations to CREATE mutations" }
+
             // Combine all remote mutations: non-conflicting from detector + mutations to persist from resolver + pushed mutations
             val allRemoteMutations = conflictDetectionResult.otherRemoteMutations + 
                 conflictResolutionResult.mutationsToPersist + 
-                pushedRemoteMutations
+                convertedPushedRemoteMutations
             logger.d { "Combined remote mutations: ${allRemoteMutations.size} total" }
 
             logger.i { "Sync operation completed, notifying result with ${allRemoteMutations.size} remote mutations and ${localMutations.size} local mutations" }

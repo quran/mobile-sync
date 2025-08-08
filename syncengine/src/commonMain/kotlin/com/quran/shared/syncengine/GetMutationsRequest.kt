@@ -113,7 +113,7 @@ class GetMutationsRequest(
             val mutation = when (apiMutation.type) {
                 "CREATE" -> Mutation.CREATED
                 "DELETE" -> Mutation.DELETED
-                "UPDATE" -> Mutation.MODIFIED
+                "UPDATE" -> Mutation.CREATED 
                 else -> {
                     logger.e { "Unknown mutation type: ${apiMutation.type}" }
                     throw IllegalArgumentException("Unknown mutation type: ${apiMutation.type}")
