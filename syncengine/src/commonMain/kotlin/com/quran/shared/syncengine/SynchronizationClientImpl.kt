@@ -38,91 +38,27 @@ internal class SynchronizationClientImpl(
 
     private suspend fun startSyncOperation() {
         try {
-            logger.i { "Starting sync operation" }
-            val lastModificationDate = bookmarksConfigurations.localModificationDateFetcher
-                .localLastModificationDate() ?: 0L
-
-            val localMutations = bookmarksConfigurations.localDataFetcher
-                .fetchLocalMutations(lastModificationDate)
-
-            val fetchRemoteModificationsResult = fetchRemoteModifications(lastModificationDate)
-
-            val remoteModifications = fetchRemoteModificationsResult.mutations
-            val updatedModificationDate = fetchRemoteModificationsResult.lastModificationDate
-            logger.d { "Fetched ${remoteModifications.size} remote modifications, updated modification date: $updatedModificationDate" }
-
-            // Convert UPDATE mutations to CREATE mutations as a quick fix for BE errors
-            val convertedRemoteMutations = remoteModifications.map { remoteMutation ->
-                if (remoteMutation.mutation == Mutation.MODIFIED) {
-                    logger.d { "Converting UPDATE mutation to CREATE for resource ${remoteMutation.remoteID}" }
-                    RemoteModelMutation(
-                        model = remoteMutation.model,
-                        remoteID = remoteMutation.remoteID,
-                        mutation = Mutation.CREATED
+            logger.i { "Starting sync operation pipeline" }
+            
+            val pipeline = PageBookmarksSynchronizationExecutor()
+            pipeline.executePipeline(
+                fetchLocal = { initializePipeline() },
+                fetchRemote = { lastModificationDate -> fetchRemoteModificationsPipeline(lastModificationDate) },
+                checkLocalExistence = { remoteIDs -> checkLocalExistence(remoteIDs) },
+                pushLocal = { mutations, lastModificationDate -> pushMutationsPipeline(mutations, lastModificationDate) },
+                deliverResult = { result -> 
+                    logger.d { "Pipeline Step 10: Complete - Notifying success" }
+                    logger.i { "Sync operation pipeline completed successfully with ${result.remoteMutations.size} remote mutations and ${result.localMutations.size} local mutations" }
+                    bookmarksConfigurations.resultNotifier.didSucceed(
+                        result.lastModificationDate,
+                        result.remoteMutations,
+                        result.localMutations
                     )
-                } else {
-                    remoteMutation
                 }
-            }
-            logger.d { "Converted ${remoteModifications.count { it.mutation == Mutation.MODIFIED }} UPDATE mutations to CREATE mutations" }
-
-            // Preprocess remote mutations to filter out DELETE and MODIFIED mutations for non-existent local resources
-            val preprocessor = RemoteMutationsPreprocessor(bookmarksConfigurations.localDataFetcher)
-            val preprocessedRemoteMutations = preprocessor.preprocess(convertedRemoteMutations)
-            logger.d { "Preprocessed remote mutations: ${preprocessedRemoteMutations.size} out of ${remoteModifications.size} mutations" }
-
-            // Use ConflictDetector to detect conflicts
-            val conflictDetector = ConflictDetector(preprocessedRemoteMutations, localMutations)
-            val conflictDetectionResult = conflictDetector.getConflicts()
-            
-            logger.d { "Conflict detection completed: ${conflictDetectionResult.conflictGroups.size} conflict groups, " +
-                "${conflictDetectionResult.otherRemoteMutations.size} non-conflicting remote mutations, " +
-                "${conflictDetectionResult.otherLocalMutations.size} non-conflicting local mutations" }
-
-            // Use ConflictResolver to resolve conflicts
-            val conflictResolver = ConflictResolver(conflictDetectionResult.conflictGroups)
-            val conflictResolutionResult = conflictResolver.resolve()
-            
-            logger.d { "Conflict resolution completed: ${conflictResolutionResult.mutationsToPersist.size} mutations to persist, " +
-                "${conflictResolutionResult.mutationsToPush.size} mutations to push" }
-
-            // Combine non-conflicting local mutations from detector with mutations to push from resolver
-            val allLocalMutationsToPush = conflictDetectionResult.otherLocalMutations + conflictResolutionResult.mutationsToPush
-            
-            // Push all local mutations that need to be pushed
-            val pushMutationsResult = pushLocalMutations(allLocalMutationsToPush, updatedModificationDate)
-            val pushedRemoteMutations = pushMutationsResult.mutations
-            logger.d { "Pushed ${allLocalMutationsToPush.size} local mutations, received ${pushedRemoteMutations.size} pushed remote mutations" }
-
-            // Convert UPDATE mutations to CREATE mutations in pushed remote mutations as well
-            val convertedPushedRemoteMutations = pushedRemoteMutations.map { remoteMutation ->
-                if (remoteMutation.mutation == Mutation.MODIFIED) {
-                    logger.d { "Converting pushed UPDATE mutation to CREATE for resource ${remoteMutation.remoteID}" }
-                    RemoteModelMutation(
-                        model = remoteMutation.model,
-                        remoteID = remoteMutation.remoteID,
-                        mutation = Mutation.CREATED
-                    )
-                } else {
-                    remoteMutation
-                }
-            }
-            logger.d { "Converted ${pushedRemoteMutations.count { it.mutation == Mutation.MODIFIED }} pushed UPDATE mutations to CREATE mutations" }
-
-            // Combine all remote mutations: non-conflicting from detector + mutations to persist from resolver + pushed mutations
-            val allRemoteMutations = conflictDetectionResult.otherRemoteMutations + 
-                conflictResolutionResult.mutationsToPersist + 
-                convertedPushedRemoteMutations
-            logger.d { "Combined remote mutations: ${allRemoteMutations.size} total" }
-
-            logger.i { "Sync operation completed, notifying result with ${allRemoteMutations.size} remote mutations and ${localMutations.size} local mutations" }
-            bookmarksConfigurations.resultNotifier.didSucceed(
-                pushMutationsResult.lastModificationDate,
-                allRemoteMutations,
-                localMutations
             )
+            
         } catch (e: Exception) {
-            logger.e(e) { "Sync operation failed: ${e.message}" }
+            logger.e(e) { "Sync operation pipeline failed: ${e.message}" }
             bookmarksConfigurations.resultNotifier.didFail("Sync operation failed: ${e.message}")
         }
     }
@@ -156,5 +92,38 @@ internal class SynchronizationClientImpl(
             logger.d { "Authentication headers fetched, count: ${this.authHeaders?.size ?: 0}" }
         }
         return this.authHeaders ?: mapOf()
-     }
+    }
+
+    // Pipeline Step Methods (now simplified to work with PageBookmarksSynchronizationExecutor)
+    private suspend fun initializePipeline(): PageBookmarksSynchronizationExecutor.PipelineInitData {
+        logger.d { "Pipeline Step 1: Initialize - Getting last modification date and local mutations" }
+        val lastModificationDate = bookmarksConfigurations.localModificationDateFetcher
+            .localLastModificationDate() ?: 0L
+        val localMutations = bookmarksConfigurations.localDataFetcher
+            .fetchLocalMutations(lastModificationDate)
+        logger.d { "Initialized with lastModificationDate=$lastModificationDate, localMutations=${localMutations.size}" }
+        return PageBookmarksSynchronizationExecutor.PipelineInitData(lastModificationDate, localMutations)
+    }
+
+    private suspend fun fetchRemoteModificationsPipeline(lastModificationDate: Long): PageBookmarksSynchronizationExecutor.FetchedRemoteData {
+        logger.d { "Pipeline Step 2: Fetch - Getting remote modifications from server" }
+        val result = fetchRemoteModifications(lastModificationDate)
+        logger.d { "Fetched ${result.mutations.size} remote modifications, updated modification date: ${result.lastModificationDate}" }
+        return PageBookmarksSynchronizationExecutor.FetchedRemoteData(result.mutations, result.lastModificationDate)
+    }
+
+    private suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> {
+        logger.d { "Pipeline Step 4: Preprocess - Checking local existence for ${remoteIDs.size} remote IDs" }
+        return bookmarksConfigurations.localDataFetcher.checkLocalExistence(remoteIDs)
+    }
+
+    private suspend fun pushMutationsPipeline(
+        localMutations: List<LocalModelMutation<PageBookmark>>,
+        lastModificationDate: Long
+    ): PageBookmarksSynchronizationExecutor.PushResultData {
+        logger.d { "Pipeline Step 7: Push - Sending local mutations to server" }
+        val result = pushLocalMutations(localMutations, lastModificationDate)
+        logger.d { "Pushed ${localMutations.size} local mutations, received ${result.mutations.size} pushed remote mutations" }
+        return PageBookmarksSynchronizationExecutor.PushResultData(result.mutations, result.lastModificationDate)
+    }
 }
