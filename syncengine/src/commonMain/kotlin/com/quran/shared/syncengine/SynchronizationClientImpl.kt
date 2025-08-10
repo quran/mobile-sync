@@ -47,7 +47,7 @@ internal class SynchronizationClientImpl(
                 checkLocalExistence = { remoteIDs -> checkLocalExistence(remoteIDs) },
                 pushLocal = { mutations, lastModificationDate -> pushMutationsPipeline(mutations, lastModificationDate) },
                 deliverResult = { result -> 
-                    logger.d { "Pipeline Step 10: Complete - Notifying success" }
+                    logger.d { "Pipeline Step 11: Complete - Notifying success" }
                     logger.i { "Sync operation pipeline completed successfully with ${result.remoteMutations.size} remote mutations and ${result.localMutations.size} local mutations" }
                     bookmarksConfigurations.resultNotifier.didSucceed(
                         result.lastModificationDate,

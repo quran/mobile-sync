@@ -53,42 +53,45 @@ class PageBookmarksSynchronizationExecutor {
         // Step 1: Initialize - Get last modification date and local mutations
         val pipelineData = fetchLocal()
         
-        // Step 2: Fetch - Get remote modifications from server
+        // Step 2: Preprocess - Filter local mutations to remove bad states
+        val preprocessedLocalMutations = preprocessLocalMutations(pipelineData.localMutations)
+        
+        // Step 3: Fetch - Get remote modifications from server
         val fetchedData = fetchRemote(pipelineData.lastModificationDate)
         
-        // Step 3: Transform - Convert UPDATE mutations to CREATE mutations
+        // Step 4: Transform - Convert UPDATE mutations to CREATE mutations
         val transformedRemoteMutations = transformRemoteMutations(fetchedData.remoteMutations)
         
-        // Step 4: Preprocess - Filter remote mutations based on local existence
+        // Step 5: Preprocess - Filter remote mutations based on local existence
         val preprocessedRemoteMutations = preprocessRemoteMutations(transformedRemoteMutations, checkLocalExistence)
         
-        // Step 5: Detect - Find conflicts between local and remote mutations
-        val conflictDetectionResult = detectConflicts(preprocessedRemoteMutations, pipelineData.localMutations)
+        // Step 6: Detect - Find conflicts between local and remote mutations
+        val conflictDetectionResult = detectConflicts(preprocessedRemoteMutations, preprocessedLocalMutations)
         
-        // Step 6: Resolve - Resolve detected conflicts
+        // Step 7: Resolve - Resolve detected conflicts
         val conflictResolutionResult = resolveConflicts(conflictDetectionResult.conflictGroups)
         
-        // Step 7: Push - Send local mutations to server
+        // Step 8: Push - Send local mutations to server
         val pushResult = pushLocal(
             conflictDetectionResult.otherLocalMutations + conflictResolutionResult.mutationsToPush,
             fetchedData.lastModificationDate
         )
         
-        // Step 8: Transform Pushed - Convert UPDATE mutations in push response
+        // Step 9: Transform Pushed - Convert UPDATE mutations in push response
         val transformedPushedMutations = transformRemoteMutations(pushResult.pushedMutations)
         
-        // Step 9: Combine - Merge all remote mutations
+        // Step 10: Combine - Merge all remote mutations
         val finalRemoteMutations = combineRemoteMutations(
             conflictDetectionResult.otherRemoteMutations,
             conflictResolutionResult.mutationsToPersist,
             transformedPushedMutations
         )
         
-        // Step 10: Complete - Create and deliver result
+        // Step 11: Complete - Create and deliver result
         val result = PipelineResult(
             lastModificationDate = pushResult.lastModificationDate,
             remoteMutations = finalRemoteMutations,
-            localMutations = pipelineData.localMutations
+            localMutations = preprocessedLocalMutations
         )
         
         deliverResult(result)
@@ -96,6 +99,13 @@ class PageBookmarksSynchronizationExecutor {
     }
 
     // Pure business logic methods (no external dependencies)
+    
+    private fun preprocessLocalMutations(
+        localMutations: List<LocalModelMutation<PageBookmark>>
+    ): List<LocalModelMutation<PageBookmark>> {
+        val preprocessor = LocalMutationsPreprocessor<PageBookmark>()
+        return preprocessor.preprocess(localMutations) { it.page }
+    }
     
     private suspend fun preprocessRemoteMutations(
         remoteMutations: List<RemoteModelMutation<PageBookmark>>,
