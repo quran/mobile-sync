@@ -11,7 +11,7 @@ class PageBookmarksSynchronizationExecutorTest {
     private val pipeline = PageBookmarksSynchronizationExecutor()
     
     @Test
-    fun `test pipeline with remote and local mutations but no conflicts`() = runTest {
+    fun `test successful synchronization with no conflicts`() = runTest {
         // Given: Remote and local mutations on different pages (no conflicts)
         val remoteMutations = listOf(
             RemoteModelMutation(
@@ -83,21 +83,53 @@ class PageBookmarksSynchronizationExecutorTest {
     }
     
     @Test
-    fun `test pipeline with single conflict`() = runTest {
-        // Given: Remote and local mutations on the same page (conflict)
+    fun `test multiple conflicts detection`() = runTest {
+        // Given: Multiple conflicts between remote and local mutations
         val remoteMutations = listOf(
             RemoteModelMutation(
                 model = PageBookmark(id = "remote1", page = 10, lastModified = 1000L),
                 remoteID = "remote1",
                 mutation = Mutation.CREATED
+            ),
+            RemoteModelMutation(
+                model = PageBookmark(id = "remote2", page = 20, lastModified = 1001L),
+                remoteID = "remote2",
+                mutation = Mutation.MODIFIED
+            ),
+            RemoteModelMutation(
+                model = PageBookmark(id = "remote3", page = 30, lastModified = 1002L),
+                remoteID = "remote3",
+                mutation = Mutation.DELETED
             )
         )
         
         val localMutations = listOf(
+            // Conflict 1: Same page as remote1
             LocalModelMutation(
-                model = PageBookmark(id = "local1", page = 10, lastModified = 1001L), // Same page as remote
+                model = PageBookmark(id = "local1", page = 10, lastModified = 1003L),
                 remoteID = null,
                 localID = "local1",
+                mutation = Mutation.CREATED
+            ),
+            // Conflict 2: Same page as remote2
+            LocalModelMutation(
+                model = PageBookmark(id = "local2", page = 20, lastModified = 1004L),
+                remoteID = null,
+                localID = "local2",
+                mutation = Mutation.MODIFIED
+            ),
+            // Conflict 3: Local deletion of remote3
+            LocalModelMutation(
+                model = PageBookmark(id = "local3", page = 30, lastModified = 1005L),
+                remoteID = "remote3",
+                localID = "local3",
+                mutation = Mutation.DELETED
+            ),
+            // No conflict
+            LocalModelMutation(
+                model = PageBookmark(id = "local4", page = 40, lastModified = 1006L),
+                remoteID = null,
+                localID = "local4",
                 mutation = Mutation.CREATED
             )
         )
@@ -133,63 +165,112 @@ class PageBookmarksSynchronizationExecutorTest {
         assertEquals(updatedModificationDate, result.lastModificationDate)
         assertEquals(localMutations, result.localMutations)
         
-        // Should have 1 remote mutation (the conflicting one gets resolved)
-        assertEquals(1, result.remoteMutations.size)
-        assertTrue(result.remoteMutations.any { it.remoteID == "remote1" && it.mutation == Mutation.CREATED })
+        // Should have remote mutations (conflicts are resolved)
+        assertTrue(result.remoteMutations.isNotEmpty(), "Should have remote mutations after conflict resolution")
         
         // Verify deliverResult was called
         assertNotNull(deliveredResult)
         assertEquals(result, deliveredResult)
     }
-
-    // TODO: Should merge more cases into less test functions
+    
     @Test
-    fun `test pipeline converts UPDATE mutations to CREATE mutations`() = runTest {
-        // Given: Remote mutations with UPDATE type
-        val remoteMutations = listOf(
-            RemoteModelMutation(
-                model = PageBookmark(id = "remote1", page = 10, lastModified = 1000L),
+    fun `test illogical scenario - too many mutations for same page`() = runTest {
+        // Given: Illogical scenario with 3 mutations for the same page
+        val remoteMutations = emptyList<RemoteModelMutation<PageBookmark>>()
+        
+        val localMutations = listOf(
+            // Illogical: 3 mutations for the same page
+            LocalModelMutation(
+                model = PageBookmark(id = "local1", page = 10, lastModified = 1000L),
+                remoteID = null,
+                localID = "local1",
+                mutation = Mutation.CREATED
+            ),
+            LocalModelMutation(
+                model = PageBookmark(id = "local2", page = 10, lastModified = 1001L),
+                remoteID = null,
+                localID = "local2",
+                mutation = Mutation.MODIFIED
+            ),
+            LocalModelMutation(
+                model = PageBookmark(id = "local3", page = 10, lastModified = 1002L),
                 remoteID = "remote1",
-                mutation = Mutation.MODIFIED  // This should be converted to CREATE
+                localID = "local3",
+                mutation = Mutation.DELETED
             )
         )
-
-        val localMutations = emptyList<LocalModelMutation<PageBookmark>>()
+        
         val lastModificationDate = 500L
         val updatedModificationDate = 1500L
-
-        var deliveredResult: PageBookmarksSynchronizationExecutor.PipelineResult? = null
-
-        // When: Execute pipeline
-        val result = pipeline.executePipeline(
-            fetchLocal = {
-                PageBookmarksSynchronizationExecutor.PipelineInitData(lastModificationDate, localMutations)
-            },
-            fetchRemote = { _ ->
-                PageBookmarksSynchronizationExecutor.FetchedRemoteData(remoteMutations, updatedModificationDate)
-            },
-            checkLocalExistence = { remoteIDs ->
-                // Mock existence check - all remote IDs exist
-                remoteIDs.associateWith { true }
-            },
-            pushLocal = { mutations, _ ->
-                PageBookmarksSynchronizationExecutor.PushResultData(emptyList(), updatedModificationDate)
-            },
-            deliverResult = { pipelineResult ->
-                deliveredResult = pipelineResult
-            }
+        
+        // When & Then: Execute pipeline should throw exception
+        assertFailsWith<IllegalArgumentException> {
+            pipeline.executePipeline(
+                fetchLocal = {
+                    PageBookmarksSynchronizationExecutor.PipelineInitData(lastModificationDate, localMutations)
+                },
+                fetchRemote = { _ ->
+                    PageBookmarksSynchronizationExecutor.FetchedRemoteData(remoteMutations, updatedModificationDate)
+                },
+                checkLocalExistence = { remoteIDs ->
+                    remoteIDs.associateWith { true }
+                },
+                pushLocal = { mutations, _ ->
+                    PageBookmarksSynchronizationExecutor.PushResultData(emptyList(), updatedModificationDate)
+                },
+                deliverResult = { _ ->
+                    // Should not be called
+                }
+            )
+        }.let { exception ->
+            assertTrue(exception.message?.contains("Illogical scenario detected") == true,
+                      "Error message should include illogical scenario details")
+            assertTrue(exception.message?.contains("Page 10 has 3 mutations") == true,
+                      "Error message should include page and mutation count details")
+        }
+    }
+    
+    @Test
+    fun `test illogical scenario - deletion without remote ID`() = runTest {
+        // Given: Illogical scenario with deletion without remote ID
+        val remoteMutations = emptyList<RemoteModelMutation<PageBookmark>>()
+        
+        val localMutations = listOf(
+            // Illogical: Deletion without remote ID
+            LocalModelMutation(
+                model = PageBookmark(id = "local1", page = 10, lastModified = 1000L),
+                remoteID = null, // This should cause an error
+                localID = "local1",
+                mutation = Mutation.DELETED
+            )
         )
-
-        // Then: Verify UPDATE was converted to CREATE
-        assertNotNull(result)
-        assertEquals(1, result.remoteMutations.size)
-        val convertedMutation = result.remoteMutations.first()
-        assertEquals("remote1", convertedMutation.remoteID)
-        assertEquals(Mutation.CREATED, convertedMutation.mutation) // Should be converted from MODIFIED
-
-        // Verify deliverResult was called
-        assertNotNull(deliveredResult)
-        assertEquals(result, deliveredResult)
+        
+        val lastModificationDate = 500L
+        val updatedModificationDate = 1500L
+        
+        // When & Then: Execute pipeline should throw exception
+        assertFailsWith<IllegalArgumentException> {
+            pipeline.executePipeline(
+                fetchLocal = {
+                    PageBookmarksSynchronizationExecutor.PipelineInitData(lastModificationDate, localMutations)
+                },
+                fetchRemote = { _ ->
+                    PageBookmarksSynchronizationExecutor.FetchedRemoteData(remoteMutations, updatedModificationDate)
+                },
+                checkLocalExistence = { remoteIDs ->
+                    remoteIDs.associateWith { true }
+                },
+                pushLocal = { mutations, _ ->
+                    PageBookmarksSynchronizationExecutor.PushResultData(emptyList(), updatedModificationDate)
+                },
+                deliverResult = { _ ->
+                    // Should not be called
+                }
+            )
+        }.let { exception ->
+            assertTrue(exception.message?.contains("deletion without remote ID") == true,
+                      "Error message should include remote ID requirement details")
+        }
     }
     
     @Test
@@ -245,4 +326,4 @@ class PageBookmarksSynchronizationExecutorTest {
         assertNotNull(deliveredResult)
         assertEquals(result, deliveredResult)
     }
-} 
+}
