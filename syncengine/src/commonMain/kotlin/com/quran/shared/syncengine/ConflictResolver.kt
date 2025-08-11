@@ -29,6 +29,30 @@ class ConflictResolver(private val conflictGroups: List<ConflictGroup<PageBookma
     }
 
     private fun processConflict(conflictGroup: ConflictGroup<PageBookmark>): ConflictResolutionResult<PageBookmark> {
+        // Check for illogical scenario: local creation vs remote deletion
+        if (conflictGroup.mustHave(Mutation.CREATED, MutationSide.LOCAL)
+            .and(Mutation.DELETED, MutationSide.REMOTE)
+            .only()) {
+            throw IllegalArgumentException(
+                "Illogical scenario detected: Local creation conflicts with remote deletion. " +
+                "This indicates the two sides were not in sync. " +
+                "Local mutations: ${conflictGroup.localMutations.map { "${it.mutation}(${it.localID})" }}, " +
+                "Remote mutations: ${conflictGroup.remoteMutations.map { "${it.mutation}(${it.remoteID})" }}"
+            )
+        }
+        
+        // Check for illogical scenario: local deletion vs remote creation
+        if (conflictGroup.mustHave(Mutation.DELETED, MutationSide.LOCAL)
+            .and(Mutation.CREATED, MutationSide.REMOTE)
+            .only()) {
+            throw IllegalArgumentException(
+                "Illogical scenario detected: Local deletion conflicts with remote creation. " +
+                "This indicates the two sides were not in sync. " +
+                "Local mutations: ${conflictGroup.localMutations.map { "${it.mutation}(${it.localID})" }}, " +
+                "Remote mutations: ${conflictGroup.remoteMutations.map { "${it.mutation}(${it.remoteID})" }}"
+            )
+        }
+        
         if (conflictGroup.mustHave(Mutation.CREATED, MutationSide.BOTH).only() ||
             conflictGroup.mustHave(Mutation.DELETED, MutationSide.BOTH).only() ||
             conflictGroup.mustHave(Mutation.DELETED, MutationSide.BOTH)

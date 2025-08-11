@@ -5,6 +5,8 @@ import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class ConflictResolverTest {
     
@@ -261,5 +263,83 @@ class ConflictResolverTest {
         // Verify all remote mutations are persisted
         val persistedRemoteIDs = result.mutationsToPersist.map { it.remoteID }.toSet()
         assertEquals(setOf("remote-1", "remote-2", "remote-3", "remote-4"), persistedRemoteIDs, "All remote mutations should be persisted")
+    }
+    
+    @Test
+    fun `resolve with local creation vs remote deletion should throw error`() {
+        // Given
+        val remoteDeleteMutation = RemoteModelMutation(
+            model = PageBookmark(id = "remote-1", page = 0, lastModified = 1000L),
+            remoteID = "remote-1",
+            mutation = Mutation.DELETED
+        )
+        val localCreateMutation = LocalModelMutation(
+            model = PageBookmark(id = "local-1", page = 10, lastModified = 1001L),
+            remoteID = null,
+            localID = "local-1",
+            mutation = Mutation.CREATED
+        )
+        val conflictGroup = ConflictGroup(
+            localMutations = listOf(localCreateMutation),
+            remoteMutations = listOf(remoteDeleteMutation)
+        )
+        val conflictResolver = ConflictResolver(listOf(conflictGroup))
+        
+        // When & Then
+        val exception = assertFailsWith<IllegalArgumentException> {
+            conflictResolver.resolve()
+        }
+        
+        assertTrue(
+            exception.message?.contains("Local creation conflicts with remote deletion") == true,
+            "Error message should mention local creation vs remote deletion conflict"
+        )
+        assertTrue(
+            exception.message?.contains("CREATED(local-1)") == true,
+            "Error message should include local mutation details"
+        )
+        assertTrue(
+            exception.message?.contains("DELETED(remote-1)") == true,
+            "Error message should include remote mutation details"
+        )
+    }
+    
+    @Test
+    fun `resolve with local deletion vs remote creation should throw error`() {
+        // Given
+        val remoteCreateMutation = RemoteModelMutation(
+            model = PageBookmark(id = "remote-1", page = 10, lastModified = 1000L),
+            remoteID = "remote-1",
+            mutation = Mutation.CREATED
+        )
+        val localDeleteMutation = LocalModelMutation(
+            model = PageBookmark(id = "local-1", page = 0, lastModified = 1001L),
+            remoteID = "remote-1",
+            localID = "local-1",
+            mutation = Mutation.DELETED
+        )
+        val conflictGroup = ConflictGroup(
+            localMutations = listOf(localDeleteMutation),
+            remoteMutations = listOf(remoteCreateMutation)
+        )
+        val conflictResolver = ConflictResolver(listOf(conflictGroup))
+        
+        // When & Then
+        val exception = assertFailsWith<IllegalArgumentException> {
+            conflictResolver.resolve()
+        }
+        
+        assertTrue(
+            exception.message?.contains("Local deletion conflicts with remote creation") == true,
+            "Error message should mention local deletion vs remote creation conflict"
+        )
+        assertTrue(
+            exception.message?.contains("DELETED(local-1)") == true,
+            "Error message should include local mutation details"
+        )
+        assertTrue(
+            exception.message?.contains("CREATED(remote-1)") == true,
+            "Error message should include remote mutation details"
+        )
     }
 }
