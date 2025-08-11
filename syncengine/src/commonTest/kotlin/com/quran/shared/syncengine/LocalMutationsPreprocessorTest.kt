@@ -49,7 +49,7 @@ class LocalMutationsPreprocessorTest {
         }
         
         assertTrue(exception.message?.contains("Page 1 has 4 mutations") == true)
-        assertTrue(exception.message?.contains("exceeds the maximum allowed limit of 2") == true)
+        assertTrue(exception.message?.contains("exceeds logical limit of 2") == true)
     }
     
     @Test
@@ -121,6 +121,113 @@ class LocalMutationsPreprocessorTest {
         assertEquals(listOf(1, 1, 2, 2), pages)
     }
     
+    @Test
+    fun `should throw error when there are two deletions for same page`() {
+        val deletion1 = createLocalMutationWithRemoteID(1, Mutation.DELETED, "remote1")
+        val deletion2 = createLocalMutationWithRemoteID(1, Mutation.DELETED, "remote2")
+        
+        val exception = assertFailsWith<IllegalArgumentException> {
+            preprocessor.preprocess(listOf(deletion1, deletion2)) { it.page }
+        }
+        
+        assertTrue(exception.message?.contains("Page 1 has 2 deletions") == true)
+        assertTrue(exception.message?.contains("which is not allowed") == true)
+    }
+    
+    @Test
+    fun `should throw error when there are two creations for same page`() {
+        val creation1 = createLocalMutation(1, Mutation.CREATED)
+        val creation2 = createLocalMutation(1, Mutation.CREATED)
+        
+        val exception = assertFailsWith<IllegalArgumentException> {
+            preprocessor.preprocess(listOf(creation1, creation2)) { it.page }
+        }
+        
+        assertTrue(exception.message?.contains("Page 1 has 2 creations") == true)
+        assertTrue(exception.message?.contains("which is not allowed") == true)
+    }
+    
+    @Test
+    fun `should throw error when creation followed by deletion`() {
+        val creation = createLocalMutation(1, Mutation.CREATED)
+        val deletion = createLocalMutationWithRemoteID(1, Mutation.DELETED, "remote123")
+        
+        val exception = assertFailsWith<IllegalArgumentException> {
+            preprocessor.preprocess(listOf(creation, deletion)) { it.page }
+        }
+        
+        assertTrue(exception.message?.contains("creation followed by deletion") == true)
+        assertTrue(exception.message?.contains("two bookmarks on the same page") == true)
+    }
+    
+    @Test
+    fun `should throw error when deletion has null remoteID`() {
+        val deletion = createLocalMutationWithRemoteID(1, Mutation.DELETED, null)
+        
+        val exception = assertFailsWith<IllegalArgumentException> {
+            preprocessor.preprocess(listOf(deletion)) { it.page }
+        }
+        
+        assertTrue(exception.message?.contains("deletion without remote ID") == true)
+        assertTrue(exception.message?.contains("must reference an existing remote resource") == true)
+    }
+    
+    @Test
+    fun `should allow deletion followed by creation`() {
+        val deletion = createLocalMutationWithRemoteID(1, Mutation.DELETED, "remote123")
+        val creation = createLocalMutation(1, Mutation.CREATED)
+        
+        val result = preprocessor.preprocess(listOf(deletion, creation)) { it.page }
+        
+        assertEquals(2, result.size)
+        assertEquals(deletion, result[0])
+        assertEquals(creation, result[1])
+    }
+    
+    @Test
+    fun `should allow single creation`() {
+        val creation = createLocalMutation(1, Mutation.CREATED)
+        
+        val result = preprocessor.preprocess(listOf(creation)) { it.page }
+        
+        assertEquals(1, result.size)
+        assertEquals(creation, result[0])
+    }
+    
+    @Test
+    fun `should allow single deletion`() {
+        val deletion = createLocalMutationWithRemoteID(1, Mutation.DELETED, "remote123")
+        
+        val result = preprocessor.preprocess(listOf(deletion)) { it.page }
+        
+        assertEquals(1, result.size)
+        assertEquals(deletion, result[0])
+    }
+    
+    @Test
+    fun `should allow creation and modification`() {
+        val creation = createLocalMutation(1, Mutation.CREATED)
+        val modification = createLocalMutation(1, Mutation.MODIFIED)
+        
+        val result = preprocessor.preprocess(listOf(creation, modification)) { it.page }
+        
+        assertEquals(2, result.size)
+        assertEquals(creation, result[0])
+        assertEquals(modification, result[1])
+    }
+    
+    @Test
+    fun `should allow deletion and modification`() {
+        val deletion = createLocalMutationWithRemoteID(1, Mutation.DELETED, "remote123")
+        val modification = createLocalMutation(1, Mutation.MODIFIED)
+        
+        val result = preprocessor.preprocess(listOf(deletion, modification)) { it.page }
+        
+        assertEquals(2, result.size)
+        assertEquals(deletion, result[0])
+        assertEquals(modification, result[1])
+    }
+    
     private fun createLocalMutation(page: Int, mutation: Mutation): LocalModelMutation<PageBookmark> {
         val model = PageBookmark(
             id = "local_${page}_${System.currentTimeMillis()}",
@@ -130,6 +237,20 @@ class LocalMutationsPreprocessorTest {
         return LocalModelMutation(
             model = model,
             remoteID = null,
+            localID = "local_${page}_${System.currentTimeMillis()}",
+            mutation = mutation
+        )
+    }
+    
+    private fun createLocalMutationWithRemoteID(page: Int, mutation: Mutation, remoteID: String?): LocalModelMutation<PageBookmark> {
+        val model = PageBookmark(
+            id = "local_${page}_${System.currentTimeMillis()}",
+            page = page,
+            lastModified = System.currentTimeMillis()
+        )
+        return LocalModelMutation(
+            model = model,
+            remoteID = remoteID,
             localID = "local_${page}_${System.currentTimeMillis()}",
             mutation = mutation
         )

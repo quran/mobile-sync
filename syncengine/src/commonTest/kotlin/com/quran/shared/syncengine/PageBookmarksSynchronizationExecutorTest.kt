@@ -35,7 +35,7 @@ class PageBookmarksSynchronizationExecutorTest {
             ),
             LocalModelMutation(
                 model = PageBookmark(id = "local2", page = 40, lastModified = 1003L),
-                remoteID = null,
+                remoteID = "remote2",
                 localID = "local2",
                 mutation = Mutation.DELETED
             )
