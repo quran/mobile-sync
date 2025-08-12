@@ -229,29 +229,31 @@ class LocalMutationsPreprocessorTest {
     }
     
     private fun createLocalMutation(page: Int, mutation: Mutation): LocalModelMutation<PageBookmark> {
+        val timestamp = 1000L + page * 100L
         val model = PageBookmark(
-            id = "local_${page}_${System.currentTimeMillis()}",
+            id = "local_${page}_${timestamp}",
             page = page,
-            lastModified = System.currentTimeMillis()
+            lastModified = timestamp
         )
         return LocalModelMutation(
             model = model,
             remoteID = null,
-            localID = "local_${page}_${System.currentTimeMillis()}",
+            localID = "local_${page}_${timestamp}",
             mutation = mutation
         )
     }
     
     private fun createLocalMutationWithRemoteID(page: Int, mutation: Mutation, remoteID: String?): LocalModelMutation<PageBookmark> {
+        val timestamp = 1000L + page * 100L
         val model = PageBookmark(
-            id = "local_${page}_${System.currentTimeMillis()}",
+            id = "local_${page}_${timestamp}",
             page = page,
-            lastModified = System.currentTimeMillis()
+            lastModified = timestamp
         )
         return LocalModelMutation(
             model = model,
             remoteID = remoteID,
-            localID = "local_${page}_${System.currentTimeMillis()}",
+            localID = "local_${page}_${timestamp}",
             mutation = mutation
         )
     }
