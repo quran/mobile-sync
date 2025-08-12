@@ -2,10 +2,11 @@ package com.quran.shared.persistence.repository
 
 import app.cash.sqldelight.coroutines.asFlow
 import co.touchlab.kermit.Logger
+import com.quran.shared.mutations.LocalModelMutation
+import com.quran.shared.mutations.Mutation
+import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.model.PageBookmark
-import com.quran.shared.persistence.model.PageBookmarkMutation
-import com.quran.shared.persistence.model.PageBookmarkMutationType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
@@ -47,12 +48,6 @@ class PageBookmarksRepositoryImpl(
                 throw IllegalStateException("Cannot migrate bookmarks: bookmarks table is not empty. Found ${existingBookmarks.size} bookmarks.")
             }
 
-            // Validate that all bookmarks are from the old system (no remote IDs)
-            val bookmarksWithRemoteId = bookmarks.filter { it.remoteId != null }
-            if (bookmarksWithRemoteId.isNotEmpty()) {
-                throw IllegalArgumentException("Cannot migrate bookmarks with remote IDs. Found ${bookmarksWithRemoteId.size} bookmarks with remote IDs.")
-            }
-
             database.bookmarksQueries.transaction {
                 bookmarks.forEach { bookmark ->
                     database.bookmarksQueries.addNewBookmark(bookmark.page.toLong())
@@ -61,7 +56,7 @@ class PageBookmarksRepositoryImpl(
         }
     }
 
-    override suspend fun fetchMutatedBookmarks(): List<PageBookmarkMutation> {
+    override suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<PageBookmark>> {
         return withContext(Dispatchers.IO) {
             database.bookmarksQueries.getUnsyncedBookmarks()
                 .executeAsList()
@@ -70,8 +65,8 @@ class PageBookmarksRepositoryImpl(
     }
 
     override suspend fun applyRemoteChanges(
-        updatesToPersist: List<PageBookmarkMutation>,
-        localMutationsToClear: List<PageBookmarkMutation>
+        updatesToPersist: List<RemoteModelMutation<PageBookmark>>,
+        localMutationsToClear: List<LocalModelMutation<PageBookmark>>
     ) {
         logger.i { "Applying remote changes with ${updatesToPersist.size} updates to persist and ${localMutationsToClear.size} local mutations to clear" }
         return withContext(Dispatchers.IO) {
@@ -79,31 +74,25 @@ class PageBookmarksRepositoryImpl(
                 // Clear local mutations
                 // TODO: Should check that passed local IDs are valid
                 localMutationsToClear.forEach { local ->
-                    if (local.localId == null) {
-                        logger.e { "Local mutation without local ID: $local" }
-                        throw IllegalArgumentException("Local mutations must have local ID")
-                    }
-
-                    database.bookmarksQueries.clearLocalMutationFor(id = local.localId)
+                    database.bookmarksQueries.clearLocalMutationFor(id = local.localID.toLong())
                 }
                 
                 // Apply remote updates
                 updatesToPersist.forEach { remote ->
-                    if (remote.remoteId == null) {
-                        logger.e { "Remote mutation without remote ID: $remote" }
-                        throw IllegalArgumentException("Remote mutations must have remote ID")
-                    }
-                    
-                    when (remote.mutationType) {
-                        PageBookmarkMutationType.CREATED -> {
+                    val model = remote.model
+                    when (remote.mutation) {
+                        Mutation.CREATED -> {
                             database.bookmarksQueries.persistRemoteBookmark(
-                                remote_id = remote.remoteId,
-                                page = remote.page.toLong(),
-                                created_at = remote.lastUpdated
+                                remote_id = remote.remoteID,
+                                page = model.page.toLong(),
+                                created_at = model.lastUpdated
                             )
                         }
-                        PageBookmarkMutationType.DELETED -> {
-                            database.bookmarksQueries.hardDeleteBookmarkFor(page = remote.page.toLong())
+                        Mutation.DELETED -> {
+                            database.bookmarksQueries.hardDeleteBookmarkFor(remoteID = remote.remoteID)
+                        }
+                        Mutation.MODIFIED -> {
+                            throw RuntimeException("Unexpected MODIFIED remote modification for page bookmarks.")
                         }
                     }
                 }
