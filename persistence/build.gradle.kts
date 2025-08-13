@@ -25,6 +25,7 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.sqldelight.extensions)
             implementation(libs.kermit)
+            implementation(libs.kotlinx.datetime)
             api(projects.mutationsDefinitions)
         }
 

@@ -114,14 +114,14 @@ private fun com.quran.shared.persistence.model.PageBookmark.toSyncEngine(): Page
     return PageBookmark(
         page = this.page,
         id = this.localId!!,
-        lastModified = Instant.fromEpochSeconds(this.lastUpdated)
+        lastModified = this.lastUpdated
         )
 }
 
 private fun PageBookmark.toPersistence(): com.quran.shared.persistence.model.PageBookmark {
     return com.quran.shared.persistence.model.PageBookmark(
         page = this.page,
-        lastUpdated = this.lastModified.epochSeconds,
+        lastUpdated = this.lastModified,
         localId = this.id
     )
 }

@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.*
 import com.quran.shared.persistence.TestDatabaseDriver
+import kotlinx.datetime.Instant
 
 class PageBookmarksRepositoryTest {
     private lateinit var database: QuranDatabase
@@ -202,8 +203,8 @@ class PageBookmarksRepositoryTest {
     @Test
     fun `migrateBookmarks succeeds when table is empty`() = runTest {
         val bookmarks = listOf(
-            PageBookmark(page = 1, lastUpdated = 1000L, localId = null),
-            PageBookmark(page = 2, lastUpdated = 1001L, localId = null)
+            PageBookmark(page = 1, lastUpdated = Instant.fromEpochSeconds(1000), localId = null),
+            PageBookmark(page = 2, lastUpdated = Instant.fromEpochSeconds(1001), localId = null)
         )
 
         repository.migrateBookmarks(bookmarks)
@@ -223,7 +224,7 @@ class PageBookmarksRepositoryTest {
     @Test
     fun `migrateBookmarks fails when table is not empty`() = runTest {
         val bookmarks = listOf(
-            PageBookmark(page = 1, lastUpdated = 1000L, localId = null)
+            PageBookmark(page = 1, lastUpdated = Instant.fromEpochSeconds(1000), localId = null)
         )
 
         database.bookmarksQueries.createRemoteBookmark("existing-1", 1L)
@@ -235,7 +236,7 @@ class PageBookmarksRepositoryTest {
     @Test
     fun `migrateBookmarks succeeds with any bookmarks`() = runTest {
         val bookmarks = listOf(
-            PageBookmark(page = 1, lastUpdated = 1000L, localId = null)
+            PageBookmark(page = 1, lastUpdated = Instant.fromEpochSeconds(1000), localId = null)
         )
         repository.migrateBookmarks(bookmarks)
         
@@ -288,17 +289,17 @@ class PageBookmarksRepositoryTest {
         // Action: Apply remote changes - commit the local mutations
         val updatesToPersist = listOf(
             RemoteModelMutation(
-                model = PageBookmark(page = 10, lastUpdated = 1000L, localId = null),
+                model = PageBookmark(page = 10, lastUpdated = Instant.fromEpochSeconds(1000), localId = null),
                 remoteID = "remote-10",
                 mutation = Mutation.CREATED
             ),
             RemoteModelMutation(
-                model = PageBookmark(page = 20, lastUpdated = 1001L, localId = null),
+                model = PageBookmark(page = 20, lastUpdated = Instant.fromEpochSeconds(1001), localId = null),
                 remoteID = "remote-20",
                 mutation = Mutation.CREATED
             ),
             RemoteModelMutation(
-                model = PageBookmark(page = 30, lastUpdated = 1002L, localId = null),
+                model = PageBookmark(page = 30, lastUpdated = Instant.fromEpochSeconds(1002), localId = null),
                 remoteID = "remote-30",
                 mutation = Mutation.DELETED
             )
@@ -340,12 +341,12 @@ class PageBookmarksRepositoryTest {
         val updatesToPersist = listOf(
             // Committed mutations (local state matches remote)
             RemoteModelMutation(
-                model = PageBookmark(page = 10, lastUpdated = 1000L, localId = null),
+                model = PageBookmark(page = 10, lastUpdated = Instant.fromEpochSeconds(1000), localId = null),
                 remoteID = "remote-10",
                 mutation = Mutation.CREATED
             ),
             RemoteModelMutation(
-                model = PageBookmark(page = 30, lastUpdated = 1001L, localId = null),
+                model = PageBookmark(page = 30, lastUpdated = Instant.fromEpochSeconds(1001), localId = null),
                 remoteID = "remote-30",
                 mutation = Mutation.DELETED
             )
@@ -385,23 +386,23 @@ class PageBookmarksRepositoryTest {
         // Action: Apply remote changes including new mutations not in local list
         val updatesToPersist = listOf(
             RemoteModelMutation(
-                model = PageBookmark(page = 10, lastUpdated = 1000L, localId = null),
+                model = PageBookmark(page = 10, lastUpdated = Instant.fromEpochSeconds(1000), localId = null),
                 remoteID = "remote-10",
                 mutation = Mutation.CREATED
             ),
             RemoteModelMutation(
-                model = PageBookmark(page = 20, lastUpdated = 1001L, localId = null),
+                model = PageBookmark(page = 20, lastUpdated = Instant.fromEpochSeconds(1001), localId = null),
                 remoteID = "remote-20",
                 mutation = Mutation.DELETED
             ),
             // New remote mutations not in local mutations
             RemoteModelMutation(
-                model = PageBookmark(page = 30, lastUpdated = 1002L, localId = null),
+                model = PageBookmark(page = 30, lastUpdated = Instant.fromEpochSeconds(1002), localId = null),
                 remoteID = "remote-30",
                 mutation = Mutation.CREATED
             ),
             RemoteModelMutation(
-                model = PageBookmark(page = 40, lastUpdated = 1003L, localId = null),
+                model = PageBookmark(page = 40, lastUpdated = Instant.fromEpochSeconds(1003), localId = null),
                 remoteID = "remote-40",
                 mutation = Mutation.DELETED
             )
@@ -463,12 +464,12 @@ class PageBookmarksRepositoryTest {
         // Action: Apply remote changes for local mutations only
         val updatesToPersist = listOf(
             RemoteModelMutation(
-                model = PageBookmark(page = 40, lastUpdated = 1000L, localId = null),
+                model = PageBookmark(page = 40, lastUpdated = Instant.fromEpochSeconds(1000), localId = null),
                 remoteID = "remote-40",
                 mutation = Mutation.CREATED
             ),
             RemoteModelMutation(
-                model = PageBookmark(page = 20, lastUpdated = 1001L, localId = null),
+                model = PageBookmark(page = 20, lastUpdated = Instant.fromEpochSeconds(1001), localId = null),
                 remoteID = "remote-20",
                 mutation = Mutation.DELETED
             )
@@ -519,12 +520,12 @@ class PageBookmarksRepositoryTest {
         // Simulate remote bookmarks by directly persisting them
         // Note: In a real scenario, these would come from applyRemoteChanges
         val remoteBookmark1 = RemoteModelMutation(
-            model = PageBookmark(3, 1000L, null),
+            model = PageBookmark(3, Instant.fromEpochSeconds(1000), null),
             remoteID = "remote-1",
             mutation = Mutation.CREATED
         )
         val remoteBookmark2 = RemoteModelMutation(
-            model = PageBookmark(4, 1000L, null),
+            model = PageBookmark(4, Instant.fromEpochSeconds(1000), null),
             remoteID = "remote-2",
             mutation = Mutation.CREATED
         )

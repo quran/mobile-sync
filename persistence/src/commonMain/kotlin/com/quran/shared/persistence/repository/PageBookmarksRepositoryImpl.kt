@@ -85,7 +85,7 @@ class PageBookmarksRepositoryImpl(
                             database.bookmarksQueries.persistRemoteBookmark(
                                 remote_id = remote.remoteID,
                                 page = model.page.toLong(),
-                                created_at = model.lastUpdated
+                                created_at = model.lastUpdated.epochSeconds
                             )
                         }
                         Mutation.DELETED -> {
