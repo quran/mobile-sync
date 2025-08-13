@@ -13,6 +13,7 @@ import com.quran.shared.syncengine.ResultNotifier
 import com.quran.shared.syncengine.SynchronizationClient
 import com.quran.shared.syncengine.SynchronizationClientBuilder
 import com.quran.shared.syncengine.SynchronizationEnvironment
+import kotlinx.datetime.Instant
 
 interface SyncEngineCallback {
     fun synchronizationDone(newLastModificationDate: Long)
@@ -113,15 +114,14 @@ private fun com.quran.shared.persistence.model.PageBookmark.toSyncEngine(): Page
     return PageBookmark(
         page = this.page,
         id = this.localId!!,
-        // TODO: Should this be moved to synengine instead?
-        lastModified = this.lastUpdated * 1000 // BE deals in nano-seconds timestamps.
+        lastModified = Instant.fromEpochSeconds(this.lastUpdated)
         )
 }
 
 private fun PageBookmark.toPersistence(): com.quran.shared.persistence.model.PageBookmark {
     return com.quran.shared.persistence.model.PageBookmark(
         page = this.page,
-        lastUpdated = this.lastModified / 1000,
+        lastUpdated = this.lastModified.epochSeconds,
         localId = this.id
     )
 }

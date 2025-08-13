@@ -6,7 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.assertFailsWith
-
+import kotlinx.datetime.Instant
 class LocalMutationsPreprocessorTest {
     
     private val preprocessor = LocalMutationsPreprocessor<PageBookmark>()
@@ -229,9 +229,9 @@ class LocalMutationsPreprocessorTest {
     }
     
     private fun createLocalMutation(page: Int, mutation: Mutation): LocalModelMutation<PageBookmark> {
-        val timestamp = 1000L + page * 100L
+        val timestamp = Instant.fromEpochSeconds(1000L + page * 100L)
         val model = PageBookmark(
-            id = "local_${page}_${timestamp}",
+            id = "local_${page}_${timestamp.epochSeconds}",
             page = page,
             lastModified = timestamp
         )
@@ -244,9 +244,9 @@ class LocalMutationsPreprocessorTest {
     }
     
     private fun createLocalMutationWithRemoteID(page: Int, mutation: Mutation, remoteID: String?): LocalModelMutation<PageBookmark> {
-        val timestamp = 1000L + page * 100L
+        val timestamp = Instant.fromEpochSeconds(1000L + page * 100L)
         val model = PageBookmark(
-            id = "local_${page}_${timestamp}",
+            id = "local_${page}_${timestamp.epochSeconds}",
             page = page,
             lastModified = timestamp
         )

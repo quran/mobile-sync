@@ -10,6 +10,7 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.serialization.Serializable
+import kotlinx.datetime.Instant
 
 class PostMutationsRequest(
     private val httpClient: HttpClient,
@@ -151,7 +152,7 @@ class PostMutationsRequest(
                 // TODO: Probably need to remodel Mutation types for DELETE events
                 page = postMutation.data?.key ?: 0,
                 // Not sent in deletions
-                lastModified = postMutation.createdAt ?: 0
+                lastModified = postMutation.createdAt?.let { Instant.fromEpochSeconds(it) } ?: Instant.fromEpochSeconds(0)
             )
             
             val mutation = when (postMutation.type) {

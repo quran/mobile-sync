@@ -2,8 +2,9 @@ package com.quran.shared.syncengine
 
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
+import kotlinx.datetime.Instant
 
-data class PageBookmark(val id: String, val page: Int, val lastModified: Long)
+data class PageBookmark(val id: String, val page: Int, val lastModified: Instant)
 
 interface LocalDataFetcher<Model> {
     /**

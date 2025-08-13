@@ -6,6 +6,7 @@ import com.quran.shared.mutations.Mutation
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlinx.datetime.Instant
 import kotlinx.coroutines.test.runTest
 
 class RemoteMutationsPreprocessorTest {
@@ -31,12 +32,12 @@ class RemoteMutationsPreprocessorTest {
         val preprocessor = RemoteMutationsPreprocessor(localDataFetcher)
         val remoteMutations = listOf(
             RemoteModelMutation(
-                model = PageBookmark("new-1", 10, 1000L),
+                model = PageBookmark("new-1", 10, Instant.fromEpochSeconds(1000)),
                 remoteID = "new-1",
                 mutation = Mutation.CREATED
             ),
             RemoteModelMutation(
-                model = PageBookmark("new-2", 20, 1000L),
+                model = PageBookmark("new-2", 20, Instant.fromEpochSeconds(1000)),
                 remoteID = "new-2",
                 mutation = Mutation.CREATED
             )
@@ -59,12 +60,12 @@ class RemoteMutationsPreprocessorTest {
         val preprocessor = RemoteMutationsPreprocessor(localDataFetcher)
         val remoteMutations = listOf(
             RemoteModelMutation(
-                model = PageBookmark("existing-1", 10, 1000L),
+                model = PageBookmark("existing-1", 10, Instant.fromEpochSeconds(1000)),
                 remoteID = "existing-1",
                 mutation = Mutation.DELETED
             ),
             RemoteModelMutation(
-                model = PageBookmark("non-existent-1", 20, 1000L),
+                model = PageBookmark("non-existent-1", 20, Instant.fromEpochSeconds(1000)),
                 remoteID = "non-existent-1",
                 mutation = Mutation.DELETED
             )
@@ -86,12 +87,12 @@ class RemoteMutationsPreprocessorTest {
         val preprocessor = RemoteMutationsPreprocessor(localDataFetcher)
         val remoteMutations = listOf(
             RemoteModelMutation(
-                model = PageBookmark("existing-1", 10, 1000L),
+                model = PageBookmark("existing-1", 10, Instant.fromEpochSeconds(1000)),
                 remoteID = "existing-1",
                 mutation = Mutation.MODIFIED
             ),
             RemoteModelMutation(
-                model = PageBookmark("non-existent-1", 20, 1000L),
+                model = PageBookmark("non-existent-1", 20, Instant.fromEpochSeconds(1000)),
                 remoteID = "non-existent-1",
                 mutation = Mutation.MODIFIED
             )
@@ -114,12 +115,12 @@ class RemoteMutationsPreprocessorTest {
         val preprocessor = RemoteMutationsPreprocessor(localDataFetcher)
         val remoteMutations = listOf(
             RemoteModelMutation(
-                model = PageBookmark("new-1", 10, 1000L),
+                model = PageBookmark("new-1", 10, Instant.fromEpochSeconds(1000)),
                 remoteID = "new-1",
                 mutation = Mutation.CREATED
             ),
             RemoteModelMutation(
-                model = PageBookmark("new-2", 20, 1000L),
+                model = PageBookmark("new-2", 20, Instant.fromEpochSeconds(1000)),
                 remoteID = "new-2",
                 mutation = Mutation.CREATED
             )
@@ -143,29 +144,29 @@ class RemoteMutationsPreprocessorTest {
         val remoteMutations = listOf(
             // CREATED mutations (should be kept)
             RemoteModelMutation(
-                model = PageBookmark("new-1", 10, 1000L),
+                model = PageBookmark("new-1", 10, Instant.fromEpochSeconds(1000)),
                 remoteID = "new-1",
                 mutation = Mutation.CREATED
             ),
             // DELETE mutations (should be filtered based on existence)
             RemoteModelMutation(
-                model = PageBookmark("existing-1", 20, 1000L),
+                model = PageBookmark("existing-1", 20, Instant.fromEpochSeconds(1000)),
                 remoteID = "existing-1",
                 mutation = Mutation.DELETED
             ),
             RemoteModelMutation(
-                model = PageBookmark("non-existent-1", 30, 1000L),
+                model = PageBookmark("non-existent-1", 30, Instant.fromEpochSeconds(1000)),
                 remoteID = "non-existent-1",
                 mutation = Mutation.DELETED
             ),
             // MODIFIED mutations (should be filtered based on existence)
             RemoteModelMutation(
-                model = PageBookmark("existing-2", 40, 1000L),
+                model = PageBookmark("existing-2", 40, Instant.fromEpochSeconds(1000)),
                 remoteID = "existing-2",
                 mutation = Mutation.MODIFIED
             ),
             RemoteModelMutation(
-                model = PageBookmark("non-existent-2", 50, 1000L),
+                model = PageBookmark("non-existent-2", 50, Instant.fromEpochSeconds(1000)),
                 remoteID = "non-existent-2",
                 mutation = Mutation.MODIFIED
             )
@@ -189,7 +190,7 @@ class RemoteMutationsPreprocessorTest {
         val preprocessor = RemoteMutationsPreprocessor(localDataFetcher)
         val remoteMutations = listOf(
             RemoteModelMutation(
-                model = PageBookmark("any-id", 10, 1000L),
+                model = PageBookmark("any-id", 10, Instant.fromEpochSeconds(1000)),
                 remoteID = "any-id",
                 mutation = Mutation.DELETED
             )
@@ -210,17 +211,17 @@ class RemoteMutationsPreprocessorTest {
         val preprocessor = RemoteMutationsPreprocessor(localDataFetcher)
         val remoteMutations = listOf(
             RemoteModelMutation(
-                model = PageBookmark("existing-1", 10, 1000L),
+                model = PageBookmark("existing-1", 10, Instant.fromEpochSeconds(1000)),
                 remoteID = "existing-1",
                 mutation = Mutation.DELETED
             ),
             RemoteModelMutation(
-                model = PageBookmark("new-1", 20, 1000L),
+                model = PageBookmark("new-1", 20, Instant.fromEpochSeconds(1000)),
                 remoteID = "new-1",
                 mutation = Mutation.CREATED
             ),
             RemoteModelMutation(
-                model = PageBookmark("existing-2", 30, 1000L),
+                model = PageBookmark("existing-2", 30, Instant.fromEpochSeconds(1000)),
                 remoteID = "existing-2",
                 mutation = Mutation.MODIFIED
             )

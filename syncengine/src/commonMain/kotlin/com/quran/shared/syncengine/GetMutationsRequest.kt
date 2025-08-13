@@ -9,6 +9,7 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.isSuccess
 import kotlinx.serialization.Serializable
+import kotlinx.datetime.Instant
 
 class GetMutationsRequest(
     private val httpClient: HttpClient,
@@ -107,7 +108,7 @@ class GetMutationsRequest(
             val pageBookmark = PageBookmark(
                 id = apiMutation.resourceId,
                 page = apiMutation.data.key ?: 0,
-                lastModified = apiMutation.timestamp
+                lastModified = Instant.fromEpochSeconds(apiMutation.timestamp)
             )
             
             val mutation = when (apiMutation.type) {

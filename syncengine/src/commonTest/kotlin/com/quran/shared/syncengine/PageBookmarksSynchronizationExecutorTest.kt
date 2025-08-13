@@ -4,8 +4,8 @@ import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.Instant
 import kotlin.test.*
-
 class PageBookmarksSynchronizationExecutorTest {
     
     private val pipeline = PageBookmarksSynchronizationExecutor()
@@ -15,12 +15,12 @@ class PageBookmarksSynchronizationExecutorTest {
         // Given: Remote and local mutations on different pages (no conflicts)
         val remoteMutations = listOf(
             RemoteModelMutation(
-                model = PageBookmark(id = "remote1", page = 10, lastModified = 1000L),
+                model = PageBookmark(id = "remote1", page = 10, lastModified = Instant.fromEpochSeconds(1000)),
                 remoteID = "remote1",
                 mutation = Mutation.CREATED
             ),
             RemoteModelMutation(
-                model = PageBookmark(id = "remote2", page = 20, lastModified = 1001L),
+                model = PageBookmark(id = "remote2", page = 20, lastModified = Instant.fromEpochSeconds(1001)),
                 remoteID = "remote2",
                 mutation = Mutation.DELETED
             )
@@ -28,13 +28,13 @@ class PageBookmarksSynchronizationExecutorTest {
         
         val localMutations = listOf(
             LocalModelMutation(
-                model = PageBookmark(id = "local1", page = 30, lastModified = 1002L),
+                model = PageBookmark(id = "local1", page = 30, lastModified = Instant.fromEpochSeconds(1002)),
                 remoteID = null,
                 localID = "local1",
                 mutation = Mutation.CREATED
             ),
             LocalModelMutation(
-                model = PageBookmark(id = "local2", page = 40, lastModified = 1003L),
+                model = PageBookmark(id = "local2", page = 40, lastModified = Instant.fromEpochSeconds(1003)),
                 remoteID = "remote2",
                 localID = "local2",
                 mutation = Mutation.DELETED
@@ -87,17 +87,17 @@ class PageBookmarksSynchronizationExecutorTest {
         // Given: Multiple conflicts between remote and local mutations
         val remoteMutations = listOf(
             RemoteModelMutation(
-                model = PageBookmark(id = "remote1", page = 10, lastModified = 1000L),
+                model = PageBookmark(id = "remote1", page = 10, lastModified = Instant.fromEpochSeconds(1000)),
                 remoteID = "remote1",
                 mutation = Mutation.CREATED
             ),
             RemoteModelMutation(
-                model = PageBookmark(id = "remote2", page = 20, lastModified = 1001L),
+                model = PageBookmark(id = "remote2", page = 20, lastModified = Instant.fromEpochSeconds(1001)),
                 remoteID = "remote2",
                 mutation = Mutation.MODIFIED
             ),
             RemoteModelMutation(
-                model = PageBookmark(id = "remote3", page = 30, lastModified = 1002L),
+                model = PageBookmark(id = "remote3", page = 30, lastModified = Instant.fromEpochSeconds(1002)),
                 remoteID = "remote3",
                 mutation = Mutation.DELETED
             )
@@ -106,28 +106,28 @@ class PageBookmarksSynchronizationExecutorTest {
         val localMutations = listOf(
             // Conflict 1: Same page as remote1
             LocalModelMutation(
-                model = PageBookmark(id = "local1", page = 10, lastModified = 1003L),
+                model = PageBookmark(id = "local1", page = 10, lastModified = Instant.fromEpochSeconds(1003)),
                 remoteID = null,
                 localID = "local1",
                 mutation = Mutation.CREATED
             ),
             // Conflict 2: Same page as remote2
             LocalModelMutation(
-                model = PageBookmark(id = "local2", page = 20, lastModified = 1004L),
+                model = PageBookmark(id = "local2", page = 20, lastModified = Instant.fromEpochSeconds(1004)),
                 remoteID = null,
                 localID = "local2",
                 mutation = Mutation.MODIFIED
             ),
             // Conflict 3: Local deletion of remote3
             LocalModelMutation(
-                model = PageBookmark(id = "local3", page = 30, lastModified = 1005L),
+                model = PageBookmark(id = "local3", page = 30, lastModified = Instant.fromEpochSeconds(1005)),
                 remoteID = "remote3",
                 localID = "local3",
                 mutation = Mutation.DELETED
             ),
             // No conflict
             LocalModelMutation(
-                model = PageBookmark(id = "local4", page = 40, lastModified = 1006L),
+                model = PageBookmark(id = "local4", page = 40, lastModified = Instant.fromEpochSeconds(1006)),
                 remoteID = null,
                 localID = "local4",
                 mutation = Mutation.CREATED
@@ -181,19 +181,19 @@ class PageBookmarksSynchronizationExecutorTest {
         val localMutations = listOf(
             // Illogical: 3 mutations for the same page
             LocalModelMutation(
-                model = PageBookmark(id = "local1", page = 10, lastModified = 1000L),
+                model = PageBookmark(id = "local1", page = 10, lastModified = Instant.fromEpochSeconds(1000)),
                 remoteID = null,
                 localID = "local1",
                 mutation = Mutation.CREATED
             ),
             LocalModelMutation(
-                model = PageBookmark(id = "local2", page = 10, lastModified = 1001L),
+                model = PageBookmark(id = "local2", page = 10, lastModified = Instant.fromEpochSeconds(1001)),
                 remoteID = null,
                 localID = "local2",
                 mutation = Mutation.MODIFIED
             ),
             LocalModelMutation(
-                model = PageBookmark(id = "local3", page = 10, lastModified = 1002L),
+                model = PageBookmark(id = "local3", page = 10, lastModified = Instant.fromEpochSeconds(1002)),
                 remoteID = "remote1",
                 localID = "local3",
                 mutation = Mutation.DELETED
@@ -238,7 +238,7 @@ class PageBookmarksSynchronizationExecutorTest {
         val localMutations = listOf(
             // Illogical: Deletion without remote ID
             LocalModelMutation(
-                model = PageBookmark(id = "local1", page = 10, lastModified = 1000L),
+                model = PageBookmark(id = "local1", page = 10, lastModified = Instant.fromEpochSeconds(1000)),
                 remoteID = null, // This should cause an error
                 localID = "local1",
                 mutation = Mutation.DELETED
@@ -278,12 +278,12 @@ class PageBookmarksSynchronizationExecutorTest {
         // Given: Remote mutations including DELETE for non-existent resource
         val remoteMutations = listOf(
             RemoteModelMutation(
-                model = PageBookmark(id = "remote1", page = 10, lastModified = 1000L),
+                model = PageBookmark(id = "remote1", page = 10, lastModified = Instant.fromEpochSeconds(1000)),
                 remoteID = "remote1",
                 mutation = Mutation.CREATED
             ),
             RemoteModelMutation(
-                model = PageBookmark(id = "remote2", page = 20, lastModified = 1001L),
+                model = PageBookmark(id = "remote2", page = 20, lastModified = Instant.fromEpochSeconds(1001)),
                 remoteID = "remote2",
                 mutation = Mutation.DELETED  // This should be filtered out if it doesn't exist locally
             )

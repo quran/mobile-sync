@@ -10,6 +10,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.Instant
 import kotlin.test.assertFails
 import kotlin.test.fail
 
@@ -178,13 +179,13 @@ class SynchronizationClientIntegrationTest {
 //                mutation = Mutation.CREATED
 //            ),
             LocalModelMutation(
-                model = PageBookmark(id = "hvpyr0q863etejgc4l4dpmhj", page = 50, lastModified = 1752350137423),
+                model = PageBookmark(id = "hvpyr0q863etejgc4l4dpmhj", page = 50, lastModified = Instant.fromEpochMilliseconds(1752350137423)),
                 remoteID = "hvpyr0q863etejgc4l4dpmhj", // This was a remote bookmark that we're deleting
                 localID = "local-id-3",
                 mutation = Mutation.DELETED
             ),
             LocalModelMutation(
-                model = PageBookmark(id = "t8sx6yrl55oft086mx5bygl5", page = 107, lastModified = 1752350137423),
+                model = PageBookmark(id = "t8sx6yrl55oft086mx5bygl5", page = 107, lastModified = Instant.fromEpochMilliseconds(1752350137423)),
                 remoteID = "t8sx6yrl55oft086mx5bygl5", // This was a remote bookmark that we're deleting
                 localID = "local-id-3",
                 mutation = Mutation.DELETED
