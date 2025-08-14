@@ -1,6 +1,6 @@
 [versions]
 agp = "8.11.0"
-kotlin = "2.2.0"
+kotlin = "2.2.10"
 kotlinx-serialization = "1.6.3"
 kermit = "2.0.0"
 
