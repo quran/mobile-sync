@@ -3,6 +3,13 @@ package com.quran.shared.syncengine
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
+import com.quran.shared.syncengine.conflict.ConflictDetector
+import com.quran.shared.syncengine.conflict.ConflictDetectionResult
+import com.quran.shared.syncengine.conflict.ConflictGroup
+import com.quran.shared.syncengine.conflict.ConflictResolver
+import com.quran.shared.syncengine.conflict.ConflictResolutionResult
+import com.quran.shared.syncengine.preprocessing.LocalMutationsPreprocessor
+import com.quran.shared.syncengine.preprocessing.RemoteMutationsPreprocessor
 
 /**
  * Pure business logic executor for page bookmarks synchronization operations.

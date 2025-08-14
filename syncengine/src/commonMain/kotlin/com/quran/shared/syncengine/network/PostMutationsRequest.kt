@@ -1,9 +1,10 @@
-package com.quran.shared.syncengine
+package com.quran.shared.syncengine.network
 
 import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
+import com.quran.shared.syncengine.PageBookmark
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*

@@ -2,6 +2,9 @@ package com.quran.shared.syncengine
 
 import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.LocalModelMutation
+import com.quran.shared.syncengine.network.GetMutationsRequest
+import com.quran.shared.syncengine.network.MutationsResponse
+import com.quran.shared.syncengine.network.PostMutationsRequest
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

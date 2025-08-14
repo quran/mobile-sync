@@ -1,8 +1,9 @@
-package com.quran.shared.syncengine
+package com.quran.shared.syncengine.conflict
 
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
+import com.quran.shared.syncengine.PageBookmark
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.datetime.Instant
