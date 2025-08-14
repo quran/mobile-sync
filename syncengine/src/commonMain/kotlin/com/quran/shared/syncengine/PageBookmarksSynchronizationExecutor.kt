@@ -103,8 +103,8 @@ class PageBookmarksSynchronizationExecutor {
     private fun preprocessLocalMutations(
         localMutations: List<LocalModelMutation<PageBookmark>>
     ): List<LocalModelMutation<PageBookmark>> {
-        val preprocessor = LocalMutationsPreprocessor<PageBookmark>()
-        return preprocessor.preprocess(localMutations) { it.page }
+        val preprocessor = LocalMutationsPreprocessor()
+        return preprocessor.preprocess(localMutations)
     }
     
     private suspend fun preprocessRemoteMutations(

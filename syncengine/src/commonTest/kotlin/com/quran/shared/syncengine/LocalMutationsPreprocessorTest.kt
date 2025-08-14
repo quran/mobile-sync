@@ -9,18 +9,18 @@ import kotlin.test.assertFailsWith
 import kotlinx.datetime.Instant
 class LocalMutationsPreprocessorTest {
     
-    private val preprocessor = LocalMutationsPreprocessor<PageBookmark>()
+    private val preprocessor = LocalMutationsPreprocessor()
     
     @Test
     fun `should return empty list when no mutations provided`() {
-        val result = preprocessor.preprocess(emptyList()) { it.page }
+        val result = preprocessor.preprocess(emptyList())
         assertTrue(result.isEmpty())
     }
     
     @Test
     fun `should return single mutation unchanged`() {
         val mutation = createLocalMutation(1, Mutation.CREATED)
-        val result = preprocessor.preprocess(listOf(mutation)) { it.page }
+        val result = preprocessor.preprocess(listOf(mutation))
         
         assertEquals(1, result.size)
         assertEquals(mutation, result[0])
@@ -30,7 +30,7 @@ class LocalMutationsPreprocessorTest {
     fun `should return two mutations for same page unchanged`() {
         val mutation1 = createLocalMutation(1, Mutation.CREATED)
         val mutation2 = createLocalMutation(1, Mutation.MODIFIED)
-        val result = preprocessor.preprocess(listOf(mutation1, mutation2)) { it.page }
+        val result = preprocessor.preprocess(listOf(mutation1, mutation2))
         
         assertEquals(2, result.size)
         assertTrue(result.contains(mutation1))
@@ -45,7 +45,7 @@ class LocalMutationsPreprocessorTest {
         val mutation4 = createLocalMutation(1, Mutation.CREATED)
         
         val exception = assertFailsWith<IllegalArgumentException> {
-            preprocessor.preprocess(listOf(mutation1, mutation2, mutation3, mutation4)) { it.page }
+            preprocessor.preprocess(listOf(mutation1, mutation2, mutation3, mutation4))
         }
         
         assertTrue(exception.message?.contains("Page 1 has 4 mutations") == true)
@@ -71,7 +71,7 @@ class LocalMutationsPreprocessorTest {
             page3Mutation1, page3Mutation2
         )
         
-        val result = preprocessor.preprocess(allMutations) { it.page }
+        val result = preprocessor.preprocess(allMutations)
         
         assertEquals(5, result.size) // 2 + 1 + 2 = 5
         
@@ -94,7 +94,7 @@ class LocalMutationsPreprocessorTest {
         )
         
         val exception = assertFailsWith<IllegalArgumentException> {
-            preprocessor.preprocess(allMutations) { it.page }
+            preprocessor.preprocess(allMutations)
         }
         
         assertTrue(exception.message?.contains("Page 1 has 3 mutations") == true)
@@ -113,7 +113,7 @@ class LocalMutationsPreprocessorTest {
             page2Mutation1, page2Mutation2
         )
         
-        val result = preprocessor.preprocess(allMutations) { it.page }
+        val result = preprocessor.preprocess(allMutations)
         
         assertEquals(4, result.size) // 2 + 2 = 4
         
@@ -127,7 +127,7 @@ class LocalMutationsPreprocessorTest {
         val deletion2 = createLocalMutationWithRemoteID(1, Mutation.DELETED, "remote2")
         
         val exception = assertFailsWith<IllegalArgumentException> {
-            preprocessor.preprocess(listOf(deletion1, deletion2)) { it.page }
+            preprocessor.preprocess(listOf(deletion1, deletion2))
         }
         
         assertTrue(exception.message?.contains("Page 1 has 2 deletions") == true)
@@ -140,7 +140,7 @@ class LocalMutationsPreprocessorTest {
         val creation2 = createLocalMutation(1, Mutation.CREATED)
         
         val exception = assertFailsWith<IllegalArgumentException> {
-            preprocessor.preprocess(listOf(creation1, creation2)) { it.page }
+            preprocessor.preprocess(listOf(creation1, creation2))
         }
         
         assertTrue(exception.message?.contains("Page 1 has 2 creations") == true)
@@ -153,7 +153,7 @@ class LocalMutationsPreprocessorTest {
         val deletion = createLocalMutationWithRemoteID(1, Mutation.DELETED, "remote123")
         
         val exception = assertFailsWith<IllegalArgumentException> {
-            preprocessor.preprocess(listOf(creation, deletion)) { it.page }
+            preprocessor.preprocess(listOf(creation, deletion))
         }
         
         assertTrue(exception.message?.contains("creation followed by deletion") == true)
@@ -165,7 +165,7 @@ class LocalMutationsPreprocessorTest {
         val deletion = createLocalMutationWithRemoteID(1, Mutation.DELETED, null)
         
         val exception = assertFailsWith<IllegalArgumentException> {
-            preprocessor.preprocess(listOf(deletion)) { it.page }
+            preprocessor.preprocess(listOf(deletion))
         }
         
         assertTrue(exception.message?.contains("deletion without remote ID") == true)
@@ -177,7 +177,7 @@ class LocalMutationsPreprocessorTest {
         val deletion = createLocalMutationWithRemoteID(1, Mutation.DELETED, "remote123")
         val creation = createLocalMutation(1, Mutation.CREATED)
         
-        val result = preprocessor.preprocess(listOf(deletion, creation)) { it.page }
+        val result = preprocessor.preprocess(listOf(deletion, creation))
         
         assertEquals(2, result.size)
         assertEquals(deletion, result[0])
@@ -188,7 +188,7 @@ class LocalMutationsPreprocessorTest {
     fun `should allow single creation`() {
         val creation = createLocalMutation(1, Mutation.CREATED)
         
-        val result = preprocessor.preprocess(listOf(creation)) { it.page }
+        val result = preprocessor.preprocess(listOf(creation))
         
         assertEquals(1, result.size)
         assertEquals(creation, result[0])
@@ -198,7 +198,7 @@ class LocalMutationsPreprocessorTest {
     fun `should allow single deletion`() {
         val deletion = createLocalMutationWithRemoteID(1, Mutation.DELETED, "remote123")
         
-        val result = preprocessor.preprocess(listOf(deletion)) { it.page }
+        val result = preprocessor.preprocess(listOf(deletion))
         
         assertEquals(1, result.size)
         assertEquals(deletion, result[0])
@@ -209,7 +209,7 @@ class LocalMutationsPreprocessorTest {
         val creation = createLocalMutation(1, Mutation.CREATED)
         val modification = createLocalMutation(1, Mutation.MODIFIED)
         
-        val result = preprocessor.preprocess(listOf(creation, modification)) { it.page }
+        val result = preprocessor.preprocess(listOf(creation, modification))
         
         assertEquals(2, result.size)
         assertEquals(creation, result[0])
@@ -221,7 +221,7 @@ class LocalMutationsPreprocessorTest {
         val deletion = createLocalMutationWithRemoteID(1, Mutation.DELETED, "remote123")
         val modification = createLocalMutation(1, Mutation.MODIFIED)
         
-        val result = preprocessor.preprocess(listOf(deletion, modification)) { it.page }
+        val result = preprocessor.preprocess(listOf(deletion, modification))
         
         assertEquals(2, result.size)
         assertEquals(deletion, result[0])

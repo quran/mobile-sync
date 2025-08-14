@@ -3,27 +3,21 @@ package com.quran.shared.syncengine
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 
-/**
- * Preprocesses local mutations and throws an error if illogical scenarios are detected.
- * Currently detects the scenario where there are more than two mutations for the same page.
- */
-class LocalMutationsPreprocessor<Model> {
+class LocalMutationsPreprocessor {
     
     /**
      * Preprocesses local mutations and throws an error if illogical scenarios are detected.
      * 
      * @param localMutations List of local mutations to preprocess
-     * @param pageExtractor Function to extract the page identifier from a model
      * @return List of local mutations if no illogical scenarios are detected
      * @throws IllegalArgumentException if illogical scenarios are detected
      */
     fun preprocess(
-        localMutations: List<LocalModelMutation<Model>>,
-        pageExtractor: (Model) -> Int
-    ): List<LocalModelMutation<Model>> {
+        localMutations: List<LocalModelMutation<PageBookmark>>
+    ): List<LocalModelMutation<PageBookmark>> {
         // Group mutations by page
         val mutationsByPage = localMutations.groupBy { mutation ->
-            pageExtractor(mutation.model)
+            mutation.model.page
         }
         
         // Check for illogical scenarios and filter out valid cancellations
@@ -36,8 +30,8 @@ class LocalMutationsPreprocessor<Model> {
     
     private fun processPageMutations(
         page: Int, 
-        mutations: List<LocalModelMutation<Model>>
-    ): List<LocalModelMutation<Model>> {
+        mutations: List<LocalModelMutation<PageBookmark>>
+    ): List<LocalModelMutation<PageBookmark>> {
         // Check for too many mutations
         if (mutations.size > 2) {
             throw IllegalArgumentException(
