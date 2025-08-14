@@ -13,7 +13,6 @@ import com.quran.shared.syncengine.ResultNotifier
 import com.quran.shared.syncengine.SynchronizationClient
 import com.quran.shared.syncengine.SynchronizationClientBuilder
 import com.quran.shared.syncengine.SynchronizationEnvironment
-import kotlinx.datetime.Instant
 
 interface SyncEngineCallback {
     fun synchronizationDone(newLastModificationDate: Long)
@@ -23,7 +22,7 @@ interface SyncEngineCallback {
 public class SyncEnginePipeline(
     val bookmarksRepository: PageBookmarksSynchronizationRepository
 ) {
-    var syncClient: SynchronizationClient? = null
+    private lateinit var syncClient: SynchronizationClient
 
     fun setup(
         environment: SynchronizationEnvironment,
@@ -49,7 +48,7 @@ public class SyncEnginePipeline(
     }
 
     fun startListening() {
-
+        // TODO:
     }
 }
 
