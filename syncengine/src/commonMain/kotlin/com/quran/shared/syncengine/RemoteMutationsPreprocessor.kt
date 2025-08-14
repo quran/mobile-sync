@@ -3,44 +3,43 @@ package com.quran.shared.syncengine
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.mutations.Mutation
 
-/**
- * Preprocesses remote mutations to filter out DELETE and MODIFIED mutations
- * for resources that don't exist locally.
- */
-class RemoteMutationsPreprocessor<Model>(
-    private val localDataFetcher: LocalDataFetcher<Model>
+class RemoteMutationsPreprocessor(
+    private val checkLocalExistence: suspend (List<String>) -> Map<String, Boolean>
 ) {
     
     /**
-     * Preprocesses remote mutations to filter out DELETE and MODIFIED mutations
-     * for resources that don't exist locally.
-     * 
+     * Preprocesses remote mutations to filter out DELETE mutations for resources that don't exist
+     * locally and convert ALL MODIFIED mutations to CREATED mutations.
+     *
      * @param remoteMutations List of remote mutations to preprocess
-     * @return Filtered list of remote mutations
+     * @return Filtered and transformed list of remote mutations
      */
-    suspend fun preprocess(remoteMutations: List<RemoteModelMutation<Model>>): List<RemoteModelMutation<Model>> {
-        // Filter mutations that need local existence check (DELETE and MODIFIED)
-        val mutationsToCheck = remoteMutations.filter { it.mutation == Mutation.DELETED || it.mutation == Mutation.MODIFIED }
+    suspend fun preprocess(remoteMutations: List<RemoteModelMutation<PageBookmark>>): List<RemoteModelMutation<PageBookmark>> {
+        // Separate mutations by type
+        val createdMutations = remoteMutations.filter { it.mutation == Mutation.CREATED }
+        val deletedMutations = remoteMutations.filter { it.mutation == Mutation.DELETED }
+        val modifiedMutations = remoteMutations.filter { it.mutation == Mutation.MODIFIED }
         
-        if (mutationsToCheck.isEmpty()) {
-            return remoteMutations
-        }
-
-        // Get remote IDs that need to be checked
-        val remoteIDsToCheck = mutationsToCheck.map { it.remoteID }
-        
-        // Check local existence for these remote IDs
-        val existenceMap = localDataFetcher.checkLocalExistence(remoteIDsToCheck)
-        
-        // Filter out mutations for resources that don't exist locally
-        val filteredMutations = mutationsToCheck.filter { mutation ->
-            val exists = existenceMap[mutation.remoteID] ?: false
-            exists
+        // Handle DELETE mutations - filter out those for non-existent resources
+        val filteredDeletedMutations = if (deletedMutations.isNotEmpty()) {
+            val remoteIDsToCheck = deletedMutations.map { it.remoteID }
+            val existenceMap = checkLocalExistence(remoteIDsToCheck)
+            
+            deletedMutations.filter { existenceMap[it.remoteID] ?: false }
+        } else {
+            emptyList()
         }
         
-        // Combine filtered mutations with mutations that don't need checking (CREATED)
-        val mutationsNotNeedingCheck = remoteMutations.filter { it.mutation == Mutation.CREATED }
+        // Handle MODIFIED mutations - convert ALL to CREATED (no existence check needed)
+        val transformedModifiedMutations = modifiedMutations.map { mutation ->
+            RemoteModelMutation(
+                model = mutation.model,
+                remoteID = mutation.remoteID,
+                mutation = Mutation.CREATED
+            )
+        }
         
-        return filteredMutations + mutationsNotNeedingCheck
+        // Combine all mutations
+        return createdMutations + filteredDeletedMutations + transformedModifiedMutations
     }
 } 

@@ -59,11 +59,8 @@ class PageBookmarksSynchronizationExecutor {
         // Step 3: Fetch - Get remote modifications from server
         val fetchedData = fetchRemote(pipelineData.lastModificationDate)
         
-        // Step 4: Transform - Convert UPDATE mutations to CREATE mutations
-        val transformedRemoteMutations = transformRemoteMutations(fetchedData.remoteMutations)
-        
-        // Step 5: Preprocess - Filter remote mutations based on local existence
-        val preprocessedRemoteMutations = preprocessRemoteMutations(transformedRemoteMutations, checkLocalExistence)
+        // Step 4: Preprocess - Filter and transform remote mutations
+        val preprocessedRemoteMutations = preprocessRemoteMutations(fetchedData.remoteMutations, checkLocalExistence)
         
         // Step 6: Detect - Find conflicts between local and remote mutations
         val conflictDetectionResult = detectConflicts(preprocessedRemoteMutations, preprocessedLocalMutations)
@@ -77,14 +74,14 @@ class PageBookmarksSynchronizationExecutor {
             fetchedData.lastModificationDate
         )
         
-        // Step 9: Transform Pushed - Convert UPDATE mutations in push response
-        val transformedPushedMutations = transformRemoteMutations(pushResult.pushedMutations)
+        // Step 9: Preprocess Pushed - Filter and transform pushed mutations
+        val preprocessedPushedMutations = preprocessRemoteMutations(pushResult.pushedMutations, checkLocalExistence)
         
         // Step 10: Combine - Merge all remote mutations
         val finalRemoteMutations = combineRemoteMutations(
             conflictDetectionResult.nonConflictingRemoteMutations,
             conflictResolutionResult.mutationsToPersist,
-            transformedPushedMutations
+            preprocessedPushedMutations
         )
         
         // Step 11: Complete - Create and deliver result
@@ -111,44 +108,11 @@ class PageBookmarksSynchronizationExecutor {
         remoteMutations: List<RemoteModelMutation<PageBookmark>>,
         checkLocalExistence: suspend (List<String>) -> Map<String, Boolean>
     ): List<RemoteModelMutation<PageBookmark>> {
-        // Filter mutations that need local existence check (DELETE and MODIFIED)
-        val mutationsToCheck = remoteMutations.filter { it.mutation == Mutation.DELETED || it.mutation == Mutation.MODIFIED }
-        
-        if (mutationsToCheck.isEmpty()) {
-            return remoteMutations
-        }
-
-        // Get remote IDs that need to be checked
-        val remoteIDsToCheck = mutationsToCheck.map { it.remoteID }
-        
-        // Check local existence for these remote IDs
-        val existenceMap = checkLocalExistence(remoteIDsToCheck)
-        
-        // Filter out mutations for resources that don't exist locally
-        val filteredMutations = mutationsToCheck.filter { mutation ->
-            val exists = existenceMap[mutation.remoteID] ?: false
-            exists
-        }
-        
-        // Combine filtered mutations with mutations that don't need checking (CREATED)
-        val mutationsNotNeedingCheck = remoteMutations.filter { it.mutation == Mutation.CREATED }
-        
-        return filteredMutations + mutationsNotNeedingCheck
+        val preprocessor = RemoteMutationsPreprocessor(checkLocalExistence)
+        return preprocessor.preprocess(remoteMutations)
     }
     
-    private fun transformRemoteMutations(remoteMutations: List<RemoteModelMutation<PageBookmark>>): List<RemoteModelMutation<PageBookmark>> {
-        return remoteMutations.map { remoteMutation ->
-            if (remoteMutation.mutation == Mutation.MODIFIED) {
-                RemoteModelMutation(
-                    model = remoteMutation.model,
-                    remoteID = remoteMutation.remoteID,
-                    mutation = Mutation.CREATED
-                )
-            } else {
-                remoteMutation
-            }
-        }
-    }
+
 
     private fun detectConflicts(
         remoteMutations: List<RemoteModelMutation<PageBookmark>>,
