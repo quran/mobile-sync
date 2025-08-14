@@ -4,6 +4,7 @@ import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 
+// region: Result
 data class ConflictResolutionResult<Model>(
     val mutationsToPersist: List<RemoteModelMutation<Model>>,
     val mutationsToPush: List<LocalModelMutation<Model>>
@@ -15,16 +16,31 @@ private fun <Model> ConflictResolutionResult<Model>.mergeWith(other: ConflictRes
         mutationsToPush = this.mutationsToPush + other.mutationsToPush
     )
 }
+// endregion:
 
+/**
+ * Resolves conflicts between local and remote mutations for page bookmarks.
+ * 
+ * Analyzes conflict groups and determines which mutations should be persisted locally
+ * and which should be pushed to the remote server.
+ * 
+ * Note: Illogical scenarios (e.g., local creation vs remote deletion) will raise
+ * [IllegalArgumentException] as they indicate the two sides were not in sync.
+ */
 class ConflictResolver(private val conflictGroups: List<ConflictGroup<PageBookmark>>) {
 
+    /**
+     * Resolves all conflicts and returns the mutations to persist and push.
+     * 
+     * @return [ConflictResolutionResult] containing mutations to persist locally and push remotely
+     * @throws IllegalArgumentException when illogical conflict scenarios are detected
+     */
     fun resolve(): ConflictResolutionResult<PageBookmark> {
-        if (conflictGroups.isNotEmpty()) {
-            return conflictGroups.map { processConflict(it) }
+        return if (conflictGroups.isNotEmpty()) {
+            conflictGroups.map { processConflict(it) }
                 .reduce { one, other -> one.mergeWith(other) }
-        }
-        else {
-            return ConflictResolutionResult(listOf(), listOf())
+        } else {
+            ConflictResolutionResult(listOf(), listOf())
         }
     }
 
@@ -83,58 +99,76 @@ class ConflictResolver(private val conflictGroups: List<ConflictGroup<PageBookma
     }
 }
 
-private enum class MutationSide {
-    REMOTE, LOCAL, BOTH
-}
+// region: ConflictPredicate
 
-private fun <Model> ConflictGroup<Model>.mustHave(
-    mutation: Mutation,
-    side: MutationSide
-): ConflictPredicate<Model> {
-    if (side == MutationSide.REMOTE) {
-        val instance = remoteMutations.firstOrNull { it.mutation == mutation }
-        if (instance == null) {
-            return ConflictPredicate(hasFailed = true, conflictGroup = this)
-        }
-        else {
-            val newGroup = ConflictGroup(
-                remoteMutations = remoteMutations.minus(instance),
-                localMutations = localMutations
-            )
-            return ConflictPredicate(hasFailed = false, conflictGroup = newGroup)
-        }
-    }
-    else if (side == MutationSide.LOCAL){
-        val instance = localMutations.firstOrNull { it.mutation == mutation }
-        if (instance == null) {
-            return ConflictPredicate(hasFailed = true, conflictGroup = this)
-        }
-        else {
-            val newGroup = ConflictGroup(
-                remoteMutations = remoteMutations,
-                localMutations = localMutations.minus(instance)
-            )
-            return ConflictPredicate(hasFailed = false, conflictGroup = newGroup)
-        }
-    }
-    else {
-        return mustHave(mutation, MutationSide.REMOTE).and(mutation, MutationSide.LOCAL)
-    }
-}
-
+/**
+ * A DSL that makes checking for specific conflicts clearer.
+ */
 private class ConflictPredicate<Model>(
     private val hasFailed: Boolean,
-    private val conflictGroup: ConflictGroup<Model>
-    ) {
+    private val remainingConflictGroup: ConflictGroup<Model>
+) {
 
     fun and(mutation: Mutation, side: MutationSide): ConflictPredicate<Model> {
         if (hasFailed) {
             return this
         }
-        return conflictGroup.mustHave(mutation, side)
+        return remainingConflictGroup.mustHave(mutation, side)
     }
 
-    fun only(): Boolean =!hasFailed
-            && conflictGroup.remoteMutations.isEmpty()
-            && conflictGroup.localMutations.isEmpty()
+    fun only(): Boolean = !hasFailed
+            && remainingConflictGroup.remoteMutations.isEmpty()
+            && remainingConflictGroup.localMutations.isEmpty()
 }
+
+private enum class MutationSide {
+    REMOTE, LOCAL, BOTH
+}
+
+/**
+ * Checks if this conflict group contains a specific mutation on the specified side.
+ *
+ * @return A predicate that can be chained with additional checks
+ */
+private fun <Model> ConflictGroup<Model>.mustHave(
+    mutation: Mutation,
+    side: MutationSide
+): ConflictPredicate<Model> {
+    return when (side) {
+        MutationSide.REMOTE -> checkRemoteSide(mutation)
+        MutationSide.LOCAL -> checkLocalSide(mutation)
+        MutationSide.BOTH -> checkBothSides(mutation)
+    }
+}
+
+private fun <Model> ConflictGroup<Model>.checkRemoteSide(mutation: Mutation): ConflictPredicate<Model> {
+    val matchingRemoteMutation = remoteMutations.firstOrNull { it.mutation == mutation }
+    return if (matchingRemoteMutation == null) {
+        ConflictPredicate(hasFailed = true, remainingConflictGroup = this)
+    } else {
+        val remainingGroup = ConflictGroup(
+            remoteMutations = remoteMutations.minus(matchingRemoteMutation),
+            localMutations = localMutations
+        )
+        ConflictPredicate(hasFailed = false, remainingConflictGroup = remainingGroup)
+    }
+}
+
+private fun <Model> ConflictGroup<Model>.checkLocalSide(mutation: Mutation): ConflictPredicate<Model> {
+    val matchingLocalMutation = localMutations.firstOrNull { it.mutation == mutation }
+    return if (matchingLocalMutation == null) {
+        ConflictPredicate(hasFailed = true, remainingConflictGroup = this)
+    } else {
+        val remainingGroup = ConflictGroup(
+            remoteMutations = remoteMutations,
+            localMutations = localMutations.minus(matchingLocalMutation)
+        )
+        ConflictPredicate(hasFailed = false, remainingConflictGroup = remainingGroup)
+    }
+}
+
+private fun <Model> ConflictGroup<Model>.checkBothSides(mutation: Mutation): ConflictPredicate<Model> {
+    return checkRemoteSide(mutation).and(mutation, MutationSide.LOCAL)
+}
+
+// endregion:

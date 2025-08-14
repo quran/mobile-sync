@@ -4,39 +4,39 @@ import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
 
 /**
- * Result of conflict detection containing all conflict groups and non-conflicting mutations.
  * 
  * @param conflictGroups Groups of mutations that have conflicts
- * @param otherRemoteMutations Remote mutations that don't conflict with any local mutations
- * @param otherLocalMutations Local mutations that don't conflict with any remote mutations
+ * @param nonConflictingRemoteMutations Remote mutations that don't conflict with any local mutations
+ * @param nonConflictingLocalMutations Local mutations that don't conflict with any remote mutations
  */
 data class ConflictDetectionResult<Model>(
     val conflictGroups: List<ConflictGroup<Model>>,
-    val otherRemoteMutations: List<RemoteModelMutation<Model>>,
-    val otherLocalMutations: List<LocalModelMutation<Model>>
+    val nonConflictingRemoteMutations: List<RemoteModelMutation<Model>>,
+    val nonConflictingLocalMutations: List<LocalModelMutation<Model>>
 )
 
 /**
  * Detects conflicts between local and remote mutations for page bookmarks.
  * 
- * A conflict occurs when:
- * 1. Local and remote mutations target the same page
- * 2. Local mutations reference a remote ID that exists in remote mutations (for deleted items)
+ * A conflict is detected whenever a set of local and remote mutations reference the same bookmark,
+ * let it be a single resource with the same ID, or different resources for the same page.
  * 
  * The detector groups conflicts by page and provides separate lists for non-conflicting mutations.
  */
 class ConflictDetector(
-    private val remoteModelMutations: List<RemoteModelMutation<PageBookmark>>,
-    private val localModelMutations: List<LocalModelMutation<PageBookmark>>
+    private val remoteMutations: List<RemoteModelMutation<PageBookmark>>,
+    private val localMutations: List<LocalModelMutation<PageBookmark>>
 ) {
     
     companion object {
+        // Remote DELETE events come without associated data for the resource before deletion.
+        // TODO: Planned to properly express empty resources in remote DELETE events.
         private const val PAGE_VAL_IN_NULLIFIED_MODEL = 0
     }
 
     fun getConflicts(): ConflictDetectionResult<PageBookmark> {
-        val remoteMutationsByPage = remoteModelMutations.groupBy { it.model.page }
-        val remoteMutationsByRemoteID = remoteModelMutations.associateBy { it.remoteID }
+        val remoteMutationsByPage = remoteMutations.groupBy { it.model.page }
+        val remoteMutationsByRemoteID = remoteMutations.associateBy { it.remoteID }
         
         val conflictGroups = buildConflictGroups(remoteMutationsByPage, remoteMutationsByRemoteID)
         val conflictingIDs = extractConflictingIDs(conflictGroups)
@@ -51,7 +51,7 @@ class ConflictDetector(
         remoteMutationsByPage: Map<Int, List<RemoteModelMutation<PageBookmark>>>,
         remoteMutationsByRemoteID: Map<String, RemoteModelMutation<PageBookmark>>
     ): List<ConflictGroup<PageBookmark>> {
-        return localModelMutations
+        return localMutations
             .groupBy { it.model.page }
             .mapNotNull { (page, localMutations) ->
                 val conflictingRemoteMutations = findConflictingRemoteMutations(
@@ -69,14 +69,7 @@ class ConflictDetector(
                 } else null
             }
     }
-    
-    /**
-     * Finds remote mutations that conflict with the given local mutations.
-     * 
-     * Conflicts are detected when:
-     * 1. Remote mutations target the same page as local mutations
-     * 2. Local mutations reference a remote ID that exists in remote mutations (for deleted items)
-     */
+
     private fun findConflictingRemoteMutations(
         page: Int,
         localMutations: List<LocalModelMutation<PageBookmark>>,
@@ -100,10 +93,7 @@ class ConflictDetector(
         
         return conflictingRemotes.distinctBy { it.remoteID }
     }
-    
-    /**
-     * Extracts all conflicting remote and local IDs from conflict groups.
-     */
+
     private fun extractConflictingIDs(conflictGroups: List<ConflictGroup<PageBookmark>>): Pair<Set<String>, Set<String>> {
         val conflictingRemoteIDs = conflictGroups
             .flatMap { it.remoteMutations }
@@ -124,16 +114,16 @@ class ConflictDetector(
     ): ConflictDetectionResult<PageBookmark> {
         val (conflictingRemoteIDs, conflictingLocalIDs) = conflictingIDs
         
-        val nonConflictingRemoteMutations = remoteModelMutations
+        val nonConflictingRemoteMutations = remoteMutations
             .filterNot { conflictingRemoteIDs.contains(it.remoteID) }
             
-        val nonConflictingLocalMutations = localModelMutations
+        val nonConflictingLocalMutations = localMutations
             .filterNot { conflictingLocalIDs.contains(it.localID) }
         
         return ConflictDetectionResult(
             conflictGroups = conflictGroups,
-            otherRemoteMutations = nonConflictingRemoteMutations,
-            otherLocalMutations = nonConflictingLocalMutations
+            nonConflictingRemoteMutations = nonConflictingRemoteMutations,
+            nonConflictingLocalMutations = nonConflictingLocalMutations
         )
     }
 }

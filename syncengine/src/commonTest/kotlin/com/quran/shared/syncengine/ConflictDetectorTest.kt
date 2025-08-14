@@ -19,8 +19,8 @@ class ConflictDetectorTest {
         
         // Then
         assertEquals(0, result.conflictGroups.size, "Number of conflict groups")
-        assertEquals(0, result.otherRemoteMutations.size, "Number of other remote mutations")
-        assertEquals(0, result.otherLocalMutations.size, "Number of other local mutations")
+        assertEquals(0, result.nonConflictingRemoteMutations.size, "Number of other remote mutations")
+        assertEquals(0, result.nonConflictingLocalMutations.size, "Number of other local mutations")
     }
     
     @Test
@@ -48,8 +48,8 @@ class ConflictDetectorTest {
         
         // Then
         assertEquals(0, result.conflictGroups.size, "Number of conflict groups")
-        assertEquals(1, result.otherRemoteMutations.size, "Number of other remote mutations")
-        assertEquals(1, result.otherLocalMutations.size, "Number of other local mutations")
+        assertEquals(1, result.nonConflictingRemoteMutations.size, "Number of other remote mutations")
+        assertEquals(1, result.nonConflictingLocalMutations.size, "Number of other local mutations")
     }
     
     @Test
@@ -95,8 +95,8 @@ class ConflictDetectorTest {
         assertEquals(10, conflictGroup.remoteMutations.first().model.page, "Page number of remote mutation")
         
         // Verify other mutations
-        assertEquals(1, result.otherRemoteMutations.size, "Number of other remote mutations")
-        assertEquals(1, result.otherLocalMutations.size, "Number of other local mutations")
+        assertEquals(1, result.nonConflictingRemoteMutations.size, "Number of other remote mutations")
+        assertEquals(1, result.nonConflictingLocalMutations.size, "Number of other local mutations")
     }
     
     @Test
@@ -144,8 +144,8 @@ class ConflictDetectorTest {
         assertEquals(setOf("remote-1", "remote-2"), remoteIDs, "Remote IDs in conflict group")
         
         // Verify other mutations
-        assertEquals(1, result.otherRemoteMutations.size, "Number of other remote mutations")
-        assertEquals(0, result.otherLocalMutations.size, "Number of other local mutations")
+        assertEquals(1, result.nonConflictingRemoteMutations.size, "Number of other remote mutations")
+        assertEquals(0, result.nonConflictingLocalMutations.size, "Number of other local mutations")
     }
     
     @Test
@@ -201,8 +201,8 @@ class ConflictDetectorTest {
         assertEquals(10, conflictGroup.localMutations.first().model.page, "Page number of local mutation")
         
         // Verify other mutations
-        assertEquals(1, result.otherRemoteMutations.size, "Number of other remote mutations")
-        assertEquals(1, result.otherLocalMutations.size, "Number of other local mutations")
+        assertEquals(1, result.nonConflictingRemoteMutations.size, "Number of other remote mutations")
+        assertEquals(1, result.nonConflictingLocalMutations.size, "Number of other local mutations")
     }
     
     @Test
@@ -257,8 +257,8 @@ class ConflictDetectorTest {
         assertEquals(setOf("local-1", "local-2"), localIDs, "Local IDs in conflict group")
         
         // Verify other mutations
-        assertEquals(1, result.otherRemoteMutations.size, "Number of other remote mutations")
-        assertEquals(1, result.otherLocalMutations.size, "Number of other local mutations")
+        assertEquals(1, result.nonConflictingRemoteMutations.size, "Number of other remote mutations")
+        assertEquals(1, result.nonConflictingLocalMutations.size, "Number of other local mutations")
     }
     
     @Test
@@ -317,7 +317,7 @@ class ConflictDetectorTest {
         assertEquals(Instant.fromEpochSeconds(0), remoteMutation.model.lastModified, "Last modified of remote mutation")
         
         // Verify other mutations
-        assertEquals(1, result.otherRemoteMutations.size, "Number of other remote mutations")
-        assertEquals(1, result.otherLocalMutations.size, "Number of other local mutations")
+        assertEquals(1, result.nonConflictingRemoteMutations.size, "Number of other remote mutations")
+        assertEquals(1, result.nonConflictingLocalMutations.size, "Number of other local mutations")
     }
 } 

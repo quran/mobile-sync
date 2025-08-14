@@ -73,7 +73,7 @@ class PageBookmarksSynchronizationExecutor {
         
         // Step 8: Push - Send local mutations to server
         val pushResult = pushLocal(
-            conflictDetectionResult.otherLocalMutations + conflictResolutionResult.mutationsToPush,
+            conflictDetectionResult.nonConflictingLocalMutations + conflictResolutionResult.mutationsToPush,
             fetchedData.lastModificationDate
         )
         
@@ -82,7 +82,7 @@ class PageBookmarksSynchronizationExecutor {
         
         // Step 10: Combine - Merge all remote mutations
         val finalRemoteMutations = combineRemoteMutations(
-            conflictDetectionResult.otherRemoteMutations,
+            conflictDetectionResult.nonConflictingRemoteMutations,
             conflictResolutionResult.mutationsToPersist,
             transformedPushedMutations
         )
