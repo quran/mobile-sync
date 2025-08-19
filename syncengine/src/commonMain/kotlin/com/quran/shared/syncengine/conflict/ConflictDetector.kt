@@ -6,12 +6,12 @@ import com.quran.shared.syncengine.PageBookmark
 
 /**
  * 
- * @param conflictGroups Groups of mutations that have conflicts
+ * @param conflicts Groups of mutations that have conflicts
  * @param nonConflictingRemoteMutations Remote mutations that don't conflict with any local mutations
  * @param nonConflictingLocalMutations Local mutations that don't conflict with any remote mutations
  */
 data class ConflictDetectionResult<Model>(
-    val conflictGroups: List<ConflictGroup<Model>>,
+    val conflicts: List<ResourceConflict<Model>>,
     val nonConflictingRemoteMutations: List<RemoteModelMutation<Model>>,
     val nonConflictingLocalMutations: List<LocalModelMutation<Model>>
 )
@@ -39,19 +39,19 @@ class ConflictDetector(
         val remoteMutationsByPage = remoteMutations.groupBy { it.model.page }
         val remoteMutationsByRemoteID = remoteMutations.associateBy { it.remoteID }
         
-        val conflictGroups = buildConflictGroups(remoteMutationsByPage, remoteMutationsByRemoteID)
-        val conflictingIDs = extractConflictingIDs(conflictGroups)
+        val resourceConflicts = buildResourceConflicts(remoteMutationsByPage, remoteMutationsByRemoteID)
+        val conflictingIDs = extractConflictingIDs(resourceConflicts)
         
-        return buildResult(conflictGroups, conflictingIDs)
+        return buildResult(resourceConflicts, conflictingIDs)
     }
     
     /**
-     * Builds conflict groups by analyzing local mutations and finding corresponding remote conflicts.
+     * Builds resource conflicts by analyzing local mutations and finding corresponding remote conflicts.
      */
-    private fun buildConflictGroups(
+    private fun buildResourceConflicts(
         remoteMutationsByPage: Map<Int, List<RemoteModelMutation<PageBookmark>>>,
         remoteMutationsByRemoteID: Map<String, RemoteModelMutation<PageBookmark>>
-    ): List<ConflictGroup<PageBookmark>> {
+    ): List<ResourceConflict<PageBookmark>> {
         return localMutations
             .groupBy { it.model.page }
             .mapNotNull { (page, localMutations) ->
@@ -63,7 +63,7 @@ class ConflictDetector(
                 )
                 
                 if (conflictingRemoteMutations.isNotEmpty()) {
-                    ConflictGroup(
+                    ResourceConflict(
                         localMutations = localMutations,
                         remoteMutations = conflictingRemoteMutations
                     )
@@ -95,13 +95,13 @@ class ConflictDetector(
         return conflictingRemotes.distinctBy { it.remoteID }
     }
 
-    private fun extractConflictingIDs(conflictGroups: List<ConflictGroup<PageBookmark>>): Pair<Set<String>, Set<String>> {
-        val conflictingRemoteIDs = conflictGroups
+    private fun extractConflictingIDs(resourceConflicts: List<ResourceConflict<PageBookmark>>): Pair<Set<String>, Set<String>> {
+        val conflictingRemoteIDs = resourceConflicts
             .flatMap { it.remoteMutations }
             .map { it.remoteID }
             .toSet()
             
-        val conflictingLocalIDs = conflictGroups
+        val conflictingLocalIDs = resourceConflicts
             .flatMap { it.localMutations }
             .map { it.localID }
             .toSet()
@@ -110,7 +110,7 @@ class ConflictDetector(
     }
     
     private fun buildResult(
-        conflictGroups: List<ConflictGroup<PageBookmark>>,
+        resourceConflicts: List<ResourceConflict<PageBookmark>>,
         conflictingIDs: Pair<Set<String>, Set<String>>
     ): ConflictDetectionResult<PageBookmark> {
         val (conflictingRemoteIDs, conflictingLocalIDs) = conflictingIDs
@@ -122,7 +122,7 @@ class ConflictDetector(
             .filterNot { conflictingLocalIDs.contains(it.localID) }
         
         return ConflictDetectionResult(
-            conflictGroups = conflictGroups,
+            conflicts = resourceConflicts,
             nonConflictingRemoteMutations = nonConflictingRemoteMutations,
             nonConflictingLocalMutations = nonConflictingLocalMutations
         )

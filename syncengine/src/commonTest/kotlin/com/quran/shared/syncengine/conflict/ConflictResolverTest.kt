@@ -39,11 +39,11 @@ class ConflictResolverTest {
             localID = "local-1",
             mutation = Mutation.CREATED
         )
-        val conflictGroup = ConflictGroup(
+        val resourceConflict = ResourceConflict(
             localMutations = listOf(localMutation),
             remoteMutations = listOf(remoteMutation)
         )
-        val conflictResolver = ConflictResolver(listOf(conflictGroup))
+        val conflictResolver = ConflictResolver(listOf(resourceConflict))
         
         // When
         val result = conflictResolver.resolve()
@@ -68,11 +68,11 @@ class ConflictResolverTest {
             localID = "local-1",
             mutation = Mutation.DELETED
         )
-        val conflictGroup = ConflictGroup(
+        val resourceConflict = ResourceConflict(
             localMutations = listOf(localMutation),
             remoteMutations = listOf(remoteMutation)
         )
-        val conflictResolver = ConflictResolver(listOf(conflictGroup))
+        val conflictResolver = ConflictResolver(listOf(resourceConflict))
         
         // When
         val result = conflictResolver.resolve()
@@ -102,11 +102,11 @@ class ConflictResolverTest {
             localID = "local-1",
             mutation = Mutation.DELETED
         )
-        val conflictGroup = ConflictGroup(
+        val resourceConflict = ResourceConflict(
             localMutations = listOf(localDeleteMutation),
             remoteMutations = listOf(remoteDeleteMutation, remoteCreateMutation)
         )
-        val conflictResolver = ConflictResolver(listOf(conflictGroup))
+        val conflictResolver = ConflictResolver(listOf(resourceConflict))
         
         // When
         val result = conflictResolver.resolve()
@@ -138,11 +138,11 @@ class ConflictResolverTest {
             localID = "local-2",
             mutation = Mutation.CREATED
         )
-        val conflictGroup = ConflictGroup(
+        val resourceConflict = ResourceConflict(
             localMutations = listOf(localDeleteMutation, localCreateMutation),
             remoteMutations = listOf(remoteDeleteMutation)
         )
-        val conflictResolver = ConflictResolver(listOf(conflictGroup))
+        val conflictResolver = ConflictResolver(listOf(resourceConflict))
         
         // When
         val result = conflictResolver.resolve()
@@ -179,11 +179,11 @@ class ConflictResolverTest {
             localID = "local-2",
             mutation = Mutation.CREATED
         )
-        val conflictGroup = ConflictGroup(
+        val resourceConflict = ResourceConflict(
             localMutations = listOf(localDeleteMutation, localCreateMutation),
             remoteMutations = listOf(remoteDeleteMutation, remoteCreateMutation)
         )
-        val conflictResolver = ConflictResolver(listOf(conflictGroup))
+        val conflictResolver = ConflictResolver(listOf(resourceConflict))
         
         // When
         val result = conflictResolver.resolve()
@@ -209,7 +209,7 @@ class ConflictResolverTest {
             localID = "local-1",
             mutation = Mutation.CREATED
         )
-        val conflictGroup1 = ConflictGroup(
+        val resourceConflict1 = ResourceConflict(
             localMutations = listOf(localCreate1),
             remoteMutations = listOf(remoteCreate1)
         )
@@ -226,7 +226,7 @@ class ConflictResolverTest {
             localID = "local-2",
             mutation = Mutation.DELETED
         )
-        val conflictGroup2 = ConflictGroup(
+        val resourceConflict2 = ResourceConflict(
             localMutations = listOf(localDelete2),
             remoteMutations = listOf(remoteDelete2)
         )
@@ -248,12 +248,12 @@ class ConflictResolverTest {
             localID = "local-3",
             mutation = Mutation.DELETED
         )
-        val conflictGroup3 = ConflictGroup(
+        val resourceConflict3 = ResourceConflict(
             localMutations = listOf(localDelete3),
             remoteMutations = listOf(remoteDelete3, remoteCreate3)
         )
         
-        val conflictResolver = ConflictResolver(listOf(conflictGroup1, conflictGroup2, conflictGroup3))
+        val conflictResolver = ConflictResolver(listOf(resourceConflict1, resourceConflict2, resourceConflict3))
         
         // When
         val result = conflictResolver.resolve()
@@ -281,11 +281,11 @@ class ConflictResolverTest {
             localID = "local-1",
             mutation = Mutation.CREATED
         )
-        val conflictGroup = ConflictGroup(
+        val resourceConflict = ResourceConflict(
             localMutations = listOf(localCreateMutation),
             remoteMutations = listOf(remoteDeleteMutation)
         )
-        val conflictResolver = ConflictResolver(listOf(conflictGroup))
+        val conflictResolver = ConflictResolver(listOf(resourceConflict))
         
         // When & Then
         val exception = assertFailsWith<IllegalArgumentException> {
@@ -320,11 +320,11 @@ class ConflictResolverTest {
             localID = "local-1",
             mutation = Mutation.DELETED
         )
-        val conflictGroup = ConflictGroup(
+        val resourceConflict = ResourceConflict(
             localMutations = listOf(localDeleteMutation),
             remoteMutations = listOf(remoteCreateMutation)
         )
-        val conflictResolver = ConflictResolver(listOf(conflictGroup))
+        val conflictResolver = ConflictResolver(listOf(resourceConflict))
         
         // When & Then
         val exception = assertFailsWith<IllegalArgumentException> {

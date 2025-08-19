@@ -1,11 +1,10 @@
 package com.quran.shared.syncengine
 
 import com.quran.shared.mutations.LocalModelMutation
-import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.syncengine.conflict.ConflictDetector
 import com.quran.shared.syncengine.conflict.ConflictDetectionResult
-import com.quran.shared.syncengine.conflict.ConflictGroup
+import com.quran.shared.syncengine.conflict.ResourceConflict
 import com.quran.shared.syncengine.conflict.ConflictResolver
 import com.quran.shared.syncengine.conflict.ConflictResolutionResult
 import com.quran.shared.syncengine.preprocessing.LocalMutationsPreprocessor
@@ -73,7 +72,7 @@ class PageBookmarksSynchronizationExecutor {
         val conflictDetectionResult = detectConflicts(preprocessedRemoteMutations, preprocessedLocalMutations)
         
         // Step 7: Resolve - Resolve detected conflicts
-        val conflictResolutionResult = resolveConflicts(conflictDetectionResult.conflictGroups)
+        val conflictResolutionResult = resolveConflicts(conflictDetectionResult.conflicts)
         
         // Step 8: Push - Send local mutations to server
         val pushResult = pushLocal(
@@ -129,8 +128,8 @@ class PageBookmarksSynchronizationExecutor {
         return conflictDetector.getConflicts()
     }
 
-    private fun resolveConflicts(conflictGroups: List<ConflictGroup<PageBookmark>>): ConflictResolutionResult<PageBookmark> {
-        val conflictResolver = ConflictResolver(conflictGroups)
+    private fun resolveConflicts(conflicts: List<ResourceConflict<PageBookmark>>): ConflictResolutionResult<PageBookmark> {
+        val conflictResolver = ConflictResolver(conflicts)
         return conflictResolver.resolve()
     }
 

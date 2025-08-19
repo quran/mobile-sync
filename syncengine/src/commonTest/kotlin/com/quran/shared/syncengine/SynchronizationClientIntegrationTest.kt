@@ -11,8 +11,6 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.Instant
-import kotlin.test.assertFails
-import kotlin.test.fail
 
 class SynchronizationClientIntegrationTest {
 

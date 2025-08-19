@@ -19,7 +19,7 @@ class ConflictDetectorTest {
         val result = conflictDetector.getConflicts()
         
         // Then
-        assertEquals(0, result.conflictGroups.size, "Number of conflict groups")
+        assertEquals(0, result.conflicts.size, "Number of resource conflicts")
         assertEquals(0, result.nonConflictingRemoteMutations.size, "Number of other remote mutations")
         assertEquals(0, result.nonConflictingLocalMutations.size, "Number of other local mutations")
     }
@@ -48,7 +48,7 @@ class ConflictDetectorTest {
         val result = conflictDetector.getConflicts()
         
         // Then
-        assertEquals(0, result.conflictGroups.size, "Number of conflict groups")
+        assertEquals(0, result.conflicts.size, "Number of resource conflicts")
         assertEquals(1, result.nonConflictingRemoteMutations.size, "Number of other remote mutations")
         assertEquals(1, result.nonConflictingLocalMutations.size, "Number of other local mutations")
     }
@@ -88,12 +88,12 @@ class ConflictDetectorTest {
         val result = conflictDetector.getConflicts()
         
         // Then
-        assertEquals(1, result.conflictGroups.size, "Number of conflict groups")
-        val conflictGroup = result.conflictGroups.first()
-        assertEquals(1, conflictGroup.localMutations.size, "Number of local mutations in conflict")
-        assertEquals(1, conflictGroup.remoteMutations.size, "Number of remote mutations in conflict")
-        assertEquals(10, conflictGroup.localMutations.first().model.page, "Page number of local mutation")
-        assertEquals(10, conflictGroup.remoteMutations.first().model.page, "Page number of remote mutation")
+        assertEquals(1, result.conflicts.size, "Number of resource conflicts")
+        val resourceConflict = result.conflicts.first()
+        assertEquals(1, resourceConflict.localMutations.size, "Number of local mutations in conflict")
+        assertEquals(1, resourceConflict.remoteMutations.size, "Number of remote mutations in conflict")
+        assertEquals(10, resourceConflict.localMutations.first().model.page, "Page number of local mutation")
+        assertEquals(10, resourceConflict.remoteMutations.first().model.page, "Page number of remote mutation")
         
         // Verify other mutations
         assertEquals(1, result.nonConflictingRemoteMutations.size, "Number of other remote mutations")
@@ -134,14 +134,14 @@ class ConflictDetectorTest {
         val result = conflictDetector.getConflicts()
         
         // Then
-        assertEquals(1, result.conflictGroups.size, "Number of conflict groups")
-        val conflictGroup = result.conflictGroups.first()
-        assertEquals(1, conflictGroup.localMutations.size, "Number of local mutations in conflict")
-        assertEquals(2, conflictGroup.remoteMutations.size, "Number of remote mutations in conflict")
-        assertEquals(10, conflictGroup.localMutations.first().model.page, "Page number of local mutation")
+        assertEquals(1, result.conflicts.size, "Number of resource conflicts")
+        val resourceConflict = result.conflicts.first()
+        assertEquals(1, resourceConflict.localMutations.size, "Number of local mutations in conflict")
+        assertEquals(2, resourceConflict.remoteMutations.size, "Number of remote mutations in conflict")
+        assertEquals(10, resourceConflict.localMutations.first().model.page, "Page number of local mutation")
         
         // Verify remote mutations are grouped correctly
-        val remoteIDs = conflictGroup.remoteMutations.map { it.remoteID }.toSet()
+        val remoteIDs = resourceConflict.remoteMutations.map { it.remoteID }.toSet()
         assertEquals(setOf("remote-1", "remote-2"), remoteIDs, "Remote IDs in conflict group")
         
         // Verify other mutations
@@ -195,11 +195,11 @@ class ConflictDetectorTest {
         val result = conflictDetector.getConflicts()
         
         // Then
-        assertEquals(1, result.conflictGroups.size, "Number of conflict groups")
-        val conflictGroup = result.conflictGroups.first()
-        assertEquals(2, conflictGroup.localMutations.size, "Number of local mutations in conflict")
-        assertEquals(2, conflictGroup.remoteMutations.size, "Number of remote mutations in conflict")
-        assertEquals(10, conflictGroup.localMutations.first().model.page, "Page number of local mutation")
+        assertEquals(1, result.conflicts.size, "Number of resource conflicts")
+        val resourceConflict = result.conflicts.first()
+        assertEquals(2, resourceConflict.localMutations.size, "Number of local mutations in conflict")
+        assertEquals(2, resourceConflict.remoteMutations.size, "Number of remote mutations in conflict")
+        assertEquals(10, resourceConflict.localMutations.first().model.page, "Page number of local mutation")
         
         // Verify other mutations
         assertEquals(1, result.nonConflictingRemoteMutations.size, "Number of other remote mutations")
@@ -247,14 +247,14 @@ class ConflictDetectorTest {
         val result = conflictDetector.getConflicts()
         
         // Then
-        assertEquals(1, result.conflictGroups.size, "Number of conflict groups")
-        val conflictGroup = result.conflictGroups.first()
-        assertEquals(2, conflictGroup.localMutations.size, "Number of local mutations in conflict")
-        assertEquals(1, conflictGroup.remoteMutations.size, "Number of remote mutations in conflict")
-        assertEquals(10, conflictGroup.localMutations.first().model.page, "Page number of local mutation")
+        assertEquals(1, result.conflicts.size, "Number of resource conflicts")
+        val resourceConflict = result.conflicts.first()
+        assertEquals(2, resourceConflict.localMutations.size, "Number of local mutations in conflict")
+        assertEquals(1, resourceConflict.remoteMutations.size, "Number of remote mutations in conflict")
+        assertEquals(10, resourceConflict.localMutations.first().model.page, "Page number of local mutation")
         
         // Verify local mutations are grouped correctly
-        val localIDs = conflictGroup.localMutations.map { it.localID }.toSet()
+        val localIDs = resourceConflict.localMutations.map { it.localID }.toSet()
         assertEquals(setOf("local-1", "local-2"), localIDs, "Local IDs in conflict group")
         
         // Verify other mutations
@@ -297,14 +297,14 @@ class ConflictDetectorTest {
         val result = conflictDetector.getConflicts()
         
         // Then
-        assertEquals(1, result.conflictGroups.size, "Number of conflict groups")
-        val conflictGroup = result.conflictGroups.first()
-        assertEquals(1, conflictGroup.localMutations.size, "Number of local mutations in conflict")
-        assertEquals(1, conflictGroup.remoteMutations.size, "Number of remote mutations in conflict")
+        assertEquals(1, result.conflicts.size, "Number of resource conflicts")
+        val resourceConflict = result.conflicts.first()
+        assertEquals(1, resourceConflict.localMutations.size, "Number of local mutations in conflict")
+        assertEquals(1, resourceConflict.remoteMutations.size, "Number of remote mutations in conflict")
         
         // Verify the conflict is based on remote ID, not page
-        val localMutation = conflictGroup.localMutations.first()
-        val remoteMutation = conflictGroup.remoteMutations.first()
+        val localMutation = resourceConflict.localMutations.first()
+        val remoteMutation = resourceConflict.remoteMutations.first()
         
         assertEquals("remote-1", localMutation.remoteID, "Remote ID of local mutation")
         assertEquals("remote-1", remoteMutation.remoteID, "Remote ID of remote mutation")
