@@ -75,7 +75,6 @@ class PostMutationsRequest(
         authHeaders: Map<String, String>
     ): MutationsResponse {
         logger.i { "Starting POST mutations request to $url" }
-        logger.d { "Last modification date: $lastModificationDate" }
 
         val requestBody = PostMutationsRequestData(
             mutations = mutations.map { localMutation ->
@@ -105,7 +104,6 @@ class PostMutationsRequest(
             headers {
                 authHeaders.forEach { (key, value) ->
                     append(key, value)
-                    logger.d { "Adding header: $key" }
                 }
                 contentType(ContentType.Application.Json)
             }
@@ -127,7 +125,7 @@ class PostMutationsRequest(
                 errorBody
             }
             
-            // TODO: To be replaced with a specific exception class.
+            // TODO: Replace with NetworkException or similar specific exception class
             throw RuntimeException("HTTP request failed with status ${httpResponse.status}: $errorMessage")
         }
         
@@ -143,9 +141,6 @@ class PostMutationsRequest(
     
     private fun PostMutationsResponseData.toMutationsResponse(): MutationsResponse {
         val logger = Logger.withTag("PostMutationsResponseConverter")
-        
-        logger.d { "Converting PostMutationsResponseData to MutationsResponse" }
-        logger.d { "Input: lastMutationAt=$lastMutationAt, mutations count=${mutations.size}" }
         
         val mutations = mutations.map { postMutation ->
             val pageBookmark = PageBookmark(
@@ -172,13 +167,11 @@ class PostMutationsRequest(
                 mutation = mutation
             )
         }
-        
+
         val result = MutationsResponse(
             lastModificationDate = lastMutationAt,
             mutations = mutations
         )
-        
-        logger.d { "Conversion complete: lastModificationDate=${result.lastModificationDate}, mutations count=${result.mutations.size}" }
         
         return result
     }

@@ -287,8 +287,6 @@ class RemoteMutationsPreprocessorTest {
         
         // Assert
         assertEquals(3, result.size, "Should keep all mutations")
-        // Note: The preprocessor separates mutations into groups and combines them, so order may change
-        // It puts CREATED mutations first, then filtered DELETE mutations, then converted MODIFIED mutations
         val resultRemoteIDs = result.map { it.remoteID }
         assertTrue(resultRemoteIDs.contains("existing-1"), "Should contain existing-1")
         assertTrue(resultRemoteIDs.contains("new-1"), "Should contain new-1") 

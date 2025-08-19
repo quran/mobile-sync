@@ -39,7 +39,7 @@ internal class SynchronizationClientImpl(
 
     private suspend fun startSyncOperation() {
         try {
-            logger.i { "Starting sync operation pipeline" }
+            logger.i { "Starting sync operation" }
             
             val pipeline = PageBookmarksSynchronizationExecutor()
             val result = pipeline.executePipeline(
@@ -49,7 +49,7 @@ internal class SynchronizationClientImpl(
                 pushLocal = { mutations, lastModificationDate -> pushMutationsPipeline(mutations, lastModificationDate) }
             )
             
-            logger.i { "Sync operation pipeline completed successfully with ${result.remoteMutations.size} remote mutations to persist and ${result.localMutations.size} local mutations to clear." }
+            logger.i { "Sync operation completed successfully with ${result.remoteMutations.size} remote mutations to persist and ${result.localMutations.size} local mutations to clear." }
             bookmarksConfigurations.resultNotifier.didSucceed(
                 result.lastModificationDate,
                 result.remoteMutations,
@@ -57,62 +57,62 @@ internal class SynchronizationClientImpl(
             )
             
         } catch (e: Exception) {
-            logger.e(e) { "Sync operation pipeline failed: ${e.message}" }
+            logger.e(e) { "Sync operation failed: ${e.message}" }
             bookmarksConfigurations.resultNotifier.didFail("Sync operation failed: ${e.message}")
         }
-    }
-
-    private suspend fun fetchRemoteModifications(lastModificationDate: Long): MutationsResponse {
-        logger.d { "Fetching remote modifications from ${environment.endPointURL} with last modification date: $lastModificationDate" }
-        val authHeaders = getAuthHeaders()
-        val url = environment.endPointURL
-        val request = GetMutationsRequest(httpClient, url)
-        return request.getMutations(lastModificationDate, authHeaders)
     }
 
     private suspend fun pushLocalMutations(
         mutations: List<LocalModelMutation<PageBookmark>>,
         lastModificationDate: Long): MutationsResponse {
         if (mutations.isEmpty()) {
-            logger.d { "No local mutations to push. Returning" }
+            logger.d { "No local mutations to push, skipping network request" }
             return MutationsResponse(lastModificationDate, listOf())
         }
-        logger.d { "Pushing ${mutations.size} local mutations to ${environment.endPointURL} with last modification date: $lastModificationDate" }
+        
+        logger.i { "Pushing ${mutations.size} local mutations" }
         val authHeaders = getAuthHeaders()
         val url = environment.endPointURL
         val request = PostMutationsRequest(httpClient, url)
-        return request.postMutations(mutations, lastModificationDate, authHeaders)
+        val response = request.postMutations(mutations, lastModificationDate, authHeaders)
+        logger.i { "Successfully pushed mutations: received ${response.mutations.size} pushed remote mutations" }
+        return response
     }
 
     private suspend fun getAuthHeaders(): Map<String, String> {
+        // TODO: Should fail at this point!
         if (this.authHeaders == null) {
-            logger.d { "Fetching authentication headers" }
+            logger.d { "Fetching authentication headers from external source" }
             this.authHeaders = authenticationDataFetcher.fetchAuthenticationHeaders()
-            logger.d { "Authentication headers fetched, count: ${this.authHeaders?.size ?: 0}" }
+            logger.d { "Authentication headers fetched: ${this.authHeaders?.size ?: 0} headers" }
+        } else {
+            logger.d { "Using cached authentication headers: ${this.authHeaders?.size ?: 0} headers" }
         }
         return this.authHeaders ?: mapOf()
     }
 
     // Pipeline Step Methods (now simplified to work with PageBookmarksSynchronizationExecutor)
     private suspend fun initializePipeline(): PageBookmarksSynchronizationExecutor.PipelineInitData {
-        logger.d { "Pipeline Step 1: Initialize - Getting last modification date and local mutations" }
+        logger.d { "Fetching local data from repository" }
         val lastModificationDate = bookmarksConfigurations.localModificationDateFetcher
             .localLastModificationDate() ?: 0L
         val localMutations = bookmarksConfigurations.localDataFetcher
             .fetchLocalMutations(lastModificationDate)
-        logger.d { "Initialized with lastModificationDate=$lastModificationDate, localMutations=${localMutations.size}" }
+        logger.i { "Local data fetched: lastModificationDate=$lastModificationDate, localMutations=${localMutations.size}" }
         return PageBookmarksSynchronizationExecutor.PipelineInitData(lastModificationDate, localMutations)
     }
 
     private suspend fun fetchRemoteModificationsPipeline(lastModificationDate: Long): PageBookmarksSynchronizationExecutor.FetchedRemoteData {
-        logger.d { "Pipeline Step 2: Fetch - Getting remote modifications from server" }
-        val result = fetchRemoteModifications(lastModificationDate)
-        logger.d { "Fetched ${result.mutations.size} remote modifications, updated modification date: ${result.lastModificationDate}" }
+        logger.d { "Fetching remote modifications from ${environment.endPointURL} with lastModificationDate=$lastModificationDate" }
+        val authHeaders = getAuthHeaders()
+        val url = environment.endPointURL
+        val request = GetMutationsRequest(httpClient, url)
+        val result = request.getMutations(lastModificationDate, authHeaders)
         return PageBookmarksSynchronizationExecutor.FetchedRemoteData(result.mutations, result.lastModificationDate)
     }
 
     private suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> {
-        logger.d { "Pipeline Step 4: Preprocess - Checking local existence for ${remoteIDs.size} remote IDs" }
+        logger.d { "Checking local existence for ${remoteIDs.size} remote IDs" }
         return bookmarksConfigurations.localDataFetcher.checkLocalExistence(remoteIDs)
     }
 
@@ -120,9 +120,9 @@ internal class SynchronizationClientImpl(
         localMutations: List<LocalModelMutation<PageBookmark>>,
         lastModificationDate: Long
     ): PageBookmarksSynchronizationExecutor.PushResultData {
-        logger.d { "Pipeline Step 7: Push - Sending local mutations to server" }
+        logger.d { "Executing push mutations for ${localMutations.size} mutations" }
         val result = pushLocalMutations(localMutations, lastModificationDate)
-        logger.d { "Pushed ${localMutations.size} local mutations, received ${result.mutations.size} pushed remote mutations" }
+        logger.i { "Push mutations completed: ${result.mutations.size} pushed remote mutations received" }
         return PageBookmarksSynchronizationExecutor.PushResultData(result.mutations, result.lastModificationDate)
     }
 }

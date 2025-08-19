@@ -31,7 +31,7 @@ class ConflictDetector(
     
     companion object {
         // Remote DELETE events come without associated data for the resource before deletion.
-        // TODO: Planned to properly express empty resources in remote DELETE events.
+        // TODO: Enhance DELETE events to include resource data for better conflict detection
         private const val PAGE_VAL_IN_NULLIFIED_MODEL = 0
     }
 

@@ -1,5 +1,6 @@
 package com.quran.shared.syncengine
 
+import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.syncengine.conflict.ConflictDetector
@@ -15,6 +16,8 @@ import com.quran.shared.syncengine.preprocessing.RemoteMutationsPreprocessor
  * Contains no external dependencies and is fully testable.
  */
 class PageBookmarksSynchronizationExecutor {
+    
+    private val logger = Logger.withTag("SynchronizationExecutor")
     
     // Pipeline Step Data Classes
     data class PipelineInitData(
@@ -53,42 +56,42 @@ class PageBookmarksSynchronizationExecutor {
         checkLocalExistence: suspend (List<String>) -> Map<String, Boolean>,
         pushLocal: suspend (List<LocalModelMutation<PageBookmark>>, Long) -> PushResultData
     ): PipelineResult {
+        logger.i { "Starting synchronization execution for page bookmarks." }
         
-        // Step 1: Initialize - Get last modification date and local mutations
         val pipelineData = fetchLocal()
+        logger.i { "Initialized with lastModificationDate=${pipelineData.lastModificationDate}, localMutations=${pipelineData.localMutations.size}" }
         
-        // Step 2: Preprocess - Filter local mutations to remove bad states
         val preprocessedLocalMutations = preprocessLocalMutations(pipelineData.localMutations)
+        logger.d { "Local mutations preprocessed: ${pipelineData.localMutations.size} -> ${preprocessedLocalMutations.size}" }
         
-        // Step 3: Fetch - Get remote modifications from server
         val fetchedData = fetchRemote(pipelineData.lastModificationDate)
+        logger.d { "Remote mutations fetched: ${fetchedData.remoteMutations.size}, new lastModificationDate=${fetchedData.lastModificationDate}" }
         
-        // Step 4: Preprocess - Filter and transform remote mutations
         val preprocessedRemoteMutations = preprocessRemoteMutations(fetchedData.remoteMutations, checkLocalExistence)
+        logger.d { "Remote mutations preprocessed: ${fetchedData.remoteMutations.size} -> ${preprocessedRemoteMutations.size}" }
         
-        // Step 6: Detect - Find conflicts between local and remote mutations
         val conflictDetectionResult = detectConflicts(preprocessedRemoteMutations, preprocessedLocalMutations)
+        logger.d { "Conflict detection completed: ${conflictDetectionResult.conflicts.size} conflicts found, ${conflictDetectionResult.nonConflictingLocalMutations.size} non-conflicting local mutations, ${conflictDetectionResult.nonConflictingRemoteMutations.size} non-conflicting remote mutations" }
         
-        // Step 7: Resolve - Resolve detected conflicts
         val conflictResolutionResult = resolveConflicts(conflictDetectionResult.conflicts)
+        logger.d { "Conflict resolution completed: ${conflictResolutionResult.mutationsToPersist.size} mutations to persist, ${conflictResolutionResult.mutationsToPush.size} mutations to push" }
         
-        // Step 8: Push - Send local mutations to server
-        val pushResult = pushLocal(
-            conflictDetectionResult.nonConflictingLocalMutations + conflictResolutionResult.mutationsToPush,
-            fetchedData.lastModificationDate
-        )
+        val mutationsToPush = conflictDetectionResult.nonConflictingLocalMutations + conflictResolutionResult.mutationsToPush
+        logger.i { "Pushing ${mutationsToPush.size} local mutations to server" }
+
+        val pushResult = pushLocal(mutationsToPush, fetchedData.lastModificationDate)
+        logger.d { "Push completed: received ${pushResult.pushedMutations.size} pushed remote mutations, new lastModificationDate=${pushResult.lastModificationDate}" }
         
-        // Step 9: Preprocess Pushed - Filter and transform pushed mutations
         val preprocessedPushedMutations = preprocessRemoteMutations(pushResult.pushedMutations, checkLocalExistence)
+        logger.d { "Pushed mutations preprocessed: ${pushResult.pushedMutations.size} -> ${preprocessedPushedMutations.size}" }
         
-        // Step 10: Combine - Merge all remote mutations
         val finalRemoteMutations = combineRemoteMutations(
             conflictDetectionResult.nonConflictingRemoteMutations,
             conflictResolutionResult.mutationsToPersist,
             preprocessedPushedMutations
         )
         
-        // Step 11: Complete - Create and return result
+        logger.i { "Synchronization completed successfully: ${finalRemoteMutations.size} remote mutations to persist, ${preprocessedLocalMutations.size} local mutations to clear" }
         return PipelineResult(
             lastModificationDate = pushResult.lastModificationDate,
             remoteMutations = finalRemoteMutations,
@@ -96,8 +99,6 @@ class PageBookmarksSynchronizationExecutor {
         )
     }
 
-    // Pure business logic methods (no external dependencies)
-    
     private fun preprocessLocalMutations(
         localMutations: List<LocalModelMutation<PageBookmark>>
     ): List<LocalModelMutation<PageBookmark>> {

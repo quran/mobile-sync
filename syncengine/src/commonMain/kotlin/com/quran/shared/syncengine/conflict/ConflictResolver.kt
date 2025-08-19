@@ -46,7 +46,7 @@ class ConflictResolver(private val conflicts: List<ResourceConflict<PageBookmark
     }
 
     private fun processConflict(resourceConflict: ResourceConflict<PageBookmark>): ConflictResolutionResult<PageBookmark> {
-        // Check for illogical scenario: local creation vs remote deletion
+        // Illogical scenarios
         if (resourceConflict.mustHave(Mutation.CREATED, MutationSide.LOCAL)
             .and(Mutation.DELETED, MutationSide.REMOTE)
             .only()) {
@@ -58,7 +58,6 @@ class ConflictResolver(private val conflicts: List<ResourceConflict<PageBookmark
             )
         }
         
-        // Check for illogical scenario: local deletion vs remote creation
         if (resourceConflict.mustHave(Mutation.DELETED, MutationSide.LOCAL)
             .and(Mutation.CREATED, MutationSide.REMOTE)
             .only()) {
@@ -70,6 +69,7 @@ class ConflictResolver(private val conflicts: List<ResourceConflict<PageBookmark
             )
         }
         
+        // Handling conflicts
         if (resourceConflict.mustHave(Mutation.CREATED, MutationSide.BOTH).only() ||
             resourceConflict.mustHave(Mutation.DELETED, MutationSide.BOTH).only() ||
             resourceConflict.mustHave(Mutation.DELETED, MutationSide.BOTH)

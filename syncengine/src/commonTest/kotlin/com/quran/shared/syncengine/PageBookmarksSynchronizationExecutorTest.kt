@@ -165,11 +165,8 @@ class PageBookmarksSynchronizationExecutorTest {
     
     @Test
     fun `test illogical scenario - too many mutations for same page`() = runTest {
-        // Given: Illogical scenario with 3 mutations for the same page
-        val remoteMutations = emptyList<RemoteModelMutation<PageBookmark>>()
-        
         val localMutations = listOf(
-            // Illogical: 3 mutations for the same page
+            // 3 mutations for the same page
             LocalModelMutation(
                 model = PageBookmark(id = "local1", page = 10, lastModified = Instant.fromEpochSeconds(1000)),
                 remoteID = null,
@@ -194,13 +191,13 @@ class PageBookmarksSynchronizationExecutorTest {
         val updatedModificationDate = 1500L
         
         // When & Then: Execute pipeline should throw exception
-        assertFailsWith<IllegalArgumentException> {
+        val exception = assertFailsWith<IllegalArgumentException> {
             pipeline.executePipeline(
                 fetchLocal = {
                     PageBookmarksSynchronizationExecutor.PipelineInitData(lastModificationDate, localMutations)
                 },
                 fetchRemote = { _ ->
-                    PageBookmarksSynchronizationExecutor.FetchedRemoteData(remoteMutations, updatedModificationDate)
+                    PageBookmarksSynchronizationExecutor.FetchedRemoteData(emptyList(), updatedModificationDate)
                 },
                 checkLocalExistence = { remoteIDs ->
                     remoteIDs.associateWith { true }
@@ -209,21 +206,17 @@ class PageBookmarksSynchronizationExecutorTest {
                     PageBookmarksSynchronizationExecutor.PushResultData(emptyList(), updatedModificationDate)
                 }
             )
-        }.let { exception ->
-            assertTrue(exception.message?.contains("Illogical scenario detected") == true,
-                      "Error message should include illogical scenario details")
-            assertTrue(exception.message?.contains("Page 10 has 3 mutations") == true,
-                      "Error message should include page and mutation count details")
         }
+        
+        assertTrue(exception.message?.contains("Illogical scenario detected") == true,
+            "Error message should include illogical scenario details")
+        assertTrue(exception.message?.contains("Page 10 has 3 mutations") == true,
+            "Error message should include page and mutation count details")
     }
     
     @Test
     fun `test illogical scenario - deletion without remote ID`() = runTest {
-        // Given: Illogical scenario with deletion without remote ID
-        val remoteMutations = emptyList<RemoteModelMutation<PageBookmark>>()
-        
         val localMutations = listOf(
-            // Illogical: Deletion without remote ID
             LocalModelMutation(
                 model = PageBookmark(id = "local1", page = 10, lastModified = Instant.fromEpochSeconds(1000)),
                 remoteID = null, // This should cause an error
@@ -236,13 +229,13 @@ class PageBookmarksSynchronizationExecutorTest {
         val updatedModificationDate = 1500L
         
         // When & Then: Execute pipeline should throw exception
-        assertFailsWith<IllegalArgumentException> {
+        val exception = assertFailsWith<IllegalArgumentException> {
             pipeline.executePipeline(
                 fetchLocal = {
                     PageBookmarksSynchronizationExecutor.PipelineInitData(lastModificationDate, localMutations)
                 },
                 fetchRemote = { _ ->
-                    PageBookmarksSynchronizationExecutor.FetchedRemoteData(remoteMutations, updatedModificationDate)
+                    PageBookmarksSynchronizationExecutor.FetchedRemoteData(emptyList(), updatedModificationDate)
                 },
                 checkLocalExistence = { remoteIDs ->
                     remoteIDs.associateWith { true }
@@ -251,10 +244,10 @@ class PageBookmarksSynchronizationExecutorTest {
                     PageBookmarksSynchronizationExecutor.PushResultData(emptyList(), updatedModificationDate)
                 }
             )
-        }.let { exception ->
-            assertTrue(exception.message?.contains("deletion without remote ID") == true,
-                      "Error message should include remote ID requirement details")
         }
+        
+        assertTrue(exception.message?.contains("deletion without remote ID") == true,
+            "Error message should include deletion without remote ID details")
     }
     
     @Test

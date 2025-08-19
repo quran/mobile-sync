@@ -15,9 +15,7 @@ class LocalMutationsPreprocessor {
      * @return List of local mutations if no illogical scenarios are detected
      * @throws IllegalArgumentException if illogical scenarios are detected
      */
-    fun preprocess(
-        localMutations: List<LocalModelMutation<PageBookmark>>
-    ): List<LocalModelMutation<PageBookmark>> {
+    fun preprocess(localMutations: List<LocalModelMutation<PageBookmark>>): List<LocalModelMutation<PageBookmark>> {
         // Separate mutations by type
         val createdMutations = localMutations.filter { it.mutation == Mutation.CREATED }
         val deletedMutations = localMutations.filter { it.mutation == Mutation.DELETED }
@@ -40,7 +38,6 @@ class LocalMutationsPreprocessor {
             mutation.model.page
         }
         
-        // Check for illogical scenarios and filter out valid cancellations
         val processedMutations = mutationsByPage.flatMap { (page, mutations) ->
             processPageMutations(page, mutations)
         }
