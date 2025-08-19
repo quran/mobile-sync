@@ -42,20 +42,18 @@ internal class SynchronizationClientImpl(
             logger.i { "Starting sync operation pipeline" }
             
             val pipeline = PageBookmarksSynchronizationExecutor()
-            pipeline.executePipeline(
+            val result = pipeline.executePipeline(
                 fetchLocal = { initializePipeline() },
                 fetchRemote = { lastModificationDate -> fetchRemoteModificationsPipeline(lastModificationDate) },
                 checkLocalExistence = { remoteIDs -> checkLocalExistence(remoteIDs) },
-                pushLocal = { mutations, lastModificationDate -> pushMutationsPipeline(mutations, lastModificationDate) },
-                deliverResult = { result -> 
-                    logger.d { "Pipeline Step 11: Complete - Notifying success" }
-                    logger.i { "Sync operation pipeline completed successfully with ${result.remoteMutations.size} remote mutations and ${result.localMutations.size} local mutations" }
-                    bookmarksConfigurations.resultNotifier.didSucceed(
-                        result.lastModificationDate,
-                        result.remoteMutations,
-                        result.localMutations
-                    )
-                }
+                pushLocal = { mutations, lastModificationDate -> pushMutationsPipeline(mutations, lastModificationDate) }
+            )
+            
+            logger.i { "Sync operation pipeline completed successfully with ${result.remoteMutations.size} remote mutations to persist and ${result.localMutations.size} local mutations to clear." }
+            bookmarksConfigurations.resultNotifier.didSucceed(
+                result.lastModificationDate,
+                result.remoteMutations,
+                result.localMutations
             )
             
         } catch (e: Exception) {

@@ -45,15 +45,13 @@ class PageBookmarksSynchronizationExecutor {
      * @param fetchRemote Function to fetch remote mutations
      * @param checkLocalExistence Function to check if remote resources exist locally
      * @param pushLocal Function to push local mutations
-     * @param deliverResult Function to deliver the final result
      * @return PipelineResult containing the final state
      */
     suspend fun executePipeline(
         fetchLocal: suspend () -> PipelineInitData,
         fetchRemote: suspend (Long) -> FetchedRemoteData,
         checkLocalExistence: suspend (List<String>) -> Map<String, Boolean>,
-        pushLocal: suspend (List<LocalModelMutation<PageBookmark>>, Long) -> PushResultData,
-        deliverResult: suspend (PipelineResult) -> Unit
+        pushLocal: suspend (List<LocalModelMutation<PageBookmark>>, Long) -> PushResultData
     ): PipelineResult {
         
         // Step 1: Initialize - Get last modification date and local mutations
@@ -90,15 +88,12 @@ class PageBookmarksSynchronizationExecutor {
             preprocessedPushedMutations
         )
         
-        // Step 11: Complete - Create and deliver result
-        val result = PipelineResult(
+        // Step 11: Complete - Create and return result
+        return PipelineResult(
             lastModificationDate = pushResult.lastModificationDate,
             remoteMutations = finalRemoteMutations,
             localMutations = preprocessedLocalMutations
         )
-        
-        deliverResult(result)
-        return result
     }
 
     // Pure business logic methods (no external dependencies)

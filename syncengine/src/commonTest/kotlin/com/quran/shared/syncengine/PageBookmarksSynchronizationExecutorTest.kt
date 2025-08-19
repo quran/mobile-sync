@@ -44,8 +44,6 @@ class PageBookmarksSynchronizationExecutorTest {
         val lastModificationDate = 500L
         val updatedModificationDate = 1500L
         
-        var deliveredResult: PageBookmarksSynchronizationExecutor.PipelineResult? = null
-        
         // When: Execute pipeline
         val result = pipeline.executePipeline(
             fetchLocal = {
@@ -61,9 +59,6 @@ class PageBookmarksSynchronizationExecutorTest {
             pushLocal = { mutations, _ ->
                 // Mock push that returns empty response
                 PageBookmarksSynchronizationExecutor.PushResultData(emptyList(), updatedModificationDate)
-            },
-            deliverResult = { pipelineResult ->
-                deliveredResult = pipelineResult
             }
         )
         
@@ -76,10 +71,6 @@ class PageBookmarksSynchronizationExecutorTest {
         assertEquals(2, result.remoteMutations.size)
         assertTrue(result.remoteMutations.any { it.remoteID == "remote1" && it.mutation == Mutation.CREATED })
         assertTrue(result.remoteMutations.any { it.remoteID == "remote2" && it.mutation == Mutation.DELETED })
-        
-        // Verify deliverResult was called
-        assertNotNull(deliveredResult)
-        assertEquals(result, deliveredResult)
     }
     
     @Test
@@ -137,8 +128,6 @@ class PageBookmarksSynchronizationExecutorTest {
         val lastModificationDate = 500L
         val updatedModificationDate = 1500L
         
-        var deliveredResult: PageBookmarksSynchronizationExecutor.PipelineResult? = null
-        
         // When: Execute pipeline
         val result = pipeline.executePipeline(
             fetchLocal = {
@@ -154,9 +143,6 @@ class PageBookmarksSynchronizationExecutorTest {
             pushLocal = { mutations, _ ->
                 // Mock push that returns empty response
                 PageBookmarksSynchronizationExecutor.PushResultData(emptyList(), updatedModificationDate)
-            },
-            deliverResult = { pipelineResult ->
-                deliveredResult = pipelineResult
             }
         )
         
@@ -167,10 +153,6 @@ class PageBookmarksSynchronizationExecutorTest {
         
         // Should have remote mutations (conflicts are resolved)
         assertTrue(result.remoteMutations.isNotEmpty(), "Should have remote mutations after conflict resolution")
-        
-        // Verify deliverResult was called
-        assertNotNull(deliveredResult)
-        assertEquals(result, deliveredResult)
     }
     
     @Test
@@ -217,9 +199,6 @@ class PageBookmarksSynchronizationExecutorTest {
                 },
                 pushLocal = { mutations, _ ->
                     PageBookmarksSynchronizationExecutor.PushResultData(emptyList(), updatedModificationDate)
-                },
-                deliverResult = { _ ->
-                    // Should not be called
                 }
             )
         }.let { exception ->
@@ -262,9 +241,6 @@ class PageBookmarksSynchronizationExecutorTest {
                 },
                 pushLocal = { mutations, _ ->
                     PageBookmarksSynchronizationExecutor.PushResultData(emptyList(), updatedModificationDate)
-                },
-                deliverResult = { _ ->
-                    // Should not be called
                 }
             )
         }.let { exception ->
@@ -293,8 +269,6 @@ class PageBookmarksSynchronizationExecutorTest {
         val lastModificationDate = 500L
         val updatedModificationDate = 1500L
         
-        var deliveredResult: PageBookmarksSynchronizationExecutor.PipelineResult? = null
-        
         // When: Execute pipeline with existence check that says remote2 doesn't exist
         val result = pipeline.executePipeline(
             fetchLocal = {
@@ -309,9 +283,6 @@ class PageBookmarksSynchronizationExecutorTest {
             },
             pushLocal = { mutations, _ ->
                 PageBookmarksSynchronizationExecutor.PushResultData(emptyList(), updatedModificationDate)
-            },
-            deliverResult = { pipelineResult ->
-                deliveredResult = pipelineResult
             }
         )
         
@@ -321,9 +292,5 @@ class PageBookmarksSynchronizationExecutorTest {
         val remainingMutation = result.remoteMutations.first()
         assertEquals("remote1", remainingMutation.remoteID)
         assertEquals(Mutation.CREATED, remainingMutation.mutation)
-        
-        // Verify deliverResult was called
-        assertNotNull(deliveredResult)
-        assertEquals(result, deliveredResult)
     }
 }
