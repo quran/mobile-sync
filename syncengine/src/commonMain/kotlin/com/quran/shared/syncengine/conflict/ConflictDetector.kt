@@ -77,22 +77,10 @@ class ConflictDetector(
         remoteMutationsByPage: Map<Int, List<RemoteModelMutation<PageBookmark>>>,
         remoteMutationsByRemoteID: Map<String, RemoteModelMutation<PageBookmark>>
     ): List<RemoteModelMutation<PageBookmark>> {
-        val conflictingRemotes = mutableListOf<RemoteModelMutation<PageBookmark>>()
-        
-        // Add remote mutations for the same page
-        remoteMutationsByPage[page]?.let { conflictingRemotes.addAll(it) }
-        
-        // Add remote mutations for deleted items (page = 0) that match local remote IDs
-        localMutations.forEach { localMutation ->
-            localMutation.remoteID?.let { remoteID ->
-                val remoteMutation = remoteMutationsByRemoteID[remoteID]
-                if (remoteMutation?.model?.page == PAGE_VAL_IN_NULLIFIED_MODEL) {
-                    conflictingRemotes.add(remoteMutation)
-                }
-            }
-        }
-        
-        return conflictingRemotes.distinctBy { it.remoteID }
+        return remoteMutationsByPage[page].orEmpty() +
+                localMutations.mapNotNull { it.remoteID }
+                    .mapNotNull { remoteMutationsByRemoteID[it] }
+                    .filter { it.model.page == PAGE_VAL_IN_NULLIFIED_MODEL }
     }
 
     private fun extractConflictingIDs(resourceConflicts: List<ResourceConflict<PageBookmark>>): Pair<Set<String>, Set<String>> {
