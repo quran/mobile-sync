@@ -18,7 +18,6 @@ internal class SynchronizationClientImpl(
     private val authenticationDataFetcher: AuthenticationDataFetcher): SynchronizationClient {
 
     private val logger = Logger.withTag("SynchronizationClient")
-    private var authHeaders: Map<String, String>? = null
     private val scope = CoroutineScope(Dispatchers.IO)
 
     override fun localDataUpdated() {
@@ -80,15 +79,10 @@ internal class SynchronizationClientImpl(
     }
 
     private suspend fun getAuthHeaders(): Map<String, String> {
-        // TODO: Should fail at this point!
-        if (this.authHeaders == null) {
-            logger.d { "Fetching authentication headers from external source" }
-            this.authHeaders = authenticationDataFetcher.fetchAuthenticationHeaders()
-            logger.d { "Authentication headers fetched: ${this.authHeaders?.size ?: 0} headers" }
-        } else {
-            logger.d { "Using cached authentication headers: ${this.authHeaders?.size ?: 0} headers" }
-        }
-        return this.authHeaders ?: mapOf()
+        logger.d { "Fetching fresh authentication headers from external source" }
+        val headers = authenticationDataFetcher.fetchAuthenticationHeaders()
+        logger.d { "Authentication headers fetched: ${headers.size} headers" }
+        return headers
     }
 
     // Pipeline Step Methods (now simplified to work with PageBookmarksSynchronizationExecutor)
