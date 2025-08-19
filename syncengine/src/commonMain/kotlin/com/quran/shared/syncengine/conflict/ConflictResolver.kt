@@ -92,10 +92,13 @@ class ConflictResolver(private val conflicts: List<ResourceConflict<PageBookmark
             )
         }
         else {
-            // TODO: Consider an error for this.
             // This shouldn't happen if ConflictDetector is working correctly
-            // Return empty result as fallback
-            return ConflictResolutionResult(listOf(), listOf())
+            // Throw an error instead of returning empty result as fallback
+            throw IllegalArgumentException(
+                "Unexpected conflict scenario detected. " +
+                "Local mutations: ${resourceConflict.localMutations.map { "${it.mutation}(${it.localID})" }}, " +
+                "Remote mutations: ${resourceConflict.remoteMutations.map { "${it.mutation}(${it.remoteID})" }}"
+            )
         }
     }
 }
