@@ -3,6 +3,7 @@ package com.quran.shared.syncengine
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.syncengine.network.HttpClientFactory
+import io.ktor.client.HttpClient
 import kotlinx.datetime.Instant
 
 data class PageBookmark(val id: String, val page: Int, val lastModified: Instant)
@@ -59,10 +60,12 @@ sealed class SynchronizationClientBuilder {
         fun build(
             environment: SynchronizationEnvironment,
             authFetcher: AuthenticationDataFetcher,
-            bookmarksConfigurations: PageBookmarksSynchronizationConfigurations): SynchronizationClient {
+            bookmarksConfigurations: PageBookmarksSynchronizationConfigurations,
+            httpClient: HttpClient? = null
+        ): SynchronizationClient {
             return SynchronizationClientImpl(
                 environment,
-                HttpClientFactory.createHttpClient(),
+                httpClient ?: HttpClientFactory.createHttpClient(),
                 bookmarksConfigurations,
                 authFetcher
             )
