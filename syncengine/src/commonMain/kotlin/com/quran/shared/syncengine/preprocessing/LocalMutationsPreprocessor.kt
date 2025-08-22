@@ -16,22 +16,8 @@ class LocalMutationsPreprocessor {
      * @throws IllegalArgumentException if illogical scenarios are detected
      */
     fun preprocess(localMutations: List<LocalModelMutation<PageBookmark>>): List<LocalModelMutation<PageBookmark>> {
-        // Separate mutations by type
-        val createdMutations = localMutations.filter { it.mutation == Mutation.CREATED }
-        val deletedMutations = localMutations.filter { it.mutation == Mutation.DELETED }
-        val modifiedMutations = localMutations.filter { it.mutation == Mutation.MODIFIED }
-        
-        val transformedModifiedMutations = modifiedMutations.map { mutation ->
-            LocalModelMutation(
-                model = mutation.model,
-                remoteID = mutation.remoteID,
-                localID = mutation.localID,
-                mutation = Mutation.CREATED
-            )
-        }
-        
         // Combine all mutations
-        val allMutations = createdMutations + deletedMutations + transformedModifiedMutations
+        val allMutations = localMutations.map { it.mapModified() }
         
         // Group mutations by page
         val mutationsByPage = allMutations.groupBy { mutation ->
@@ -106,4 +92,16 @@ class LocalMutationsPreprocessor {
         // All other scenarios are valid
         return mutations
     }
-} 
+}
+
+private fun <T> LocalModelMutation<T>.mapModified(): LocalModelMutation<T> =
+    when (this.mutation) {
+        Mutation.MODIFIED ->
+            LocalModelMutation(
+                model = this.model,
+                remoteID = this.remoteID,
+                localID = this.localID,
+                mutation = Mutation.CREATED
+            )
+        Mutation.DELETED, Mutation.CREATED -> this
+    }

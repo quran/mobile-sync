@@ -16,31 +16,23 @@ class RemoteMutationsPreprocessor(
      * @return Filtered and transformed list of remote mutations
      */
     suspend fun preprocess(remoteMutations: List<RemoteModelMutation<PageBookmark>>): List<RemoteModelMutation<PageBookmark>> {
-        // Separate mutations by type
-        val createdMutations = remoteMutations.filter { it.mutation == Mutation.CREATED }
-        val deletedMutations = remoteMutations.filter { it.mutation == Mutation.DELETED }
-        val modifiedMutations = remoteMutations.filter { it.mutation == Mutation.MODIFIED }
-        
-        // Handle DELETE mutations - filter out those for non-existent resources
-        val filteredDeletedMutations = if (deletedMutations.isNotEmpty()) {
-            val remoteIDsToCheck = deletedMutations.map { it.remoteID }
-            val existenceMap = checkLocalExistence(remoteIDsToCheck)
-            
-            deletedMutations.filter { existenceMap[it.remoteID] ?: false }
-        } else {
-            emptyList()
-        }
-        
-        // Handle MODIFIED mutations - convert ALL to CREATED (no existence check needed)
-        val transformedModifiedMutations = modifiedMutations.map { mutation ->
+        val remoteIDsToCheck = remoteMutations.filter { it.mutation == Mutation.DELETED }
+            .map { it.remoteID }
+        val existenceMap = if (remoteIDsToCheck.isNotEmpty()) checkLocalExistence(remoteIDsToCheck) else emptyMap()
+
+        return remoteMutations
+            .filter { it.mutation != Mutation.DELETED || existenceMap[it.remoteID] == true }
+            .map { it.mapModified() }
+    }
+}
+
+private fun <T> RemoteModelMutation<T>.mapModified(): RemoteModelMutation<T> =
+    when (this.mutation) {
+        Mutation.MODIFIED ->
             RemoteModelMutation(
-                model = mutation.model,
-                remoteID = mutation.remoteID,
+                model = this.model,
+                remoteID = this.remoteID,
                 mutation = Mutation.CREATED
             )
-        }
-        
-        // Combine all mutations
-        return createdMutations + filteredDeletedMutations + transformedModifiedMutations
+        Mutation.DELETED, Mutation.CREATED -> this
     }
-} 

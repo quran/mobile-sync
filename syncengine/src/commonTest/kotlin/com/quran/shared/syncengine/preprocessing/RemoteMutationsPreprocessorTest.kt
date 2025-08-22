@@ -297,6 +297,57 @@ class RemoteMutationsPreprocessorTest {
         assertEquals(Mutation.CREATED, modifiedMutation?.mutation, "MODIFIED mutation should be converted to CREATED")
     }
     
+    @Test
+    fun `test preprocess should maintain order of input relative to same logical resource`() = runTest {
+        // Arrange
+        val existingRemoteIDs = setOf("existing-1", "existing-3")
+        val checkLocalExistence = createMockExistenceChecker(existingRemoteIDs)
+        val preprocessor = RemoteMutationsPreprocessor(checkLocalExistence)
+        
+        // Create mutations in a specific order
+        val remoteMutations = listOf(
+            RemoteModelMutation(
+                model = PageBookmark("non-existent-1", 30, Instant.fromEpochSeconds(1000)),
+                remoteID = "non-existent-1",
+                mutation = Mutation.DELETED
+            ),
+            RemoteModelMutation(
+                model = PageBookmark("new-1", 20, Instant.fromEpochSeconds(1000)),
+                remoteID = "new-1",
+                mutation = Mutation.CREATED
+            ),
+            RemoteModelMutation(
+                model = PageBookmark("existing-1", 10, Instant.fromEpochSeconds(1000)),
+                remoteID = "existing-1",
+                mutation = Mutation.DELETED
+            ),
+            RemoteModelMutation(
+                model = PageBookmark("existing-3", 40, Instant.fromEpochSeconds(1000)),
+                remoteID = "existing-3",
+                mutation = Mutation.MODIFIED
+            ),
+            RemoteModelMutation(
+                model = PageBookmark("new-2", 50, Instant.fromEpochSeconds(1000)),
+                remoteID = "new-2",
+                mutation = Mutation.CREATED
+            )
+        )
+        
+        // Act
+        val result = preprocessor.preprocess(remoteMutations)
+        
+        // Assert
+        // Should keep: existing-1 (DELETE), new-1 (CREATED), existing-3 (MODIFIED->CREATED), new-2 (CREATED)
+        // Should filter out: non-existent-1 (DELETE)
+        assertEquals(4, result.size, "Should keep 4 mutations and filter out 1")
+        
+        // Check that the relative order is maintained for kept mutations
+        assertEquals(
+            listOf("new-1", "existing-1", "existing-3", "new-2"),
+            result.map { it.remoteID },
+            "Output should maintain same order")
+    }
+    
     private fun createMockExistenceChecker(existingRemoteIDs: Set<String>): suspend (List<String>) -> Map<String, Boolean> {
         return { remoteIDs ->
             remoteIDs.associateWith { it in existingRemoteIDs }

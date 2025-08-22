@@ -6,10 +6,8 @@ import com.quran.shared.syncengine.PageBookmark
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlinx.datetime.Instant
-import kotlinx.coroutines.test.runTest
 class LocalMutationsPreprocessorTest {
     
     private val preprocessor = LocalMutationsPreprocessor()
@@ -183,17 +181,14 @@ class LocalMutationsPreprocessorTest {
     }
     
     @Test
-    fun `should allow deletion followed by creation`() {
-        val deletion = createLocalMutationWithRemoteID(1, Mutation.DELETED, "remote123")
+    fun `should not allow modified followed by creation`() {
+        val deletion = createLocalMutationWithRemoteID(1, Mutation.MODIFIED, "remote123")
         val creation = createLocalMutation(1, Mutation.CREATED)
         
-        // This should throw an error because after conversion we have creation followed by deletion
-        val exception = assertFailsWith<IllegalArgumentException> {
+        // This should throw an error because after conversion we have two creations
+        assertFailsWith<IllegalArgumentException> {
             preprocessor.preprocess(listOf(deletion, creation))
         }
-        
-        assertTrue(exception.message?.contains("creation followed by deletion") == true)
-        assertTrue(exception.message?.contains("two bookmarks on the same page") == true)
     }
     
     @Test
@@ -240,6 +235,26 @@ class LocalMutationsPreprocessorTest {
         assertEquals(2, result.size) // MODIFIED mutation is converted to CREATED
         assertEquals(deletion, result[0])
         assertTrue(result.any { it.localID == modification.localID && it.mutation == Mutation.CREATED }) // MODIFIED converted to CREATED
+    }
+    
+    @Test
+    fun `should maintain order of input relative to same logical resource`() {
+        // Create mutations for different pages in a specific order
+        val mutation1 = createLocalMutation(1, Mutation.CREATED)
+        val mutation2 = createLocalMutation(2, Mutation.MODIFIED) // Will be converted to CREATED
+        val mutation3 = createLocalMutationWithRemoteID(3, Mutation.DELETED, "remote3")
+        val mutation4 = createLocalMutation(4, Mutation.CREATED)
+        val mutation5 = createLocalMutationWithRemoteID(5, Mutation.DELETED, "remote5")
+        
+        val inputMutations = listOf(mutation1, mutation2, mutation3, mutation4, mutation5)
+        
+        val result = preprocessor.preprocess(inputMutations)
+        
+        // All mutations should be kept since they're for different pages
+        assertEquals(5, result.size, "Should keep all mutations for different pages")
+        
+        // Check that the relative order is maintained
+        assertEquals(inputMutations.map { it.localID}, result.map { it.localID}, "Order should be maintained in output")
     }
     
     private fun createLocalMutation(page: Int, mutation: Mutation): LocalModelMutation<PageBookmark> {
