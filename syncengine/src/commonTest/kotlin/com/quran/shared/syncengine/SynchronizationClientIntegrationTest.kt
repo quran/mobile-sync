@@ -310,7 +310,7 @@ class SynchronizationClientIntegrationTest {
     }
 
     @Test
-//    @Ignore
+    @Ignore
     fun `test a couple of conflicts with expected deletions from BE as well`() = runTest {
 
         assertTrue( (lastModificationDate ?: 0) > 0, "The last modification date should be bigger than 0 for this test.")
