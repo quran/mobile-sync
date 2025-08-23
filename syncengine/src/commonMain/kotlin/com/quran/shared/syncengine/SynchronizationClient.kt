@@ -2,11 +2,24 @@ package com.quran.shared.syncengine
 
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
+import com.quran.shared.syncengine.network.HttpClientFactory
+import io.ktor.client.HttpClient
+import kotlinx.datetime.Instant
 
-data class PageBookmark(val id: String, val page: Int, val lastModified: Long)
+data class PageBookmark(val id: String, val page: Int, val lastModified: Instant)
 
-interface LocalMutationsFetcher<Model> {
+interface LocalDataFetcher<Model> {
+    /**
+     * Fetches local mutations that have occurred since the given timestamp.
+     */
     suspend fun fetchLocalMutations(lastModified: Long): List<LocalModelMutation<Model>>
+    
+    /**
+     * Checks if the given remote IDs exist locally.
+     * @param remoteIDs List of remote IDs to check
+     * @return Map of remote ID to boolean indicating if it exists locally
+     */
+    suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean>
 }
 
 interface ResultNotifier<Model> {
@@ -26,7 +39,7 @@ interface LocalModificationDateFetcher {
 // This will be duplicated per each model type (or generalized), as defined by the BE.
 class PageBookmarksSynchronizationConfigurations(
     // Probably, add configurations to select bookmark types to process.
-    val localMutationsFetcher: LocalMutationsFetcher<PageBookmark>,
+    val localDataFetcher: LocalDataFetcher<PageBookmark>,
     val resultNotifier: ResultNotifier<PageBookmark>,
     val localModificationDateFetcher: LocalModificationDateFetcher
 )
@@ -47,10 +60,12 @@ sealed class SynchronizationClientBuilder {
         fun build(
             environment: SynchronizationEnvironment,
             authFetcher: AuthenticationDataFetcher,
-            bookmarksConfigurations: PageBookmarksSynchronizationConfigurations): SynchronizationClient {
+            bookmarksConfigurations: PageBookmarksSynchronizationConfigurations,
+            httpClient: HttpClient? = null
+        ): SynchronizationClient {
             return SynchronizationClientImpl(
                 environment,
-                HttpClientFactory.createHttpClient(),
+                httpClient ?: HttpClientFactory.createHttpClient(),
                 bookmarksConfigurations,
                 authFetcher
             )
