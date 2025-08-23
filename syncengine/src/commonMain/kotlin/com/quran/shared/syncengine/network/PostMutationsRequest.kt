@@ -1,15 +1,17 @@
-package com.quran.shared.syncengine
+package com.quran.shared.syncengine.network
 
 import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
+import com.quran.shared.syncengine.PageBookmark
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.serialization.Serializable
+import kotlinx.datetime.Instant
 
 class PostMutationsRequest(
     private val httpClient: HttpClient,
@@ -73,7 +75,6 @@ class PostMutationsRequest(
         authHeaders: Map<String, String>
     ): MutationsResponse {
         logger.i { "Starting POST mutations request to $url" }
-        logger.d { "Last modification date: $lastModificationDate" }
 
         val requestBody = PostMutationsRequestData(
             mutations = mutations.map { localMutation ->
@@ -92,6 +93,7 @@ class PostMutationsRequest(
                         MutatedResourceData(
                             type = "page",
                             key = localMutation.model.page,
+                            // TODO: Hardcoded to 1 for now. 
                             mushaf = 1
                         )
                     }
@@ -103,7 +105,6 @@ class PostMutationsRequest(
             headers {
                 authHeaders.forEach { (key, value) ->
                     append(key, value)
-                    logger.d { "Adding header: $key" }
                 }
                 contentType(ContentType.Application.Json)
             }
@@ -125,7 +126,7 @@ class PostMutationsRequest(
                 errorBody
             }
             
-            // TODO: To be replaced with a specific exception class.
+            // TODO: Replace with NetworkException or similar specific exception class
             throw RuntimeException("HTTP request failed with status ${httpResponse.status}: $errorMessage")
         }
         
@@ -142,24 +143,19 @@ class PostMutationsRequest(
     private fun PostMutationsResponseData.toMutationsResponse(): MutationsResponse {
         val logger = Logger.withTag("PostMutationsResponseConverter")
         
-        logger.d { "Converting PostMutationsResponseData to MutationsResponse" }
-        logger.d { "Input: lastMutationAt=$lastMutationAt, mutations count=${mutations.size}" }
-        
         val mutations = mutations.map { postMutation ->
             val pageBookmark = PageBookmark(
                 id = postMutation.resourceId,
                 // TODO: Probably need to remodel Mutation types for DELETE events
                 page = postMutation.data?.key ?: 0,
                 // Not sent in deletions
-                lastModified = postMutation.createdAt ?: 0
+                lastModified = postMutation.createdAt?.let { Instant.fromEpochSeconds(it) } ?: Instant.fromEpochSeconds(0)
             )
             
             val mutation = when (postMutation.type) {
                 "CREATE" -> Mutation.CREATED
                 "DELETE" -> Mutation.DELETED
-                // The server may still respond with UPDATE mutation types. They are not expected
-                // for bookmarks.
-                "UPDATE" -> Mutation.CREATED
+                "UPDATE" -> Mutation.MODIFIED
                 else -> {
                     logger.e { "Unknown mutation type: ${postMutation.type}" }
                     throw IllegalArgumentException("Unknown mutation type: ${postMutation.type}")
@@ -172,13 +168,11 @@ class PostMutationsRequest(
                 mutation = mutation
             )
         }
-        
+
         val result = MutationsResponse(
             lastModificationDate = lastMutationAt,
             mutations = mutations
         )
-        
-        logger.d { "Conversion complete: lastModificationDate=${result.lastModificationDate}, mutations count=${result.mutations.size}" }
         
         return result
     }

@@ -6,7 +6,7 @@ import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.repository.PageBookmarksSynchronizationRepository
 import com.quran.shared.syncengine.AuthenticationDataFetcher
 import com.quran.shared.syncengine.LocalModificationDateFetcher
-import com.quran.shared.syncengine.LocalMutationsFetcher
+import com.quran.shared.syncengine.LocalDataFetcher
 import com.quran.shared.syncengine.PageBookmark
 import com.quran.shared.syncengine.PageBookmarksSynchronizationConfigurations
 import com.quran.shared.syncengine.ResultNotifier
@@ -22,7 +22,7 @@ interface SyncEngineCallback {
 public class SyncEnginePipeline(
     val bookmarksRepository: PageBookmarksSynchronizationRepository
 ) {
-    var syncClient: SynchronizationClient? = null
+    private lateinit var syncClient: SynchronizationClient
 
     fun setup(
         environment: SynchronizationEnvironment,
@@ -34,7 +34,7 @@ public class SyncEnginePipeline(
         val bookmarksConf = PageBookmarksSynchronizationConfigurations(
             localModificationDateFetcher = localModificationDateFetcher,
             resultNotifier = ResultReceiver(bookmarksRepository, callback),
-            localMutationsFetcher = RepositoryReader(bookmarksRepository)
+            localDataFetcher = RepositoryDataFetcher(bookmarksRepository)
         )
         val syncClient = SynchronizationClientBuilder.build(
             environment = environment,
@@ -48,11 +48,11 @@ public class SyncEnginePipeline(
     }
 
     fun startListening() {
-
+        // TODO:
     }
 }
 
-private class RepositoryReader(val bookmarksRepository: PageBookmarksSynchronizationRepository): LocalMutationsFetcher<PageBookmark> {
+private class RepositoryDataFetcher(val bookmarksRepository: PageBookmarksSynchronizationRepository): LocalDataFetcher<PageBookmark> {
 
     override suspend fun fetchLocalMutations(lastModified: Long): List<LocalModelMutation<PageBookmark>> {
         return bookmarksRepository.fetchMutatedBookmarks().map { repoMutation ->
@@ -63,6 +63,10 @@ private class RepositoryReader(val bookmarksRepository: PageBookmarksSynchroniza
                 mutation = repoMutation.mutation
             )
         }
+    }
+
+    override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> {
+        return bookmarksRepository.remoteResourcesExist(remoteIDs)
     }
 }
 
@@ -109,15 +113,14 @@ private fun com.quran.shared.persistence.model.PageBookmark.toSyncEngine(): Page
     return PageBookmark(
         page = this.page,
         id = this.localId!!,
-        // TODO: Should this be moved to synengine instead?
-        lastModified = this.lastUpdated * 1000 // BE deals in nano-seconds timestamps.
+        lastModified = this.lastUpdated
         )
 }
 
 private fun PageBookmark.toPersistence(): com.quran.shared.persistence.model.PageBookmark {
     return com.quran.shared.persistence.model.PageBookmark(
         page = this.page,
-        lastUpdated = this.lastModified / 1000,
+        lastUpdated = this.lastModified,
         localId = this.id
     )
 }
