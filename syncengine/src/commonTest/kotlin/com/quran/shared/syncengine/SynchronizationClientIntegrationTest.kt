@@ -244,7 +244,7 @@ class SynchronizationClientIntegrationTest {
     }
 
     @Test
-//    @Ignore
+    @Ignore
     fun `test running and pushing some local updates`() = runTest {
         // Arrange
         val syncCompleted = CompletableDeferred<Unit>()
@@ -304,6 +304,82 @@ class SynchronizationClientIntegrationTest {
         println("Running the integration test for synchronization with local updates.")
         synchronizationClient.applicationStarted()
         
+        // Wait for the sync operation to complete
+        syncCompleted.await()
+        println("Sync operation with local updates completed successfully!")
+    }
+
+    @Test
+//    @Ignore
+    fun `test a couple of conflicts with expected deletions from BE as well`() = runTest {
+
+        assertTrue( (lastModificationDate ?: 0) > 0, "The last modification date should be bigger than 0 for this test.")
+        // Arrange
+        val syncCompleted = CompletableDeferred<Unit>()
+
+        // Create test data for local mutations: 2 creations and 1 deletion
+        val testLocalMutations = listOf(
+            LocalModelMutation(
+                // For this to work, there needs to be an expected remote delete mutation for that remote ID.
+                model = PageBookmark(id = "bnz3yxj9hqsepxtteov57bvt", page = 20, lastModified = Instant.fromEpochMilliseconds(1752350137423)),
+                remoteID = "bnz3yxj9hqsepxtteov57bvt", // To be filled
+                localID = "bnz3yxj9hqsepxtteov57bvt",
+                mutation = Mutation.DELETED
+            ),
+            LocalModelMutation(
+                model = PageBookmark(id = "local-2", page = 20, lastModified = Instant.fromEpochMilliseconds(1752350137493)),
+                remoteID = null, // No remote ID for local mutations
+                localID = "local-id-2",
+                mutation = Mutation.CREATED
+            ),
+//            LocalModelMutation(
+//                // TODO: Should clash with something on the BE
+//                model = PageBookmark(id = "local-2", page = 200, lastModified = Instant.fromEpochMilliseconds(1752350137423)),
+//                remoteID = null, // No remote ID for local mutations
+//                localID = "local-id-5",
+//                mutation = Mutation.CREATED
+//            ),
+            LocalModelMutation(
+                model = PageBookmark(id = "local-2", page = 600, lastModified = Instant.fromEpochMilliseconds(1752350137423)),
+                remoteID = null, // No remote ID for local mutations
+                localID = "non-clashing-local-id",
+                mutation = Mutation.CREATED
+            ),
+        )
+
+        val environment = createEnvironment()
+        val authFetcher = createAuthenticationDataFetcher()
+        val localMutationsFetcher = createLocalMutationsFetcher(
+            mutations = testLocalMutations,
+            existingRemoteIDs = setOf("chqcraq024hde90cwwxo14a0", "f5u2hbakgomknm828nsfltwk")
+        )
+        val localModificationDateFetcher = createLocalModificationDateFetcher(lastModificationDate)
+        val resultNotifier = createResultNotifier(
+            syncCompleted = syncCompleted,
+            expectedLocalMutationsCount = 3,
+            expectedRemoteMutationsMinCount = 3,
+            expectedProcessedPages = setOf(10, 20, 30)
+        )
+
+        val bookmarksConfigurations = createBookmarksConfigurations(
+            localDataFetcher = localMutationsFetcher,
+            resultNotifier = resultNotifier,
+            localModificationDateFetcher = localModificationDateFetcher
+        )
+
+        val synchronizationClient = createSynchronizationClient(
+            environment = environment,
+            authFetcher = authFetcher,
+            bookmarksConfigurations = bookmarksConfigurations
+        )
+
+        // Assert
+        assertNotNull(synchronizationClient, "SynchronizationClient should be created successfully")
+
+        // Trigger the sync operation
+        println("Running the integration test for synchronization with local updates.")
+        synchronizationClient.applicationStarted()
+
         // Wait for the sync operation to complete
         syncCompleted.await()
         println("Sync operation with local updates completed successfully!")
