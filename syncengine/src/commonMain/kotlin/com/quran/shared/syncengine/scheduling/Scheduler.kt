@@ -3,6 +3,7 @@ package com.quran.shared.syncengine.scheduling
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
@@ -35,14 +36,21 @@ class Scheduler(
 
     private val scope: CoroutineScope = CoroutineScope(dispatcher + SupervisorJob())
 
-    fun apply(trigger: Trigger) {
-        val time = when(trigger) {
-            Trigger.APP_START -> timings.standardInterval // TODO: Need a new kind of delay.
-//            Trigger.FIRST_INVOCATION -> timings.defaultDelay
-//            Trigger.LOCAL_MUTATION -> timings.localDataDelay
-        }
+    private var currentJob: Job? = null
 
-        val job = scope.launch {
+    fun apply(trigger: Trigger) {
+        when(trigger) {
+            Trigger.APP_START -> scheduleDefault()
+        }
+    }
+
+    fun stop() {
+        currentJob?.cancel()
+        currentJob = null
+    }
+
+    private fun schedule(time: Long) {
+        currentJob = scope.launch {
             kotlinx.coroutines.delay(time * 1000)
 
             state = SchedulerState.WaitingForReply
@@ -57,7 +65,8 @@ class Scheduler(
     }
 
     private fun scheduleDefault() {
-
+        state = SchedulerState.RegularWait
+        schedule(timings.standardInterval)
     }
 
     private fun scheduleForFailure() {
