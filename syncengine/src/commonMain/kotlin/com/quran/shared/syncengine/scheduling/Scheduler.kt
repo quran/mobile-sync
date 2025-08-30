@@ -8,23 +8,25 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 enum class Trigger {
-    APP_START
+    APP_START,
+    LOCAL_DATA_MODIFIED
 }
 
 // In seconds
-data class SchedulerTimings(val standardInterval: Long/*, val localDataDelay: Long, val maxFailureRetry: Long*/)
+data class SchedulerTimings(
+    val standardInterval: Long,
+    val localDataModifiedInterval: Long
+)
 
 private val DefaultTimings = SchedulerTimings(
-    standardInterval = 30L * 60
+    standardInterval = 30L * 60,
+    localDataModifiedInterval = 5L * 60
 )
 
 private sealed class SchedulerState {
     data object Initialized: SchedulerState()
-//    data object Idle: SchedulerState()
     data object RegularWait: SchedulerState()
-//    data class Invoked(val trigger: Trigger): SchedulerState()
     data object WaitingForReply: SchedulerState()
-//    data class Retrying(val trigger: Trigger): SchedulerState()
 }
 
 class Scheduler(
@@ -41,6 +43,7 @@ class Scheduler(
     fun apply(trigger: Trigger) {
         when(trigger) {
             Trigger.APP_START -> scheduleDefault()
+            Trigger.LOCAL_DATA_MODIFIED -> scheduleLocalDataModified()
         }
     }
 
@@ -67,6 +70,11 @@ class Scheduler(
     private fun scheduleDefault() {
         state = SchedulerState.RegularWait
         schedule(timings.standardInterval)
+    }
+
+    private fun scheduleLocalDataModified() {
+        state = SchedulerState.RegularWait
+        schedule(timings.localDataModifiedInterval)
     }
 
     private fun scheduleForFailure() {
