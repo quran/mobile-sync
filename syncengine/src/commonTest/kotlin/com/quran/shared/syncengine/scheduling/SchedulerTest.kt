@@ -228,7 +228,56 @@ class SchedulerTest {
                 assertTrue(
                     // Ideally, the actual delay should a few milliseconds bigger than expected.
                     // We're checking the absolute difference to make sure it's not called earlier
-                    // for scheudling conflicts.
+                    // for scheduling conflicts.
+                    kotlin.math.abs(secondCallDelay - expectedSecondCallDelay) < 100,
+                    "Second call should use standard interval timing. Expected ~${expectedSecondCallDelay}ms, got ${secondCallDelay}ms"
+                )
+                assertEquals(2, callCount, "Should be called twice total")
+                
+                scheduler.stop()
+            }
+        }
+    }
+
+    @OptIn(ExperimentalTime::class)
+    @Test
+    fun `LOCAL_DATA_MODIFIED as first trigger should schedule with localDataModifiedInterval then standard interval`() = runTest {
+        withContext(Dispatchers.Default.limitedParallelism(1)) {
+            withTimeout(10 * 1000) {
+                val timings = SchedulerTimings(standardInterval = 2L, localDataModifiedInterval = 1L)
+                var taskCompleted = CompletableDeferred<Long>()
+                var callCount = 0
+
+                val scheduler = Scheduler(timings, {
+                    callCount++
+                    val callTime = Clock.System.now().toEpochMilliseconds()
+                    taskCompleted.complete(callTime)
+                    true // Return true to continue scheduling
+                })
+
+                // First trigger LOCAL_DATA_MODIFIED (no APP_START)
+                val timeBeforeFirstTrigger = Clock.System.now().toEpochMilliseconds()
+                scheduler.apply(Trigger.LOCAL_DATA_MODIFIED)
+
+                // Wait for the first call (should use localDataModifiedInterval)
+                val firstCallTime = taskCompleted.await()
+                val firstCallDelay = firstCallTime - timeBeforeFirstTrigger
+                val expectedFirstCallDelay = timings.localDataModifiedInterval * 1000
+                
+                assertTrue(
+                    firstCallDelay - expectedFirstCallDelay < 100,
+                    "First call should use LOCAL_DATA_MODIFIED timing. Expected ~${expectedFirstCallDelay}ms, got ${firstCallDelay}ms"
+                )
+                assertEquals(1, callCount, "Should be called once for first call")
+
+                // Wait for the second call (should use standardInterval)
+                taskCompleted = CompletableDeferred()
+                val timeBeforeSecondCall = Clock.System.now().toEpochMilliseconds()
+                val secondCallTime = taskCompleted.await()
+                val secondCallDelay = secondCallTime - timeBeforeSecondCall
+                val expectedSecondCallDelay = timings.standardInterval * 1000
+                
+                assertTrue(
                     kotlin.math.abs(secondCallDelay - expectedSecondCallDelay) < 100,
                     "Second call should use standard interval timing. Expected ~${expectedSecondCallDelay}ms, got ${secondCallDelay}ms"
                 )
