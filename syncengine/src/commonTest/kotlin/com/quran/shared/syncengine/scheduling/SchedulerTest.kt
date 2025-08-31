@@ -226,7 +226,10 @@ class SchedulerTest {
                 val expectedSecondCallDelay = timings.standardInterval * 1000
                 
                 assertTrue(
-                    secondCallDelay - expectedSecondCallDelay < 100,
+                    // Ideally, the actual delay should a few milliseconds bigger than expected.
+                    // We're checking the absolute difference to make sure it's not called earlier
+                    // for scheudling conflicts.
+                    kotlin.math.abs(secondCallDelay - expectedSecondCallDelay) < 100,
                     "Second call should use standard interval timing. Expected ~${expectedSecondCallDelay}ms, got ${secondCallDelay}ms"
                 )
                 assertEquals(2, callCount, "Should be called twice total")

@@ -53,6 +53,7 @@ class Scheduler(
     }
 
     private fun schedule(time: Long) {
+        currentJob?.cancel()
         currentJob = scope.launch {
             kotlinx.coroutines.delay(time * 1000)
 
