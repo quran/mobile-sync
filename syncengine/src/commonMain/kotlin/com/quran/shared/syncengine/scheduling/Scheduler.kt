@@ -15,11 +15,13 @@ enum class Trigger {
 // In seconds
 data class SchedulerTimings(
     val standardInterval: Long,
+    val appStartInterval: Long,
     val localDataModifiedInterval: Long
 )
 
 private val DefaultTimings = SchedulerTimings(
-    standardInterval = 30L * 60,
+    appStartInterval = 30L * 60,
+    standardInterval = 60L * 60,
     localDataModifiedInterval = 5L * 60
 )
 
@@ -27,6 +29,7 @@ private sealed class SchedulerState {
     data object Initialized: SchedulerState()
     data object RegularWait: SchedulerState()
     data object WaitingForReply: SchedulerState()
+    data class Triggered(val trigger: Trigger): SchedulerState()
 }
 
 class Scheduler(
@@ -42,7 +45,7 @@ class Scheduler(
 
     fun apply(trigger: Trigger) {
         when(trigger) {
-            Trigger.APP_START -> scheduleDefault()
+            Trigger.APP_START -> scheduleAppStart()
             Trigger.LOCAL_DATA_MODIFIED -> scheduleLocalDataModified()
         }
     }
@@ -68,13 +71,18 @@ class Scheduler(
         }
     }
 
+    private fun scheduleAppStart() {
+        state = SchedulerState.Triggered(Trigger.APP_START)
+        schedule(timings.appStartInterval)
+    }
+
     private fun scheduleDefault() {
         state = SchedulerState.RegularWait
         schedule(timings.standardInterval)
     }
 
     private fun scheduleLocalDataModified() {
-        state = SchedulerState.RegularWait
+        state = SchedulerState.Triggered(Trigger.LOCAL_DATA_MODIFIED)
         schedule(timings.localDataModifiedInterval)
     }
 
