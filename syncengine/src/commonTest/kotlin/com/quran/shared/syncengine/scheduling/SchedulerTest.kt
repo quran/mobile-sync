@@ -287,4 +287,109 @@ class SchedulerTest {
             }
         }
     }
+
+    @OptIn(ExperimentalTime::class)
+    @Test
+    fun `APP_START trigger before previous LOCAL_DATA_MODIFIED is delivered should be ignored`() = runTest {
+        withContext(Dispatchers.Default.limitedParallelism(1)) {
+            withTimeout(10 * 1000) {
+                val timings = SchedulerTimings(appStartInterval = 2L, standardInterval = 3L, localDataModifiedInterval = 1L)
+                var taskCompleted = CompletableDeferred<Long>()
+                var callCount = 0
+
+                val scheduler = Scheduler(timings, {
+                    callCount++
+                    val callTime = Clock.System.now().toEpochMilliseconds()
+                    taskCompleted.complete(callTime)
+                    true
+                })
+
+                // First trigger LOCAL_DATA_MODIFIED
+                val timeBeforeLocalDataTrigger = Clock.System.now().toEpochMilliseconds()
+                scheduler.apply(Trigger.LOCAL_DATA_MODIFIED)
+
+                delay(100)
+                scheduler.apply(Trigger.APP_START)
+
+                val firstCallTime = taskCompleted.await()
+                val firstCallDelay = firstCallTime - timeBeforeLocalDataTrigger
+                val expectedFirstCallDelay = timings.localDataModifiedInterval * 1000
+                
+                assertTrue(
+                    firstCallDelay - expectedFirstCallDelay < 100,
+                    "First call should use LOCAL_DATA_MODIFIED timing, not APP_START timing. Expected ~${expectedFirstCallDelay}ms, got ${firstCallDelay}ms"
+                )
+                assertEquals(1, callCount, "Should be called once for first call")
+
+                // The second call should still use the standard interval
+                val timeBeforeSecondCall = Clock.System.now().toEpochMilliseconds()
+                taskCompleted = CompletableDeferred()
+                val secondCallTime = taskCompleted.await()
+                val secondCallDelay = secondCallTime - timeBeforeSecondCall
+                // The expected delay should be standardInterval minus the 500ms delay we added
+                val expectedSecondCallDelay = timings.standardInterval * 1000
+                
+                assertTrue(
+                    kotlin.math.abs(secondCallDelay - expectedSecondCallDelay) < 100,
+                    "Second call should use standard interval timing. Expected ~${expectedSecondCallDelay}ms, got ${secondCallDelay}ms"
+                )
+                assertEquals(2, callCount, "Should be called twice total")
+                
+                scheduler.stop()
+            }
+        }
+    }
+
+    @OptIn(ExperimentalTime::class)
+    @Test
+    fun `trigger during standard delay should cancel and reschedule`() = runTest {
+        withContext(Dispatchers.Default.limitedParallelism(1)) {
+            withTimeout(15 * 1000) {
+                val timings = SchedulerTimings(appStartInterval = 2L, standardInterval = 5L, localDataModifiedInterval = 1L)
+                var taskCompleted = CompletableDeferred<Long>()
+                var callCount = 0
+
+                val scheduler = Scheduler(timings, {
+                    callCount++
+                    val callTime = Clock.System.now().toEpochMilliseconds()
+                    taskCompleted.complete(callTime)
+                    true // Return true to continue scheduling
+                })
+
+                // First trigger APP_START
+                val timeBeforeAppStartTrigger = Clock.System.now().toEpochMilliseconds()
+                scheduler.apply(Trigger.APP_START)
+
+                // Wait for the first call (should use appStartInterval)
+                val firstCallTime = taskCompleted.await()
+                val firstCallDelay = firstCallTime - timeBeforeAppStartTrigger
+                val expectedFirstCallDelay = timings.appStartInterval * 1000
+                
+                assertTrue(
+                    firstCallDelay - expectedFirstCallDelay < 100,
+                    "First call should use APP_START timing. Expected ~${expectedFirstCallDelay}ms, got ${firstCallDelay}ms"
+                )
+                assertEquals(1, callCount, "Should be called once for first call")
+
+                // Wait a bit then trigger LOCAL_DATA_MODIFIED during standard delay
+                delay(1000) // Wait 1 second after first call
+                val timeBeforeLocalDataTrigger = Clock.System.now().toEpochMilliseconds()
+                scheduler.apply(Trigger.LOCAL_DATA_MODIFIED)
+
+                // Wait for the second call (should use localDataModifiedInterval, not standardInterval)
+                taskCompleted = CompletableDeferred()
+                val secondCallTime = taskCompleted.await()
+                val secondCallDelay = secondCallTime - timeBeforeLocalDataTrigger
+                val expectedSecondCallDelay = timings.localDataModifiedInterval * 1000
+                
+                assertTrue(
+                    kotlin.math.abs(secondCallDelay - expectedSecondCallDelay) < 100,
+                    "Second call should use LOCAL_DATA_MODIFIED timing, not standard interval timing. Expected ~${expectedSecondCallDelay}ms, got ${secondCallDelay}ms"
+                )
+                assertEquals(2, callCount, "Should be called twice total")
+                
+                scheduler.stop()
+            }
+        }
+    }
 }
