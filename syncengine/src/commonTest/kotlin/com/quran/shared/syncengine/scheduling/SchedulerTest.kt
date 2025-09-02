@@ -392,4 +392,107 @@ class SchedulerTest {
             }
         }
     }
+
+    @OptIn(ExperimentalTime::class)
+    @Test
+    fun `IMMEDIATE trigger should fire immediately after initialization`() = runTest {
+        withContext(Dispatchers.Default.limitedParallelism(1)) {
+            withTimeout(5 * 1000) {
+                val timings = SchedulerTimings(appStartInterval = 2L, standardInterval = 3L, localDataModifiedInterval = 1L)
+                var taskCompleted = CompletableDeferred<Long>()
+                var callCount = 0
+
+                val scheduler = Scheduler(timings, {
+                    callCount++
+                    val callTime = Clock.System.now().toEpochMilliseconds()
+                    taskCompleted.complete(callTime)
+                    true // Return true to continue scheduling
+                })
+
+                // Trigger IMMEDIATE right after initialization
+                val timeBeforeImmediateTrigger = Clock.System.now().toEpochMilliseconds()
+                scheduler.apply(Trigger.IMMEDIATE)
+
+                // Wait for the first call (should fire immediately)
+                val firstCallTime = taskCompleted.await()
+                val firstCallDelay = firstCallTime - timeBeforeImmediateTrigger
+                
+                // Should fire immediately (within 100ms)
+                assertTrue(
+                    firstCallDelay < 100,
+                    "IMMEDIATE trigger should fire immediately. Expected <100ms, got ${firstCallDelay}ms"
+                )
+                assertEquals(1, callCount, "Should be called once for immediate trigger")
+
+                // Wait for the second call (should use standardInterval)
+                taskCompleted = CompletableDeferred()
+                val timeBeforeSecondCall = Clock.System.now().toEpochMilliseconds()
+                val secondCallTime = taskCompleted.await()
+                val secondCallDelay = secondCallTime - timeBeforeSecondCall
+                val expectedSecondCallDelay = timings.standardInterval * 1000
+                
+                assertTrue(
+                    kotlin.math.abs(secondCallDelay - expectedSecondCallDelay) < 100,
+                    "Second call should use standard interval timing. Expected ~${expectedSecondCallDelay}ms, got ${secondCallDelay}ms"
+                )
+                assertEquals(2, callCount, "Should be called twice total")
+                
+                scheduler.stop()
+            }
+        }
+    }
+
+    @OptIn(ExperimentalTime::class)
+    @Test
+    fun `IMMEDIATE trigger after APP_START but before task execution should fire immediately`() = runTest {
+        withContext(Dispatchers.Default.limitedParallelism(1)) {
+            withTimeout(10 * 1000) {
+                val timings = SchedulerTimings(appStartInterval = 3L, standardInterval = 4L, localDataModifiedInterval = 1L)
+                var taskCompleted = CompletableDeferred<Long>()
+                var callCount = 0
+
+                val scheduler = Scheduler(timings, {
+                    callCount++
+                    val callTime = Clock.System.now().toEpochMilliseconds()
+                    taskCompleted.complete(callTime)
+                    true // Return true to continue scheduling
+                })
+
+                // First trigger APP_START
+                val timeBeforeAppStartTrigger = Clock.System.now().toEpochMilliseconds()
+                scheduler.apply(Trigger.APP_START)
+
+                // Wait a bit then trigger IMMEDIATE before the APP_START task executes
+                delay(1000) // Wait 1 second after APP_START trigger
+                val timeBeforeImmediateTrigger = Clock.System.now().toEpochMilliseconds()
+                scheduler.apply(Trigger.IMMEDIATE)
+
+                // Wait for the first call (should fire immediately due to IMMEDIATE trigger)
+                val firstCallTime = taskCompleted.await()
+                val firstCallDelay = firstCallTime - timeBeforeImmediateTrigger
+                
+                // Should fire immediately (within 100ms)
+                assertTrue(
+                    firstCallDelay < 100,
+                    "IMMEDIATE trigger should fire immediately even after APP_START. Expected <100ms, got ${firstCallDelay}ms"
+                )
+                assertEquals(1, callCount, "Should be called once for immediate trigger")
+
+                // Wait for the second call (should use standardInterval)
+                taskCompleted = CompletableDeferred()
+                val timeBeforeSecondCall = Clock.System.now().toEpochMilliseconds()
+                val secondCallTime = taskCompleted.await()
+                val secondCallDelay = secondCallTime - timeBeforeSecondCall
+                val expectedSecondCallDelay = timings.standardInterval * 1000
+                
+                assertTrue(
+                    kotlin.math.abs(secondCallDelay - expectedSecondCallDelay) < 100,
+                    "Second call should use standard interval timing. Expected ~${expectedSecondCallDelay}ms, got ${secondCallDelay}ms"
+                )
+                assertEquals(2, callCount, "Should be called twice total")
+                
+                scheduler.stop()
+            }
+        }
+    }
 }

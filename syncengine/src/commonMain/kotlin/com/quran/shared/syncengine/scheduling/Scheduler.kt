@@ -10,7 +10,8 @@ import kotlin.time.ExperimentalTime
 
 enum class Trigger {
     APP_START,
-    LOCAL_DATA_MODIFIED
+    LOCAL_DATA_MODIFIED,
+    IMMEDIATE
 }
 
 // In seconds
@@ -50,6 +51,7 @@ class Scheduler(
         when(trigger) {
             Trigger.APP_START -> scheduleAppStart()
             Trigger.LOCAL_DATA_MODIFIED -> scheduleLocalDataModified()
+            Trigger.IMMEDIATE -> scheduleImmediately()
         }
     }
 
@@ -103,6 +105,10 @@ class Scheduler(
 
     private fun scheduleLocalDataModified() {
         schedule(timings.localDataModifiedInterval, SchedulerState.Triggered(Trigger.LOCAL_DATA_MODIFIED))
+    }
+
+    private fun scheduleImmediately() {
+        schedule(0, SchedulerState.Triggered(Trigger.IMMEDIATE))
     }
 
     private fun scheduleForFailure() {
