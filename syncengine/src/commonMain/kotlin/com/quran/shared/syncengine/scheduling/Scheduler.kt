@@ -18,13 +18,22 @@ enum class Trigger {
 data class SchedulerTimings(
     val standardInterval: Long,
     val appStartInterval: Long,
-    val localDataModifiedInterval: Long
+    val localDataModifiedInterval: Long,
+    val retryingTimings: RetryingTimings
+)
+
+// In milliseconds
+data class RetryingTimings(
+    val baseDelay: Long,
+    val multiplier: Double,
+    val maximumRetries: Int
 )
 
 private val DefaultTimings = SchedulerTimings(
-    appStartInterval = 30L * 60,
     standardInterval = 60L * 60,
-    localDataModifiedInterval = 5L * 60
+    appStartInterval = 30L * 60,
+    localDataModifiedInterval = 5L * 60,
+    retryingTimings = RetryingTimings(baseDelay = 200, multiplier = 2.5, maximumRetries = 5)
 )
 
 private sealed class SchedulerState {
@@ -38,7 +47,8 @@ private sealed class SchedulerState {
 @OptIn(ExperimentalTime::class)
 class Scheduler(
     val timings: SchedulerTimings,
-    val taskFunction: suspend () -> Boolean
+    val taskFunction: suspend () -> Result<Unit>,
+    val reachedMaximumFailureRetries: suspend (Error) -> Unit,
 ) {
     private var state: SchedulerState = SchedulerState.Initialized
     private var expectedExecutionTime: Long? = null
@@ -78,7 +88,7 @@ class Scheduler(
             state = SchedulerState.WaitingForReply
             val result = taskFunction()
             state = SchedulerState.Replied
-            if (result) {
+            if (result.isSuccess) {
                 scheduleDefault()
             }
             else {
