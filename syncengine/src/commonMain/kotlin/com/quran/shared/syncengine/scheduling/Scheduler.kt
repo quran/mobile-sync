@@ -5,8 +5,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlin.math.pow
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
+import kotlin.time.Instant
 
 enum class Trigger {
     APP_START,
@@ -39,9 +41,10 @@ private val DefaultTimings = SchedulerTimings(
 private sealed class SchedulerState {
     data object Initialized: SchedulerState()
     data object RegularWait: SchedulerState()
-    data object WaitingForReply: SchedulerState()
-    data object Replied: SchedulerState()
+    data class WaitingForReply(val original: SchedulerState): SchedulerState()
+    data class Replied(val original: SchedulerState): SchedulerState()
     data class Triggered(val trigger: Trigger): SchedulerState()
+    data class Retrying(val original: SchedulerState, val retryNumber: Int): SchedulerState()
 }
 
 @OptIn(ExperimentalTime::class)
@@ -73,8 +76,9 @@ class Scheduler(
 
     private fun schedule(time: Long, newState: SchedulerState) {
         val currentTime = Clock.System.now().toEpochMilliseconds()
-        val firingTime = currentTime + time * 1000
+        val firingTime = currentTime + time
         if (currentlyScheduled() && firingTime >= (expectedExecutionTime ?: 0)) {
+            println("Ignored the schedule")
             return
         }
         expectedExecutionTime = firingTime
@@ -82,46 +86,87 @@ class Scheduler(
         currentJob?.cancel()
 
         this.state = newState
+        println("Scheduling in $time ms. Expected firing time: ${Instant.fromEpochMilliseconds(firingTime)}. State: $newState")
         currentJob = scope.launch {
-            kotlinx.coroutines.delay(time * 1000)
+            println("In the job")
+            kotlinx.coroutines.delay(time)
 
-            state = SchedulerState.WaitingForReply
+            state = SchedulerState.WaitingForReply(original = newState)
             val result = taskFunction()
-            state = SchedulerState.Replied
+            state = SchedulerState.Replied(original = newState)
             if (result.isSuccess) {
                 scheduleDefault()
             }
             else {
-                scheduleForFailure()
+                // TODO: Deal with this issue. Result returns a Throwable. We're returning an Error.
+                scheduleForFailure(/*result.exceptionOrNull() ?:*/ Error())
             }
         }
     }
 
     private fun currentlyScheduled(): Boolean =
         when (state) {
-            SchedulerState.Initialized, SchedulerState.Replied -> false
-            SchedulerState.WaitingForReply -> false // TODO:
-            SchedulerState.RegularWait, is SchedulerState.Triggered -> true
+            SchedulerState.Initialized, is SchedulerState.Replied -> false
+            is SchedulerState.WaitingForReply -> false
+            SchedulerState.RegularWait, is SchedulerState.Triggered, is SchedulerState.Retrying -> true
         }
 
 
     private fun scheduleAppStart() {
-        schedule(timings.appStartInterval, SchedulerState.Triggered(Trigger.APP_START))
+        schedule(timings.appStartInterval * 1000, SchedulerState.Triggered(Trigger.APP_START))
     }
 
     private fun scheduleDefault() {
-        schedule(timings.standardInterval, SchedulerState.RegularWait)
+        println("scheduleDefault")
+        schedule(timings.standardInterval * 1000, SchedulerState.RegularWait)
     }
 
     private fun scheduleLocalDataModified() {
-        schedule(timings.localDataModifiedInterval, SchedulerState.Triggered(Trigger.LOCAL_DATA_MODIFIED))
+        schedule(timings.localDataModifiedInterval * 1000, SchedulerState.Triggered(Trigger.LOCAL_DATA_MODIFIED))
     }
 
     private fun scheduleImmediately() {
         schedule(0, SchedulerState.Triggered(Trigger.IMMEDIATE))
     }
 
-    private fun scheduleForFailure() {
-        expectedExecutionTime = null
+    private fun scheduleForFailure(error: Error) {
+        val state = this.state
+        if (state is SchedulerState.Replied) {
+            val count = state.original.getRetryCount()
+            println("Original state: ${state.original}")
+            println("Got count of retries: $count")
+            if (count < timings.retryingTimings.maximumRetries) {
+                val nextCount = count + 1
+                val nextTime = (timings.retryingTimings.baseDelay * timings.retryingTimings.multiplier.pow(count)).toLong()
+                println("Time for next job: $nextTime")
+                schedule(nextTime, SchedulerState.Retrying(original = state.original.originalState(),
+                    retryNumber = nextCount))
+            }
+            else {
+                reportFailureAndSeize(error)
+            }
+        }
     }
+
+    private fun reportFailureAndSeize(error: Error) {
+        scope.launch {
+            reachedMaximumFailureRetries(error)
+        }
+        this.state = SchedulerState.Initialized
+        this.currentJob?.cancel()
+        this.currentJob = null
+        this.expectedExecutionTime = null
+    }
+}
+
+private fun SchedulerState.getRetryCount(): Int = when (this) {
+    is SchedulerState.Retrying -> this.retryNumber
+    else -> 0
+}
+
+private fun SchedulerState.originalState(): SchedulerState = when(this) {
+    is SchedulerState.Retrying -> original
+    is SchedulerState.Replied -> original
+    is SchedulerState.WaitingForReply -> original
+    is SchedulerState.Triggered, SchedulerState.Initialized, SchedulerState.RegularWait -> this
 }

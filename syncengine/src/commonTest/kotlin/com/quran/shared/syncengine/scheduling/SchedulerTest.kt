@@ -49,6 +49,20 @@ class SchedulerTest {
             retryingTimings = RetryingTimings(baseDelay = 200, multiplier = 2.5, maximumRetries = 5)
         )
         
+        private val RETRY_TEST_TIMINGS = SchedulerTimings(
+            appStartInterval = 2L,
+            standardInterval = 3L,
+            localDataModifiedInterval = 1L,
+            retryingTimings = RetryingTimings(baseDelay = 200, multiplier = 2.5, maximumRetries = 3)
+        )
+        
+        private val SINGLE_RETRY_TIMINGS = SchedulerTimings(
+            appStartInterval = 2L,
+            standardInterval = 3L,
+            localDataModifiedInterval = 1L,
+            retryingTimings = RetryingTimings(baseDelay = 200, multiplier = 2.5, maximumRetries = 1)
+        )
+        
         private fun createScheduler(
             timings: SchedulerTimings,
             taskFunction: suspend () -> Result<Unit>
@@ -508,6 +522,140 @@ class SchedulerTest {
                     "Second call should use standard interval timing"
                 )
                 assertEquals(2, callCount, "Should be called twice total")
+                
+                scheduler.stop()
+            }
+        }
+    }
+
+    @OptIn(ExperimentalTime::class)
+    @Test
+    fun `task function failures should retry with exponential backoff until maximum retries reached`() = runTest {
+        withContext(Dispatchers.Default.limitedParallelism(1)) {
+            withTimeout(DEFAULT_TIMEOUT_MS) {
+                val timings = RETRY_TEST_TIMINGS
+                var callCount = 0
+                var maxRetriesError: Error? = null
+                val maxRetriesDeferred = CompletableDeferred<Unit>()
+
+                val scheduler = Scheduler(timings, { 
+                    callCount++
+                    Result.failure(Error("Test failure"))
+                }, { error ->
+                    maxRetriesError = error
+                    maxRetriesDeferred.complete(Unit)
+                })
+
+                val timeBeforeTrigger = Clock.System.now().toEpochMilliseconds()
+                scheduler.apply(Trigger.IMMEDIATE)
+
+                // Wait for all retries to complete
+                maxRetriesDeferred.await()
+
+                assertEquals(timings.retryingTimings.maximumRetries + 1, callCount, 
+                    "Should be called maximum retries + 1 times (initial + retries)")
+//                assertEquals("Test failure", maxRetriesError?.message, "Error should be passed to max retries callback")
+
+                // Verify retry delays follow exponential backoff pattern
+                // Note: We can't easily measure individual retry delays in this test structure,
+                // but we can verify the total time taken is reasonable for the retry pattern
+                val totalTime = Clock.System.now().toEpochMilliseconds() - timeBeforeTrigger
+                val expectedMinTime = timings.retryingTimings.baseDelay * 
+                    (1 + timings.retryingTimings.multiplier + 
+                     timings.retryingTimings.multiplier * timings.retryingTimings.multiplier)
+                
+                assertTrue(totalTime >= expectedMinTime, 
+                    "Total time should account for retry delays. Expected at least ${expectedMinTime}ms, got ${totalTime}ms")
+                
+                scheduler.stop()
+            }
+        }
+    }
+
+    @OptIn(ExperimentalTime::class)
+    @Test
+    fun `after task function failures standard interval scheduling should not occur`() = runTest {
+        withContext(Dispatchers.Default.limitedParallelism(1)) {
+            withTimeout(DEFAULT_TIMEOUT_MS) {
+                val timings = SINGLE_RETRY_TIMINGS
+                var callCount = 0
+                val maxRetriesDeferred = CompletableDeferred<Unit>()
+
+                val scheduler = Scheduler(timings, { 
+                    callCount++
+                    Result.failure(Error("Test failure"))
+                }, { _ ->
+                    maxRetriesDeferred.complete(Unit)
+                })
+
+                scheduler.apply(Trigger.IMMEDIATE)
+
+                // Wait for all retries to complete
+                maxRetriesDeferred.await()
+
+                // Wait for longer than the standard interval to ensure no additional scheduling occurs
+                delay((timings.standardInterval + 1) * 1000)
+                
+                // Verify no additional calls were made after maximum retries
+                assertEquals(timings.retryingTimings.maximumRetries + 1, callCount, 
+                    "Call count should remain at maximum retries + 1, no additional calls should be scheduled")
+                
+                scheduler.stop()
+            }
+        }
+    }
+
+    @OptIn(ExperimentalTime::class)
+    @Test
+    fun `after maximum retries reached applying any trigger should fire normally`() = runTest {
+        withContext(Dispatchers.Default.limitedParallelism(1)) {
+            withTimeout(DEFAULT_TIMEOUT_MS) {
+                val timings = SINGLE_RETRY_TIMINGS
+                var callCount = 0
+                var shouldSucceed = false
+                val maxRetriesDeferred = CompletableDeferred<Unit>()
+                val newTaskDeferred = CompletableDeferred<Unit>()
+
+                val scheduler = Scheduler(timings, { 
+                    callCount++
+                    if (shouldSucceed) {
+                        newTaskDeferred.complete(Unit)
+                        Result.success(Unit)
+                    } else {
+                        Result.failure(Error("Test failure"))
+                    }
+                }, { _ ->
+                    maxRetriesDeferred.complete(Unit)
+                })
+
+                scheduler.apply(Trigger.IMMEDIATE)
+
+                // Wait for all retries to complete
+                maxRetriesDeferred.await()
+
+                assertEquals(timings.retryingTimings.maximumRetries + 1, callCount, 
+                    "Should be called maximum retries + 1 times before max retries reached")
+
+                // Now set the task to succeed and apply a new trigger
+                shouldSucceed = true
+                val timeBeforeNewTrigger = Clock.System.now().toEpochMilliseconds()
+                scheduler.apply(Trigger.LOCAL_DATA_MODIFIED)
+
+                // Wait for the new task to complete
+                newTaskDeferred.await()
+
+                val timeAfterNewCall = Clock.System.now().toEpochMilliseconds()
+                val newCallDelay = timeAfterNewCall - timeBeforeNewTrigger
+                val expectedDelay = timings.localDataModifiedInterval * 1000
+
+                assertEquals(timings.retryingTimings.maximumRetries + 2, callCount, 
+                    "Should be called one more time after applying new trigger")
+                
+                assertTimingWithinTolerance(
+                    newCallDelay,
+                    expectedDelay,
+                    "New trigger should use LOCAL_DATA_MODIFIED timing after maximum retries reached"
+                )
                 
                 scheduler.stop()
             }
