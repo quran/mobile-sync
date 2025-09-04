@@ -22,44 +22,44 @@ class SchedulerTest {
         
         // Predefined timing configurations for different test scenarios
         private val STANDARD_TEST_TIMINGS = SchedulerTimings(
-            appStartInterval = 2L,
-            standardInterval = 3L,
-            localDataModifiedInterval = 1L,
+            appStartInterval = 2000L,
+            standardInterval = 3000L,
+            localDataModifiedInterval = 1000L,
             retryingTimings = RetryingTimings(baseDelay = 200, multiplier = 2.5, maximumRetries = 5)
         )
         
         private val SLOW_OVERRIDE_TIMINGS = SchedulerTimings(
-            appStartInterval = 3L,
-            standardInterval = 5L,
-            localDataModifiedInterval = 1L,
+            appStartInterval = 3000L,
+            standardInterval = 5000L,
+            localDataModifiedInterval = 1000L,
             retryingTimings = RetryingTimings(baseDelay = 200, multiplier = 2.5, maximumRetries = 5)
         )
         
         private val LONG_SCHEDULING_TIMINGS = SchedulerTimings(
-            appStartInterval = 30L,
-            standardInterval = 60L,
-            localDataModifiedInterval = 5L,
+            appStartInterval = 30000L,
+            standardInterval = 60000L,
+            localDataModifiedInterval = 5000L,
             retryingTimings = RetryingTimings(baseDelay = 200, multiplier = 2.5, maximumRetries = 5)
         )
         
         private val OVERLAP_TEST_TIMINGS = SchedulerTimings(
-            appStartInterval = 2L,
-            standardInterval = 5L,
-            localDataModifiedInterval = 1L,
+            appStartInterval = 2000L,
+            standardInterval = 5000L,
+            localDataModifiedInterval = 1000L,
             retryingTimings = RetryingTimings(baseDelay = 200, multiplier = 2.5, maximumRetries = 5)
         )
         
         private val RETRY_TEST_TIMINGS = SchedulerTimings(
-            appStartInterval = 2L,
-            standardInterval = 3L,
-            localDataModifiedInterval = 1L,
+            appStartInterval = 2000L,
+            standardInterval = 3000L,
+            localDataModifiedInterval = 1000L,
             retryingTimings = RetryingTimings(baseDelay = 200, multiplier = 2.5, maximumRetries = 3)
         )
         
         private val SINGLE_RETRY_TIMINGS = SchedulerTimings(
-            appStartInterval = 2L,
-            standardInterval = 3L,
-            localDataModifiedInterval = 1L,
+            appStartInterval = 2000L,
+            standardInterval = 3000L,
+            localDataModifiedInterval = 1000L,
             retryingTimings = RetryingTimings(baseDelay = 200, multiplier = 2.5, maximumRetries = 1)
         )
         
@@ -115,10 +115,10 @@ class SchedulerTest {
         assertTrue(timeAfterCall > timeBeforeCall, "Task must be called after apply")
         
         val actualDelay = timeAfterCall - timeBeforeCall
-        val expectedDelay = timings.appStartInterval * 1000
+        val expectedDelay = timings.appStartInterval
         assertTrue(
             actualDelay - expectedDelay < TIMING_TOLERANCE_MS,
-            "Task should be called quickly with no delay, took ${actualDelay}ms while expected is ${timings.appStartInterval}s"
+            "Task should be called quickly with no delay, took ${actualDelay}ms while expected is ${timings.appStartInterval}ms"
         )
     }
 
@@ -148,7 +148,7 @@ class SchedulerTest {
                 assertEquals(2, returnedCount, "Expected to be called twice.")
                 
                 val timeDelay = timeAfterTest - timeBeforeTest
-                val expectedTotalDelay = (timings.appStartInterval + timings.standardInterval) * 1000
+                val expectedTotalDelay = timings.appStartInterval + timings.standardInterval
                 assertTrue(
                     timeDelay - expectedTotalDelay < TIMING_TOLERANCE_MS,
                     "Expected to wait the appStartInterval for first call and standardInterval for second call. Time delay: $timeDelay"
@@ -218,7 +218,7 @@ class SchedulerTest {
                 val timeAfterCall = taskCompleted.await()
 
                 val actualDelay = timeAfterCall - timeBeforeDataModifiedTrigger
-                val expectedDelay = timings.localDataModifiedInterval * 1000
+                val expectedDelay = timings.localDataModifiedInterval
                 
                 assertTimingWithinTolerance(
                     actualDelay,
@@ -256,7 +256,7 @@ class SchedulerTest {
 
                 val firstCallTime = taskCompleted.await()
                 val firstCallDelay = firstCallTime - timeBeforeDataModifiedTrigger
-                val expectedFirstCallDelay = timings.localDataModifiedInterval * 1000
+                val expectedFirstCallDelay = timings.localDataModifiedInterval
                 
                 assertTimingWithinTolerance(
                     firstCallDelay,
@@ -269,7 +269,7 @@ class SchedulerTest {
                 val timeBeforeSecondCall = Clock.System.now().toEpochMilliseconds()
                 val secondCallTime = taskCompleted.await()
                 val secondCallDelay = secondCallTime - timeBeforeSecondCall
-                val expectedSecondCallDelay = timings.standardInterval * 1000
+                val expectedSecondCallDelay = timings.standardInterval
                 
                 assertTimingWithinTolerance(
                     secondCallDelay,
@@ -304,7 +304,7 @@ class SchedulerTest {
 
                 val firstCallTime = taskCompleted.await()
                 val firstCallDelay = firstCallTime - timeBeforeFirstTrigger
-                val expectedFirstCallDelay = timings.localDataModifiedInterval * 1000
+                val expectedFirstCallDelay = timings.localDataModifiedInterval
                 
                 assertTimingWithinTolerance(
                     firstCallDelay,
@@ -317,7 +317,7 @@ class SchedulerTest {
                 val timeBeforeSecondCall = Clock.System.now().toEpochMilliseconds()
                 val secondCallTime = taskCompleted.await()
                 val secondCallDelay = secondCallTime - timeBeforeSecondCall
-                val expectedSecondCallDelay = timings.standardInterval * 1000
+                val expectedSecondCallDelay = timings.standardInterval
                 
                 assertTimingWithinTolerance(
                     secondCallDelay,
@@ -355,7 +355,7 @@ class SchedulerTest {
 
                 val firstCallTime = taskCompleted.await()
                 val firstCallDelay = firstCallTime - timeBeforeLocalDataTrigger
-                val expectedFirstCallDelay = timings.localDataModifiedInterval * 1000
+                val expectedFirstCallDelay = timings.localDataModifiedInterval
                 
                 assertTimingWithinTolerance(
                     firstCallDelay,
@@ -368,7 +368,7 @@ class SchedulerTest {
                 taskCompleted = CompletableDeferred()
                 val secondCallTime = taskCompleted.await()
                 val secondCallDelay = secondCallTime - timeBeforeSecondCall
-                val expectedSecondCallDelay = timings.standardInterval * 1000
+                val expectedSecondCallDelay = timings.standardInterval
                 
                 assertTimingWithinTolerance(
                     secondCallDelay,
@@ -403,7 +403,7 @@ class SchedulerTest {
 
                 val firstCallTime = taskCompleted.await()
                 val firstCallDelay = firstCallTime - timeBeforeAppStartTrigger
-                val expectedFirstCallDelay = timings.appStartInterval * 1000
+                val expectedFirstCallDelay = timings.appStartInterval
                 
                 assertTimingWithinTolerance(
                     firstCallDelay,
@@ -419,7 +419,7 @@ class SchedulerTest {
                 taskCompleted = CompletableDeferred()
                 val secondCallTime = taskCompleted.await()
                 val secondCallDelay = secondCallTime - timeBeforeLocalDataTrigger
-                val expectedSecondCallDelay = timings.localDataModifiedInterval * 1000
+                val expectedSecondCallDelay = timings.localDataModifiedInterval
                 
                 assertTimingWithinTolerance(
                     secondCallDelay,
@@ -465,7 +465,7 @@ class SchedulerTest {
                 val timeBeforeSecondCall = Clock.System.now().toEpochMilliseconds()
                 val secondCallTime = taskCompleted.await()
                 val secondCallDelay = secondCallTime - timeBeforeSecondCall
-                val expectedSecondCallDelay = timings.standardInterval * 1000
+                val expectedSecondCallDelay = timings.standardInterval
                 
                 assertTimingWithinTolerance(
                     secondCallDelay,
@@ -514,7 +514,7 @@ class SchedulerTest {
                 val timeBeforeSecondCall = Clock.System.now().toEpochMilliseconds()
                 val secondCallTime = taskCompleted.await()
                 val secondCallDelay = secondCallTime - timeBeforeSecondCall
-                val expectedSecondCallDelay = timings.standardInterval * 1000
+                val expectedSecondCallDelay = timings.standardInterval
                 
                 assertTimingWithinTolerance(
                     secondCallDelay,
@@ -594,7 +594,7 @@ class SchedulerTest {
                 maxRetriesDeferred.await()
 
                 // Wait for longer than the standard interval to ensure no additional scheduling occurs
-                delay((timings.standardInterval + 1) * 1000)
+                delay(timings.standardInterval + 1000)
                 
                 // Verify no additional calls were made after maximum retries
                 assertEquals(timings.retryingTimings.maximumRetries + 1, callCount, 
@@ -646,7 +646,7 @@ class SchedulerTest {
 
                 val timeAfterNewCall = Clock.System.now().toEpochMilliseconds()
                 val newCallDelay = timeAfterNewCall - timeBeforeNewTrigger
-                val expectedDelay = timings.localDataModifiedInterval * 1000
+                val expectedDelay = timings.localDataModifiedInterval
 
                 assertEquals(timings.retryingTimings.maximumRetries + 2, callCount, 
                     "Should be called one more time after applying new trigger")

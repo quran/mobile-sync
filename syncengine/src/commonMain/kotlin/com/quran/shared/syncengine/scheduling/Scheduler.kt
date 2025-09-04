@@ -16,7 +16,7 @@ enum class Trigger {
     IMMEDIATE
 }
 
-// In seconds
+// In milliseconds
 data class SchedulerTimings(
     val standardInterval: Long,
     val appStartInterval: Long,
@@ -32,9 +32,9 @@ data class RetryingTimings(
 )
 
 private val DefaultTimings = SchedulerTimings(
-    standardInterval = 60L * 60,
-    appStartInterval = 30L * 60,
-    localDataModifiedInterval = 5L * 60,
+    standardInterval = 60L * 60 * 1000,
+    appStartInterval = 30L * 60 * 1000,
+    localDataModifiedInterval = 5L * 60 * 1000,
     retryingTimings = RetryingTimings(baseDelay = 200, multiplier = 2.5, maximumRetries = 5)
 )
 
@@ -113,16 +113,16 @@ class Scheduler(
 
 
     private fun scheduleAppStart() {
-        schedule(timings.appStartInterval * 1000, SchedulerState.Triggered(Trigger.APP_START))
+        schedule(timings.appStartInterval, SchedulerState.Triggered(Trigger.APP_START))
     }
 
     private fun scheduleDefault() {
         println("scheduleDefault")
-        schedule(timings.standardInterval * 1000, SchedulerState.RegularWait)
+        schedule(timings.standardInterval, SchedulerState.RegularWait)
     }
 
     private fun scheduleLocalDataModified() {
-        schedule(timings.localDataModifiedInterval * 1000, SchedulerState.Triggered(Trigger.LOCAL_DATA_MODIFIED))
+        schedule(timings.localDataModifiedInterval, SchedulerState.Triggered(Trigger.LOCAL_DATA_MODIFIED))
     }
 
     private fun scheduleImmediately() {
