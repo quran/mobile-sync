@@ -32,9 +32,9 @@ data class RetryingTimings(
 )
 
 private val DefaultTimings = SchedulerTimings(
-    standardInterval = 60L * 60 * 1000,
-    appStartInterval = 30L * 60 * 1000,
-    localDataModifiedInterval = 5L * 60 * 1000,
+    standardInterval = 30 * 60 * 1000,
+    appStartInterval = 30 * 1000,
+    localDataModifiedInterval = 5 * 1000,
     retryingTimings = RetryingTimings(baseDelay = 200, multiplier = 2.5, maximumRetries = 5)
 )
 
