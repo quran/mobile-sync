@@ -19,49 +19,49 @@ class SchedulerTest {
 
     companion object {
         private const val TIMING_TOLERANCE_MS = 100L
-        private const val DEFAULT_TIMEOUT_MS = 15_000L
+        private const val DEFAULT_TIMEOUT_MS = 5_000L
         
         // Predefined timing configurations for different test scenarios
         private val STANDARD_TEST_TIMINGS = SchedulerTimings(
-            appStartInterval = 2000L,
-            standardInterval = 3000L,
-            localDataModifiedInterval = 1000L,
+            appStartInterval = 200L,
+            standardInterval = 300L,
+            localDataModifiedInterval = 100L,
             retryingTimings = RetryingTimings(baseDelay = 200, multiplier = 2.5, maximumRetries = 5)
         )
         
         private val SLOW_OVERRIDE_TIMINGS = SchedulerTimings(
-            appStartInterval = 3000L,
-            standardInterval = 5000L,
-            localDataModifiedInterval = 1000L,
+            appStartInterval = 300L,
+            standardInterval = 500L,
+            localDataModifiedInterval = 100L,
             retryingTimings = RetryingTimings(baseDelay = 200, multiplier = 2.5, maximumRetries = 5)
         )
         
         private val LONG_SCHEDULING_TIMINGS = SchedulerTimings(
-            appStartInterval = 30000L,
-            standardInterval = 60000L,
-            localDataModifiedInterval = 5000L,
+            appStartInterval = 6000L,
+            standardInterval = 12000L,
+            localDataModifiedInterval = 1000L,
             retryingTimings = RetryingTimings(baseDelay = 200, multiplier = 2.5, maximumRetries = 5)
         )
         
         private val OVERLAP_TEST_TIMINGS = SchedulerTimings(
-            appStartInterval = 2000L,
-            standardInterval = 5000L,
-            localDataModifiedInterval = 1000L,
+            appStartInterval = 200L,
+            standardInterval = 500L,
+            localDataModifiedInterval = 100L,
             retryingTimings = RetryingTimings(baseDelay = 200, multiplier = 2.5, maximumRetries = 5)
         )
         
         private val RETRY_TEST_TIMINGS = SchedulerTimings(
-            appStartInterval = 2000L,
-            standardInterval = 3000L,
-            localDataModifiedInterval = 1000L,
-            retryingTimings = RetryingTimings(baseDelay = 200, multiplier = 2.5, maximumRetries = 3)
+            appStartInterval = 200L,
+            standardInterval = 300L,
+            localDataModifiedInterval = 100L,
+            retryingTimings = RetryingTimings(baseDelay = 100, multiplier = 2.5, maximumRetries = 3)
         )
         
         private val SINGLE_RETRY_TIMINGS = SchedulerTimings(
-            appStartInterval = 2000L,
-            standardInterval = 3000L,
-            localDataModifiedInterval = 1000L,
-            retryingTimings = RetryingTimings(baseDelay = 200, multiplier = 2.5, maximumRetries = 1)
+            appStartInterval = 200L,
+            standardInterval = 300L,
+            localDataModifiedInterval = 100L,
+            retryingTimings = RetryingTimings(baseDelay = 100, multiplier = 2.5, maximumRetries = 1)
         )
         
         private fun createScheduler(
@@ -188,7 +188,7 @@ class SchedulerTest {
 
         val waiting = CompletableDeferred<Unit>()
         backgroundScope.launch {
-            delay(1000)
+            delay(100)
             waiting.complete(Unit)
         }
         waiting.await()
@@ -212,7 +212,7 @@ class SchedulerTest {
 
         scheduler.apply(Trigger.APP_START)
         
-        delay(500)
+        delay(100)
         val timeBeforeDataModifiedTrigger = Clock.System.now().toEpochMilliseconds()
         scheduler.apply(Trigger.LOCAL_DATA_MODIFIED)
 
@@ -247,7 +247,7 @@ class SchedulerTest {
 
         scheduler.apply(Trigger.APP_START)
         
-        delay(500)
+        delay(100)
         val timeBeforeDataModifiedTrigger = Clock.System.now().toEpochMilliseconds()
         scheduler.apply(Trigger.LOCAL_DATA_MODIFIED)
 
@@ -397,7 +397,7 @@ class SchedulerTest {
         )
         assertEquals(1, callCount, "Should be called once for first call")
 
-        delay(1000)
+        delay(50)
         val timeBeforeLocalDataTrigger = Clock.System.now().toEpochMilliseconds()
         scheduler.apply(Trigger.LOCAL_DATA_MODIFIED)
 
@@ -474,7 +474,7 @@ class SchedulerTest {
 
         scheduler.apply(Trigger.APP_START)
 
-        delay(1000)
+        delay(50)
         val timeBeforeImmediateTrigger = Clock.System.now().toEpochMilliseconds()
         scheduler.apply(Trigger.IMMEDIATE)
 
@@ -563,7 +563,7 @@ class SchedulerTest {
         maxRetriesDeferred.await()
 
         // Wait for longer than the standard interval to ensure no additional scheduling occurs
-        delay(timings.standardInterval + 1000)
+        delay(timings.standardInterval + 50)
         
         // Verify no additional calls were made after maximum retries
         assertEquals(timings.retryingTimings.maximumRetries + 1, callCount, 
