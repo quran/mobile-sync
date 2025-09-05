@@ -72,7 +72,6 @@ class SchedulerTest {
 
         val scheduler = Scheduler(timings, {
             taskCompleted.complete(currentTimeMs())
-            Result.success(Unit)
         }, { _ -> })
 
         val timeBeforeCall = currentTimeMs()
@@ -101,7 +100,6 @@ class SchedulerTest {
         val scheduler = Scheduler(timings, {
             count++
             taskCompleted.complete(count)
-            Result.success(Unit)
         }, { _ -> })
 
         scheduler.apply(Trigger.APP_START)
@@ -132,7 +130,6 @@ class SchedulerTest {
         val scheduler = Scheduler(timings, {
             callCount++
             taskCompleted.complete(callCount)
-            Result.success(Unit)
         }, { _ -> })
 
         scheduler.apply(Trigger.APP_START)
@@ -162,7 +159,6 @@ class SchedulerTest {
         val scheduler = Scheduler(timings, {
             callCount++
             taskCompleted.complete(currentTimeMs())
-            Result.success(Unit)
         }, { _ -> })
 
         scheduler.apply(Trigger.APP_START)
@@ -195,7 +191,6 @@ class SchedulerTest {
         val scheduler = Scheduler(timings, {
             callCount++
             taskCompleted.complete(currentTimeMs())
-            Result.success(Unit)
         }, { _ -> })
 
         val timeBeforeFirstTrigger = currentTimeMs()
@@ -237,7 +232,6 @@ class SchedulerTest {
         val scheduler = Scheduler(timings, {
             callCount++
             taskCompleted.complete(currentTimeMs())
-            Result.success(Unit)
         }, { _ -> })
 
         val timeBeforeLocalDataTrigger = currentTimeMs()
@@ -282,7 +276,6 @@ class SchedulerTest {
         val scheduler = Scheduler(timings, {
             callCount++
             taskCompleted.complete(currentTimeMs())
-            Result.success(Unit)
         }, { _ -> })
 
         val timeBeforeAppStartTrigger = currentTimeMs()
@@ -327,7 +320,6 @@ class SchedulerTest {
         val scheduler = Scheduler(timings, {
             callCount++
             taskCompleted.complete(currentTimeMs())
-            Result.success(Unit)
         }, { _ -> })
 
         val timeBeforeImmediateTrigger = currentTimeMs()
@@ -367,7 +359,6 @@ class SchedulerTest {
         val scheduler = Scheduler(timings, {
             callCount++
             taskCompleted.complete(currentTimeMs())
-            Result.success(Unit)
         }, { _ -> })
 
         scheduler.apply(Trigger.APP_START)
@@ -405,12 +396,12 @@ class SchedulerTest {
     fun `task function failures should retry with exponential backoff until maximum retries reached`() = runTimeoutTest {
         val timings = STANDARD_TEST_TIMINGS
         var callCount = 0
-        var maxRetriesError: Error? = null
+        var maxRetriesError: Exception? = null
         val maxRetriesDeferred = CompletableDeferred<Unit>()
 
         val scheduler = Scheduler(timings, { 
             callCount++
-            Result.failure(Error("Test failure"))
+            throw Exception("Test failure")
         }, { error ->
             maxRetriesError = error
             maxRetriesDeferred.complete(Unit)
@@ -424,7 +415,7 @@ class SchedulerTest {
 
         assertEquals(timings.retryingTimings.maximumRetries + 1, callCount, 
             "Should be called maximum retries + 1 times (initial + retries)")
-//        assertEquals("Test failure", maxRetriesError?.message, "Error should be passed to max retries callback")
+        assertEquals("Test failure", maxRetriesError?.message, "Exception should be passed to max retries callback")
 
         val totalTime = currentTimeMs() - timeBeforeTrigger
         val expectedMinTime = timings.retryingTimings.baseDelay * 
@@ -445,7 +436,7 @@ class SchedulerTest {
 
         val scheduler = Scheduler(timings, { 
             callCount++
-            Result.failure(Error("Test failure"))
+            throw Exception("Test failure")
         }, { _ ->
             maxRetriesDeferred.complete(Unit)
         })
@@ -474,9 +465,8 @@ class SchedulerTest {
             callCount++
             if (shouldSucceed) {
                 newTaskDeferred.complete(Unit)
-                Result.success(Unit)
-            } else {
-                Result.failure(Error("Test failure"))
+                } else {
+                throw Exception("Test failure")
             }
         }, { _ ->
             maxRetriesDeferred.complete(Unit)

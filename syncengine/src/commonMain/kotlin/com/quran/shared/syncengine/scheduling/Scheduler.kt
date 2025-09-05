@@ -47,11 +47,24 @@ private sealed class SchedulerState {
     data class Retrying(val original: SchedulerState, val retryNumber: Int): SchedulerState()
 }
 
+/**
+ * A scheduler that manages the execution of a task function with configurable timing and retry logic.
+ * 
+ * ## Error Handling
+ * The taskFunction should throw an exception to indicate failure. The scheduler will:
+ * - Catch exceptions and retry according to the configured retry timings
+ * - After maximum retries are exhausted, report the final exception to reachedMaximumFailureRetries
+ * - Continue normal operation if taskFunction completes without throwing
+ * 
+ * @param timings Configuration for scheduling intervals and retry behavior
+ * @param taskFunction The task to execute. Should throw an exception on failure.
+ * @param reachedMaximumFailureRetries Called when max retries are exhausted with the final exception
+ */
 @OptIn(ExperimentalTime::class)
 class Scheduler(
     val timings: SchedulerTimings,
-    val taskFunction: suspend () -> Result<Unit>,
-    val reachedMaximumFailureRetries: suspend (Error) -> Unit,
+    val taskFunction: suspend () -> Unit,
+    val reachedMaximumFailureRetries: suspend (Exception) -> Unit,
 ) {
     private var state: SchedulerState = SchedulerState.Initialized
     private var expectedExecutionTime: Long? = null
@@ -92,14 +105,13 @@ class Scheduler(
             kotlinx.coroutines.delay(time)
 
             state = SchedulerState.WaitingForReply(original = newState)
-            val result = taskFunction()
-            state = SchedulerState.Replied(original = newState)
-            if (result.isSuccess) {
+            try {
+                taskFunction()
+                state = SchedulerState.Replied(original = newState)
                 scheduleDefault()
-            }
-            else {
-                // TODO: Deal with this issue. Result returns a Throwable. We're returning an Error.
-                scheduleForFailure(/*result.exceptionOrNull() ?:*/ Error())
+            } catch (e: Exception) {
+                state = SchedulerState.Replied(original = newState)
+                scheduleForFailure(e)
             }
         }
     }
@@ -129,7 +141,7 @@ class Scheduler(
         schedule(0, SchedulerState.Triggered(Trigger.IMMEDIATE))
     }
 
-    private fun scheduleForFailure(error: Error) {
+    private fun scheduleForFailure(exception: Exception) {
         val state = this.state
         if (state is SchedulerState.Replied) {
             val count = state.original.getRetryCount()
@@ -143,14 +155,14 @@ class Scheduler(
                     retryNumber = nextCount))
             }
             else {
-                reportFailureAndSeize(error)
+                reportFailureAndSeize(exception)
             }
         }
     }
 
-    private fun reportFailureAndSeize(error: Error) {
+    private fun reportFailureAndSeize(exception: Exception) {
         scope.launch {
-            reachedMaximumFailureRetries(error)
+            reachedMaximumFailureRetries(exception)
         }
         this.state = SchedulerState.Initialized
         this.currentJob?.cancel()
