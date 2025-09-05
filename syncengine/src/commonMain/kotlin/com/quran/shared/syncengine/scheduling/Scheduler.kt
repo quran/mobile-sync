@@ -1,5 +1,6 @@
 package com.quran.shared.syncengine.scheduling
 
+import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -70,10 +71,12 @@ class Scheduler(
     private var expectedExecutionTime: Long? = null
 
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    private val logger = Logger.withTag("Scheduler")
 
     private var currentJob: Job? = null
 
     fun apply(trigger: Trigger) {
+        logger.d { "Applying trigger: $trigger" }
         when(trigger) {
             Trigger.APP_START -> scheduleAppStart()
             Trigger.LOCAL_DATA_MODIFIED -> scheduleLocalDataModified()
@@ -82,6 +85,7 @@ class Scheduler(
     }
 
     fun stop() {
+        logger.i { "Stopping scheduler, cancelling current job" }
         currentJob?.cancel()
         currentJob = null
         expectedExecutionTime = null
@@ -91,7 +95,7 @@ class Scheduler(
         val currentTime = Clock.System.now().toEpochMilliseconds()
         val firingTime = currentTime + time
         if (currentlyScheduled() && firingTime >= (expectedExecutionTime ?: 0)) {
-            println("Ignored the schedule")
+            logger.d { "Ignored schedule request: new firing time $firingTime >= current expected time ${expectedExecutionTime}" }
             return
         }
         expectedExecutionTime = firingTime
@@ -99,18 +103,21 @@ class Scheduler(
         currentJob?.cancel()
 
         this.state = newState
-        println("Scheduling in $time ms. Expected firing time: ${Instant.fromEpochMilliseconds(firingTime)}. State: $newState")
+        logger.d { "Scheduling task in ${time}ms. Expected firing time: ${Instant.fromEpochMilliseconds(firingTime)}, State: $newState" }
         currentJob = scope.launch {
-            println("In the job")
+            logger.d { "Starting scheduled job execution" }
             kotlinx.coroutines.delay(time)
 
             state = SchedulerState.WaitingForReply(original = newState)
+            logger.d { "Executing task function, state: WaitingForReply" }
             try {
                 taskFunction()
                 state = SchedulerState.Replied(original = newState)
+                logger.i { "Task completed successfully, scheduling default next execution" }
                 scheduleDefault()
             } catch (e: Exception) {
                 state = SchedulerState.Replied(original = newState)
+                logger.e { "Task failed with exception: ${e.message}, processing failure logic" }
                 scheduleForFailure(e)
             }
         }
@@ -129,7 +136,7 @@ class Scheduler(
     }
 
     private fun scheduleDefault() {
-        println("scheduleDefault")
+        logger.i { "Scheduling default task with standard interval: ${timings.standardInterval}ms" }
         schedule(timings.standardInterval, SchedulerState.RegularWait)
     }
 
@@ -145,16 +152,16 @@ class Scheduler(
         val state = this.state
         if (state is SchedulerState.Replied) {
             val count = state.original.getRetryCount()
-            println("Original state: ${state.original}")
-            println("Got count of retries: $count")
+            logger.d { "Task failed, processing retry logic. Original state: ${state.original}, current retry count: $count" }
             if (count < timings.retryingTimings.maximumRetries) {
                 val nextCount = count + 1
                 val nextTime = (timings.retryingTimings.baseDelay * timings.retryingTimings.multiplier.pow(count)).toLong()
-                println("Time for next job: $nextTime")
+                logger.d { "Scheduling retry $nextCount/${timings.retryingTimings.maximumRetries} in ${nextTime}ms" }
                 schedule(nextTime, SchedulerState.Retrying(original = state.original.originalState(),
                     retryNumber = nextCount))
             }
             else {
+                logger.i { "Maximum retries (${timings.retryingTimings.maximumRetries}) reached, reporting failure and stopping scheduler" }
                 reportFailureAndSeize(exception)
             }
         }
