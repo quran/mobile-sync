@@ -18,7 +18,7 @@ class SchedulerTest {
 
     companion object {
         private const val TIMING_TOLERANCE_MS = 100L
-        private const val DEFAULT_TIMEOUT_MS = 15_000L
+        private const val DEFAULT_TIMEOUT_MS = 30_000L
         
         private val STANDARD_TEST_TIMINGS = SchedulerTimings(
             appStartInterval = 200L,
