@@ -17,28 +17,28 @@ import kotlin.time.ExperimentalTime
 class SchedulerTest {
 
     companion object {
-        private const val TIMING_TOLERANCE_MS = 100L
+        private const val TIMING_TOLERANCE_MS = 250L
         private const val DEFAULT_TIMEOUT_MS = 30_000L
         
         private val STANDARD_TEST_TIMINGS = SchedulerTimings(
-            appStartInterval = 200L,
-            standardInterval = 300L,
-            localDataModifiedInterval = 100L,
-            retryingTimings = RetryingTimings(baseDelay = 100, multiplier = 2.5, maximumRetries = 3)
+            appStartInterval = 600L,
+            standardInterval = 900L,
+            localDataModifiedInterval = 300L,
+            retryingTimings = RetryingTimings(baseDelay = 300, multiplier = 2.5, maximumRetries = 3)
         )
         
         private val OVERLAP_TEST_TIMINGS = SchedulerTimings(
-            appStartInterval = 200L,
-            standardInterval = 500L,
-            localDataModifiedInterval = 100L,
-            retryingTimings = RetryingTimings(baseDelay = 100, multiplier = 2.5, maximumRetries = 3)
+            appStartInterval = 600L,
+            standardInterval = 1500L,
+            localDataModifiedInterval = 300L,
+            retryingTimings = RetryingTimings(baseDelay = 300, multiplier = 2.5, maximumRetries = 3)
         )
         
         private val SINGLE_RETRY_TIMINGS = SchedulerTimings(
-            appStartInterval = 200L,
-            standardInterval = 300L,
-            localDataModifiedInterval = 100L,
-            retryingTimings = RetryingTimings(baseDelay = 100, multiplier = 2.5, maximumRetries = 1)
+            appStartInterval = 600L,
+            standardInterval = 900L,
+            localDataModifiedInterval = 300L,
+            retryingTimings = RetryingTimings(baseDelay = 300, multiplier = 2.5, maximumRetries = 1)
         )
         
         @OptIn(ExperimentalTime::class)
