@@ -17,8 +17,10 @@ import kotlin.time.ExperimentalTime
 class SchedulerTest {
 
     companion object {
+        // Github Actions's instances are not noticeably slower than local machines. A high
+        // tolerance is needed.
         private const val TIMING_TOLERANCE_MS = 250L
-        private const val DEFAULT_TIMEOUT_MS = 30_000L
+        private const val DEFAULT_TIMEOUT_MS = 6_000L
         
         private val STANDARD_TEST_TIMINGS = SchedulerTimings(
             appStartInterval = 600L,
