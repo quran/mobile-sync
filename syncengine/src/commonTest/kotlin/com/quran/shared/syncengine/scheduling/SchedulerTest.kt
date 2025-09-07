@@ -39,8 +39,8 @@ class SchedulerTest {
         private val SINGLE_RETRY_TIMINGS = SchedulerTimings(
             appStartInterval = 600L,
             standardInterval = 900L,
-            localDataModifiedInterval = 300L,
-            retryingTimings = RetryingTimings(baseDelay = 300, multiplier = 2.5, maximumRetries = 1)
+            localDataModifiedInterval = 400L,
+            retryingTimings = RetryingTimings(baseDelay = 200, multiplier = 2.5, maximumRetries = 1)
         )
         
         @OptIn(ExperimentalTime::class)
@@ -504,5 +504,233 @@ class SchedulerTest {
         )
         
         scheduler.stop()
+    }
+
+    @Test
+    fun `APP_START trigger should be ignored during job execution and next job uses standard timing`() = runTimeoutTest {
+        val timings = STANDARD_TEST_TIMINGS
+        val taskStarted = CompletableDeferred<Unit>()
+        val taskCanProceed = CompletableDeferred<Unit>()
+        val secondTaskCompleted = CompletableDeferred<Long>()
+        var callCount = 0
+
+        val scheduler = Scheduler(timings, {
+            callCount++
+            if (callCount == 1) {
+                taskStarted.complete(Unit)
+                taskCanProceed.await() // Block until test allows continuation
+            } else if (callCount == 2) {
+                secondTaskCompleted.complete(currentTimeMs())
+            }
+        }, { _ -> })
+
+        // Start initial trigger
+        scheduler.apply(Trigger.LOCAL_DATA_MODIFIED)
+        taskStarted.await() // Wait for task to start
+
+        // Apply APP_START while job is running - should be ignored
+        val timeBeforeIgnoredTrigger = currentTimeMs()
+        scheduler.apply(Trigger.APP_START)
+        
+        // Allow first task to complete successfully
+        taskCanProceed.complete(Unit)
+        
+        // Wait for second task to complete (should be scheduled with standard timing)
+        val secondTaskTime = secondTaskCompleted.await()
+        
+        // Verify timing - should use standard interval, NOT APP_START interval
+        val actualDelay = secondTaskTime - timeBeforeIgnoredTrigger
+        assertTimingWithinTolerance(
+            actualDelay, 
+            timings.standardInterval,
+            "Next job after ignored APP_START should use standard timing, not APP_START timing"
+        )
+        
+        // Verify the timing is NOT the APP_START interval
+        val appStartDifference = kotlin.math.abs(actualDelay - timings.appStartInterval)
+        assertTrue(
+            appStartDifference > TIMING_TOLERANCE_MS,
+            "Next job should NOT use APP_START timing (${timings.appStartInterval}ms). " +
+            "Actual: ${actualDelay}ms, difference from APP_START timing: ${appStartDifference}ms"
+        )
+        
+        assertEquals(2, callCount, "Should execute initial task and next scheduled task")
+        
+        scheduler.stop()
+    }
+
+    @Test
+    fun `LOCAL_DATA_MODIFIED during successful job should schedule LOCAL_DATA_MODIFIED next`() = runTimeoutTest {
+        val timings = STANDARD_TEST_TIMINGS
+        val taskStarted = CompletableDeferred<Unit>()
+        val taskCanProceed = CompletableDeferred<Unit>()
+        val secondTaskCompleted = CompletableDeferred<Long>()
+        var callCount = 0
+
+        val scheduler = Scheduler(timings, {
+            callCount++
+            if (callCount == 1) {
+                taskStarted.complete(Unit)
+                taskCanProceed.await() // Block until test allows continuation
+            } else if (callCount == 2) {
+                secondTaskCompleted.complete(currentTimeMs())
+            }
+        }, { _ -> })
+
+        // Start initial trigger
+        scheduler.apply(Trigger.APP_START)
+        taskStarted.await() // Wait for task to start
+
+        // Apply LOCAL_DATA_MODIFIED while job is running
+        val timeBeforeTrigger = currentTimeMs()
+        scheduler.apply(Trigger.LOCAL_DATA_MODIFIED)
+        
+        // Allow first task to complete successfully
+        taskCanProceed.complete(Unit)
+        
+        // Wait for second task to complete
+        val secondTaskTime = secondTaskCompleted.await()
+        
+        // Verify timing - should be LOCAL_DATA_MODIFIED interval from trigger time
+        val actualDelay = secondTaskTime - timeBeforeTrigger
+        assertTimingWithinTolerance(
+            actualDelay, 
+            timings.localDataModifiedInterval,
+            "LOCAL_DATA_MODIFIED during successful job should schedule with LOCAL_DATA_MODIFIED timing"
+        )
+        
+        assertEquals(2, callCount, "Should have executed both initial and triggered tasks")
+        
+        scheduler.stop()
+    }
+
+    @Test
+    fun `LOCAL_DATA_MODIFIED during failed job should be ignored`() = runTimeoutTest {
+        val timings = SINGLE_RETRY_TIMINGS // Only 1 retry for faster test
+        val taskStarted = CompletableDeferred<Unit>()
+        val taskCanProceed = CompletableDeferred<Unit>()
+        val maxRetriesReached = CompletableDeferred<Unit>()
+        var callCount = 0
+        val callCountBeforeDelay: Int
+        val callCountAfterDelay: Int
+
+        val scheduler = Scheduler(timings, {
+            callCount++
+            if (callCount == 1) {
+                taskStarted.complete(Unit)
+                taskCanProceed.await() // Block until test allows continuation
+                throw Exception("Simulated failure")
+            } else {
+                // Retry attempt - also fail
+                throw Exception("Simulated retry failure")
+            }
+        }, { _ -> 
+            maxRetriesReached.complete(Unit)
+        })
+
+        // Start initial trigger
+        scheduler.apply(Trigger.APP_START)
+        taskStarted.await() // Wait for task to start
+
+        // Apply LOCAL_DATA_MODIFIED while job is running and will fail
+        scheduler.apply(Trigger.LOCAL_DATA_MODIFIED)
+        
+        // Allow first task to fail
+        taskCanProceed.complete(Unit)
+        
+        // Wait for retries to exhaust
+        maxRetriesReached.await()
+        
+        // Record call count after retries are done
+        callCountBeforeDelay = callCount
+        
+        // Wait significantly longer to verify no additional tasks are scheduled from the ignored trigger
+        // Use both LOCAL_DATA_MODIFIED interval and standard interval to be thorough
+        val verificationDelay = maxOf(
+            timings.localDataModifiedInterval + TIMING_TOLERANCE_MS,
+            timings.standardInterval + TIMING_TOLERANCE_MS
+        )
+        delay(verificationDelay)
+        
+        // Record call count after extended delay
+        callCountAfterDelay = callCount
+        
+        assertEquals(2, callCountBeforeDelay, "Should have executed initial task + 1 retry only after max retries reached")
+        assertEquals(callCountBeforeDelay, callCountAfterDelay, "No additional tasks should be scheduled after extended delay - LOCAL_DATA_MODIFIED trigger was ignored")
+        assertEquals(2, callCount, "Final verification: LOCAL_DATA_MODIFIED trigger during failed job was properly ignored")
+        
+        scheduler.stop()
+    }
+
+    @Test
+    fun `LOCAL_DATA_MODIFIED during retry should be ignored`() = runTimeoutTest {
+        val timings = SINGLE_RETRY_TIMINGS // Only 1 retry for faster test
+        val taskStarted = CompletableDeferred<Unit>()
+        val retryStarted = CompletableDeferred<Unit>()
+        val retryCanProceed = CompletableDeferred<Unit>()
+        val maxRetriesReached = CompletableDeferred<Unit>()
+        var callCount = 0
+        val callCountBeforeDelay: Int
+        val callCountAfterDelay: Int
+
+        val scheduler = Scheduler(timings, {
+            callCount++
+            if (callCount == 1) {
+                taskStarted.complete(Unit)
+                // First task fails immediately
+                throw Exception("Simulated initial failure")
+            } else {
+                // Retry attempt - block here so we can apply trigger during retry
+                retryStarted.complete(Unit)
+                retryCanProceed.await() // Block until test allows continuation
+                throw Exception("Simulated retry failure")
+            }
+        }, { _ -> 
+            maxRetriesReached.complete(Unit)
+        })
+
+        // Start initial trigger
+        scheduler.apply(Trigger.APP_START)
+        taskStarted.await() // Wait for initial task to start and fail
+        
+        // Wait for retry to start
+        retryStarted.await() // Wait for retry to start
+        
+        // Apply LOCAL_DATA_MODIFIED while RETRY is running (should be ignored)
+        scheduler.apply(Trigger.LOCAL_DATA_MODIFIED)
+        
+        // Allow retry to fail
+        retryCanProceed.complete(Unit)
+        
+        // Wait for retries to exhaust
+        maxRetriesReached.await()
+        
+        // Record call count after retries are done
+        callCountBeforeDelay = callCount
+        
+        // Wait significantly longer to verify no additional tasks are scheduled from the ignored trigger
+        // Use both LOCAL_DATA_MODIFIED interval and standard interval to be thorough
+        val verificationDelay = maxOf(
+            timings.localDataModifiedInterval + TIMING_TOLERANCE_MS,
+            timings.standardInterval + TIMING_TOLERANCE_MS
+        )
+        delay(verificationDelay)
+        
+        // Record call count after extended delay
+        callCountAfterDelay = callCount
+        
+        assertEquals(2, callCountBeforeDelay, "Should have executed initial task + 1 retry only after max retries reached")
+        assertEquals(callCountBeforeDelay, callCountAfterDelay, "No additional tasks should be scheduled after extended delay - LOCAL_DATA_MODIFIED trigger during retry was ignored")
+        assertEquals(2, callCount, "Final verification: LOCAL_DATA_MODIFIED trigger during retry was properly ignored")
+        
+        scheduler.stop()
+    }
+
+    private fun assertTimingWithinTolerance(actual: Long, expected: Long, message: String) {
+        val difference = kotlin.math.abs(actual - expected)
+        assertTrue(
+            difference <= TIMING_TOLERANCE_MS,
+            "$message. Expected: ${expected}ms ± ${TIMING_TOLERANCE_MS}ms, Actual: ${actual}ms (difference: ${difference}ms)"
+        )
     }
 }

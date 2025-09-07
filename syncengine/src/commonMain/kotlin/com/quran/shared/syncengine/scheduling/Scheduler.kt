@@ -67,6 +67,7 @@ class Scheduler(
     val taskFunction: suspend () -> Unit,
     val reachedMaximumFailureRetries: suspend (Exception) -> Unit,
 ) {
+    private var bufferedTrigger: Trigger? = null
     private var state: SchedulerState = SchedulerState.Initialized
     private var expectedExecutionTime: Long? = null
 
@@ -76,7 +77,32 @@ class Scheduler(
     private var currentJob: Job? = null
 
     fun apply(trigger: Trigger) {
-        logger.d { "Applying trigger: $trigger" }
+        when(state) {
+            SchedulerState.Initialized, SchedulerState.RegularWait, is SchedulerState.Triggered ->  {
+                logger.d { "Applying trigger: $trigger" }
+                executeTrigger(trigger)
+            }
+            is SchedulerState.WaitingForReply, is SchedulerState.Replied -> {
+                buffer(trigger)
+            }
+            is SchedulerState.Retrying -> return
+        }
+    }
+
+    private fun buffer(trigger: Trigger) {
+        when(trigger) {
+            Trigger.APP_START, Trigger.IMMEDIATE -> {
+                logger.d { "Ignoring redundant trigger: $trigger. Job is already being processed" }
+                return
+            }
+            Trigger.LOCAL_DATA_MODIFIED -> {
+                logger.d { "Buffering trigger: $trigger after job is done." }
+                bufferedTrigger = trigger
+            }
+        }
+    }
+
+    private fun executeTrigger(trigger: Trigger) {
         when(trigger) {
             Trigger.APP_START -> scheduleAppStart()
             Trigger.LOCAL_DATA_MODIFIED -> scheduleLocalDataModified()
@@ -114,7 +140,7 @@ class Scheduler(
                 taskFunction()
                 state = SchedulerState.Replied(original = newState)
                 logger.i { "Task completed successfully, scheduling default next execution" }
-                scheduleDefault()
+                processSuccess()
             } catch (e: Exception) {
                 state = SchedulerState.Replied(original = newState)
                 logger.e { "Task failed with exception: ${e.message}, processing failure logic" }
@@ -148,6 +174,11 @@ class Scheduler(
         schedule(0, SchedulerState.Triggered(Trigger.IMMEDIATE))
     }
 
+    private fun processSuccess() {
+        bufferedTrigger?.let { executeTrigger(it) }
+            ?: also { scheduleDefault() }
+    }
+
     private fun scheduleForFailure(exception: Exception) {
         val state = this.state
         if (state is SchedulerState.Replied) {
@@ -174,6 +205,7 @@ class Scheduler(
         this.state = SchedulerState.Initialized
         this.currentJob?.cancel()
         this.currentJob = null
+        this.bufferedTrigger = null
         this.expectedExecutionTime = null
     }
 }
