@@ -175,11 +175,16 @@ class Scheduler(
     }
 
     private fun processSuccess() {
-        bufferedTrigger?.let { executeTrigger(it) }
-            ?: also { scheduleDefault() }
+        bufferedTrigger?.let {
+            bufferedTrigger = null
+            executeTrigger(it)
+        } ?: also { scheduleDefault() }
     }
 
     private fun scheduleForFailure(exception: Exception) {
+        // If there's a failure, then the whole process will be restarted again, so no need to keep
+        // the buffered trigger.
+        bufferedTrigger = null
         val state = this.state
         if (state is SchedulerState.Replied) {
             val count = state.original.getRetryCount()
