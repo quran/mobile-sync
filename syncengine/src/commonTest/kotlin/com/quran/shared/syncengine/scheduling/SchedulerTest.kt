@@ -77,7 +77,7 @@ class SchedulerTest {
         }, { _ -> })
 
         val timeBeforeCall = currentTimeMs()
-        scheduler.apply(Trigger.APP_START)
+        scheduler.invoke(Trigger.APP_START)
 
         val timeAfterCall = taskCompleted.await()
 
@@ -104,7 +104,7 @@ class SchedulerTest {
             taskCompleted.complete(count)
         }, { _ -> })
 
-        scheduler.apply(Trigger.APP_START)
+        scheduler.invoke(Trigger.APP_START)
 
         taskCompleted.await()
         taskCompleted = CompletableDeferred()
@@ -134,7 +134,7 @@ class SchedulerTest {
             taskCompleted.complete(callCount)
         }, { _ -> })
 
-        scheduler.apply(Trigger.APP_START)
+        scheduler.invoke(Trigger.APP_START)
 
         taskCompleted.await()
         taskCompleted = CompletableDeferred()
@@ -163,11 +163,11 @@ class SchedulerTest {
             taskCompleted.complete(currentTimeMs())
         }, { _ -> })
 
-        scheduler.apply(Trigger.APP_START)
+        scheduler.invoke(Trigger.APP_START)
         
         delay(100)
         val timeBeforeDataModifiedTrigger = currentTimeMs()
-        scheduler.apply(Trigger.LOCAL_DATA_MODIFIED)
+        scheduler.invoke(Trigger.LOCAL_DATA_MODIFIED)
 
         val timeAfterCall = taskCompleted.await()
 
@@ -196,7 +196,7 @@ class SchedulerTest {
         }, { _ -> })
 
         val timeBeforeFirstTrigger = currentTimeMs()
-        scheduler.apply(Trigger.LOCAL_DATA_MODIFIED)
+        scheduler.invoke(Trigger.LOCAL_DATA_MODIFIED)
 
         val firstCallTime = taskCompleted.await()
         val firstCallDelay = firstCallTime - timeBeforeFirstTrigger
@@ -237,10 +237,10 @@ class SchedulerTest {
         }, { _ -> })
 
         val timeBeforeLocalDataTrigger = currentTimeMs()
-        scheduler.apply(Trigger.LOCAL_DATA_MODIFIED)
+        scheduler.invoke(Trigger.LOCAL_DATA_MODIFIED)
 
         delay(100)
-        scheduler.apply(Trigger.APP_START)
+        scheduler.invoke(Trigger.APP_START)
 
         val firstCallTime = taskCompleted.await()
         val firstCallDelay = firstCallTime - timeBeforeLocalDataTrigger
@@ -281,7 +281,7 @@ class SchedulerTest {
         }, { _ -> })
 
         val timeBeforeAppStartTrigger = currentTimeMs()
-        scheduler.apply(Trigger.APP_START)
+        scheduler.invoke(Trigger.APP_START)
 
         val firstCallTime = taskCompleted.await()
         val firstCallDelay = firstCallTime - timeBeforeAppStartTrigger
@@ -296,7 +296,7 @@ class SchedulerTest {
 
         delay(50)
         val timeBeforeLocalDataTrigger = currentTimeMs()
-        scheduler.apply(Trigger.LOCAL_DATA_MODIFIED)
+        scheduler.invoke(Trigger.LOCAL_DATA_MODIFIED)
 
         taskCompleted = CompletableDeferred()
         val secondCallTime = taskCompleted.await()
@@ -325,7 +325,7 @@ class SchedulerTest {
         }, { _ -> })
 
         val timeBeforeImmediateTrigger = currentTimeMs()
-        scheduler.apply(Trigger.IMMEDIATE)
+        scheduler.invoke(Trigger.IMMEDIATE)
 
         val firstCallTime = taskCompleted.await()
         val firstCallDelay = firstCallTime - timeBeforeImmediateTrigger
@@ -363,11 +363,11 @@ class SchedulerTest {
             taskCompleted.complete(currentTimeMs())
         }, { _ -> })
 
-        scheduler.apply(Trigger.APP_START)
+        scheduler.invoke(Trigger.APP_START)
 
         delay(50)
         val timeBeforeImmediateTrigger = currentTimeMs()
-        scheduler.apply(Trigger.IMMEDIATE)
+        scheduler.invoke(Trigger.IMMEDIATE)
 
         val firstCallTime = taskCompleted.await()
         val firstCallDelay = firstCallTime - timeBeforeImmediateTrigger
@@ -410,7 +410,7 @@ class SchedulerTest {
         })
 
         val timeBeforeTrigger = currentTimeMs()
-        scheduler.apply(Trigger.IMMEDIATE)
+        scheduler.invoke(Trigger.IMMEDIATE)
 
         // Wait for all retries to complete
         maxRetriesDeferred.await()
@@ -443,7 +443,7 @@ class SchedulerTest {
             maxRetriesDeferred.complete(Unit)
         })
 
-        scheduler.apply(Trigger.IMMEDIATE)
+        scheduler.invoke(Trigger.IMMEDIATE)
 
         maxRetriesDeferred.await()
 
@@ -474,7 +474,7 @@ class SchedulerTest {
             maxRetriesDeferred.complete(Unit)
         })
 
-        scheduler.apply(Trigger.IMMEDIATE)
+        scheduler.invoke(Trigger.IMMEDIATE)
 
         // Wait for all retries to complete
         maxRetriesDeferred.await()
@@ -485,7 +485,7 @@ class SchedulerTest {
         // Now set the task to succeed and apply a new trigger
         shouldSucceed = true
         val timeBeforeNewTrigger = currentTimeMs()
-        scheduler.apply(Trigger.LOCAL_DATA_MODIFIED)
+        scheduler.invoke(Trigger.LOCAL_DATA_MODIFIED)
 
         // Wait for the new task to complete
         newTaskDeferred.await()
@@ -525,11 +525,11 @@ class SchedulerTest {
         }, { _ -> })
 
         // Start initial trigger
-        scheduler.apply(Trigger.LOCAL_DATA_MODIFIED)
+        scheduler.invoke(Trigger.LOCAL_DATA_MODIFIED)
 //        taskStarted.await() // Wait for task to start
         delay(timings.localDataModifiedInterval / 2)
         val timeAfterFirstJob = currentTimeMs()
-        scheduler.apply(Trigger.APP_START)
+        scheduler.invoke(Trigger.APP_START)
         
         // Allow first task to complete successfully
         taskCanProceed.complete(Unit)
@@ -576,12 +576,12 @@ class SchedulerTest {
         }, { _ -> })
 
         // Start initial trigger
-        scheduler.apply(Trigger.APP_START)
+        scheduler.invoke(Trigger.APP_START)
         taskStarted.await() // Wait for task to start
 
         // Apply LOCAL_DATA_MODIFIED while job is running
         val timeBeforeTrigger = currentTimeMs()
-        scheduler.apply(Trigger.LOCAL_DATA_MODIFIED)
+        scheduler.invoke(Trigger.LOCAL_DATA_MODIFIED)
         
         // Allow first task to complete successfully
         taskCanProceed.complete(Unit)
@@ -627,11 +627,11 @@ class SchedulerTest {
         })
 
         // Start initial trigger
-        scheduler.apply(Trigger.APP_START)
+        scheduler.invoke(Trigger.APP_START)
         taskStarted.await() // Wait for task to start
 
         // Apply LOCAL_DATA_MODIFIED while job is running and will fail
-        scheduler.apply(Trigger.LOCAL_DATA_MODIFIED)
+        scheduler.invoke(Trigger.LOCAL_DATA_MODIFIED)
         
         // Allow first task to fail
         taskCanProceed.complete(Unit)
@@ -688,7 +688,7 @@ class SchedulerTest {
         })
 
         // Start initial trigger
-        scheduler.apply(Trigger.APP_START)
+        scheduler.invoke(Trigger.APP_START)
         delay(timings.appStartInterval)
 //        taskStarted.await() // Wait for initial task to start and fail
         
@@ -696,7 +696,7 @@ class SchedulerTest {
 //        retryStarted.await() // Wait for retry to start
         
         // Apply LOCAL_DATA_MODIFIED while RETRY is running (should be ignored)
-        scheduler.apply(Trigger.LOCAL_DATA_MODIFIED)
+        scheduler.invoke(Trigger.LOCAL_DATA_MODIFIED)
         
         // Allow retry to fail
         retryCanProceed.complete(Unit)
