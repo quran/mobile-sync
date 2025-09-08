@@ -6,6 +6,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.math.pow
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
@@ -67,28 +69,53 @@ class Scheduler(
     val taskFunction: suspend () -> Unit,
     val reachedMaximumFailureRetries: suspend (Exception) -> Unit,
 ) {
-    private var bufferedTrigger: Trigger? = null
-    private var state: SchedulerState = SchedulerState.Initialized
-    private var expectedExecutionTime: Long? = null
-
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val logger = Logger.withTag("Scheduler")
 
+    private var mutex = Mutex()
+
+    private var bufferedTrigger: Trigger? = null
+    private var state: SchedulerState = SchedulerState.Initialized
+    private var expectedExecutionTime: Long? = null
     private var currentJob: Job? = null
 
     fun apply(trigger: Trigger) {
-        when(state) {
-            SchedulerState.Initialized, SchedulerState.RegularWait, is SchedulerState.Triggered ->  {
-                logger.d { "Applying trigger: $trigger" }
-                executeTrigger(trigger)
+        logger.d { "--App state: $state" }
+        scope.launch {
+            mutex.withLock {
+                when (state) {
+                    SchedulerState.Initialized, SchedulerState.RegularWait, is SchedulerState.Triggered -> {
+                        logger.d { "Trigger invoked: $trigger" }
+                        logger.d { "--App state: $state" }
+                        when (trigger) {
+                            Trigger.APP_START -> schedule(
+                                timings.appStartInterval,
+                                SchedulerState.Triggered(Trigger.APP_START)
+                            )
+
+                            Trigger.LOCAL_DATA_MODIFIED -> schedule(
+                                timings.localDataModifiedInterval,
+                                SchedulerState.Triggered(Trigger.LOCAL_DATA_MODIFIED)
+                            )
+
+                            Trigger.IMMEDIATE -> schedule(
+                                0,
+                                SchedulerState.Triggered(Trigger.IMMEDIATE)
+                            )
+                        }
+                    }
+
+                    is SchedulerState.WaitingForReply, is SchedulerState.Replied -> {
+                        buffer(trigger)
+                    }
+
+                    is SchedulerState.Retrying -> {}
+                }
             }
-            is SchedulerState.WaitingForReply, is SchedulerState.Replied -> {
-                buffer(trigger)
-            }
-            is SchedulerState.Retrying -> return
         }
     }
 
+    // Critical-section
     private fun buffer(trigger: Trigger) {
         when(trigger) {
             Trigger.APP_START, Trigger.IMMEDIATE -> {
@@ -102,21 +129,28 @@ class Scheduler(
         }
     }
 
+    // Critical-section
     private fun executeTrigger(trigger: Trigger) {
         when(trigger) {
-            Trigger.APP_START -> scheduleAppStart()
-            Trigger.LOCAL_DATA_MODIFIED -> scheduleLocalDataModified()
-            Trigger.IMMEDIATE -> scheduleImmediately()
+            Trigger.APP_START -> schedule(timings.appStartInterval, SchedulerState.Triggered(Trigger.APP_START))
+            Trigger.LOCAL_DATA_MODIFIED -> schedule(timings.localDataModifiedInterval, SchedulerState.Triggered(Trigger.LOCAL_DATA_MODIFIED))
+            Trigger.IMMEDIATE -> schedule(0, SchedulerState.Triggered(Trigger.IMMEDIATE))
         }
     }
 
+    // Writes to all directly.
     fun stop() {
-        logger.i { "Stopping scheduler, cancelling current job" }
-        currentJob?.cancel()
-        currentJob = null
-        expectedExecutionTime = null
+        scope.launch {
+            mutex.withLock {
+                logger.i { "Stopping scheduler, cancelling current job" }
+                currentJob?.cancel()
+                currentJob = null
+                expectedExecutionTime = null
+            }
+        }
     }
 
+    // Critical-section
     private fun schedule(time: Long, newState: SchedulerState) {
         val currentTime = Clock.System.now().toEpochMilliseconds()
         val firingTime = currentTime + time
@@ -131,24 +165,34 @@ class Scheduler(
         this.state = newState
         logger.d { "Scheduling task in ${time}ms. Expected firing time: ${Instant.fromEpochMilliseconds(firingTime)}, State: $newState" }
         currentJob = scope.launch {
-            logger.d { "Starting scheduled job execution" }
             kotlinx.coroutines.delay(time)
 
-            state = SchedulerState.WaitingForReply(original = newState)
+            logger.d { "Starting scheduled job execution" }
+            mutex.withLock {
+                state = SchedulerState.WaitingForReply(original = newState)
+            }
+
             logger.d { "Executing task function, state: WaitingForReply" }
             try {
                 taskFunction()
-                state = SchedulerState.Replied(original = newState)
-                logger.i { "Task completed successfully, scheduling default next execution" }
-                processSuccess()
+
+                mutex.withLock {
+                    state = SchedulerState.Replied(original = newState)
+                    logger.i { "Task completed successfully" }
+                    processSuccess()
+                }
+
             } catch (e: Exception) {
-                state = SchedulerState.Replied(original = newState)
-                logger.e { "Task failed with exception: ${e.message}, processing failure logic" }
-                scheduleForFailure(e)
+                mutex.withLock {
+                    state = SchedulerState.Replied(original = newState)
+                    logger.e { "Task failed with exception: ${e.message}, processing failure logic" }
+                    scheduleForFailure(e)
+                }
             }
         }
     }
 
+    // Critical-section
     private fun currentlyScheduled(): Boolean =
         when (state) {
             SchedulerState.Initialized, is SchedulerState.Replied -> false
@@ -156,31 +200,22 @@ class Scheduler(
             SchedulerState.RegularWait, is SchedulerState.Triggered, is SchedulerState.Retrying -> true
         }
 
-
-    private fun scheduleAppStart() {
-        schedule(timings.appStartInterval, SchedulerState.Triggered(Trigger.APP_START))
-    }
-
+    // Critical-section
     private fun scheduleDefault() {
         logger.i { "Scheduling default task with standard interval: ${timings.standardInterval}ms" }
         schedule(timings.standardInterval, SchedulerState.RegularWait)
     }
 
-    private fun scheduleLocalDataModified() {
-        schedule(timings.localDataModifiedInterval, SchedulerState.Triggered(Trigger.LOCAL_DATA_MODIFIED))
-    }
-
-    private fun scheduleImmediately() {
-        schedule(0, SchedulerState.Triggered(Trigger.IMMEDIATE))
-    }
-
+    // Critical section
     private fun processSuccess() {
         bufferedTrigger?.let {
             bufferedTrigger = null
+            logger.d { "Executing buffered trigger: $it" }
             executeTrigger(it)
         } ?: also { scheduleDefault() }
     }
 
+    // Critical-section
     private fun scheduleForFailure(exception: Exception) {
         // If there's a failure, then the whole process will be restarted again, so no need to keep
         // the buffered trigger.
@@ -203,6 +238,7 @@ class Scheduler(
         }
     }
 
+    // Criticla-section
     private fun reportFailureAndSeize(exception: Exception) {
         scope.launch {
             reachedMaximumFailureRetries(exception)
