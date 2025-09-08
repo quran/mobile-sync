@@ -74,16 +74,29 @@ class Scheduler(
 
     private var mutex = Mutex()
 
+    // region: Synchronized internal state
     private var bufferedTrigger: Trigger? = null
     private var state: SchedulerState = SchedulerState.Initialized
     private var expectedExecutionTime: Long? = null
     private var currentJob: Job? = null
+    //endregion:
 
+    // region: Public
     fun invoke(trigger: Trigger) {
         scope.launch {
             processInvokedTrigger(trigger)
         }
     }
+
+    // Entry point. Starts a critical section
+    fun stop() {
+        scope.launch {
+            executeStop()
+        }
+    }
+    // endregion:
+
+    // region: Internal-state entry points
 
     // Entry point: starts a critical section
     private suspend fun processInvokedTrigger(trigger: Trigger) {
@@ -102,6 +115,47 @@ class Scheduler(
             }
         }
     }
+
+    // Entry point: starts a critical section
+    private suspend fun executeStop() {
+        mutex.withLock {
+            logger.i { "Stopping scheduler, cancelling current job" }
+            currentJob?.cancel()
+            currentJob = null
+            expectedExecutionTime = null
+        }
+    }
+
+    // Entry point. Starts a critical section
+    private suspend fun timeTaskFunctionCall(timeMS: Long, startingState: SchedulerState) {
+        kotlinx.coroutines.delay(timeMS)
+
+        logger.d { "Starting scheduled job execution" }
+        mutex.withLock {
+            state = SchedulerState.WaitingForReply(original = startingState)
+        }
+
+        logger.d { "Executing task function, state: WaitingForReply" }
+        try {
+            taskFunction()
+
+            mutex.withLock {
+                state = SchedulerState.Replied(original = startingState)
+                logger.i { "Task completed successfully" }
+                processSuccess()
+            }
+
+        } catch (e: Exception) {
+            mutex.withLock {
+                state = SchedulerState.Replied(original = startingState)
+                logger.e { "Task failed with exception: ${e.message}, processing failure logic" }
+                scheduleForFailure(e)
+            }
+        }
+    }
+    // endregion:
+
+    // region: Internal-state manipulators. Critical-section bound
 
     // Critical-section bound
     private fun buffer(trigger: Trigger) {
@@ -126,18 +180,6 @@ class Scheduler(
         }
     }
 
-    fun stop() {
-        // Entry point. Starts a critical section
-        scope.launch {
-            mutex.withLock {
-                logger.i { "Stopping scheduler, cancelling current job" }
-                currentJob?.cancel()
-                currentJob = null
-                expectedExecutionTime = null
-            }
-        }
-    }
-
     // Critical-section bound
     private fun schedule(time: Long, newState: SchedulerState) {
         val currentTime = Clock.System.now().toEpochMilliseconds()
@@ -153,30 +195,8 @@ class Scheduler(
         this.state = newState
         logger.d { "Scheduling task in ${time}ms. Expected firing time: ${Instant.fromEpochMilliseconds(firingTime)}, State: $newState" }
         currentJob = scope.launch {
-            kotlinx.coroutines.delay(time)
-
-            logger.d { "Starting scheduled job execution" }
-            mutex.withLock {
-                state = SchedulerState.WaitingForReply(original = newState)
-            }
-
-            logger.d { "Executing task function, state: WaitingForReply" }
-            try {
-                taskFunction()
-
-                mutex.withLock {
-                    state = SchedulerState.Replied(original = newState)
-                    logger.i { "Task completed successfully" }
-                    processSuccess()
-                }
-
-            } catch (e: Exception) {
-                mutex.withLock {
-                    state = SchedulerState.Replied(original = newState)
-                    logger.e { "Task failed with exception: ${e.message}, processing failure logic" }
-                    scheduleForFailure(e)
-                }
-            }
+            // This will start a critical section.
+            timeTaskFunctionCall(time, newState)
         }
     }
 
@@ -237,6 +257,7 @@ class Scheduler(
         this.bufferedTrigger = null
         this.expectedExecutionTime = null
     }
+    // endregion:
 }
 
 private fun SchedulerState.getRetryCount(): Int = when (this) {
