@@ -725,6 +725,38 @@ class SchedulerTest {
         scheduler.stop()
     }
 
+    @Test
+    fun `triggers should be ignored after scheduler is stopped`() = runTimeoutTest {
+        val timings = STANDARD_TEST_TIMINGS
+        val taskCompleted = CompletableDeferred<Unit>()
+        var callCount = 0
+
+        val scheduler = Scheduler(timings, {
+            callCount++
+            taskCompleted.complete(Unit)
+        }, { _ -> })
+
+        // Stop the scheduler first
+        scheduler.stop()
+        
+        // Give it a moment to process the stop
+        delay(50)
+
+        // Try to invoke triggers after stopping - they should be ignored
+        scheduler.invoke(Trigger.APP_REFRESH)
+        scheduler.invoke(Trigger.LOCAL_DATA_MODIFIED)
+        scheduler.invoke(Trigger.IMMEDIATE)
+        
+        // Wait a reasonable amount of time to ensure no task is executed
+        delay(timings.appRefreshInterval + 200)
+        
+        // Verify that the task was never called
+        assertEquals(0, callCount, "Task should not be called after scheduler is stopped")
+        
+        // Verify that the CompletableDeferred is not completed
+        assertTrue(taskCompleted.isCompleted.not(), "Task completion should not be triggered after stop")
+    }
+
     private fun assertTimingWithinTolerance(actual: Long, expected: Long, message: String) {
         val difference = kotlin.math.abs(actual - expected)
         assertTrue(

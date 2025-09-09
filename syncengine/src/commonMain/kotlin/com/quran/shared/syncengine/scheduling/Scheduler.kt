@@ -54,6 +54,8 @@ private sealed class SchedulerState {
     data class Triggered(val trigger: Trigger): SchedulerState()
     /** A job is currently scheduled to retry an earlier failed taskFunction execution. */
     data class Retrying(val original: SchedulerState, val retryNumber: Int): SchedulerState()
+    /** Scheduler has been stopped and will not accept any further triggers. */
+    data object Stopped: SchedulerState()
 }
 
 /**
@@ -118,6 +120,10 @@ class Scheduler(
                 }
 
                 is SchedulerState.Retrying -> {}
+                
+                SchedulerState.Stopped -> {
+                    logger.d { "Ignoring trigger $trigger: scheduler has been stopped" }
+                }
             }
         }
     }
@@ -129,6 +135,8 @@ class Scheduler(
             currentJob?.cancel()
             currentJob = null
             expectedExecutionTime = null
+            bufferedTrigger = null
+            state = SchedulerState.Stopped
         }
     }
 
@@ -191,7 +199,7 @@ class Scheduler(
         val currentTime = Clock.System.now().toEpochMilliseconds()
         val firingTime = currentTime + time
         if (currentlyScheduled() && firingTime >= (expectedExecutionTime ?: 0)) {
-            logger.d { "Ignored schedule request: new firing time $firingTime >= current expected time ${expectedExecutionTime}" }
+            logger.d { "Ignored schedule request: new firing time $firingTime >= current expected time $expectedExecutionTime" }
             return
         }
         expectedExecutionTime = firingTime
@@ -209,7 +217,7 @@ class Scheduler(
     // Critical-section bound
     private fun currentlyScheduled(): Boolean =
         when (state) {
-            SchedulerState.Idle, is SchedulerState.Replied -> false
+            SchedulerState.Idle, is SchedulerState.Replied, SchedulerState.Stopped -> false
             is SchedulerState.WaitingForReply -> false
             SchedulerState.StandardDelay, is SchedulerState.Triggered, is SchedulerState.Retrying -> true
         }
@@ -275,7 +283,7 @@ private fun SchedulerState.originalState(): SchedulerState = when(this) {
     is SchedulerState.Retrying -> original
     is SchedulerState.Replied -> original
     is SchedulerState.WaitingForReply -> original
-    is SchedulerState.Triggered, SchedulerState.Idle, SchedulerState.StandardDelay -> this
+    is SchedulerState.Triggered, SchedulerState.Idle, SchedulerState.StandardDelay, SchedulerState.Stopped -> this
 }
 
 /**
