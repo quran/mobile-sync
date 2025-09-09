@@ -14,7 +14,7 @@ import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 
 enum class Trigger {
-    APP_START,
+    APP_REFRESH,
     LOCAL_DATA_MODIFIED,
     IMMEDIATE
 }
@@ -22,13 +22,13 @@ enum class Trigger {
 // In milliseconds
 data class SchedulerTimings(
     val standardInterval: Long,
-    val appStartInterval: Long,
+    val appRefreshInterval: Long,
     val localDataModifiedInterval: Long,
-    val retryingTimings: RetryingTimings
+    val failureRetryingConfig: FailureRetryingConfig
 )
 
 // In milliseconds
-data class RetryingTimings(
+data class FailureRetryingConfig(
     val baseDelay: Long,
     val multiplier: Double,
     val maximumRetries: Int
@@ -36,17 +36,23 @@ data class RetryingTimings(
 
 private val DefaultTimings = SchedulerTimings(
     standardInterval = 30 * 60 * 1000,
-    appStartInterval = 30 * 1000,
+    appRefreshInterval = 30 * 1000,
     localDataModifiedInterval = 5 * 1000,
-    retryingTimings = RetryingTimings(baseDelay = 200, multiplier = 2.5, maximumRetries = 5)
+    failureRetryingConfig = FailureRetryingConfig(baseDelay = 200, multiplier = 2.5, maximumRetries = 5)
 )
 
 private sealed class SchedulerState {
-    data object Initialized: SchedulerState()
-    data object RegularWait: SchedulerState()
+    /** Scheduler is operational, but nothing is scheduled.*/
+    data object Idle: SchedulerState()
+    /** A non-triggered standard job has been scheduled. */
+    data object StandardDelay: SchedulerState()
+    /** The job has been fired, and the scheduler is waiting on the taskFunction to return. */
     data class WaitingForReply(val original: SchedulerState): SchedulerState()
+    /** The task function's response is being processed. */
     data class Replied(val original: SchedulerState): SchedulerState()
+    /** A job is currently scheduled due to the associated trigger. */
     data class Triggered(val trigger: Trigger): SchedulerState()
+    /** A job is currently scheduled to retry an earlier failed taskFunction execution. */
     data class Retrying(val original: SchedulerState, val retryNumber: Int): SchedulerState()
 }
 
@@ -76,7 +82,7 @@ class Scheduler(
 
     // region: Synchronized internal state
     private var bufferedTrigger: Trigger? = null
-    private var state: SchedulerState = SchedulerState.Initialized
+    private var state: SchedulerState = SchedulerState.Idle
     private var expectedExecutionTime: Long? = null
     private var currentJob: Job? = null
     //endregion:
@@ -102,7 +108,7 @@ class Scheduler(
     private suspend fun processInvokedTrigger(trigger: Trigger) {
         mutex.withLock {
             when (state) {
-                SchedulerState.Initialized, SchedulerState.RegularWait, is SchedulerState.Triggered -> {
+                SchedulerState.Idle, SchedulerState.StandardDelay, is SchedulerState.Triggered -> {
                     logger.d { "Trigger invoked: $trigger" }
                     executeTrigger(trigger)
                 }
@@ -160,7 +166,7 @@ class Scheduler(
     // Critical-section bound
     private fun buffer(trigger: Trigger) {
         when(trigger) {
-            Trigger.APP_START, Trigger.IMMEDIATE -> {
+            Trigger.APP_REFRESH, Trigger.IMMEDIATE -> {
                 logger.d { "Ignoring redundant trigger: $trigger. Job is already being processed" }
                 return
             }
@@ -174,7 +180,7 @@ class Scheduler(
     // Critical-section bound
     private fun executeTrigger(trigger: Trigger) {
         when (trigger) {
-            Trigger.APP_START -> schedule(timings.appStartInterval, SchedulerState.Triggered(Trigger.APP_START))
+            Trigger.APP_REFRESH -> schedule(timings.appRefreshInterval, SchedulerState.Triggered(Trigger.APP_REFRESH))
             Trigger.LOCAL_DATA_MODIFIED -> schedule(timings.localDataModifiedInterval, SchedulerState.Triggered(Trigger.LOCAL_DATA_MODIFIED))
             Trigger.IMMEDIATE -> schedule(0, SchedulerState.Triggered(Trigger.IMMEDIATE))
         }
@@ -203,15 +209,15 @@ class Scheduler(
     // Critical-section bound
     private fun currentlyScheduled(): Boolean =
         when (state) {
-            SchedulerState.Initialized, is SchedulerState.Replied -> false
+            SchedulerState.Idle, is SchedulerState.Replied -> false
             is SchedulerState.WaitingForReply -> false
-            SchedulerState.RegularWait, is SchedulerState.Triggered, is SchedulerState.Retrying -> true
+            SchedulerState.StandardDelay, is SchedulerState.Triggered, is SchedulerState.Retrying -> true
         }
 
     // Critical-section bound
     private fun scheduleDefault() {
         logger.i { "Scheduling default task with standard interval: ${timings.standardInterval}ms" }
-        schedule(timings.standardInterval, SchedulerState.RegularWait)
+        schedule(timings.standardInterval, SchedulerState.StandardDelay)
     }
 
     // Critical section bound
@@ -232,15 +238,15 @@ class Scheduler(
         if (state is SchedulerState.Replied) {
             val count = state.original.getRetryCount()
             logger.d { "Task failed, processing retry logic. Original state: ${state.original}, current retry count: $count" }
-            if (count < timings.retryingTimings.maximumRetries) {
+            if (count < timings.failureRetryingConfig.maximumRetries) {
                 val nextCount = count + 1
-                val nextTime = (timings.retryingTimings.baseDelay * timings.retryingTimings.multiplier.pow(count)).toLong()
-                logger.d { "Scheduling retry $nextCount/${timings.retryingTimings.maximumRetries} in ${nextTime}ms" }
+                val nextTime = (timings.failureRetryingConfig.baseDelay * timings.failureRetryingConfig.multiplier.pow(count)).toLong()
+                logger.d { "Scheduling retry $nextCount/${timings.failureRetryingConfig.maximumRetries} in ${nextTime}ms" }
                 schedule(nextTime, SchedulerState.Retrying(original = state.original.originalState(),
                     retryNumber = nextCount))
             }
             else {
-                logger.i { "Maximum retries (${timings.retryingTimings.maximumRetries}) reached, reporting failure and stopping scheduler" }
+                logger.i { "Maximum retries (${timings.failureRetryingConfig.maximumRetries}) reached, reporting failure and stopping scheduler" }
                 reportFailureAndPause(exception)
             }
         }
@@ -251,7 +257,7 @@ class Scheduler(
         scope.launch {
             reachedMaximumFailureRetries(exception)
         }
-        this.state = SchedulerState.Initialized
+        this.state = SchedulerState.Idle
         this.currentJob?.cancel()
         this.currentJob = null
         this.bufferedTrigger = null
@@ -269,5 +275,5 @@ private fun SchedulerState.originalState(): SchedulerState = when(this) {
     is SchedulerState.Retrying -> original
     is SchedulerState.Replied -> original
     is SchedulerState.WaitingForReply -> original
-    is SchedulerState.Triggered, SchedulerState.Initialized, SchedulerState.RegularWait -> this
+    is SchedulerState.Triggered, SchedulerState.Idle, SchedulerState.StandardDelay -> this
 }

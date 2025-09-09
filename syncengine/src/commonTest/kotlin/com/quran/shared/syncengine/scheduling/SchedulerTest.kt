@@ -23,24 +23,24 @@ class SchedulerTest {
         private const val DEFAULT_TIMEOUT_MS = 6_000L
         
         private val STANDARD_TEST_TIMINGS = SchedulerTimings(
-            appStartInterval = 600L,
+            appRefreshInterval = 600L,
             standardInterval = 900L,
             localDataModifiedInterval = 300L,
-            retryingTimings = RetryingTimings(baseDelay = 300, multiplier = 2.5, maximumRetries = 3)
+            failureRetryingConfig = FailureRetryingConfig(baseDelay = 300, multiplier = 2.5, maximumRetries = 3)
         )
         
         private val OVERLAP_TEST_TIMINGS = SchedulerTimings(
-            appStartInterval = 600L,
+            appRefreshInterval = 600L,
             standardInterval = 1500L,
             localDataModifiedInterval = 300L,
-            retryingTimings = RetryingTimings(baseDelay = 300, multiplier = 2.5, maximumRetries = 3)
+            failureRetryingConfig = FailureRetryingConfig(baseDelay = 300, multiplier = 2.5, maximumRetries = 3)
         )
         
         private val SINGLE_RETRY_TIMINGS = SchedulerTimings(
-            appStartInterval = 600L,
+            appRefreshInterval = 600L,
             standardInterval = 900L,
             localDataModifiedInterval = 400L,
-            retryingTimings = RetryingTimings(baseDelay = 200, multiplier = 2.5, maximumRetries = 1)
+            failureRetryingConfig = FailureRetryingConfig(baseDelay = 200, multiplier = 2.5, maximumRetries = 1)
         )
         
         @OptIn(ExperimentalTime::class)
@@ -77,17 +77,17 @@ class SchedulerTest {
         }, { _ -> })
 
         val timeBeforeCall = currentTimeMs()
-        scheduler.invoke(Trigger.APP_START)
+        scheduler.invoke(Trigger.APP_REFRESH)
 
         val timeAfterCall = taskCompleted.await()
 
         assertTrue(timeAfterCall > timeBeforeCall, "Task must be called after apply")
         
         val actualDelay = timeAfterCall - timeBeforeCall
-        val expectedDelay = timings.appStartInterval
+        val expectedDelay = timings.appRefreshInterval
         assertTrue(
             actualDelay - expectedDelay < TIMING_TOLERANCE_MS,
-            "Task should be called quickly with no delay, took ${actualDelay}ms while expected is ${timings.appStartInterval}ms"
+            "Task should be called quickly with no delay, took ${actualDelay}ms while expected is ${timings.appRefreshInterval}ms"
         )
         scheduler.stop()
     }
@@ -104,7 +104,7 @@ class SchedulerTest {
             taskCompleted.complete(count)
         }, { _ -> })
 
-        scheduler.invoke(Trigger.APP_START)
+        scheduler.invoke(Trigger.APP_REFRESH)
 
         taskCompleted.await()
         taskCompleted = CompletableDeferred()
@@ -114,7 +114,7 @@ class SchedulerTest {
         assertEquals(2, returnedCount, "Expected to be called twice.")
         
         val timeDelay = timeAfterTest - timeBeforeTest
-        val expectedTotalDelay = timings.appStartInterval + timings.standardInterval
+        val expectedTotalDelay = timings.appRefreshInterval + timings.standardInterval
         assertTrue(
             timeDelay - expectedTotalDelay < TIMING_TOLERANCE_MS,
             "Expected to wait the appStartInterval for first call and standardInterval for second call. Time delay: $timeDelay"
@@ -134,7 +134,7 @@ class SchedulerTest {
             taskCompleted.complete(callCount)
         }, { _ -> })
 
-        scheduler.invoke(Trigger.APP_START)
+        scheduler.invoke(Trigger.APP_REFRESH)
 
         taskCompleted.await()
         taskCompleted = CompletableDeferred()
@@ -163,7 +163,7 @@ class SchedulerTest {
             taskCompleted.complete(currentTimeMs())
         }, { _ -> })
 
-        scheduler.invoke(Trigger.APP_START)
+        scheduler.invoke(Trigger.APP_REFRESH)
         
         delay(100)
         val timeBeforeDataModifiedTrigger = currentTimeMs()
@@ -240,7 +240,7 @@ class SchedulerTest {
         scheduler.invoke(Trigger.LOCAL_DATA_MODIFIED)
 
         delay(100)
-        scheduler.invoke(Trigger.APP_START)
+        scheduler.invoke(Trigger.APP_REFRESH)
 
         val firstCallTime = taskCompleted.await()
         val firstCallDelay = firstCallTime - timeBeforeLocalDataTrigger
@@ -281,11 +281,11 @@ class SchedulerTest {
         }, { _ -> })
 
         val timeBeforeAppStartTrigger = currentTimeMs()
-        scheduler.invoke(Trigger.APP_START)
+        scheduler.invoke(Trigger.APP_REFRESH)
 
         val firstCallTime = taskCompleted.await()
         val firstCallDelay = firstCallTime - timeBeforeAppStartTrigger
-        val expectedFirstCallDelay = timings.appStartInterval
+        val expectedFirstCallDelay = timings.appRefreshInterval
         
         assertTimingWithinTolerance(
             firstCallDelay,
@@ -363,7 +363,7 @@ class SchedulerTest {
             taskCompleted.complete(currentTimeMs())
         }, { _ -> })
 
-        scheduler.invoke(Trigger.APP_START)
+        scheduler.invoke(Trigger.APP_REFRESH)
 
         delay(50)
         val timeBeforeImmediateTrigger = currentTimeMs()
@@ -415,14 +415,14 @@ class SchedulerTest {
         // Wait for all retries to complete
         maxRetriesDeferred.await()
 
-        assertEquals(timings.retryingTimings.maximumRetries + 1, callCount, 
+        assertEquals(timings.failureRetryingConfig.maximumRetries + 1, callCount,
             "Should be called maximum retries + 1 times (initial + retries)")
         assertEquals("Test failure", maxRetriesError?.message, "Exception should be passed to max retries callback")
 
         val totalTime = currentTimeMs() - timeBeforeTrigger
-        val expectedMinTime = timings.retryingTimings.baseDelay * 
-            (1 + timings.retryingTimings.multiplier + 
-             timings.retryingTimings.multiplier * timings.retryingTimings.multiplier)
+        val expectedMinTime = timings.failureRetryingConfig.baseDelay *
+            (1 + timings.failureRetryingConfig.multiplier +
+             timings.failureRetryingConfig.multiplier * timings.failureRetryingConfig.multiplier)
         
         assertTrue(totalTime >= expectedMinTime, 
             "Total time should account for retry delays. Expected at least ${expectedMinTime}ms, got ${totalTime}ms")
@@ -449,7 +449,7 @@ class SchedulerTest {
 
         delay(timings.standardInterval + 50)
         
-        assertEquals(timings.retryingTimings.maximumRetries + 1, callCount,
+        assertEquals(timings.failureRetryingConfig.maximumRetries + 1, callCount,
             "Call count should remain at maximum retries + 1, no additional calls should be scheduled")
         
         scheduler.stop()
@@ -479,7 +479,7 @@ class SchedulerTest {
         // Wait for all retries to complete
         maxRetriesDeferred.await()
 
-        assertEquals(timings.retryingTimings.maximumRetries + 1, callCount, 
+        assertEquals(timings.failureRetryingConfig.maximumRetries + 1, callCount,
             "Should be called maximum retries + 1 times before max retries reached")
 
         // Now set the task to succeed and apply a new trigger
@@ -494,7 +494,7 @@ class SchedulerTest {
         val newCallDelay = timeAfterNewCall - timeBeforeNewTrigger
         val expectedDelay = timings.localDataModifiedInterval
 
-        assertEquals(timings.retryingTimings.maximumRetries + 2, callCount, 
+        assertEquals(timings.failureRetryingConfig.maximumRetries + 2, callCount,
             "Should be called one more time after applying new trigger")
         
         assertTimingWithinTolerance(
@@ -529,7 +529,7 @@ class SchedulerTest {
 //        taskStarted.await() // Wait for task to start
         delay(timings.localDataModifiedInterval / 2)
         val timeAfterFirstJob = currentTimeMs()
-        scheduler.invoke(Trigger.APP_START)
+        scheduler.invoke(Trigger.APP_REFRESH)
         
         // Allow first task to complete successfully
         taskCanProceed.complete(Unit)
@@ -548,7 +548,7 @@ class SchedulerTest {
         val appStartDifference = actualDelay - timings.standardInterval
         assertTrue(
             appStartDifference < TIMING_TOLERANCE_MS,
-            "Next job should NOT use APP_START timing (${timings.appStartInterval}ms). " +
+            "Next job should NOT use APP_START timing (${timings.appRefreshInterval}ms). " +
             "Actual: ${actualDelay}ms, difference from APP_START timing: ${appStartDifference}ms"
         )
         
@@ -576,7 +576,7 @@ class SchedulerTest {
         }, { _ -> })
 
         // Start initial trigger
-        scheduler.invoke(Trigger.APP_START)
+        scheduler.invoke(Trigger.APP_REFRESH)
         taskStarted.await() // Wait for task to start
 
         // Apply LOCAL_DATA_MODIFIED while job is running
@@ -627,7 +627,7 @@ class SchedulerTest {
         })
 
         // Start initial trigger
-        scheduler.invoke(Trigger.APP_START)
+        scheduler.invoke(Trigger.APP_REFRESH)
         taskStarted.await() // Wait for task to start
 
         // Apply LOCAL_DATA_MODIFIED while job is running and will fail
@@ -688,8 +688,8 @@ class SchedulerTest {
         })
 
         // Start initial trigger
-        scheduler.invoke(Trigger.APP_START)
-        delay(timings.appStartInterval)
+        scheduler.invoke(Trigger.APP_REFRESH)
+        delay(timings.appRefreshInterval)
 //        taskStarted.await() // Wait for initial task to start and fail
         
         // Wait for retry to start
