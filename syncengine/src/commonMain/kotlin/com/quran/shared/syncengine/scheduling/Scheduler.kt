@@ -277,3 +277,21 @@ private fun SchedulerState.originalState(): SchedulerState = when(this) {
     is SchedulerState.WaitingForReply -> original
     is SchedulerState.Triggered, SchedulerState.Idle, SchedulerState.StandardDelay -> this
 }
+
+/**
+ * Factory function to create a Scheduler with default timings.
+ * 
+ * @param taskFunction The task to execute. Should throw an exception on failure.
+ * @param reachedMaximumFailureRetries Called when max retries are exhausted with the final exception
+ * @return A new Scheduler instance configured with default timings
+ */
+fun createScheduler(
+    taskFunction: suspend () -> Unit,
+    reachedMaximumFailureRetries: suspend (Exception) -> Unit
+): Scheduler {
+    return Scheduler(
+        timings = DefaultTimings,
+        taskFunction = taskFunction,
+        reachedMaximumFailureRetries = reachedMaximumFailureRetries
+    )
+}
