@@ -1,3 +1,4 @@
+@file:OptIn(kotlin.time.ExperimentalTime::class)
 package com.quran.shared.persistence.repository
 
 import com.quran.shared.persistence.QuranDatabase
@@ -9,7 +10,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.*
 import com.quran.shared.persistence.TestDatabaseDriver
-import kotlinx.datetime.Instant
+import kotlin.time.Instant
 
 class PageBookmarksRepositoryTest {
     private lateinit var database: QuranDatabase

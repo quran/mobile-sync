@@ -1,3 +1,4 @@
+@file:OptIn(kotlin.time.ExperimentalTime::class)
 package com.quran.shared.syncengine.network
 
 import co.touchlab.kermit.Logger
@@ -12,7 +13,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.serialization.Serializable
-import kotlinx.datetime.Instant
+import kotlin.time.Instant
 
 class GetMutationsRequest(
     private val httpClient: HttpClient,

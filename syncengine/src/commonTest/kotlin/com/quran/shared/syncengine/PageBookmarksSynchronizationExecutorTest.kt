@@ -1,10 +1,11 @@
+@file:OptIn(kotlin.time.ExperimentalTime::class)
 package com.quran.shared.syncengine
 
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import kotlinx.coroutines.test.runTest
-import kotlinx.datetime.Instant
+import kotlin.time.Instant
 import kotlin.test.*
 class PageBookmarksSynchronizationExecutorTest {
     

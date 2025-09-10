@@ -1,10 +1,11 @@
+@file:OptIn(kotlin.time.ExperimentalTime::class)
 package com.quran.shared.syncengine
 
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.syncengine.network.HttpClientFactory
 import io.ktor.client.HttpClient
-import kotlinx.datetime.Instant
+import kotlin.time.Instant
 
 data class PageBookmark(val id: String, val page: Int, val lastModified: Instant)
 

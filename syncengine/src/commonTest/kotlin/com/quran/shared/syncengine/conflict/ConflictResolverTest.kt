@@ -1,3 +1,4 @@
+@file:OptIn(kotlin.time.ExperimentalTime::class)
 package com.quran.shared.syncengine.conflict
 
 import com.quran.shared.mutations.LocalModelMutation
@@ -8,7 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
-import kotlinx.datetime.Instant
+import kotlin.time.Instant
 import kotlinx.coroutines.test.runTest
 class ConflictResolverTest {
     
