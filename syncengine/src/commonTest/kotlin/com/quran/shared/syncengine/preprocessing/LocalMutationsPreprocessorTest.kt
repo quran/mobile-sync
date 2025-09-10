@@ -1,3 +1,4 @@
+@file:OptIn(kotlin.time.ExperimentalTime::class)
 package com.quran.shared.syncengine.preprocessing
 
 import com.quran.shared.mutations.LocalModelMutation
@@ -7,7 +8,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.assertFailsWith
-import kotlinx.datetime.Instant
+import kotlin.time.Instant
 class LocalMutationsPreprocessorTest {
     
     private val preprocessor = LocalMutationsPreprocessor()
