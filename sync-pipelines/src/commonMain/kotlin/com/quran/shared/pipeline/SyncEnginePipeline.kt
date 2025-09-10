@@ -1,3 +1,4 @@
+@file:OptIn(kotlin.time.ExperimentalTime::class)
 package com.quran.shared.pipeline
 
 import co.touchlab.kermit.Logger
