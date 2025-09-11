@@ -15,6 +15,7 @@ kotlin {
 
             export(projects.syncengine)
             export(projects.persistence)
+            export(projects.syncPipelines)
         }
     }
 
@@ -22,6 +23,7 @@ kotlin {
         commonMain.dependencies {
             api(projects.syncengine)
             api(projects.persistence)
+            api(projects.syncPipelines)
         }
     }
 }
@@ -54,6 +56,6 @@ mavenPublishing {
         name = "Quran.com Umbrella Framework"
         description = "An umbrella framework for Quran.com Persistence and SyncEngine"
         inceptionYear = "2025"
-        url = "https://github.com/quran/syncengine"
+        url = "https://github.com/quran/mobile-sync"
     }
 }

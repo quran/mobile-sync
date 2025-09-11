@@ -1,8 +1,9 @@
 [versions]
 agp = "8.11.0"
-kotlin = "2.2.0"
+kotlin = "2.2.20"
 kotlinx-serialization = "1.6.3"
-kermit = "2.0.0"
+kotlinx-datetime = "0.7.1-0.6.x-compat"
+kermit = "2.0.8"
 
 maven-publish = "0.33.0"
 
@@ -47,6 +48,9 @@ ktor-serialization-json = { module = "io.ktor:ktor-serialization-kotlinx-json", 
 
 # Kotlin Serialization
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+
+# Kotlin DateTime
+kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
 
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose" }
 compose-foundation = { module = "androidx.compose.foundation:foundation" }

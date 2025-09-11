@@ -25,6 +25,8 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.sqldelight.extensions)
             implementation(libs.kermit)
+            implementation(libs.kotlinx.datetime)
+            api(projects.mutationsDefinitions)
         }
 
         commonTest.dependencies {
@@ -98,13 +100,13 @@ sqldelight {
 }
 
 mavenPublishing {
-    publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL)
+    publishToMavenCentral()
     signAllPublications()
     coordinates(libs.versions.project.group.get(), "persistence", libs.versions.project.version.get())
 
     pom {
         name = "Quran.com Persistence Layer"
-        description = "A library for sharing data between iOS and Android mobile apps"
+        description = "A library for storing user data for a Quran.com reading app, with the capability of tracking changes."
         inceptionYear = libs.versions.project.inception.year.get()
         url = libs.versions.project.url.get()
     }

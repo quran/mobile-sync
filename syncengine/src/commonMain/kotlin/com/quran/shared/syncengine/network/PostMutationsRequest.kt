@@ -1,15 +1,18 @@
-package com.quran.shared.syncengine
+@file:OptIn(kotlin.time.ExperimentalTime::class)
+package com.quran.shared.syncengine.network
 
 import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
+import com.quran.shared.syncengine.PageBookmark
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.serialization.Serializable
+import kotlin.time.Instant
 
 class PostMutationsRequest(
     private val httpClient: HttpClient,
@@ -28,7 +31,7 @@ class PostMutationsRequest(
         val type: String,
         val resource: String,
         val resourceId: String?,
-        val data: MutatedResourceData
+        val data: MutatedResourceData?
     )
 
     @Serializable
@@ -54,9 +57,9 @@ class PostMutationsRequest(
     private data class PostMutationResponse(
         val type: String,
         val resource: String,
-        val data: MutatedResourceData,
+        val data: MutatedResourceData?,
         val resourceId: String,
-        val createdAt: Long
+        val createdAt: Long? = null
     )
 
     @Serializable
@@ -73,7 +76,6 @@ class PostMutationsRequest(
         authHeaders: Map<String, String>
     ): MutationsResponse {
         logger.i { "Starting POST mutations request to $url" }
-        logger.d { "Last modification date: $lastModificationDate" }
 
         val requestBody = PostMutationsRequestData(
             mutations = mutations.map { localMutation ->
@@ -87,11 +89,15 @@ class PostMutationsRequest(
                     type = mutationType,
                     resource = "BOOKMARK",
                     resourceId = localMutation.remoteID,
-                    data = MutatedResourceData(
-                        type = "page",
-                        key = localMutation.model.page,
-                        mushaf = 1
-                    )
+
+                    data = if (localMutation.mutation == Mutation.DELETED) {null} else {
+                        MutatedResourceData(
+                            type = "page",
+                            key = localMutation.model.page,
+                            // TODO: Hardcoded to 1 for now. 
+                            mushaf = 1
+                        )
+                    }
                 )
             }
         )
@@ -100,7 +106,6 @@ class PostMutationsRequest(
             headers {
                 authHeaders.forEach { (key, value) ->
                     append(key, value)
-                    logger.d { "Adding header: $key" }
                 }
                 contentType(ContentType.Application.Json)
             }
@@ -109,7 +114,7 @@ class PostMutationsRequest(
         }
         
         logger.d { "HTTP response status: ${httpResponse.status}" }
-        
+
         if (!httpResponse.status.isSuccess()) {
             val errorBody = httpResponse.bodyAsText()
             logger.e { "HTTP error response: status=${httpResponse.status}, body=$errorBody" }
@@ -122,27 +127,16 @@ class PostMutationsRequest(
                 errorBody
             }
             
-            // TODO: To be replaced with a specific exception class.
+            // TODO: Replace with NetworkException or similar specific exception class
             throw RuntimeException("HTTP request failed with status ${httpResponse.status}: $errorMessage")
         }
         
         val response: PostMutationsResponse = httpResponse.body()
         
-        if (!response.success) {
-            logger.e { "Server returned success=false in response body" }
-            logger.e { "Response data: lastMutationAt=${response.data.lastMutationAt}, mutations count=${response.data.mutations.size}" }
-        }
-        
         logger.i { "Received response: success=${response.success}" }
-
-        logger.d { "Response data: lastMutationAt=${response.data.lastMutationAt}, mutations count=${response.data.mutations.size}" }
-        
-        response.data.mutations.forEachIndexed { index, mutation ->
-            logger.d { "Response mutation $index: type=${mutation.type}, resourceId=${mutation.resourceId}, page=${mutation.data.key}, createdAt=${mutation.createdAt}" }
-        }
         
         val result = response.data.toMutationsResponse()
-        logger.i { "Converted to MutationsResponse: lastModificationDate=${result.lastModificationDate}, mutations count=${result.mutations.size}" }
+        logger.i { "lastModificationDate=${result.lastModificationDate}, mutations count=${result.mutations.size}" }
         
         return result
     }
@@ -150,14 +144,13 @@ class PostMutationsRequest(
     private fun PostMutationsResponseData.toMutationsResponse(): MutationsResponse {
         val logger = Logger.withTag("PostMutationsResponseConverter")
         
-        logger.d { "Converting PostMutationsResponseData to MutationsResponse" }
-        logger.d { "Input: lastMutationAt=$lastMutationAt, mutations count=${mutations.size}" }
-        
         val mutations = mutations.map { postMutation ->
             val pageBookmark = PageBookmark(
                 id = postMutation.resourceId,
-                page = postMutation.data.key,
-                lastModified = postMutation.createdAt
+                // TODO: Probably need to remodel Mutation types for DELETE events
+                page = postMutation.data?.key ?: 0,
+                // Not sent in deletions
+                lastModified = postMutation.createdAt?.let { Instant.fromEpochSeconds(it) } ?: Instant.fromEpochSeconds(0)
             )
             
             val mutation = when (postMutation.type) {
@@ -169,22 +162,18 @@ class PostMutationsRequest(
                     throw IllegalArgumentException("Unknown mutation type: ${postMutation.type}")
                 }
             }
-            
-            logger.d { "Converting mutation: type=${postMutation.type} -> ${mutation}, page=${postMutation.data.key}, resourceId=${postMutation.resourceId}" }
-            
+
             RemoteModelMutation(
                 model = pageBookmark,
                 remoteID = postMutation.resourceId,
                 mutation = mutation
             )
         }
-        
+
         val result = MutationsResponse(
             lastModificationDate = lastMutationAt,
             mutations = mutations
         )
-        
-        logger.d { "Conversion complete: lastModificationDate=${result.lastModificationDate}, mutations count=${result.mutations.size}" }
         
         return result
     }

@@ -1,14 +1,19 @@
-package com.quran.shared.syncengine
+@file:OptIn(kotlin.time.ExperimentalTime::class)
+package com.quran.shared.syncengine.network
 
 import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
+import com.quran.shared.syncengine.PageBookmark
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.serialization.Serializable
+import kotlin.time.Instant
 
 class GetMutationsRequest(
     private val httpClient: HttpClient,
@@ -63,6 +68,7 @@ class GetMutationsRequest(
                 authHeaders.forEach { (key, value) ->
                     append(key, value)
                 }
+                contentType(ContentType.Application.Json)
             }
             parameter("mutationsSince", lastModificationDate)
         }
@@ -80,7 +86,8 @@ class GetMutationsRequest(
                 logger.w { "Failed to parse error response, using raw body: ${e.message}" }
                 errorBody
             }
-            // TODO: To be replaced with a specific exception class.
+            
+            // TODO: Replace with NetworkException or similar specific exception class
             throw RuntimeException("HTTP request failed with status ${httpResponse.status}: $errorMessage")
         }
         
@@ -89,6 +96,7 @@ class GetMutationsRequest(
         if (!apiResponse.success) {
             logger.e { "Server returned success=false in response body" }
             logger.e { "Response data: lastMutationAt=${apiResponse.data.lastMutationAt}, mutations count=${apiResponse.data.mutations.size}" }
+            throw RuntimeException("Server returned success=false in response body")
         }
         
         logger.i { "Received response: success=${apiResponse.success}" }
@@ -100,14 +108,11 @@ class GetMutationsRequest(
     private fun ApiResponseData.toMutationsResponse(): MutationsResponse {
         val logger = Logger.withTag("GetMutationsResponseConverter")
         
-        logger.d { "Converting ApiResponseData to MutationsResponse" }
-        logger.d { "Input: lastMutationAt=$lastMutationAt, mutations count=${mutations.size}" }
-        
         val mutations = mutations.map { apiMutation ->
             val pageBookmark = PageBookmark(
                 id = apiMutation.resourceId,
                 page = apiMutation.data.key ?: 0,
-                lastModified = apiMutation.timestamp
+                lastModified = Instant.fromEpochSeconds(apiMutation.timestamp)
             )
             
             val mutation = when (apiMutation.type) {
@@ -119,22 +124,19 @@ class GetMutationsRequest(
                     throw IllegalArgumentException("Unknown mutation type: ${apiMutation.type}")
                 }
             }
-            
-            logger.d { "Converting mutation: type=${apiMutation.type} -> ${mutation}, page=${apiMutation.data.key}, resourceId=${apiMutation.resourceId}" }
-            
+
+
             RemoteModelMutation(
                 model = pageBookmark,
                 remoteID = apiMutation.resourceId,
                 mutation = mutation
             )
         }
-        
+
         val result = MutationsResponse(
             lastModificationDate = lastMutationAt,
             mutations = mutations
         )
-        
-        logger.d { "Conversion complete: lastModificationDate=${result.lastModificationDate}, mutations count=${result.mutations.size}" }
         
         return result
     }

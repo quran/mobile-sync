@@ -1,4 +1,4 @@
-package com.quran.shared.syncengine
+package com.quran.shared.syncengine.network
 
 import io.ktor.client.*
 import io.ktor.client.engine.darwin.*
