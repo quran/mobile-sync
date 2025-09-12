@@ -1,6 +1,9 @@
 // swift-tools-version:5.5
 import PackageDescription
 
+// Set to true for local development
+let useLocalBuild = false
+
 let package = Package(
     name: "QuranSync",
     platforms: [
@@ -8,14 +11,20 @@ let package = Package(
     ],
     products: [
         .library(
-            name: "shared",
-            targets: ["shared"]
+            name: "QuranSync",
+            targets: ["QuranSync"]
         )
     ],
-    targets: [
+    targets: useLocalBuild ? [
         .binaryTarget(
-            name: "shared",
+            name: "QuranSync",
             path: "umbrella/build/XCFrameworks/release/Shared.xcframework"
+        )
+    ] : [
+        .binaryTarget(
+            name: "QuranSync",
+            url: "https://github.com/quran/mobile-sync/releases/download/{VERSION}/QuranSync.xcframework.zip",
+            checksum: "{CHECKSUM_TO_BE_REPLACED_BY_CI}"
         )
     ]
 )

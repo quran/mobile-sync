@@ -1,30 +1,160 @@
-name: Gradle CI
+name: Build
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true  # Cancel previous builds
 
 jobs:
-  build:
+  test:
     runs-on: macos-latest
-
     steps:
-    - uses: actions/checkout@v5
-    
-    - name: Set up JDK 17
-      uses: actions/setup-java@v5
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-        cache: gradle
-    
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v4
+      - uses: actions/checkout@v4
       
-    - name: Clean project
-      run: ./gradlew clean
-    
-    - name: Run tests
-      run: ./gradlew allTests
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+          
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+          
+      - name: Run Tests
+        run: ./gradlew allTests
+
+  build-dev:
+    needs: test
+    runs-on: macos-latest
+    if: github.ref == 'refs/heads/main'
+    outputs:
+      build-version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+          
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+          
+      - name: Generate Build Version
+        id: version
+        run: |
+          # Use timestamp + short SHA for dev builds
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          SHORT_SHA=${GITHUB_SHA:0:7}
+          BUILD_VERSION="dev-$TIMESTAMP-$SHORT_SHA"
+          echo "version=$BUILD_VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Build version: $BUILD_VERSION"
+          
+      - name: Build XCFramework
+        run: ./gradlew :umbrella:createXCFramework
+        
+      - name: Prepare Distribution
+        run: |
+          cd umbrella/build/XCFrameworks/release
+          # Rename to match package expectation
+          mv Shared.xcframework QuranSync.xcframework
+          zip -r QuranSync-${{ steps.version.outputs.version }}.xcframework.zip QuranSync.xcframework
+          
+      - name: Calculate Checksum
+        id: checksum
+        run: |
+          CHECKSUM=$(swift package compute-checksum umbrella/build/XCFrameworks/release/QuranSync-${{ steps.version.outputs.version }}.xcframework.zip)
+          echo "checksum=$CHECKSUM" >> $GITHUB_OUTPUT
+          
+      - name: Update Package.swift for Dev Build
+        run: |
+          # Update Package.swift directly with dev build info
+          sed -i '' "s/{VERSION}/${{ steps.version.outputs.version }}/g" Package.swift
+          sed -i '' "s/{CHECKSUM_TO_BE_REPLACED_BY_CI}/${{ steps.checksum.outputs.checksum }}/g" Package.swift
+          
+      - name: Commit Package.swift for Dev Build
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Package.swift
+          git commit -m "chore: update Package.swift for dev build ${{ steps.version.outputs.version }}"
+          git push origin main
+          
+      - name: Create Development Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: "Development Build ${{ steps.version.outputs.version }}"
+          prerelease: true
+          files: |
+            umbrella/build/XCFrameworks/release/QuranSync-${{ steps.version.outputs.version }}.xcframework.zip
+          body: |
+            ## 🚧 Development Build
+            
+            **Commit:** ${{ github.sha }}  
+            **Branch:** ${{ github.ref_name }}  
+            **Checksum:** `${{ steps.checksum.outputs.checksum }}`
+            
+            ### Usage (SPM)
+            Package.swift has been automatically updated for this dev build:
+            ```swift
+            .package(url: "https://github.com/quran/mobile-sync", exact: "${{ steps.version.outputs.version }}")
+            ```
+            
+            ### Alternative: Manual Binary Target
+            If you prefer manual control:
+            ```swift
+            .binaryTarget(
+                name: "QuranSync",
+                url: "https://github.com/quran/mobile-sync/releases/download/${{ steps.version.outputs.version }}/QuranSync-${{ steps.version.outputs.version }}.xcframework.zip",
+                checksum: "${{ steps.checksum.outputs.checksum }}"
+            )
+            ```
+            
+            ### ⚠️ Important Warnings
+            - **This is a development build** - use stable releases for production
+            - **Dev builds may be deleted without notice** - we only keep the 5 most recent
+            - **Package.swift will be overwritten** by the next dev build or release
+            - **No stability guarantees** - APIs may change between dev builds
+            - **For testing only** - not recommended for App Store submissions
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  cleanup-old-dev-builds:
+    needs: build-dev
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Cleanup Old Dev Builds
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: releases } = await github.rest.repos.listReleases({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            
+            // Keep last 5 dev builds, delete older ones
+            const devBuilds = releases
+              .filter(release => release.tag_name.startsWith('dev-'))
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+              .slice(5); // Skip first 5 (keep them)
+              
+            for (const release of devBuilds) {
+              console.log(`Deleting old dev build: ${release.tag_name}`);
+              await github.rest.repos.deleteRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: release.id,
+              });
+            }
