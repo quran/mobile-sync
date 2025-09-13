@@ -10,7 +10,7 @@ kotlin {
         iosSimulatorArm64()
     ).forEach { iosTarget ->
         iosTarget.binaries.framework {
-            baseName = "Shared"
+            baseName = "QuranSyncUmbrella"
             isStatic = true
 
             export(projects.syncengine)
@@ -24,6 +24,25 @@ kotlin {
             api(projects.syncengine)
             api(projects.persistence)
             api(projects.syncPipelines)
+        }
+    }
+}
+
+// Task to create XCFramework
+tasks.register("createXCFramework") {
+    dependsOn("linkReleaseFrameworkIosArm64")
+    dependsOn("linkReleaseFrameworkIosSimulatorArm64")
+    
+    doLast {
+        val xcframeworkDir = file("build/XCFrameworks/release")
+        xcframeworkDir.mkdirs()
+        
+        exec {
+            commandLine("xcodebuild", "-create-xcframework",
+                "-framework", "build/bin/iosArm64/releaseFramework/QuranSyncUmbrella.framework",
+                "-framework", "build/bin/iosSimulatorArm64/releaseFramework/QuranSyncUmbrella.framework",
+                "-output", "build/XCFrameworks/release/QuranSyncUmbrella.xcframework"
+            )
         }
     }
 }
