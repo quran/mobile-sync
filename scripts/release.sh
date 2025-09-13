@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Release helper script for QuranSync
+# Release helper script for QuranSyncUmbrella
 
 set -e
 

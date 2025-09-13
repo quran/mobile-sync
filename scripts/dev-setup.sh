@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Development setup script for QuranSync
+# Development setup script for QuranSyncUmbrella
 
 IOS_PROJECT_PATH="../YourIOSProject"  # Adjust path as needed
-FRAMEWORK_NAME="QuranSync"
+FRAMEWORK_NAME="QuranSyncUmbrella"
 
 case "$1" in
   "local")
