@@ -5,25 +5,25 @@ import PackageDescription
 let useLocalBuild = false
 
 let package = Package(
-    name: "QuranSync",
+    name: "QuranSyncUmbrella",
     platforms: [
         .iOS(.v13)
     ],
     products: [
         .library(
-            name: "QuranSync",
-            targets: ["QuranSync"]
+            name: "QuranSyncUmbrella",
+            targets: ["QuranSyncUmbrella"]
         )
     ],
     targets: useLocalBuild ? [
         .binaryTarget(
-            name: "QuranSync",
-            path: "umbrella/build/XCFrameworks/release/Shared.xcframework"
+            name: "QuranSyncUmbrella",
+            path: "umbrella/build/XCFrameworks/release/QuranSyncUmbrella.xcframework"
         )
     ] : [
         .binaryTarget(
-            name: "QuranSync",
-            url: "https://github.com/quran/mobile-sync/releases/download/{VERSION}/QuranSync.xcframework.zip",
+            name: "QuranSyncUmbrella",
+            url: "https://github.com/quran/mobile-sync/releases/download/{VERSION}/QuranSyncUmbrella.xcframework.zip",
             checksum: "{CHECKSUM_TO_BE_REPLACED_BY_CI}"
         )
     ]

@@ -10,7 +10,7 @@ kotlin {
         iosSimulatorArm64()
     ).forEach { iosTarget ->
         iosTarget.binaries.framework {
-            baseName = "Shared"
+            baseName = "QuranSyncUmbrella"
             isStatic = true
 
             export(projects.syncengine)
@@ -39,9 +39,9 @@ tasks.register("createXCFramework") {
         
         exec {
             commandLine("xcodebuild", "-create-xcframework",
-                "-framework", "build/bin/iosArm64/releaseFramework/Shared.framework",
-                "-framework", "build/bin/iosSimulatorArm64/releaseFramework/Shared.framework",
-                "-output", "build/XCFrameworks/release/Shared.xcframework"
+                "-framework", "build/bin/iosArm64/releaseFramework/QuranSyncUmbrella.framework",
+                "-framework", "build/bin/iosSimulatorArm64/releaseFramework/QuranSyncUmbrella.framework",
+                "-output", "build/XCFrameworks/release/QuranSyncUmbrella.xcframework"
             )
         }
     }
