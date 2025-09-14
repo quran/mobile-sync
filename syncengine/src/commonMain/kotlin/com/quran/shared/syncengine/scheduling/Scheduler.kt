@@ -10,6 +10,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.math.pow
 import kotlin.time.Clock
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 
@@ -19,26 +23,24 @@ enum class Trigger {
     IMMEDIATE
 }
 
-// In milliseconds
 data class SchedulerTimings(
-    val standardInterval: Long,
-    val appRefreshInterval: Long,
-    val localDataModifiedInterval: Long,
+    val standardInterval: Duration,
+    val appRefreshInterval: Duration,
+    val localDataModifiedInterval: Duration,
     val failureRetryingConfig: FailureRetryingConfig
 )
 
-// In milliseconds
 data class FailureRetryingConfig(
-    val baseDelay: Long,
+    val baseDelay: Duration,
     val multiplier: Double,
     val maximumRetries: Int
 )
 
 private val DefaultTimings = SchedulerTimings(
-    standardInterval = 30 * 60 * 1000,
-    appRefreshInterval = 30 * 1000,
-    localDataModifiedInterval = 5 * 1000,
-    failureRetryingConfig = FailureRetryingConfig(baseDelay = 200, multiplier = 2.5, maximumRetries = 5)
+    standardInterval = 30.minutes,
+    appRefreshInterval = 30.seconds,
+    localDataModifiedInterval = 5.seconds,
+    failureRetryingConfig = FailureRetryingConfig(baseDelay = 200.milliseconds, multiplier = 2.5, maximumRetries = 5)
 )
 
 private sealed class SchedulerState {
@@ -190,14 +192,14 @@ class Scheduler(
         when (trigger) {
             Trigger.APP_REFRESH -> schedule(timings.appRefreshInterval, SchedulerState.Triggered(Trigger.APP_REFRESH))
             Trigger.LOCAL_DATA_MODIFIED -> schedule(timings.localDataModifiedInterval, SchedulerState.Triggered(Trigger.LOCAL_DATA_MODIFIED))
-            Trigger.IMMEDIATE -> schedule(0, SchedulerState.Triggered(Trigger.IMMEDIATE))
+            Trigger.IMMEDIATE -> schedule(Duration.ZERO, SchedulerState.Triggered(Trigger.IMMEDIATE))
         }
     }
 
     // Critical-section bound
-    private fun schedule(time: Long, newState: SchedulerState) {
+    private fun schedule(time: Duration, newState: SchedulerState) {
         val currentTime = Clock.System.now().toEpochMilliseconds()
-        val firingTime = currentTime + time
+        val firingTime = currentTime + time.inWholeMilliseconds
         if (currentlyScheduled() && firingTime >= (expectedExecutionTime ?: 0)) {
             logger.d { "Ignored schedule request: new firing time $firingTime >= current expected time $expectedExecutionTime" }
             return
@@ -207,10 +209,10 @@ class Scheduler(
         currentJob?.cancel()
 
         this.state = newState
-        logger.d { "Scheduling task in ${time}ms. Expected firing time: ${Instant.fromEpochMilliseconds(firingTime)}, State: $newState" }
+        logger.d { "Scheduling task in $time. Expected firing time: ${Instant.fromEpochMilliseconds(firingTime)}, State: $newState" }
         currentJob = scope.launch {
             // This will start a critical section.
-            timeTaskFunctionCall(time, newState)
+            timeTaskFunctionCall(time.inWholeMilliseconds, newState)
         }
     }
 
@@ -224,7 +226,7 @@ class Scheduler(
 
     // Critical-section bound
     private fun scheduleDefault() {
-        logger.i { "Scheduling default task with standard interval: ${timings.standardInterval}ms" }
+        logger.i { "Scheduling default task with standard interval: ${timings.standardInterval}" }
         schedule(timings.standardInterval, SchedulerState.StandardDelay)
     }
 
@@ -248,8 +250,8 @@ class Scheduler(
             logger.d { "Task failed, processing retry logic. Original state: ${state.original}, current retry count: $count" }
             if (count < timings.failureRetryingConfig.maximumRetries) {
                 val nextCount = count + 1
-                val nextTime = (timings.failureRetryingConfig.baseDelay * timings.failureRetryingConfig.multiplier.pow(count)).toLong()
-                logger.d { "Scheduling retry $nextCount/${timings.failureRetryingConfig.maximumRetries} in ${nextTime}ms" }
+                val nextTime = (timings.failureRetryingConfig.baseDelay * timings.failureRetryingConfig.multiplier.pow(count))
+                logger.d { "Scheduling retry $nextCount/${timings.failureRetryingConfig.maximumRetries} in $nextTime" }
                 schedule(nextTime, SchedulerState.Retrying(original = state.original.originalState(),
                     retryNumber = nextCount))
             }
