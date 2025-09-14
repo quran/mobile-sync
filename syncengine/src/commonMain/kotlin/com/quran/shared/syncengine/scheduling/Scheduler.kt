@@ -2,6 +2,7 @@ package com.quran.shared.syncengine.scheduling
 
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -134,17 +135,13 @@ class Scheduler(
     private suspend fun executeStop() {
         mutex.withLock {
             logger.i { "Stopping scheduler, cancelling current job" }
-            currentJob?.cancel()
-            currentJob = null
-            expectedExecutionTime = null
-            bufferedTrigger = null
-            state = SchedulerState.Stopped
+            resetAllState(SchedulerState.Stopped)
         }
     }
 
     // Entry point. Starts a critical section
     private suspend fun timeTaskFunctionCall(timeMS: Long, startingState: SchedulerState) {
-        kotlinx.coroutines.delay(timeMS)
+        delay(timeMS)
 
         logger.d { "Starting scheduled job execution" }
         mutex.withLock {
@@ -200,7 +197,7 @@ class Scheduler(
     private fun schedule(time: Duration, newState: SchedulerState) {
         val currentTime = Clock.System.now().toEpochMilliseconds()
         val firingTime = currentTime + time.inWholeMilliseconds
-        if (currentlyScheduled() && firingTime >= (expectedExecutionTime ?: 0)) {
+        if (state.currentlyScheduled() && firingTime >= (expectedExecutionTime ?: 0)) {
             logger.d { "Ignored schedule request: new firing time $firingTime >= current expected time $expectedExecutionTime" }
             return
         }
@@ -215,14 +212,6 @@ class Scheduler(
             timeTaskFunctionCall(time.inWholeMilliseconds, newState)
         }
     }
-
-    // Critical-section bound
-    private fun currentlyScheduled(): Boolean =
-        when (state) {
-            SchedulerState.Idle, is SchedulerState.Replied, SchedulerState.Stopped -> false
-            is SchedulerState.WaitingForReply -> false
-            SchedulerState.StandardDelay, is SchedulerState.Triggered, is SchedulerState.Retrying -> true
-        }
 
     // Critical-section bound
     private fun scheduleDefault() {
@@ -257,17 +246,22 @@ class Scheduler(
             }
             else {
                 logger.i { "Maximum retries (${timings.failureRetryingConfig.maximumRetries}) reached, reporting failure and stopping scheduler" }
-                reportFailureAndPause(exception)
+                reportFailureAndReset(exception)
             }
         }
     }
 
     // Critical-section bound
-    private fun reportFailureAndPause(exception: Exception) {
+    private fun reportFailureAndReset(exception: Exception) {
         scope.launch {
             reachedMaximumFailureRetries(exception)
         }
-        this.state = SchedulerState.Idle
+        resetAllState(SchedulerState.Idle)
+    }
+
+    // Critical-section bound
+    private fun resetAllState(newState: SchedulerState) {
+        this.state = newState
         this.currentJob?.cancel()
         this.currentJob = null
         this.bufferedTrigger = null
@@ -287,6 +281,13 @@ private fun SchedulerState.originalState(): SchedulerState = when(this) {
     is SchedulerState.WaitingForReply -> original
     is SchedulerState.Triggered, SchedulerState.Idle, SchedulerState.StandardDelay, SchedulerState.Stopped -> this
 }
+
+private fun SchedulerState.currentlyScheduled(): Boolean =
+    when (this) {
+        SchedulerState.Idle, is SchedulerState.Replied, SchedulerState.Stopped -> false
+        is SchedulerState.WaitingForReply -> false
+        SchedulerState.StandardDelay, is SchedulerState.Triggered, is SchedulerState.Retrying -> true
+    }
 
 /**
  * Factory function to create a Scheduler with default timings.
