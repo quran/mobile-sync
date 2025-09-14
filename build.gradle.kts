@@ -10,3 +10,24 @@ plugins {
 
 group = "com.quran.shared"
 version = "0.0.1-SNAPSHOT"
+
+// Configure test logging - show details only for failures
+allprojects {
+    tasks.withType<Test> {
+        testLogging {
+            // Only show output for failed tests, or when requested via --info
+            events("failed")
+            exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+            showStandardStreams = false
+            showCauses = true
+            showExceptions = true
+            showStackTraces = true
+            
+            // Show more details when --info flag is used
+            if (project.gradle.startParameter.logLevel == LogLevel.INFO) {
+                events("started", "passed", "skipped", "failed", "standard_out", "standard_error")
+                showStandardStreams = true
+            }
+        }
+    }
+}
