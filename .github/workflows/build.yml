@@ -27,7 +27,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
           
       - name: Run Tests
-        run: ./gradlew allTests
+        run: ./gradlew allTests --stacktrace --continue
 
   build-dev:
     needs: test

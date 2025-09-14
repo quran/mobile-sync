@@ -5,11 +5,10 @@ import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.syncengine.network.GetMutationsRequest
 import com.quran.shared.syncengine.network.MutationsResponse
 import com.quran.shared.syncengine.network.PostMutationsRequest
+import com.quran.shared.syncengine.scheduling.Scheduler
+import com.quran.shared.syncengine.scheduling.Trigger
+import com.quran.shared.syncengine.scheduling.createScheduler
 import io.ktor.client.HttpClient
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
-import kotlinx.coroutines.launch
 
 internal class SynchronizationClientImpl(
     private val environment: SynchronizationEnvironment,
@@ -18,47 +17,42 @@ internal class SynchronizationClientImpl(
     private val authenticationDataFetcher: AuthenticationDataFetcher): SynchronizationClient {
 
     private val logger = Logger.withTag("SynchronizationClient")
-    private val scope = CoroutineScope(Dispatchers.IO)
+    
+    private val scheduler: Scheduler = createScheduler(
+        taskFunction = ::startSyncOperation,
+        reachedMaximumFailureRetries = { exception ->
+            logger.e(exception) { "Sync operation failed after maximum retries: ${exception.message}" }
+            bookmarksConfigurations.resultNotifier.didFail("Sync operation failed after maximum retries: ${exception.message}")
+        }
+    )
 
     override fun localDataUpdated() {
-        logger.i { "Local data updated, starting sync operation" }
-        // TODO: Will need to schedule this.
-        scope.launch {
-            startSyncOperation()
-        }
+        logger.i { "Local data updated, triggering scheduler" }
+        scheduler.invoke(Trigger.LOCAL_DATA_MODIFIED)
     }
 
     override fun applicationStarted() {
-        logger.i { "Application started, starting sync operation" }
-        // TODO: Will need to schedule this.
-        scope.launch {
-            startSyncOperation()
-        }
+        logger.i { "Application started, triggering scheduler" }
+        scheduler.invoke(Trigger.APP_REFRESH)
     }
 
     private suspend fun startSyncOperation() {
-        try {
-            logger.i { "Starting sync operation" }
-            
-            val pipeline = PageBookmarksSynchronizationExecutor()
-            val result = pipeline.executePipeline(
-                fetchLocal = { initializePipeline() },
-                fetchRemote = { lastModificationDate -> fetchRemoteModificationsPipeline(lastModificationDate) },
-                checkLocalExistence = { remoteIDs -> checkLocalExistence(remoteIDs) },
-                pushLocal = { mutations, lastModificationDate -> pushMutationsPipeline(mutations, lastModificationDate) }
-            )
-            
-            logger.i { "Sync operation completed successfully with ${result.remoteMutations.size} remote mutations to persist and ${result.localMutations.size} local mutations to clear." }
-            bookmarksConfigurations.resultNotifier.didSucceed(
-                result.lastModificationDate,
-                result.remoteMutations,
-                result.localMutations
-            )
-            
-        } catch (e: Exception) {
-            logger.e(e) { "Sync operation failed: ${e.message}" }
-            bookmarksConfigurations.resultNotifier.didFail("Sync operation failed: ${e.message}")
-        }
+        logger.i { "Starting sync operation" }
+        
+        val pipeline = PageBookmarksSynchronizationExecutor()
+        val result = pipeline.executePipeline(
+            fetchLocal = { initializePipeline() },
+            fetchRemote = { lastModificationDate -> fetchRemoteModificationsPipeline(lastModificationDate) },
+            checkLocalExistence = { remoteIDs -> checkLocalExistence(remoteIDs) },
+            pushLocal = { mutations, lastModificationDate -> pushMutationsPipeline(mutations, lastModificationDate) }
+        )
+        
+        logger.i { "Sync operation completed successfully with ${result.remoteMutations.size} remote mutations to persist and ${result.localMutations.size} local mutations to clear." }
+        bookmarksConfigurations.resultNotifier.didSucceed(
+            result.lastModificationDate,
+            result.remoteMutations,
+            result.localMutations
+        )
     }
 
     private suspend fun pushLocalMutations(
