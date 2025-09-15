@@ -1,8 +1,8 @@
 // swift-tools-version:5.5
 import PackageDescription
 
-// Set to true for local development
-let useLocalBuild = false
+// Check environment variable for local development mode (defaults to false)
+let useLocalBuild = ProcessInfo.processInfo.environment["QURAN_SYNC_LOCAL_BUILD"] == "true"
 
 let package = Package(
     name: "QuranSync",
