@@ -1,4 +1,4 @@
-# Release Workflow Guide - QuranSyncUmbrella
+# Release Workflow Guide - QuranSync
 
 ## How Releases Work
 

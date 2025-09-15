@@ -10,7 +10,7 @@ kotlin {
         iosSimulatorArm64()
     ).forEach { iosTarget ->
         iosTarget.binaries.framework {
-            baseName = "QuranSyncUmbrella"
+            baseName = "QuranSync"
             isStatic = true
 
             export(projects.syncengine)
