@@ -10,19 +10,32 @@ case "$1" in
   "patch"|"minor"|"major")
     BUMP_TYPE="$1"
     PRERELEASE="${2:-false}"
-    
+
     echo "🚀 Triggering $BUMP_TYPE release..."
-    
+
     if [ "$PRERELEASE" = "true" ]; then
       echo "⚠️  This will be marked as a prerelease"
     fi
-    
+
     # Use GitHub CLI to trigger workflow
     gh workflow run release.yml \
       -f version_bump="$BUMP_TYPE" \
       -f prerelease="$PRERELEASE"
-    
+
     echo "✅ Release workflow triggered!"
+    echo "🔗 Monitor progress: https://github.com/$REPO/actions"
+    ;;
+
+  "dev")
+    echo "🚧 Triggering development build..."
+    echo "⚠️  This will create a dev build and update Package.swift"
+    echo "📦 Only the 3 most recent dev builds are kept"
+
+    # Use GitHub CLI to trigger workflow
+    gh workflow run build.yml \
+      -f create_dev_build="true"
+
+    echo "✅ Development build workflow triggered!"
     echo "🔗 Monitor progress: https://github.com/$REPO/actions"
     ;;
     
@@ -55,12 +68,13 @@ case "$1" in
     ;;
     
   *)
-    echo "Usage: $0 {patch|minor|major|status|dev-builds|cancel}"
+    echo "Usage: $0 {patch|minor|major|dev|status|dev-builds|cancel}"
     echo ""
     echo "Commands:"
     echo "  patch      - Create a patch release (1.0.0 → 1.0.1)"
     echo "  minor      - Create a minor release (1.0.0 → 1.1.0)"
     echo "  major      - Create a major release (1.0.0 → 2.0.0)"
+    echo "  dev        - Create a development build"
     echo "  status     - Show recent releases and workflow status"
     echo "  dev-builds - Show recent development builds"
     echo "  cancel     - Cancel running release workflows"
@@ -69,6 +83,7 @@ case "$1" in
     echo "  $0 patch         # Normal patch release"
     echo "  $0 minor true    # Minor prerelease"
     echo "  $0 major         # Major release"
+    echo "  $0 dev           # Development build"
     echo ""
     echo "Prerequisites:"
     echo "  - Install GitHub CLI: brew install gh"
