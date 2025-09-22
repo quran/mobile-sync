@@ -20,22 +20,44 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
           cache: gradle
-          
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-          
+
       - name: Run Tests
         run: ./gradlew allTests --stacktrace --continue
 
-  build-dev:
+  build-verification:
     needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build All Modules
+        run: ./gradlew build --stacktrace
+
+      - name: Build XCFramework
+        run: ./gradlew :umbrella:createXCFramework --stacktrace
+
+  build-dev:
+    needs: [test, build-verification]
     runs-on: macos-latest
     if: github.event.inputs.create_dev_build == 'true'
     outputs:
