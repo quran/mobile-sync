@@ -1,0 +1,176 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      prerelease:
+        description: 'Is this a prerelease?'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: release
+  cancel-in-progress: false  # Don't cancel releases
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+          
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+      - name: Get Current Version
+        id: current_version
+        run: |
+          # Get latest tag, default to 0.0.0 if none exists
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          CURRENT_VERSION=${LATEST_TAG#v}  # Remove 'v' prefix
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "📋 Current version: $CURRENT_VERSION"
+          
+      - name: Calculate Next Version
+        id: next_version
+        run: |
+          CURRENT="${{ steps.current_version.outputs.version }}"
+          BUMP="${{ github.event.inputs.version_bump }}"
+          
+          # Split version into parts
+          IFS='.' read -ra VERSION_PARTS <<< "$CURRENT"
+          MAJOR=${VERSION_PARTS[0]:-0}
+          MINOR=${VERSION_PARTS[1]:-0}
+          PATCH=${VERSION_PARTS[2]:-0}
+          
+          # Calculate new version based on bump type
+          case $BUMP in
+            "major")
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            "minor")
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            "patch")
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+          
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "🚀 Next version: $NEW_VERSION"
+          
+      - name: Run Tests
+        run: ./gradlew allTests
+        
+      - name: Build XCFramework
+        run: ./gradlew :umbrella:createXCFramework
+        
+      - name: Prepare Distribution
+        run: |
+          cd umbrella/build/XCFrameworks/release
+          zip -r QuranSync.xcframework.zip QuranSync.xcframework
+          
+      - name: Calculate Checksum
+        id: checksum
+        run: |
+          CHECKSUM=$(swift package compute-checksum umbrella/build/XCFrameworks/release/QuranSync.xcframework.zip)
+          echo "checksum=$CHECKSUM" >> $GITHUB_OUTPUT
+          
+      - name: Update Package.swift
+        run: |
+          sed -i '' "s/{VERSION}/v${{ steps.next_version.outputs.version }}/g" Package.swift
+          sed -i '' "s/{CHECKSUM_TO_BE_REPLACED_BY_CI}/${{ steps.checksum.outputs.checksum }}/g" Package.swift
+          
+      - name: Generate Release Notes
+        id: release_notes
+        run: |
+          # Get commits since last release
+          LAST_TAG="${{ steps.current_version.outputs.version }}"
+          if [ "$LAST_TAG" = "0.0.0" ]; then
+            COMMITS=$(git log --pretty=format:"- %s" --reverse)
+          else
+            COMMITS=$(git log v$LAST_TAG..HEAD --pretty=format:"- %s" --reverse)
+          fi
+          
+          # Create release notes
+          cat > release_notes.md << EOF
+          ## What's Changed
+          
+          $COMMITS
+          
+          ## Installation
+          
+          ### Swift Package Manager
+          Add to your \`Package.swift\`:
+          \`\`\`swift
+          dependencies: [
+              .package(url: "https://github.com/quran/mobile-sync", from: "${{ steps.next_version.outputs.version }}")
+          ]
+          \`\`\`
+          
+          ### Xcode
+          1. File → Add Package Dependencies
+          2. Enter: \`https://github.com/quran/mobile-sync\`
+          3. Select version: \`${{ steps.next_version.outputs.version }}\`
+          EOF
+          
+      - name: Commit Package.swift Updates
+        run: |
+          git add Package.swift
+          git commit -m "chore: update Package.swift for v${{ steps.next_version.outputs.version }}" || exit 0
+          
+      - name: Create Tag
+        run: |
+          git tag -a "v${{ steps.next_version.outputs.version }}" -m "Release v${{ steps.next_version.outputs.version }}"
+          
+      - name: Push Changes
+        run: |
+          git push origin main
+          git push origin "v${{ steps.next_version.outputs.version }}"
+          
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: "v${{ steps.next_version.outputs.version }}"
+          name: "QuranSync v${{ steps.next_version.outputs.version }}"
+          prerelease: ${{ github.event.inputs.prerelease }}
+          files: |
+            umbrella/build/XCFrameworks/release/QuranSync.xcframework.zip
+          body_path: release_notes.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Summary
+        run: |
+          echo "✅ Released QuranSync v${{ steps.next_version.outputs.version }}"
+          echo "🏷️ Tag: v${{ steps.next_version.outputs.version }}"
+          echo "📦 Asset: QuranSync.xcframework.zip"
+          echo "🔗 Release: https://github.com/quran/mobile-sync/releases/tag/v${{ steps.next_version.outputs.version }}"
