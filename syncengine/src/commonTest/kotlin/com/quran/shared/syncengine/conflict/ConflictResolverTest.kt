@@ -10,7 +10,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlin.time.Instant
-import kotlinx.coroutines.test.runTest
+
 class ConflictResolverTest {
     
     @Test
