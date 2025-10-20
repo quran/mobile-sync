@@ -19,23 +19,21 @@ kotlin {
     }
 
     sourceSets {
-        val commonMain by getting {
-            dependencies {
-                implementation(libs.kotlinx.coroutines.core)
-                implementation(libs.kotlinx.datetime)
-                implementation(libs.kermit)
-                api(projects.syncengine)
-                api(projects.persistence)
-                api(projects.mutationsDefinitions)
-            }
+
+        commonMain.dependencies {
+            implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.kotlinx.datetime)
+            implementation(libs.kermit)
+            api(projects.syncengine)
+            api(projects.persistence)
+            api(projects.mutationsDefinitions)
         }
 
-        val commonTest by getting {
-            dependencies {
-                implementation(libs.kotlin.test)
-            }
+        commonTest.dependencies {
+            implementation(libs.kotlin.test)
         }
     }
+
     // don't show warnings for expect/actual classes
     targets.configureEach {
         compilations.configureEach {
@@ -57,12 +55,6 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.valueOf("VERSION_${libs.versions.android.java.version.get()}")
         targetCompatibility = JavaVersion.valueOf("VERSION_${libs.versions.android.java.version.get()}")
-    }
-
-    testOptions {
-        unitTests {
-            isIncludeAndroidResources = true
-        }
     }
 }
 
