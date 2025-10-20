@@ -1,7 +1,7 @@
 package com.quran.shared.syncengine.preprocessing
 
-import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.mutations.Mutation
+import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.syncengine.PageBookmark
 
 class RemoteMutationsPreprocessor(

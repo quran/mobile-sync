@@ -6,9 +6,10 @@ import com.quran.shared.mutations.Mutation
 import com.quran.shared.syncengine.PageBookmark
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 import kotlin.time.Instant
+
 class LocalMutationsPreprocessorTest {
     
     private val preprocessor = LocalMutationsPreprocessor()

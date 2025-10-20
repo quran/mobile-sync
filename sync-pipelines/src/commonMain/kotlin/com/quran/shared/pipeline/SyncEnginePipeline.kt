@@ -6,8 +6,8 @@ import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.repository.PageBookmarksSynchronizationRepository
 import com.quran.shared.syncengine.AuthenticationDataFetcher
-import com.quran.shared.syncengine.LocalModificationDateFetcher
 import com.quran.shared.syncengine.LocalDataFetcher
+import com.quran.shared.syncengine.LocalModificationDateFetcher
 import com.quran.shared.syncengine.PageBookmark
 import com.quran.shared.syncengine.PageBookmarksSynchronizationConfigurations
 import com.quran.shared.syncengine.ResultNotifier
