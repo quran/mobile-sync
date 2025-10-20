@@ -2,19 +2,17 @@
 package com.quran.shared.syncengine
 
 import com.quran.shared.mutations.LocalModelMutation
-import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.mutations.Mutation
-import com.quran.shared.syncengine.network.HttpClientFactory
+import com.quran.shared.mutations.RemoteModelMutation
 import io.ktor.client.HttpClient
-import kotlin.test.Test
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Ignore
+import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.test.runTest
 import kotlin.time.Instant
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * Integration tests for SynchronizationClient.

@@ -12,6 +12,7 @@ kotlin {
     iosArm64()
     iosSimulatorArm64()
 
+    jvm()
     androidTarget {
         publishLibraryVariants("release")
         compilerOptions {
@@ -31,6 +32,10 @@ kotlin {
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
+        }
+
+        jvmMain.dependencies {
+            implementation(libs.sqldelight.sqlite.driver)
         }
 
         androidMain.dependencies {

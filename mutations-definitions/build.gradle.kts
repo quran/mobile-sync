@@ -1,8 +1,5 @@
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    alias(libs.plugins.android.library)
     alias(libs.plugins.vanniktech.maven.publish)
 }
 
@@ -11,12 +8,7 @@ kotlin {
     iosArm64()
     iosSimulatorArm64()
 
-    androidTarget {
-        publishLibraryVariants("release")
-        compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_17)
-        }
-    }
+    jvm()
 
     sourceSets {
         commonMain.dependencies {
@@ -35,20 +27,6 @@ kotlin {
                 freeCompilerArgs.add("-Xexpect-actual-classes")
             }
         }
-    }
-}
-
-android {
-    namespace = "com.quran.shared.mutations"
-    compileSdk = libs.versions.android.compile.sdk.get().toInt()
-
-    defaultConfig {
-        minSdk = libs.versions.android.min.sdk.get().toInt()
-    }
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.valueOf("VERSION_${libs.versions.android.java.version.get()}")
-        targetCompatibility = JavaVersion.valueOf("VERSION_${libs.versions.android.java.version.get()}")
     }
 }
 
