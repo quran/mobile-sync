@@ -1,4 +1,3 @@
-import com.vanniktech.maven.publish.SonatypeHost
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -34,25 +33,17 @@ kotlin {
             implementation(libs.kotlinx.coroutines.test)
         }
 
+        androidMain.dependencies {
+            implementation(libs.sqldelight.android.driver)
+        }
+
         androidUnitTest.dependencies {
             implementation(libs.sqldelight.sqlite.driver)
             implementation(libs.sqldelight.jdbc.driver)
         }
 
-        iosX64Test.dependencies {
+        iosTest.dependencies {
             implementation(libs.sqldelight.native.driver)
-        }
-
-        iosArm64Test.dependencies {
-            implementation(libs.sqldelight.native.driver)
-        }
-
-        iosSimulatorArm64Test.dependencies {
-            implementation(libs.sqldelight.native.driver)
-        }
-
-        androidMain.dependencies {
-            implementation(libs.sqldelight.android.driver)
         }
 
         nativeMain.dependencies {

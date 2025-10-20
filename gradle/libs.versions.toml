@@ -1,20 +1,20 @@
 [versions]
-agp = "8.11.0"
+agp = "8.12.0"
 kotlin = "2.2.20"
-kotlinx-serialization = "1.6.3"
+kotlinx-serialization = "1.9.0"
 kotlinx-datetime = "0.7.1-0.6.x-compat"
 kermit = "2.0.8"
 
-maven-publish = "0.33.0"
+maven-publish = "0.34.0"
 
-compose = "2025.06.01"
+compose = "2025.10.00"
 coroutines = "1.10.2"
 sqldelight = "2.1.0"
-ktor = "2.3.12"
+ktor = "3.3.1"
 
 # Android configuration
-android-compile-sdk = "35"
-android-min-sdk = "21"
+android-compile-sdk = "36"
+android-min-sdk = "23"
 android-java-version = "17"
 
 # Project metadata
