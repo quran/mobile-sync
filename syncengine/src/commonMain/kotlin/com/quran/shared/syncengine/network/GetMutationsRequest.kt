@@ -2,7 +2,6 @@
 package com.quran.shared.syncengine.network
 
 import co.touchlab.kermit.Logger
-import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.syncengine.PageBookmark
 import io.ktor.client.HttpClient
@@ -10,7 +9,6 @@ import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.headers
 import io.ktor.client.request.parameter
-import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
@@ -76,25 +74,13 @@ class GetMutationsRequest(
         }
         
         logger.d { "HTTP response status: ${httpResponse.status}" }
-        
         if (!httpResponse.status.isSuccess()) {
-            val errorBody = httpResponse.bodyAsText()
-            logger.e { "HTTP error response: status=${httpResponse.status}, body=$errorBody" }
-            
-            val errorMessage = try {
-                val errorResponse: ErrorResponse = httpResponse.body()
-                errorResponse.message
-            } catch (e: Exception) {
-                logger.w { "Failed to parse error response, using raw body: ${e.message}" }
-                errorBody
+            httpResponse.processError(logger) {
+                httpResponse.body<ErrorResponse>().message
             }
-            
-            // TODO: Replace with NetworkException or similar specific exception class
-            throw RuntimeException("HTTP request failed with status ${httpResponse.status}: $errorMessage")
         }
         
         val apiResponse: ApiResponse = httpResponse.body()
-        
         if (!apiResponse.success) {
             logger.e { "Server returned success=false in response body" }
             logger.e { "Response data: lastMutationAt=${apiResponse.data.lastMutationAt}, mutations count=${apiResponse.data.mutations.size}" }
@@ -117,17 +103,7 @@ class GetMutationsRequest(
                 lastModified = Instant.fromEpochSeconds(apiMutation.timestamp)
             )
             
-            val mutation = when (apiMutation.type) {
-                "CREATE" -> Mutation.CREATED
-                "DELETE" -> Mutation.DELETED
-                "UPDATE" -> Mutation.MODIFIED
-                else -> {
-                    logger.e { "Unknown mutation type: ${apiMutation.type}" }
-                    throw IllegalArgumentException("Unknown mutation type: ${apiMutation.type}")
-                }
-            }
-
-
+            val mutation = apiMutation.type.asMutation(logger)
             RemoteModelMutation(
                 model = pageBookmark,
                 remoteID = apiMutation.resourceId,
