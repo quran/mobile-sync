@@ -12,7 +12,6 @@ import io.ktor.client.request.headers
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
-import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
@@ -121,19 +120,9 @@ class PostMutationsRequest(
         logger.d { "HTTP response status: ${httpResponse.status}" }
 
         if (!httpResponse.status.isSuccess()) {
-            val errorBody = httpResponse.bodyAsText()
-            logger.e { "HTTP error response: status=${httpResponse.status}, body=$errorBody" }
-            
-            val errorMessage = try {
-                val errorResponse: ErrorResponse = httpResponse.body()
-                errorResponse.message
-            } catch (e: Exception) {
-                logger.w { "Failed to parse error response, using raw body: ${e.message}" }
-                errorBody
+            httpResponse.processError(logger) {
+                httpResponse.body<ErrorResponse>().message
             }
-            
-            // TODO: Replace with NetworkException or similar specific exception class
-            throw RuntimeException("HTTP request failed with status ${httpResponse.status}: $errorMessage")
         }
         
         val response: PostMutationsResponse = httpResponse.body()
@@ -158,16 +147,7 @@ class PostMutationsRequest(
                 lastModified = postMutation.createdAt?.let { Instant.fromEpochSeconds(it) } ?: Instant.fromEpochSeconds(0)
             )
             
-            val mutation = when (postMutation.type) {
-                "CREATE" -> Mutation.CREATED
-                "DELETE" -> Mutation.DELETED
-                "UPDATE" -> Mutation.MODIFIED
-                else -> {
-                    logger.e { "Unknown mutation type: ${postMutation.type}" }
-                    throw IllegalArgumentException("Unknown mutation type: ${postMutation.type}")
-                }
-            }
-
+            val mutation = postMutation.type.asMutation(logger)
             RemoteModelMutation(
                 model = pageBookmark,
                 remoteID = postMutation.resourceId,

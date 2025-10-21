@@ -1,4 +1,5 @@
 @file:OptIn(kotlin.time.ExperimentalTime::class)
+
 package com.quran.shared.syncengine
 
 import com.quran.shared.mutations.LocalModelMutation
@@ -14,7 +15,7 @@ interface LocalDataFetcher<Model> {
      * Fetches local mutations that have occurred since the given timestamp.
      */
     suspend fun fetchLocalMutations(lastModified: Long): List<LocalModelMutation<Model>>
-    
+
     /**
      * Checks if the given remote IDs exist locally.
      * @param remoteIDs List of remote IDs to check
@@ -56,20 +57,18 @@ interface SynchronizationClient {
 
 data class SynchronizationEnvironment(val endPointURL: String)
 
-sealed class SynchronizationClientBuilder {
-    companion object {
-        fun build(
-            environment: SynchronizationEnvironment,
-            authFetcher: AuthenticationDataFetcher,
-            bookmarksConfigurations: PageBookmarksSynchronizationConfigurations,
-            httpClient: HttpClient? = null
-        ): SynchronizationClient {
-            return SynchronizationClientImpl(
-                environment,
-                httpClient ?: HttpClientFactory.createHttpClient(),
-                bookmarksConfigurations,
-                authFetcher
-            )
-        }
+object SynchronizationClientBuilder {
+    fun build(
+        environment: SynchronizationEnvironment,
+        authFetcher: AuthenticationDataFetcher,
+        bookmarksConfigurations: PageBookmarksSynchronizationConfigurations,
+        httpClient: HttpClient? = null
+    ): SynchronizationClient {
+        return SynchronizationClientImpl(
+            environment,
+            httpClient ?: HttpClientFactory.createHttpClient(),
+            bookmarksConfigurations,
+            authFetcher
+        )
     }
 }
