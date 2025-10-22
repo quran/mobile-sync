@@ -22,12 +22,12 @@ struct ContentView: View {
           )
         } else {
           List {
-            ForEach(viewModel.bookmarks, id: \.id) { bookmark in
+            ForEach(viewModel.bookmarks, id: \.local_id) { bookmark in
               VStack(alignment: .leading) {
                 Text(viewModel.formatBookmark(bookmark))
                   .font(.headline)
                 
-                Text("Added: \(viewModel.formatTimestamp(bookmark.last_updated))")
+                Text("Added: \(viewModel.formatTimestamp(bookmark.created_at))")
                   .font(.caption)
                   .foregroundColor(.secondary)
               }
