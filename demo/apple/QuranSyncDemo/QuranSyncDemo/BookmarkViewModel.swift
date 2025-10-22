@@ -10,7 +10,7 @@ import Shared
 import Combine
 
 class BookmarkViewModel: ObservableObject {
-  @Published var bookmarks: [Bookmarks] = []
+  @Published var bookmarks: [Page_bookmark] = []
   
   private let databaseManager = DatabaseManager.shared
   
@@ -19,7 +19,7 @@ class BookmarkViewModel: ObservableObject {
   }
   
   func loadBookmarks() {
-    bookmarks = databaseManager.getAllBookmarks()
+    bookmarks = databaseManager.getPageBookmarks()
   }
   
   func addRandomBookmark() {
@@ -28,8 +28,8 @@ class BookmarkViewModel: ObservableObject {
   }
   
   // Format bookmark for display
-  func formatBookmark(_ bookmark: Bookmarks) -> String {
-    return "Sura \(bookmark.sura), Ayah \(bookmark.ayah)"
+  func formatBookmark(_ bookmark: Page_bookmark) -> String {
+    return "Page \(bookmark.page)"
   }
   
   // Format the timestamp
