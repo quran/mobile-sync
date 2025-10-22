@@ -24,19 +24,18 @@ class DatabaseManager {
   }
   
   // Get all bookmarks
-  func getAllBookmarks() -> [Bookmarks] {
+  func getPageBookmarks() -> [Page_bookmark] {
     return bookmarkQueries.getBookmarks().executeAsList()
   }
   
   // Add a new bookmark
-  func addBookmark(sura: Int64, ayah: Int64) {
-    bookmarkQueries.addBookmark(remote_id: nil, sura: sura, ayah: ayah, page: nil)
+  func addPageBookmark(page: Int64) {
+    bookmarkQueries.addNewBookmark(page: page)
   }
   
   // Add a random bookmark
   func addRandomBookmark() {
-    let randomSura = Int64.random(in: 1...114)
-    let randomAyah = Int64.random(in: 1...286) // Max ayah count is 286 in Quran
-    addBookmark(sura: randomSura, ayah: randomAyah)
+    let randomPage = Int64.random(in: 1...604)
+    addPageBookmark(page: randomPage)
   }
 }
