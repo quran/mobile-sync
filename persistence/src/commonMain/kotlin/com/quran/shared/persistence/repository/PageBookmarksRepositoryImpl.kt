@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
-class PageBookmarksRepositoryImpl(
+internal class PageBookmarksRepositoryImpl(
     private val database: QuranDatabase
 ) : PageBookmarksRepository, PageBookmarksSynchronizationRepository {
     private val logger = Logger.withTag("PageBookmarksRepository")

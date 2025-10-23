@@ -7,7 +7,7 @@ import com.quran.shared.persistence.model.DatabasePageBookmark
 import com.quran.shared.persistence.model.PageBookmark
 import kotlin.time.Instant
 
-fun DatabasePageBookmark.toBookmark(): PageBookmark {
+internal fun DatabasePageBookmark.toBookmark(): PageBookmark {
     return PageBookmark(
         page = page.toInt(),
         lastUpdated = Instant.fromEpochSeconds(created_at),
@@ -15,7 +15,7 @@ fun DatabasePageBookmark.toBookmark(): PageBookmark {
     )
 }
 
-fun DatabasePageBookmark.toBookmarkMutation(): LocalModelMutation<PageBookmark> = LocalModelMutation(
+internal fun DatabasePageBookmark.toBookmarkMutation(): LocalModelMutation<PageBookmark> = LocalModelMutation(
     mutation = if (deleted == 0L) Mutation.CREATED else Mutation.DELETED,
     model = toBookmark(),
     remoteID = remote_id,
