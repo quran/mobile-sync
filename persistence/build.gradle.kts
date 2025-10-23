@@ -5,6 +5,8 @@ plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.sqldelight)
     alias(libs.plugins.vanniktech.maven.publish)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.native.coroutines)
 }
 
 kotlin {
@@ -54,6 +56,10 @@ kotlin {
         nativeMain.dependencies {
             implementation(libs.sqldelight.native.driver)
         }
+    }
+
+    sourceSets.all {
+        languageSettings.optIn("kotlin.experimental.ExperimentalObjCName")
     }
 
     // don't show warnings for expect/actual classes

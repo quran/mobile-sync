@@ -1,36 +1,11 @@
 package com.quran.shared.persistence.repository
 
-import com.quran.shared.mutations.LocalModelMutation
-import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.model.PageBookmark
+import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
 import kotlinx.coroutines.flow.Flow
 
 class DuplicatePageBookmarkException(message: String) : Exception(message)
 class PageBookmarkNotFoundException(message: String) : Exception(message)
-
-interface PageBookmarksSynchronizationRepository {
-    /**
-     * Returns a list of bookmarks that have been mutated locally (created or deleted)
-     * and need to be synchronized with the remote server.
-     */
-    suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<PageBookmark>>
-
-    /**
-     * Persists the remote state of bookmarks after a successful synchronization operation.
-     * This method should be called after the remote server has confirmed the changes.
-     *
-     * @param updatesToPersist List of bookmarks with their remote IDs and mutation states to be
-     * persisted. These must have a remoteID setup.
-     * @param localMutationsToClear List of local mutations to be cleared. An item of this list
-     * denotes either a mutation that was committed remotely, or a mutation that overridden. If it
-     * was committed, a counterpart is expected in `updatesToPersists` to persist it as a remote
-     * bookmark. These must be input from the list returned by `fetchMutatedBookmarks`.
-     */
-    suspend fun applyRemoteChanges(updatesToPersist: List<RemoteModelMutation<PageBookmark>>,
-                                   localMutationsToClear: List<LocalModelMutation<PageBookmark>>)
-
-    suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean>
-}
 
 interface PageBookmarksRepository {
     /**
@@ -39,18 +14,21 @@ interface PageBookmarksRepository {
      *
      * @return Flow<List<PageBookmark>> A flow that emits the current list of bookmarks
      */
+    @NativeCoroutines
     fun getAllBookmarks(): Flow<List<PageBookmark>>
 
     /**
      * Adds a bookmark for a specific page.
      * @throws DuplicatePageBookmarkException if a bookmark for this page already exists
      */
+    @NativeCoroutines
     suspend fun addPageBookmark(page: Int)
 
     /**
      * Deletes a bookmark for a specific page.
      * @throws PageBookmarkNotFoundException if no bookmark exists for this page
      */
+    @NativeCoroutines
     suspend fun deletePageBookmark(page: Int)
 
     /**
@@ -62,5 +40,6 @@ interface PageBookmarksRepository {
      * @throws IllegalStateException if either bookmarks or mutations tables are not empty
      * @throws IllegalArgumentException if any bookmark has a remote ID or is marked as deleted
      */
+    @NativeCoroutines
     suspend fun migrateBookmarks(bookmarks: List<PageBookmark>)
 }
