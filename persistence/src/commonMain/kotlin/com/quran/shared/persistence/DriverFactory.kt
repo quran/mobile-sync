@@ -6,7 +6,7 @@ expect class DriverFactory {
     fun makeDriver(): SqlDriver
 }
 
-fun makeDatabase(driverFactory: DriverFactory): QuranDatabase {
+internal fun makeDatabase(driverFactory: DriverFactory): QuranDatabase {
     val driver = driverFactory.makeDriver()
     return QuranDatabase(driver)
 }
