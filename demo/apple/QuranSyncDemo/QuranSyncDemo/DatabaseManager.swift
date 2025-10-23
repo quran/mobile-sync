@@ -6,36 +6,31 @@
 //
 
 import Foundation
+import KMPNativeCoroutinesAsync
 import Shared
 
 class DatabaseManager {
   static let shared = DatabaseManager()
   
-  private let database: QuranDatabase
+  private let pageBookmarksRepository: PageBookmarksRepository
   
   private init() {
     let driverFactory = DriverFactory()
-    self.database = DriverFactoryKt.makeDatabase(driverFactory: driverFactory)
+    self.pageBookmarksRepository = PageBookmarksRepositoryFactory.companion.createRepository(driverFactory: driverFactory)
   }
   
-  // Provides access to bookmark queries
-  var bookmarkQueries: BookmarksQueries {
-    return database.bookmarksQueries
+  func bookmarksSequence() -> any AsyncSequence<[PageBookmark], Error> {
+    asyncSequence(for: pageBookmarksRepository.getAllBookmarks())
   }
   
-  // Get all bookmarks
-  func getPageBookmarks() -> [Page_bookmark] {
-    return bookmarkQueries.getBookmarks().executeAsList()
+  // Add a bookmark for a given page using async/await bridge.
+  func addPageBookmark(page: Int) async throws {
+    try await asyncFunction(for: pageBookmarksRepository.addPageBookmark(page: Int32(page)))
   }
   
-  // Add a new bookmark
-  func addPageBookmark(page: Int64) {
-    bookmarkQueries.addNewBookmark(page: page)
-  }
-  
-  // Add a random bookmark
-  func addRandomBookmark() {
-    let randomPage = Int64.random(in: 1...604)
-    addPageBookmark(page: randomPage)
+  // Add a random bookmark using async/await bridge.
+  func addRandomBookmark() async throws {
+    let randomPage = Int.random(in: 1...604)
+    try await addPageBookmark(page: randomPage)
   }
 }
