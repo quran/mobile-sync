@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		C163F6BE2EAA42E6001AD126 /* KMPNativeCoroutinesAsync in Frameworks */ = {isa = PBXBuildFile; productRef = C163F6BD2EAA42E6001AD126 /* KMPNativeCoroutinesAsync */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		C1D8E3602DDA5A530076D793 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +56,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C163F6BE2EAA42E6001AD126 /* KMPNativeCoroutinesAsync in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -113,6 +118,7 @@
 			);
 			name = QuranSyncDemo;
 			packageProductDependencies = (
+				C163F6BD2EAA42E6001AD126 /* KMPNativeCoroutinesAsync */,
 			);
 			productName = QuranSyncDemo;
 			productReference = C1D8E3522DDA5A520076D793 /* QuranSyncDemo.app */;
@@ -196,6 +202,9 @@
 			);
 			mainGroup = C1D8E3492DDA5A520076D793;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				C163F6BC2EAA42E6001AD126 /* XCRemoteSwiftPackageReference "KMP-NativeCoroutines" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C1D8E3532DDA5A520076D793 /* Products */;
 			projectDirPath = "";
@@ -585,6 +594,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		C163F6BC2EAA42E6001AD126 /* XCRemoteSwiftPackageReference "KMP-NativeCoroutines" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/rickclephas/KMP-NativeCoroutines.git";
+			requirement = {
+				branch = master;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		C163F6BD2EAA42E6001AD126 /* KMPNativeCoroutinesAsync */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C163F6BC2EAA42E6001AD126 /* XCRemoteSwiftPackageReference "KMP-NativeCoroutines" */;
+			productName = KMPNativeCoroutinesAsync;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = C1D8E34A2DDA5A520076D793 /* Project object */;
 }
