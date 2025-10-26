@@ -1,10 +1,11 @@
-@file:OptIn(kotlin.time.ExperimentalTime::class)
 package com.quran.shared.pipeline
 
 import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.repository.PageBookmarksSynchronizationRepository
+import com.quran.shared.persistence.util.fromPlatform
+import com.quran.shared.persistence.util.toPlatform
 import com.quran.shared.syncengine.AuthenticationDataFetcher
 import com.quran.shared.syncengine.LocalDataFetcher
 import com.quran.shared.syncengine.LocalModificationDateFetcher
@@ -108,20 +109,19 @@ private class ResultReceiver(
 }
 
 private fun com.quran.shared.persistence.model.PageBookmark.toSyncEngine(): PageBookmark {
-    if (localId == null) {
+    val localId = this.localId ?:
         throw RuntimeException("Transforming a Persistence's PageBookmark without a local ID.")
-    }
     return PageBookmark(
         page = this.page,
-        id = this.localId!!,
-        lastModified = this.lastUpdated
+        id = localId,
+        lastModified = this.lastUpdated.fromPlatform()
         )
 }
 
 private fun PageBookmark.toPersistence(): com.quran.shared.persistence.model.PageBookmark {
     return com.quran.shared.persistence.model.PageBookmark(
         page = this.page,
-        lastUpdated = this.lastModified,
+        lastUpdated = this.lastModified.toPlatform(),
         localId = this.id
     )
 }

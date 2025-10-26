@@ -20,38 +20,22 @@ class BookmarkViewModel: ObservableObject {
   @Published var bookmarks: [BookmarkItem] = []
   
   private let databaseManager = DatabaseManager.shared
-  private var bookmarksTask: Task<Void, Never>?
-  
-  init() {
-    observeBookmarks()
-  }
-  
-  deinit {
-    bookmarksTask?.cancel()
-  }
-  
-  private func observeBookmarks() {
-    bookmarksTask?.cancel()
-    bookmarksTask = Task {
-      do {
-        let sequence = databaseManager.bookmarksSequence()
-        for try await sharedBookmarks in sequence {
-          bookmarks = sharedBookmarks.map(Self.mapToItem)
-        }
-      } catch {
-        print("Failed to observe bookmarks: \(error)")
+
+  func observeBookmarks() async {
+    do {
+      let sequence = databaseManager.bookmarksSequence()
+      for try await sharedBookmarks in sequence {
+        bookmarks = sharedBookmarks.map(Self.mapToItem)
       }
+    } catch is CancellationError {
+      // SwiftUI cancels the task when the view disappears; ignore.
+    } catch {
+      print("Failed to observe bookmarks: \(error)")
     }
   }
   
-  func addRandomBookmark() {
-    Task {
-      do {
-        try await databaseManager.addRandomBookmark()
-      } catch {
-        print("Failed to add random bookmark: \(error)")
-      }
-    }
+  func addRandomBookmark() async throws {
+     try await databaseManager.addRandomBookmark()
   }
   
   // Format bookmark for display
@@ -69,8 +53,7 @@ class BookmarkViewModel: ObservableObject {
   
   private static func mapToItem(_ bookmark: PageBookmark) -> BookmarkItem {
     let identifier = bookmark.localId ?? "page-\(bookmark.page)"
-    let milliseconds = bookmark.lastUpdated.toEpochMilliseconds()
-    let lastUpdatedDate = Date(timeIntervalSince1970: TimeInterval(milliseconds) / 1000.0)
+    let lastUpdatedDate = bookmark.lastUpdated
     return BookmarkItem(id: identifier, page: Int(bookmark.page), lastUpdated: lastUpdatedDate)
   }
 }
