@@ -8,6 +8,7 @@ import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.model.PageBookmark
+import com.quran.shared.persistence.util.fromPlatform
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.Flow
@@ -86,7 +87,7 @@ internal class PageBookmarksRepositoryImpl(
                             database.bookmarksQueries.persistRemoteBookmark(
                                 remote_id = remote.remoteID,
                                 page = model.page.toLong(),
-                                created_at = model.lastUpdated.epochSeconds
+                                created_at = model.lastUpdated.fromPlatform().epochSeconds
                             )
                         }
                         Mutation.DELETED -> {

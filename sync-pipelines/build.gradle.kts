@@ -35,6 +35,10 @@ kotlin {
         }
     }
 
+    sourceSets.all {
+        languageSettings.optIn("kotlin.time.ExperimentalTime")
+    }
+
     // don't show warnings for expect/actual classes
     targets.configureEach {
         compilations.configureEach {

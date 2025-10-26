@@ -37,7 +37,13 @@ struct ContentView: View {
         }
         
         Button(action: {
-          viewModel.addRandomBookmark()
+          Task {
+            do {
+              try await viewModel.addRandomBookmark()
+            } catch {
+              print("Failed to add random bookmark: \(error)")
+            }
+          }
         }) {
           Label("Add Random Bookmark", systemImage: "bookmark.fill")
             .frame(maxWidth: .infinity)
@@ -46,6 +52,9 @@ struct ContentView: View {
         .padding()
       }
       .navigationTitle("Quran Bookmarks")
+    }
+    .task {
+      await viewModel.observeBookmarks()
     }
   }
 }

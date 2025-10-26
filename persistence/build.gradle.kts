@@ -60,6 +60,7 @@ kotlin {
 
     sourceSets.all {
         languageSettings.optIn("kotlin.experimental.ExperimentalObjCName")
+        languageSettings.optIn("kotlin.time.ExperimentalTime")
     }
 
     // don't show warnings for expect/actual classes
