@@ -22,12 +22,12 @@ struct ContentView: View {
           )
         } else {
           List {
-            ForEach(viewModel.bookmarks, id: \.local_id) { bookmark in
+            ForEach(viewModel.bookmarks, id: \.id) { bookmark in
               VStack(alignment: .leading) {
                 Text(viewModel.formatBookmark(bookmark))
                   .font(.headline)
                 
-                Text("Added: \(viewModel.formatTimestamp(bookmark.created_at))")
+                Text("Updated: \(viewModel.formatTimestamp(bookmark.lastUpdated))")
                   .font(.caption)
                   .foregroundColor(.secondary)
               }
@@ -37,7 +37,13 @@ struct ContentView: View {
         }
         
         Button(action: {
-          viewModel.addRandomBookmark()
+          Task {
+            do {
+              try await viewModel.addRandomBookmark()
+            } catch {
+              print("Failed to add random bookmark: \(error)")
+            }
+          }
         }) {
           Label("Add Random Bookmark", systemImage: "bookmark.fill")
             .frame(maxWidth: .infinity)
@@ -46,13 +52,9 @@ struct ContentView: View {
         .padding()
       }
       .navigationTitle("Quran Bookmarks")
-      .toolbar {
-        Button(action: {
-          viewModel.loadBookmarks()
-        }) {
-          Image(systemName: "arrow.clockwise")
-        }
-      }
+    }
+    .task {
+      await viewModel.observeBookmarks()
     }
   }
 }

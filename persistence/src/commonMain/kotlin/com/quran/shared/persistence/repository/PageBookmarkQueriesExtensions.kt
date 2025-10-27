@@ -5,12 +5,13 @@ import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.persistence.model.DatabasePageBookmark
 import com.quran.shared.persistence.model.PageBookmark
+import com.quran.shared.persistence.util.toPlatform
 import kotlin.time.Instant
 
 internal fun DatabasePageBookmark.toBookmark(): PageBookmark {
     return PageBookmark(
         page = page.toInt(),
-        lastUpdated = Instant.fromEpochSeconds(created_at),
+        lastUpdated = Instant.fromEpochSeconds(created_at).toPlatform(),
         localId = local_id.toString()
     )
 }

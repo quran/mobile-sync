@@ -1,10 +1,9 @@
-@file:OptIn(kotlin.time.ExperimentalTime::class)
 package com.quran.shared.persistence.model
 
-import kotlin.time.Instant
+import com.quran.shared.persistence.util.PlatformDateTime
 
 data class PageBookmark(
     val page: Int,
-    val lastUpdated: Instant,
+    val lastUpdated: PlatformDateTime,
     val localId: String?
 )
