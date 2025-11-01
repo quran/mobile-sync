@@ -9,6 +9,8 @@ kotlin {
     iosArm64()
     iosSimulatorArm64()
 
+    macosArm64()
+
     jvm()
 
     sourceSets {
@@ -30,10 +32,9 @@ kotlin {
         }
 
 
-        iosMain.dependencies {
+        appleMain.dependencies {
             implementation(libs.ktor.client.darwin)
         }
-
 
         commonTest.dependencies {
             implementation(libs.kotlin.test)
