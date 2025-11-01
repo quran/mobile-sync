@@ -1,0 +1,101 @@
+name: Publish Shared XCFramework
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref (branch or tag) to build from"
+        required: true
+        default: main
+
+permissions:
+  contents: write
+
+env:
+  XCF_NAME: Shared
+  XCF_GRADLE_TASK: umbrella:assembleSharedXCFramework
+  XCF_OUTPUT_DIR: umbrella/build/XCFrameworks/release
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || github.ref }}
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          java-version: "17"
+          distribution: "temurin"
+          cache: gradle
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Build XCFramework
+        run: ./gradlew $XCF_GRADLE_TASK --stacktrace
+
+      - name: Package XCFramework
+        id: package
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          read_property_version() {
+            local prop
+            if [[ ! -f gradle.properties ]]; then
+              echo "gradle.properties not found" >&2
+              return 1
+            fi
+            prop=$(awk -F'=' '/^version[[:space:]]*=/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); gsub(/^"|"$/, "", $2); print $2; exit}' gradle.properties)
+            if [[ -z "$prop" ]]; then
+              echo "version property missing in gradle.properties" >&2
+              return 1
+            fi
+            printf '%s' "$prop"
+          }
+
+          property_version=$(read_property_version)
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            version="$property_version"
+            tag_name="v${version}"
+          else
+            tag_name="${GITHUB_REF_NAME}"
+            version="$property_version"
+            if [[ "$tag_name" != "v${version}" ]]; then
+              echo "Tag ${tag_name} does not match gradle.properties version ${version}" >&2
+              exit 1
+            fi
+          fi
+
+          archive_name="${XCF_NAME}-${version}.xcframework.zip"
+          output_dir="$XCF_OUTPUT_DIR"
+          cd "$output_dir"
+          rm -f "${XCF_NAME}.xcframework.zip" "$archive_name"
+          zip -r "$archive_name" "${XCF_NAME}.xcframework"
+
+          echo "archive-path=$output_dir/$archive_name" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag-name=$tag_name" >> "$GITHUB_OUTPUT"
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.package.outputs.tag-name }}
+          name: Shared XCFramework ${{ steps.package.outputs.version }}
+          draft: false
+          prerelease: ${{ contains(steps.package.outputs.version, '-') }}
+          make_latest: ${{ !contains(steps.package.outputs.version, '-') }}
+          files: ${{ steps.package.outputs.archive-path }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

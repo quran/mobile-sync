@@ -1,9 +1,14 @@
+import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
+
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.vanniktech.maven.publish)
 }
 
 kotlin {
+    val xcfName = "Shared"
+    val xcf = XCFramework(xcfName)
+
     listOf(
         iosX64(),
         iosArm64(),
@@ -16,6 +21,9 @@ kotlin {
             export(projects.syncengine)
             export(projects.persistence)
             export(projects.syncPipelines)
+
+            binaryOption("bundleId", "com.quran.sync.$xcfName")
+            xcf.add(this)
         }
     }
 
