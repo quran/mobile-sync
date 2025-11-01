@@ -14,6 +14,8 @@ kotlin {
     iosArm64()
     iosSimulatorArm64()
 
+    macosArm64()
+
     jvm()
     androidTarget {
         publishLibraryVariants("release")
@@ -49,7 +51,7 @@ kotlin {
             implementation(libs.sqldelight.jdbc.driver)
         }
 
-        iosTest.dependencies {
+        nativeTest.dependencies {
             implementation(libs.sqldelight.native.driver)
         }
 
