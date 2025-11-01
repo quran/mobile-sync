@@ -11,7 +11,7 @@ plugins {
 }
 
 group = "com.quran.shared"
-version = "0.0.1-SNAPSHOT"
+version = providers.gradleProperty("version").orElse("0.0.1-SNAPSHOT").get()
 
 // Configure test logging - show details only for failures
 allprojects {
