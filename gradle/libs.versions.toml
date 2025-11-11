@@ -8,7 +8,7 @@ ksp = "2.3.0"
 kermit = "2.0.8"
 native-coroutines = "1.0.0-ALPHA-48"
 
-maven-publish = "0.34.0"
+maven-publish = "0.35.0"
 
 compose = "2025.10.01"
 coroutines = "1.10.2"
