@@ -19,9 +19,10 @@ internal class PageBookmarksRepositoryImpl(
     private val database: QuranDatabase
 ) : PageBookmarksRepository, PageBookmarksSynchronizationRepository {
     private val logger = Logger.withTag("PageBookmarksRepository")
+    private val pageBookmarkQueries = lazy { database.page_bookmarksQueries }
 
     override fun getAllBookmarks(): Flow<List<PageBookmark>> {
-        return database.bookmarksQueries.getBookmarks()
+        return pageBookmarkQueries.value.getBookmarks()
             .asFlow()
             .map { query ->
                 query.executeAsList().map { it.toBookmark() }
@@ -31,28 +32,28 @@ internal class PageBookmarksRepositoryImpl(
     override suspend fun addPageBookmark(page: Int) {
         logger.i { "Adding page bookmark for page $page" }
         withContext(Dispatchers.IO) {
-            database.bookmarksQueries.addNewBookmark(page.toLong())
+            pageBookmarkQueries.value.addNewBookmark(page.toLong())
         }
     }
 
     override suspend fun deletePageBookmark(page: Int) {
         logger.i { "Deleting page bookmark for page $page" }
         withContext(Dispatchers.IO) {
-            database.bookmarksQueries.deleteBookmark(page.toLong())
+            pageBookmarkQueries.value.deleteBookmark(page.toLong())
         }
     }
 
     override suspend fun migrateBookmarks(bookmarks: List<PageBookmark>) {
         withContext(Dispatchers.IO) {
-            // Check if bookmarks table is empty
-            val existingBookmarks = database.bookmarksQueries.getBookmarks().executeAsList()
+            // Check if the bookmarks table is empty
+            val existingBookmarks = pageBookmarkQueries.value.getBookmarks().executeAsList()
             if (existingBookmarks.isNotEmpty()) {
                 throw IllegalStateException("Cannot migrate bookmarks: bookmarks table is not empty. Found ${existingBookmarks.size} bookmarks.")
             }
 
-            database.bookmarksQueries.transaction {
+            pageBookmarkQueries.value.transaction {
                 bookmarks.forEach { bookmark ->
-                    database.bookmarksQueries.addNewBookmark(bookmark.page.toLong())
+                    pageBookmarkQueries.value.addNewBookmark(bookmark.page.toLong())
                 }
             }
         }
@@ -60,7 +61,7 @@ internal class PageBookmarksRepositoryImpl(
 
     override suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<PageBookmark>> {
         return withContext(Dispatchers.IO) {
-            database.bookmarksQueries.getUnsyncedBookmarks()
+            pageBookmarkQueries.value.getUnsyncedBookmarks()
                 .executeAsList()
                 .map { it.toBookmarkMutation() }
         }
@@ -72,11 +73,11 @@ internal class PageBookmarksRepositoryImpl(
     ) {
         logger.i { "Applying remote changes with ${updatesToPersist.size} updates to persist and ${localMutationsToClear.size} local mutations to clear" }
         return withContext(Dispatchers.IO) {
-            database.bookmarksQueries.transaction {
+            pageBookmarkQueries.value.transaction {
                 // Clear local mutations
                 // TODO: Should check that passed local IDs are valid
                 localMutationsToClear.forEach { local ->
-                    database.bookmarksQueries.clearLocalMutationFor(id = local.localID.toLong())
+                    pageBookmarkQueries.value.clearLocalMutationFor(id = local.localID.toLong())
                 }
                 
                 // Apply remote updates
@@ -84,14 +85,14 @@ internal class PageBookmarksRepositoryImpl(
                     val model = remote.model
                     when (remote.mutation) {
                         Mutation.CREATED -> {
-                            database.bookmarksQueries.persistRemoteBookmark(
+                            pageBookmarkQueries.value.persistRemoteBookmark(
                                 remote_id = remote.remoteID,
                                 page = model.page.toLong(),
                                 created_at = model.lastUpdated.fromPlatform().epochSeconds
                             )
                         }
                         Mutation.DELETED -> {
-                            database.bookmarksQueries.hardDeleteBookmarkFor(remoteID = remote.remoteID)
+                            pageBookmarkQueries.value.hardDeleteBookmarkFor(remoteID = remote.remoteID)
                         }
                         Mutation.MODIFIED -> {
                             throw RuntimeException("Unexpected MODIFIED remote modification for page bookmarks.")
@@ -108,7 +109,7 @@ internal class PageBookmarksRepositoryImpl(
         }
 
         return withContext(Dispatchers.IO) {
-            val existentIDs = database.bookmarksQueries.checkRemoteIDsExistence(remoteIDs)
+            val existentIDs = pageBookmarkQueries.value.checkRemoteIDsExistence(remoteIDs)
                 .executeAsList()
                 .map { it.remote_id }
                 .toSet()
