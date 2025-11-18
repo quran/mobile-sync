@@ -3,64 +3,82 @@ CREATE TABLE page_bookmark(
   remote_id TEXT,
   page INTEGER NOT NULL UNIQUE,
   created_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
+  modified_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
   deleted INTEGER NOT NULL DEFAULT 0,
   -- Ensure deleted is either 0 or 1
   CHECK (deleted IN (0, 1))
 );
 
 getBookmarks:
-    SELECT * FROM page_bookmark WHERE deleted = 0 ORDER BY created_at DESC;
+  SELECT * FROM page_bookmark WHERE deleted = 0 ORDER BY created_at DESC;
 
 createRemoteBookmark:
-    INSERT INTO page_bookmark (remote_id, page, deleted)
-    VALUES (?, ?, 0);
+  INSERT INTO page_bookmark (remote_id, page, deleted)
+  VALUES (?, ?, 0);
 
 persistRemoteBookmark:
-    INSERT OR REPLACE INTO page_bookmark (remote_id, page, created_at, deleted)
-    VALUES (?, ?, ?, 0);
+  INSERT OR REPLACE INTO page_bookmark (remote_id, page, created_at, deleted)
+  VALUES (?, ?, ?, 0);
 
 addNewBookmark {
-    INSERT OR IGNORE INTO page_bookmark (remote_id, page, deleted)
-    VALUES (NULL, :page, 0);
-    UPDATE page_bookmark SET deleted = 0 WHERE page = :page;
+  INSERT OR IGNORE INTO page_bookmark (remote_id, page, deleted)
+  VALUES (NULL, :page, 0);
+  UPDATE page_bookmark
+  SET deleted = 0,
+    modified_at = strftime('%s', 'now')
+  WHERE page = :page;
 }
 
 -- TODO: Rename
 getUnsyncedBookmarks:
-    SELECT * FROM page_bookmark WHERE remote_id IS NULL OR deleted = 1 ORDER BY created_at DESC;
+  SELECT * FROM page_bookmark WHERE remote_id IS NULL OR deleted = 1 ORDER BY created_at DESC;
 
 setDeleted:
-    UPDATE page_bookmark SET deleted = 1 WHERE local_id = ?;
+  UPDATE page_bookmark
+  SET deleted = 1,
+    modified_at = strftime('%s', 'now')
+  WHERE local_id = ?;
 
 resetDeleted:
-    UPDATE page_bookmark SET deleted = 0 WHERE local_id = ?;
+  UPDATE page_bookmark
+  SET deleted = 0,
+    modified_at = strftime('%s', 'now')
+  WHERE local_id = ?;
 
 -- Removes the record of a local bookmark or marks it as deleted if it's remote.
- deleteBookmark {
-     DELETE FROM page_bookmark WHERE page=:page AND remote_id IS NULL;
-     UPDATE page_bookmark SET deleted = 1 WHERE page=:page AND remote_id IS NOT NULL;
- }
+deleteBookmark {
+  DELETE FROM page_bookmark WHERE page=:page AND remote_id IS NULL;
+  UPDATE page_bookmark
+  SET deleted = 1,
+    modified_at = strftime('%s', 'now')
+  WHERE page=:page AND remote_id IS NOT NULL;
+}
 
- hardDeleteBookmarkFor {
-    DELETE FROM page_bookmark WHERE remote_id=:remoteID;
- }
+hardDeleteBookmarkFor {
+  DELETE FROM page_bookmark WHERE remote_id=:remoteID;
+}
 
- deleteByRemoteID:
-    DELETE FROM page_bookmark WHERE remote_id=? AND remote_id IS NOT NULL;
+deleteByRemoteID:
+  DELETE FROM page_bookmark WHERE remote_id=? AND remote_id IS NOT NULL;
 
 clearLocalMutations {
-    DELETE FROM page_bookmark WHERE remote_id IS NULL;
-    UPDATE page_bookmark SET deleted = 0;
+  DELETE FROM page_bookmark WHERE remote_id IS NULL;
+  UPDATE page_bookmark
+  SET deleted = 0,
+    modified_at = strftime('%s', 'now');
 }
 
 clearLocalMutationFor {
-    DELETE FROM page_bookmark WHERE remote_id IS NULL AND local_id = :id;
-    UPDATE page_bookmark SET deleted = 0 WHERE local_id = :id;
+  DELETE FROM page_bookmark WHERE remote_id IS NULL AND local_id = :id;
+  UPDATE page_bookmark
+  SET deleted = 0,
+    modified_at = strftime('%s', 'now')
+  WHERE local_id = :id;
 }
 
 -- Returns all records for the given page, whether it's deleted or not.
 getAllRecordsFor:
-    SELECT * FROM page_bookmark WHERE page = ?;
+  SELECT * FROM page_bookmark WHERE page = ?;
 
 checkRemoteIDsExistence:
-    SELECT remote_id FROM page_bookmark WHERE remote_id IN :queried_ids;
+  SELECT remote_id FROM page_bookmark WHERE remote_id IN :queried_ids;

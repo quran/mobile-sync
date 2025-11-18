@@ -1,0 +1,13 @@
+CREATE TABLE ayah_bookmarks (
+  local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  remote_id TEXT,
+  sura INTEGER NOT NULL,
+  ayah INTEGER NOT NULL,
+  page INTEGER NOT NULL,
+  created_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
+  modified_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
+  -- Ensure deleted is either 0 or 1
+  deleted INTEGER NOT NULL DEFAULT 0,
+  CHECK (deleted IN (0, 1)),
+  UNIQUE(sura, ayah)
+);
