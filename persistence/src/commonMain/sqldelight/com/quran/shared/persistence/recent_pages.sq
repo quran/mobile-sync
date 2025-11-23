@@ -1,0 +1,9 @@
+CREATE TABLE recent_pages (
+  local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  remote_id TEXT,
+  page INTEGER NOT NULL UNIQUE,
+  created_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
+  modified_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
+  deleted INTEGER NOT NULL DEFAULT 0,
+  CHECK (deleted IN (0, 1))
+);
