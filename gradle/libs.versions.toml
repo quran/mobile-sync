@@ -10,7 +10,7 @@ native-coroutines = "1.0.0-ALPHA-48"
 
 maven-publish = "0.35.0"
 
-compose = "2025.11.01"
+compose = "2025.12.00"
 coroutines = "1.10.2"
 sqldelight = "2.2.1"
 ktor = "3.3.3"
