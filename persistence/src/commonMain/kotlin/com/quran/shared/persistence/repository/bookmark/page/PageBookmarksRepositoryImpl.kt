@@ -1,4 +1,4 @@
-package com.quran.shared.persistence.repository
+package com.quran.shared.persistence.repository.bookmark.page
 
 import app.cash.sqldelight.coroutines.asFlow
 import co.touchlab.kermit.Logger

@@ -1,11 +1,13 @@
-@file:OptIn(kotlin.time.ExperimentalTime::class)
-package com.quran.shared.persistence.repository
+@file:OptIn(ExperimentalTime::class)
+
+package com.quran.shared.persistence.repository.bookmark.page
 
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.persistence.model.DatabasePageBookmark
 import com.quran.shared.persistence.model.PageBookmark
 import com.quran.shared.persistence.util.toPlatform
+import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 
 internal fun DatabasePageBookmark.toBookmark(): PageBookmark {

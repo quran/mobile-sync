@@ -3,7 +3,7 @@ package com.quran.shared.pipeline
 import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
-import com.quran.shared.persistence.repository.PageBookmarksSynchronizationRepository
+import com.quran.shared.persistence.repository.bookmark.page.PageBookmarksSynchronizationRepository
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toPlatform
 import com.quran.shared.syncengine.AuthenticationDataFetcher

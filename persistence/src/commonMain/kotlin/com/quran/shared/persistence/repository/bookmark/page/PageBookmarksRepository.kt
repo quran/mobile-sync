@@ -1,4 +1,4 @@
-package com.quran.shared.persistence.repository
+package com.quran.shared.persistence.repository.bookmark.page
 
 import com.quran.shared.persistence.model.PageBookmark
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutines

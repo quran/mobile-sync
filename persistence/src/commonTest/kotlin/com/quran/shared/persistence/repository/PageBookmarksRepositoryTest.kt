@@ -7,6 +7,9 @@ import com.quran.shared.persistence.Page_bookmarksQueries
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.TestDatabaseDriver
 import com.quran.shared.persistence.model.PageBookmark
+import com.quran.shared.persistence.repository.bookmark.page.PageBookmarksRepository
+import com.quran.shared.persistence.repository.bookmark.page.PageBookmarksRepositoryImpl
+import com.quran.shared.persistence.repository.bookmark.page.PageBookmarksSynchronizationRepository
 import com.quran.shared.persistence.util.toPlatform
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
