@@ -1,4 +1,4 @@
-CREATE TABLE ayah_bookmarks (
+CREATE TABLE ayah_bookmark(
   local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   remote_id TEXT,
   sura INTEGER NOT NULL,
