@@ -1,4 +1,3 @@
-@file:OptIn(kotlin.time.ExperimentalTime::class)
 package com.quran.shared.persistence.repository
 
 import app.cash.sqldelight.coroutines.asFlow
