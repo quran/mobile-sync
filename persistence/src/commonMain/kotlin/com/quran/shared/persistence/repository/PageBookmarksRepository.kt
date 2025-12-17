@@ -38,7 +38,6 @@ interface PageBookmarksRepository {
      *
      * @param bookmarks List of page bookmarks to migrate
      * @throws IllegalStateException if either bookmarks or mutations tables are not empty
-     * @throws IllegalArgumentException if any bookmark has a remote ID or is marked as deleted
      */
     @NativeCoroutines
     suspend fun migrateBookmarks(bookmarks: List<PageBookmark>)
