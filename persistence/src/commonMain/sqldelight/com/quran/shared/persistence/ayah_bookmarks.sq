@@ -3,7 +3,6 @@ CREATE TABLE ayah_bookmark(
   remote_id TEXT,
   sura INTEGER NOT NULL,
   ayah INTEGER NOT NULL,
-  page INTEGER NOT NULL,
   created_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
   modified_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
   -- Ensure deleted is either 0 or 1
