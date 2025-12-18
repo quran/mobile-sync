@@ -11,7 +11,6 @@ internal fun DatabaseAyahBookmark.toBookmark(): AyahBookmark {
     return AyahBookmark(
         sura.toInt(),
         ayah.toInt(),
-        page.toInt(),
         Instant.fromEpochSeconds(created_at).toPlatform(),
         local_id.toString()
     )
