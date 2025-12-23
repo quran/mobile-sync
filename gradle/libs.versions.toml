@@ -6,7 +6,7 @@ kotlinx-datetime = "0.7.1-0.6.x-compat"
 ksp = "2.3.4"
 
 kermit = "2.0.8"
-native-coroutines = "1.0.0-ALPHA-48"
+native-coroutines = "1.0.0"
 
 maven-publish = "0.35.0"
 
