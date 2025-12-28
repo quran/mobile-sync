@@ -3,18 +3,19 @@ package com.quran.shared.pipeline
 import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
-import com.quran.shared.persistence.repository.PageBookmarksSynchronizationRepository
+import com.quran.shared.persistence.model.Bookmark
+import com.quran.shared.persistence.repository.bookmark.repository.BookmarksSynchronizationRepository
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toPlatform
 import com.quran.shared.syncengine.AuthenticationDataFetcher
 import com.quran.shared.syncengine.LocalDataFetcher
 import com.quran.shared.syncengine.LocalModificationDateFetcher
-import com.quran.shared.syncengine.PageBookmark
-import com.quran.shared.syncengine.PageBookmarksSynchronizationConfigurations
+import com.quran.shared.syncengine.BookmarksSynchronizationConfigurations
 import com.quran.shared.syncengine.ResultNotifier
 import com.quran.shared.syncengine.SynchronizationClient
 import com.quran.shared.syncengine.SynchronizationClientBuilder
 import com.quran.shared.syncengine.SynchronizationEnvironment
+import com.quran.shared.syncengine.model.SyncBookmark
 
 interface SyncEngineCallback {
     fun synchronizationDone(newLastModificationDate: Long)
@@ -22,7 +23,7 @@ interface SyncEngineCallback {
 }
 
 public class SyncEnginePipeline(
-    val bookmarksRepository: PageBookmarksSynchronizationRepository
+    val bookmarksRepository: BookmarksSynchronizationRepository
 ) {
     private lateinit var syncClient: SynchronizationClient
 
@@ -33,7 +34,7 @@ public class SyncEnginePipeline(
         callback: SyncEngineCallback
     ): SynchronizationClient {
 
-        val bookmarksConf = PageBookmarksSynchronizationConfigurations(
+        val bookmarksConf = BookmarksSynchronizationConfigurations(
             localModificationDateFetcher = localModificationDateFetcher,
             resultNotifier = ResultReceiver(bookmarksRepository, callback),
             localDataFetcher = RepositoryDataFetcher(bookmarksRepository)
@@ -54,9 +55,9 @@ public class SyncEnginePipeline(
     }
 }
 
-private class RepositoryDataFetcher(val bookmarksRepository: PageBookmarksSynchronizationRepository): LocalDataFetcher<PageBookmark> {
+private class RepositoryDataFetcher(val bookmarksRepository: BookmarksSynchronizationRepository): LocalDataFetcher<SyncBookmark> {
 
-    override suspend fun fetchLocalMutations(lastModified: Long): List<LocalModelMutation<PageBookmark>> {
+    override suspend fun fetchLocalMutations(lastModified: Long): List<LocalModelMutation<SyncBookmark>> {
         return bookmarksRepository.fetchMutatedBookmarks().map { repoMutation ->
             LocalModelMutation(
                 model = repoMutation.model.toSyncEngine(),
@@ -73,8 +74,8 @@ private class RepositoryDataFetcher(val bookmarksRepository: PageBookmarksSynchr
 }
 
 private class ResultReceiver(
-    val repository: PageBookmarksSynchronizationRepository,
-    val callback: SyncEngineCallback): ResultNotifier<PageBookmark> {
+    val repository: BookmarksSynchronizationRepository,
+    val callback: SyncEngineCallback): ResultNotifier<SyncBookmark> {
 
     override suspend fun didFail(message: String) {
         callback.encounteredError(message)
@@ -82,8 +83,8 @@ private class ResultReceiver(
 
     override suspend fun didSucceed(
         newToken: Long,
-        newRemoteMutations: List<RemoteModelMutation<PageBookmark>>,
-        processedLocalMutations: List<LocalModelMutation<PageBookmark>>
+        newRemoteMutations: List<RemoteModelMutation<SyncBookmark>>,
+        processedLocalMutations: List<LocalModelMutation<SyncBookmark>>
     ) {
         val mappedRemotes = newRemoteMutations.map { remoteMutation ->
             RemoteModelMutation(
@@ -108,20 +109,44 @@ private class ResultReceiver(
     }
 }
 
-private fun com.quran.shared.persistence.model.PageBookmark.toSyncEngine(): PageBookmark {
-    val localId = this.localId ?:
-        throw RuntimeException("Transforming a Persistence's PageBookmark without a local ID.")
-    return PageBookmark(
-        page = this.page,
-        id = localId,
-        lastModified = this.lastUpdated.fromPlatform()
-        )
+private fun Bookmark.toSyncEngine(): SyncBookmark {
+    return when (this) {
+        is Bookmark.PageBookmark -> {
+            val localId = this.localId
+                ?: throw RuntimeException("Transforming a persistence PageBookmark without a local ID.")
+            SyncBookmark.PageBookmark(
+                page = this.page,
+                id = localId,
+                lastModified = this.lastUpdated.fromPlatform()
+            )
+        }
+        is Bookmark.AyahBookmark -> {
+            val localId = this.localId
+                ?: throw RuntimeException("Transforming a persistence AyahBookmark without a local ID.")
+            SyncBookmark.AyahBookmark(
+                id = localId,
+                sura = this.sura,
+                ayah = this.ayah,
+                lastModified = this.lastUpdated.fromPlatform()
+            )
+        }
+    }
 }
 
-private fun PageBookmark.toPersistence(): com.quran.shared.persistence.model.PageBookmark {
-    return com.quran.shared.persistence.model.PageBookmark(
-        page = this.page,
-        lastUpdated = this.lastModified.toPlatform(),
-        localId = this.id
-    )
+private fun SyncBookmark.toPersistence(): Bookmark {
+    return when (this) {
+        is SyncBookmark.PageBookmark ->
+            Bookmark.PageBookmark(
+                page = this.page,
+                lastUpdated = this.lastModified.toPlatform(),
+                localId = this.id
+            )
+        is SyncBookmark.AyahBookmark ->
+            Bookmark.AyahBookmark(
+                sura = this.sura,
+                ayah = this.ayah,
+                lastUpdated = this.lastModified.toPlatform(),
+                localId = this.id
+            )
+    }
 }

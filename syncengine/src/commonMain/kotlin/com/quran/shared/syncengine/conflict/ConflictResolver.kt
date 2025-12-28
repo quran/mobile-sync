@@ -3,7 +3,7 @@ package com.quran.shared.syncengine.conflict
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
-import com.quran.shared.syncengine.PageBookmark
+import com.quran.shared.syncengine.model.SyncBookmark
 
 // region: Result
 data class ConflictResolutionResult<Model>(
@@ -20,7 +20,7 @@ private fun <Model> ConflictResolutionResult<Model>.mergeWith(other: ConflictRes
 // endregion:
 
 /**
- * Resolves conflicts between local and remote mutations for page bookmarks.
+ * Resolves conflicts between local and remote mutations for bookmarks.
  * 
  * Analyzes conflict groups and determines which mutations should be persisted locally
  * and which should be pushed to the remote server.
@@ -28,7 +28,7 @@ private fun <Model> ConflictResolutionResult<Model>.mergeWith(other: ConflictRes
  * Note: Illogical scenarios (e.g., local creation vs remote deletion) will raise
  * [IllegalArgumentException] as they indicate the two sides were not in sync.
  */
-class ConflictResolver(private val conflicts: List<ResourceConflict<PageBookmark>>) {
+class ConflictResolver(private val conflicts: List<ResourceConflict<SyncBookmark>>) {
 
     /**
      * Resolves all conflicts and returns the mutations to persist and push.
@@ -36,7 +36,7 @@ class ConflictResolver(private val conflicts: List<ResourceConflict<PageBookmark
      * @return [ConflictResolutionResult] containing mutations to persist locally and push remotely
      * @throws IllegalArgumentException when illogical conflict scenarios are detected
      */
-    fun resolve(): ConflictResolutionResult<PageBookmark> {
+    fun resolve(): ConflictResolutionResult<SyncBookmark> {
         return if (conflicts.isNotEmpty()) {
             conflicts.map { processConflict(it) }
                 .reduce { one, other -> one.mergeWith(other) }
@@ -45,7 +45,7 @@ class ConflictResolver(private val conflicts: List<ResourceConflict<PageBookmark
         }
     }
 
-    private fun processConflict(resourceConflict: ResourceConflict<PageBookmark>): ConflictResolutionResult<PageBookmark> {
+    private fun processConflict(resourceConflict: ResourceConflict<SyncBookmark>): ConflictResolutionResult<SyncBookmark> {
         // Illogical scenarios
         if (resourceConflict.mustHave(Mutation.CREATED, MutationSide.LOCAL)
             .and(Mutation.DELETED, MutationSide.REMOTE)

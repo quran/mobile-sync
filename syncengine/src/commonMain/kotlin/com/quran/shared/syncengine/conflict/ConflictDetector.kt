@@ -2,7 +2,10 @@ package com.quran.shared.syncengine.conflict
 
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
-import com.quran.shared.syncengine.PageBookmark
+import com.quran.shared.syncengine.model.SyncBookmark
+import com.quran.shared.syncengine.model.SyncBookmarkKey
+import com.quran.shared.syncengine.model.conflictKey
+import com.quran.shared.syncengine.model.conflictKeyOrNull
 
 /**
  * 
@@ -17,29 +20,27 @@ data class ConflictDetectionResult<Model>(
 )
 
 /**
- * Detects conflicts between local and remote mutations for page bookmarks.
- * 
- * A conflict is detected whenever a set of local and remote mutations reference the same bookmark,
- * let it be a single resource with the same ID, or different resources for the same page.
- * 
- * The detector groups conflicts by page and provides separate lists for non-conflicting mutations.
+ * Detects conflicts between local and remote mutations for bookmarks.
+ *
+ * A conflict is detected whenever a set of local and remote mutations reference the same bookmark
+ * key, or when a remote deletion is missing resource data but matches a local remote ID.
+ *
+ * The detector groups conflicts by bookmark key and provides separate lists for non-conflicting mutations.
  */
 class ConflictDetector(
-    private val remoteMutations: List<RemoteModelMutation<PageBookmark>>,
-    private val localMutations: List<LocalModelMutation<PageBookmark>>
+    private val remoteMutations: List<RemoteModelMutation<SyncBookmark>>,
+    private val localMutations: List<LocalModelMutation<SyncBookmark>>
 ) {
-    
-    companion object {
-        // Remote DELETE events come without associated data for the resource before deletion.
-        // TODO: Enhance DELETE events to include resource data for better conflict detection
-        private const val PAGE_VAL_IN_NULLIFIED_MODEL = 0
-    }
 
-    fun getConflicts(): ConflictDetectionResult<PageBookmark> {
-        val remoteMutationsByPage = remoteMutations.groupBy { it.model.page }
+    fun getConflicts(): ConflictDetectionResult<SyncBookmark> {
+        val remoteMutationsByKey = remoteMutations
+            .map { mutation ->
+                mutation.model.conflictKeyOrNull().let { key -> key to mutation }
+            }
+            .groupBy({ it.first }, { it.second })
         val remoteMutationsByRemoteID = remoteMutations.associateBy { it.remoteID }
         
-        val resourceConflicts = buildResourceConflicts(remoteMutationsByPage, remoteMutationsByRemoteID)
+        val resourceConflicts = buildResourceConflicts(remoteMutationsByKey, remoteMutationsByRemoteID)
         val conflictingIDs = extractConflictingIDs(resourceConflicts)
         
         return buildResult(resourceConflicts, conflictingIDs)
@@ -49,16 +50,16 @@ class ConflictDetector(
      * Builds resource conflicts by analyzing local mutations and finding corresponding remote conflicts.
      */
     private fun buildResourceConflicts(
-        remoteMutationsByPage: Map<Int, List<RemoteModelMutation<PageBookmark>>>,
-        remoteMutationsByRemoteID: Map<String, RemoteModelMutation<PageBookmark>>
-    ): List<ResourceConflict<PageBookmark>> {
+        remoteMutationsByKey: Map<SyncBookmarkKey, List<RemoteModelMutation<SyncBookmark>>>,
+        remoteMutationsByRemoteID: Map<String, RemoteModelMutation<SyncBookmark>>
+    ): List<ResourceConflict<SyncBookmark>> {
         return localMutations
-            .groupBy { it.model.page }
-            .mapNotNull { (page, localMutations) ->
+            .groupBy { it.model.conflictKey() }
+            .mapNotNull { (bookmarkKey, localMutations) ->
                 val conflictingRemoteMutations = findConflictingRemoteMutations(
-                    page,
+                    bookmarkKey,
                     localMutations, 
-                    remoteMutationsByPage, 
+                    remoteMutationsByKey,
                     remoteMutationsByRemoteID
                 )
                 
@@ -72,18 +73,19 @@ class ConflictDetector(
     }
 
     private fun findConflictingRemoteMutations(
-        page: Int,
-        localMutations: List<LocalModelMutation<PageBookmark>>,
-        remoteMutationsByPage: Map<Int, List<RemoteModelMutation<PageBookmark>>>,
-        remoteMutationsByRemoteID: Map<String, RemoteModelMutation<PageBookmark>>
-    ): List<RemoteModelMutation<PageBookmark>> {
-        return remoteMutationsByPage[page].orEmpty() +
-                localMutations.mapNotNull { it.remoteID }
-                    .mapNotNull { remoteMutationsByRemoteID[it] }
-                    .filter { it.model.page == PAGE_VAL_IN_NULLIFIED_MODEL }
+        bookmarkKey: SyncBookmarkKey,
+        localMutations: List<LocalModelMutation<SyncBookmark>>,
+        remoteMutationsByKey: Map<SyncBookmarkKey, List<RemoteModelMutation<SyncBookmark>>>,
+        remoteMutationsByRemoteID: Map<String, RemoteModelMutation<SyncBookmark>>
+    ): List<RemoteModelMutation<SyncBookmark>> {
+        val remoteMutationsById = localMutations.mapNotNull { it.remoteID }
+            .mapNotNull { remoteMutationsByRemoteID[it] }
+
+        return (remoteMutationsByKey[bookmarkKey].orEmpty() + remoteMutationsById)
+            .distinct()
     }
 
-    private fun extractConflictingIDs(resourceConflicts: List<ResourceConflict<PageBookmark>>): Pair<Set<String>, Set<String>> {
+    private fun extractConflictingIDs(resourceConflicts: List<ResourceConflict<SyncBookmark>>): Pair<Set<String>, Set<String>> {
         val conflictingRemoteIDs = resourceConflicts
             .flatMap { it.remoteMutations }
             .map { it.remoteID }
@@ -98,9 +100,9 @@ class ConflictDetector(
     }
     
     private fun buildResult(
-        resourceConflicts: List<ResourceConflict<PageBookmark>>,
+        resourceConflicts: List<ResourceConflict<SyncBookmark>>,
         conflictingIDs: Pair<Set<String>, Set<String>>
-    ): ConflictDetectionResult<PageBookmark> {
+    ): ConflictDetectionResult<SyncBookmark> {
         val (conflictingRemoteIDs, conflictingLocalIDs) = conflictingIDs
         
         val nonConflictingRemoteMutations = remoteMutations

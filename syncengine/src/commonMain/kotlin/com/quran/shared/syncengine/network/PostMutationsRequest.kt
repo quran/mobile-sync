@@ -5,7 +5,7 @@ import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
-import com.quran.shared.syncengine.PageBookmark
+import com.quran.shared.syncengine.model.SyncBookmark
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.headers
@@ -40,9 +40,10 @@ class PostMutationsRequest(
 
     @Serializable
     private data class MutatedResourceData(
-        val type: String,
         val key: Int,
-        val mushaf: Int
+        val mushaf: Int,
+        val verseNumber: Int? = null,
+        val type: String
     )
 
     @Serializable
@@ -63,7 +64,7 @@ class PostMutationsRequest(
         val resource: String,
         val data: MutatedResourceData?,
         val resourceId: String,
-        val createdAt: Long? = null
+        val timestamp: Long? = null
     )
 
     @Serializable
@@ -73,9 +74,9 @@ class PostMutationsRequest(
         val success: Boolean
     )
     // endregion
-    
+
     suspend fun postMutations(
-        mutations: List<LocalModelMutation<PageBookmark>>,
+        mutations: List<LocalModelMutation<SyncBookmark>>,
         lastModificationDate: Long,
         authHeaders: Map<String, String>
     ): MutationsResponse {
@@ -94,13 +95,10 @@ class PostMutationsRequest(
                     resource = "BOOKMARK",
                     resourceId = localMutation.remoteID,
 
-                    data = if (localMutation.mutation == Mutation.DELETED) {null} else {
-                        MutatedResourceData(
-                            type = "page",
-                            key = localMutation.model.page,
-                            // TODO: Hardcoded to 1 for now. 
-                            mushaf = 1
-                        )
+                    data = if (localMutation.mutation == Mutation.DELETED) {
+                        null
+                    } else {
+                        localMutation.model.toResourceData()
                     }
                 )
             }
@@ -116,7 +114,7 @@ class PostMutationsRequest(
             parameter("lastMutationAt", lastModificationDate)
             setBody(requestBody)
         }
-        
+
         logger.d { "HTTP response status: ${httpResponse.status}" }
 
         if (!httpResponse.status.isSuccess()) {
@@ -124,42 +122,97 @@ class PostMutationsRequest(
                 httpResponse.body<ErrorResponse>().message
             }
         }
-        
+
         val response: PostMutationsResponse = httpResponse.body()
-        
+
         logger.i { "Received response: success=${response.success}" }
-        
+
         val result = response.data.toMutationsResponse()
         logger.i { "lastModificationDate=${result.lastModificationDate}, mutations count=${result.mutations.size}" }
-        
+
         return result
     }
-    
+
     private fun PostMutationsResponseData.toMutationsResponse(): MutationsResponse {
         val logger = Logger.withTag("PostMutationsResponseConverter")
-        
-        val mutations = mutations.map { postMutation ->
-            val pageBookmark = PageBookmark(
-                id = postMutation.resourceId,
-                // TODO: Probably need to remodel Mutation types for DELETE events
-                page = postMutation.data?.key ?: 0,
-                // Not sent in deletions
-                lastModified = postMutation.createdAt?.let { Instant.fromEpochSeconds(it) } ?: Instant.fromEpochSeconds(0)
-            )
-            
+
+        val mutations = mutations.mapNotNull { postMutation ->
             val mutation = postMutation.type.asMutation(logger)
-            RemoteModelMutation(
-                model = pageBookmark,
-                remoteID = postMutation.resourceId,
-                mutation = mutation
-            )
+            val syncBookmark = postMutation.toSyncBookmark(logger)
+            if (syncBookmark != null) {
+                RemoteModelMutation(
+                    model = syncBookmark,
+                    remoteID = postMutation.resourceId,
+                    mutation = mutation
+                )
+            } else {
+                null
+            }
         }
 
         val result = MutationsResponse(
             lastModificationDate = lastMutationAt,
             mutations = mutations
         )
-        
+
         return result
+    }
+
+    private fun SyncBookmark.toResourceData(): MutatedResourceData {
+        return when (this) {
+            is SyncBookmark.PageBookmark ->
+                MutatedResourceData(
+                    type = "page",
+                    key = page,
+                    // TODO: Hardcoded to 1 for now.
+                    mushaf = 1
+                )
+            is SyncBookmark.AyahBookmark ->
+                MutatedResourceData(
+                    type = "ayah",
+                    key = sura,
+                    verseNumber = ayah,
+                    // TODO: Hardcoded to 1 for now.
+                    mushaf = 1
+                )
+        }
+    }
+
+    private fun PostMutationResponse.toSyncBookmark(logger: Logger): SyncBookmark? {
+        val lastModified = timestamp?.let { Instant.fromEpochSeconds(it) } ?:
+           Instant.fromEpochSeconds(0)
+        return when (resource.lowercase()) {
+            "bookmark" ->
+                when (val normalizedType = data?.type?.lowercase()) {
+                    "page" -> {
+                        SyncBookmark.PageBookmark(
+                            id = resourceId,
+                            page = data.key,
+                            lastModified = lastModified
+                        )
+                    }
+
+                    "ayah" -> {
+                        val sura = data.key
+                        val ayah = data.verseNumber
+                        if (ayah != null) {
+                            SyncBookmark.AyahBookmark(
+                                id = resourceId,
+                                sura = sura,
+                                ayah = ayah,
+                                lastModified = lastModified
+                            )
+                        } else {
+                            null
+                        }
+                    }
+
+                    else -> {
+                        logger.w { "Unknown bookmark type=$normalizedType in mutation response: resourceId=$resourceId" }
+                        null
+                    }
+                }
+            else -> null
+        }
     }
 }

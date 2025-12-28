@@ -2,7 +2,7 @@ package com.quran.shared.syncengine.preprocessing
 
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
-import com.quran.shared.syncengine.PageBookmark
+import com.quran.shared.syncengine.model.SyncBookmark
 
 class RemoteMutationsPreprocessor(
     private val checkLocalExistence: suspend (List<String>) -> Map<String, Boolean>
@@ -15,7 +15,7 @@ class RemoteMutationsPreprocessor(
      * @param remoteMutations List of remote mutations to preprocess
      * @return Filtered and transformed list of remote mutations
      */
-    suspend fun preprocess(remoteMutations: List<RemoteModelMutation<PageBookmark>>): List<RemoteModelMutation<PageBookmark>> {
+    suspend fun preprocess(remoteMutations: List<RemoteModelMutation<SyncBookmark>>): List<RemoteModelMutation<SyncBookmark>> {
         val remoteIDsToCheck = remoteMutations.filter { it.mutation == Mutation.DELETED }
             .map { it.remoteID }
         val existenceMap = if (remoteIDsToCheck.isNotEmpty()) checkLocalExistence(remoteIDsToCheck) else emptyMap()
