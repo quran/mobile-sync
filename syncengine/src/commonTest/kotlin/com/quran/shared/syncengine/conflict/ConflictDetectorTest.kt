@@ -4,7 +4,8 @@ package com.quran.shared.syncengine.conflict
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
-import com.quran.shared.syncengine.PageBookmark
+import com.quran.shared.syncengine.model.SyncBookmark
+import com.quran.shared.syncengine.model.SyncBookmark.PageBookmark
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.time.Instant
@@ -29,14 +30,14 @@ class ConflictDetectorTest {
     fun `getConflicts with different pages should return no conflicts`() {
         // Given
         val remoteModelMutations = listOf(
-            RemoteModelMutation(
+            RemoteModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "remote-1", page = 10, lastModified = Instant.fromEpochSeconds(1000)),
                 remoteID = "remote-1",
                 mutation = Mutation.CREATED
             )
         )
         val localModelMutations = listOf(
-            LocalModelMutation(
+            LocalModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "local-1", page = 20, lastModified = Instant.fromEpochSeconds(1001)),
                 remoteID = null,
                 localID = "local-1",
@@ -58,25 +59,25 @@ class ConflictDetectorTest {
     fun `getConflicts with creation events for same page should detect conflict`() {
         // Given
         val remoteModelMutations = listOf(
-            RemoteModelMutation(
+            RemoteModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "remote-1", page = 10, lastModified = Instant.fromEpochSeconds(1000)),
                 remoteID = "remote-1",
                 mutation = Mutation.CREATED
             ),
-            RemoteModelMutation(
+            RemoteModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "remote-2", page = 20, lastModified = Instant.fromEpochSeconds(1001)),
                 remoteID = "remote-2",
                 mutation = Mutation.CREATED
             )
         )
         val localModelMutations = listOf(
-            LocalModelMutation(
+            LocalModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "local-1", page = 10, lastModified = Instant.fromEpochSeconds(1003)),
                 remoteID = null,
                 localID = "local-1",
                 mutation = Mutation.CREATED
             ),
-            LocalModelMutation(
+            LocalModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "local-2", page = 40, lastModified = Instant.fromEpochSeconds(1004)),
                 remoteID = null,
                 localID = "local-2",
@@ -93,8 +94,8 @@ class ConflictDetectorTest {
         val resourceConflict = result.conflicts.first()
         assertEquals(1, resourceConflict.localMutations.size, "Number of local mutations in conflict")
         assertEquals(1, resourceConflict.remoteMutations.size, "Number of remote mutations in conflict")
-        assertEquals(10, resourceConflict.localMutations.first().model.page, "Page number of local mutation")
-        assertEquals(10, resourceConflict.remoteMutations.first().model.page, "Page number of remote mutation")
+        assertEquals(10, resourceConflict.localMutations.first().model.pageOrThrow(), "Page number of local mutation")
+        assertEquals(10, resourceConflict.remoteMutations.first().model.pageOrThrow(), "Page number of remote mutation")
         
         // Verify other mutations
         assertEquals(1, result.nonConflictingRemoteMutations.size, "Number of other remote mutations")
@@ -105,24 +106,24 @@ class ConflictDetectorTest {
     fun `getConflicts with multiple remote mutations for same page should group them together`() {
         // Given
         val remoteModelMutations = listOf(
-            RemoteModelMutation(
+            RemoteModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "remote-1", page = 10, lastModified = Instant.fromEpochSeconds(1000)),
                 remoteID = "remote-1",
                 mutation = Mutation.DELETED
             ),
-            RemoteModelMutation(
+            RemoteModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "remote-2", page = 10, lastModified = Instant.fromEpochSeconds(1001)),
                 remoteID = "remote-2",
                 mutation = Mutation.CREATED
             ),
-            RemoteModelMutation(
+            RemoteModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "remote-3", page = 20, lastModified = Instant.fromEpochSeconds(1002)),
                 remoteID = "remote-3",
                 mutation = Mutation.CREATED
             )
         )
         val localModelMutations = listOf(
-            LocalModelMutation(
+            LocalModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "local-1", page = 10, lastModified = Instant.fromEpochSeconds(200)),
                 remoteID = null,
                 localID = "local-1",
@@ -139,7 +140,7 @@ class ConflictDetectorTest {
         val resourceConflict = result.conflicts.first()
         assertEquals(1, resourceConflict.localMutations.size, "Number of local mutations in conflict")
         assertEquals(2, resourceConflict.remoteMutations.size, "Number of remote mutations in conflict")
-        assertEquals(10, resourceConflict.localMutations.first().model.page, "Page number of local mutation")
+        assertEquals(10, resourceConflict.localMutations.first().model.pageOrThrow(), "Page number of local mutation")
         
         // Verify remote mutations are grouped correctly
         val remoteIDs = resourceConflict.remoteMutations.map { it.remoteID }.toSet()
@@ -154,36 +155,36 @@ class ConflictDetectorTest {
     fun `getConflicts with delete and create events on both sides for same page should detect conflict`() {
         // Given
         val remoteModelMutations = listOf(
-            RemoteModelMutation(
+            RemoteModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "remote-1", page = 10, lastModified = Instant.fromEpochSeconds(1000)),
                 remoteID = "remote-1",
                 mutation = Mutation.DELETED
             ),
-            RemoteModelMutation(
+            RemoteModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "remote-2", page = 10, lastModified = Instant.fromEpochSeconds(1001)),
                 remoteID = "remote-2",
                 mutation = Mutation.CREATED
             ),
-            RemoteModelMutation(
+            RemoteModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "remote-3", page = 20, lastModified = Instant.fromEpochSeconds(1002)),
                 remoteID = "remote-3",
                 mutation = Mutation.CREATED
             )
         )
         val localModelMutations = listOf(
-            LocalModelMutation(
+            LocalModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "remote-1", page = 10, lastModified = Instant.fromEpochSeconds(1003)),
                 remoteID = "remote-1",
                 localID = "local-1",
                 mutation = Mutation.DELETED
             ),
-            LocalModelMutation(
+            LocalModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "local-2", page = 10, lastModified = Instant.fromEpochSeconds(1004)),
                 remoteID = null,
                 localID = "local-2",
                 mutation = Mutation.CREATED
             ),
-            LocalModelMutation(
+            LocalModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "local-3", page = 30, lastModified = Instant.fromEpochSeconds(1005)),
                 remoteID = null,
                 localID = "local-3",
@@ -200,7 +201,7 @@ class ConflictDetectorTest {
         val resourceConflict = result.conflicts.first()
         assertEquals(2, resourceConflict.localMutations.size, "Number of local mutations in conflict")
         assertEquals(2, resourceConflict.remoteMutations.size, "Number of remote mutations in conflict")
-        assertEquals(10, resourceConflict.localMutations.first().model.page, "Page number of local mutation")
+        assertEquals(10, resourceConflict.localMutations.first().model.pageOrThrow(), "Page number of local mutation")
         
         // Verify other mutations
         assertEquals(1, result.nonConflictingRemoteMutations.size, "Number of other remote mutations")
@@ -211,31 +212,31 @@ class ConflictDetectorTest {
     fun `getConflicts with multiple local mutations for same page should group them together`() {
         // Given
         val remoteModelMutations = listOf(
-            RemoteModelMutation(
+            RemoteModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "remote-1", page = 10, lastModified = Instant.fromEpochSeconds(1000)),
                 remoteID = "remote-1",
                 mutation = Mutation.CREATED
             ),
-            RemoteModelMutation(
+            RemoteModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "remote-2", page = 20, lastModified = Instant.fromEpochSeconds(1001)),
                 remoteID = "remote-2",
                 mutation = Mutation.CREATED
             )
         )
         val localModelMutations = listOf(
-            LocalModelMutation(
+            LocalModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "local-1", page = 10, lastModified = Instant.fromEpochSeconds(1002)),
                 remoteID = "remote-1",
                 localID = "local-1",
                 mutation = Mutation.DELETED
             ),
-            LocalModelMutation(
+            LocalModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "local-2", page = 10, lastModified = Instant.fromEpochSeconds(1003)),
                 remoteID = null,
                 localID = "local-2",
                 mutation = Mutation.CREATED
             ),
-            LocalModelMutation(
+            LocalModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "local-3", page = 30, lastModified = Instant.fromEpochSeconds(1004)),
                 remoteID = null,
                 localID = "local-3",
@@ -252,7 +253,7 @@ class ConflictDetectorTest {
         val resourceConflict = result.conflicts.first()
         assertEquals(2, resourceConflict.localMutations.size, "Number of local mutations in conflict")
         assertEquals(1, resourceConflict.remoteMutations.size, "Number of remote mutations in conflict")
-        assertEquals(10, resourceConflict.localMutations.first().model.page, "Page number of local mutation")
+        assertEquals(10, resourceConflict.localMutations.first().model.pageOrThrow(), "Page number of local mutation")
         
         // Verify local mutations are grouped correctly
         val localIDs = resourceConflict.localMutations.map { it.localID }.toSet()
@@ -267,25 +268,25 @@ class ConflictDetectorTest {
     fun `getConflicts with matching remote IDs should detect conflict even with zeroed model properties`() {
         // Given
         val remoteModelMutations = listOf(
-            RemoteModelMutation(
+            RemoteModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "remote-1", page = 0, lastModified = Instant.fromEpochSeconds(0)), // Zeroed properties for DELETE
                 remoteID = "remote-1",
                 mutation = Mutation.DELETED
             ),
-            RemoteModelMutation(
+            RemoteModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "remote-2", page = 20, lastModified = Instant.fromEpochSeconds(1001)),
                 remoteID = "remote-2",
                 mutation = Mutation.CREATED
             )
         )
         val localModelMutations = listOf(
-            LocalModelMutation(
+            LocalModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "local-1", page = 10, lastModified = Instant.fromEpochSeconds(1002)), // Original page info for local DELETE
                 remoteID = "remote-1", // Same remote ID as remote mutation
                 localID = "local-1",
                 mutation = Mutation.DELETED
             ),
-            LocalModelMutation(
+            LocalModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "local-2", page = 30, lastModified = Instant.fromEpochSeconds(1002)),
                 remoteID = null,
                 localID = "local-2",
@@ -313,13 +314,22 @@ class ConflictDetectorTest {
         assertEquals(Mutation.DELETED, remoteMutation.mutation, "Mutation type of remote mutation")
         
         // Verify that the local mutation retains original page info while remote mutation has zeroed properties
-        assertEquals(10, localMutation.model.page, "Page number of local mutation")
-        assertEquals(Instant.fromEpochSeconds(1002), localMutation.model.lastModified, "Last modified of local mutation")
-        assertEquals(0, remoteMutation.model.page, "Page number of remote mutation")
-        assertEquals(Instant.fromEpochSeconds(0), remoteMutation.model.lastModified, "Last modified of remote mutation")
+        assertEquals(10, localMutation.model.pageOrThrow(), "Page number of local mutation")
+        assertEquals(Instant.fromEpochSeconds(1002), localMutation.model.lastModifiedOrThrow(), "Last modified of local mutation")
+        assertEquals(0, remoteMutation.model.pageOrThrow(), "Page number of remote mutation")
+        assertEquals(Instant.fromEpochSeconds(0), remoteMutation.model.lastModifiedOrThrow(), "Last modified of remote mutation")
         
         // Verify other mutations
         assertEquals(1, result.nonConflictingRemoteMutations.size, "Number of other remote mutations")
         assertEquals(1, result.nonConflictingLocalMutations.size, "Number of other local mutations")
     }
-} 
+}
+
+private fun SyncBookmark.pageOrThrow(): Int =
+    (this as SyncBookmark.PageBookmark).page
+
+private fun SyncBookmark.lastModifiedOrThrow(): Instant =
+    when (this) {
+        is SyncBookmark.PageBookmark -> lastModified
+        is SyncBookmark.AyahBookmark -> lastModified
+    }
