@@ -1,12 +1,13 @@
-CREATE TABLE bookmark_collections (
+CREATE TABLE IF NOT EXISTS bookmark_collection(
   local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   bookmark_local_id TEXT NOT NULL,
-  bookmark_type TEXT NOT NULL, -- 'PAGE' or 'AYAH'
-  tag_id TEXT,
+  bookmark_type TEXT NOT NULL,
+  collection_local_id INTEGER NOT NULL,
   created_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
   modified_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
   deleted INTEGER NOT NULL DEFAULT 0,
   CHECK (deleted IN (0, 1)),
-  UNIQUE(bookmark_local_id, tag_id),
-  FOREIGN KEY(tag_id) REFERENCES collections(local_id)
+  UNIQUE(bookmark_local_id, collection_local_id),
+  CHECK (bookmark_type IN ('PAGE','AYAH')),
+  FOREIGN KEY(collection_local_id) REFERENCES collection(local_id)
 );
