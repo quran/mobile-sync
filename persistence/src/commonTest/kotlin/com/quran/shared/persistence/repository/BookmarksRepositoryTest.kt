@@ -11,7 +11,6 @@ import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepo
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepositoryImpl
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksSynchronizationRepository
 import com.quran.shared.persistence.util.toPlatform
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -39,7 +38,7 @@ class BookmarksRepositoryTest {
 
     @Test
     fun `getAllBookmarks returns empty list when no bookmarks exist`() = runTest {
-        val bookmarks = repository.getAllBookmarks().first()
+        val bookmarks = repository.getAllBookmarks()
         assertTrue(bookmarks.isEmpty(), "Expected empty list when no bookmarks exist")
     }
 
@@ -49,7 +48,7 @@ class BookmarksRepositoryTest {
         pageBookmarksQueries.createRemoteBookmark("rem_id_1", 50)
         pageBookmarksQueries.addNewBookmark(60)
 
-        val bookmarks = repository.getAllBookmarks().first()
+        val bookmarks = repository.getAllBookmarks()
         assertEquals(3, bookmarks.size, "Expected 3 bookmarks")
         assertEquals(bookmarks.requirePageBookmarks().map { it.page }.toSet(), setOf(11, 50, 60))
     }
@@ -61,21 +60,21 @@ class BookmarksRepositoryTest {
         // Mark one as deleted
         pageBookmarksQueries.setDeleted(1L)
 
-        val bookmarks = repository.getAllBookmarks().first()
+        val bookmarks = repository.getAllBookmarks()
         assertEquals(1, bookmarks.size, "Expected only non-deleted bookmarks")
         assertEquals(50, bookmarks[0].requirePageBookmark().page)
     }
 
     @Test
     fun `adding bookmarks on an empty list`() = runTest {
-        repository.addPageBookmark(10)
+        repository.addBookmark(10)
         var bookmarks = pageBookmarksQueries.getBookmarks().executeAsList()
         assertEquals(1, bookmarks.size)
         assertEquals(10L, bookmarks[0].page)
         assertNull(bookmarks[0].remote_id, "Locally added bookmarks should not have remote IDs (not synced yet)")
 
-        repository.addPageBookmark(20)
-        repository.addPageBookmark(30)
+        repository.addBookmark(20)
+        repository.addBookmark(30)
         bookmarks = pageBookmarksQueries.getBookmarks().executeAsList()
         assertEquals(3, bookmarks.size)
         assertEquals(listOf(10L, 20L, 30L), bookmarks.map { it.page })
@@ -89,48 +88,48 @@ class BookmarksRepositoryTest {
     @Test
     fun `adding should not duplicate bookmarks`() = runTest {
         // Add initial page bookmark
-        repository.addPageBookmark(12)
+        repository.addBookmark(12)
 
         // Try to add the same page bookmark again
-        repository.addPageBookmark(12)
+        repository.addBookmark(12)
 
         // Verify only one bookmark exists
-        var bookmarks = repository.getAllBookmarks().first()
+        var bookmarks = repository.getAllBookmarks()
         assertEquals(1, bookmarks.size, "Should only have one bookmark")
         assertEquals(12, bookmarks[0].requirePageBookmark().page, "Should only have page 12")
 
         // Test with remote bookmarks
         pageBookmarksQueries.createRemoteBookmark("rem_id_1", 105)
-        repository.addPageBookmark(105)
+        repository.addBookmark(105)
 
-        bookmarks = repository.getAllBookmarks().first()
+        bookmarks = repository.getAllBookmarks()
         assertEquals(2, bookmarks.size, "Should only have one bookmark")
         assertEquals(setOf(12, 105), bookmarks.requirePageBookmarks().map { it.page }.toSet(), "Expected bookmarked pages")
     }
 
     @Test
     fun `deleting local bookmarks removes them from the database`() = runTest {
-        repository.addPageBookmark(12)
-        repository.addPageBookmark(13)
-        repository.addPageBookmark(14)
+        repository.addBookmark(12)
+        repository.addBookmark(13)
+        repository.addBookmark(14)
 
         // Delete a page bookmark
-        repository.deletePageBookmark(12)
-        var bookmarks = repository.getAllBookmarks().first()
+        repository.deleteBookmark(12)
+        var bookmarks = repository.getAllBookmarks()
         assertEquals(2, bookmarks.size, "Should have two bookmarks after deleting page bookmark")
         assertTrue(bookmarks.requirePageBookmarks().none { it.page == 12 }, "Page bookmark should be deleted")
 
         // Delete another page bookmark
-        repository.deletePageBookmark(13)
-        bookmarks = repository.getAllBookmarks().first()
+        repository.deleteBookmark(13)
+        bookmarks = repository.getAllBookmarks()
         assertEquals(1, bookmarks.size, "Should have one bookmark after deleting second page bookmark")
         assertTrue(bookmarks.requirePageBookmarks().none { it.page == 13 }, "Expected page 13 bookmark to be deleted")
 
         // Try to delete non-existent bookmarks
-        repository.deletePageBookmark(999) // Non-existent page
+        repository.deleteBookmark(999) // Non-existent page
 
         // Verify state hasn't changed
-        bookmarks = repository.getAllBookmarks().first()
+        bookmarks = repository.getAllBookmarks()
         assertEquals(1, bookmarks.size)
         assertEquals(14, bookmarks[0].requirePageBookmark().page, "Other bookmarks should be returned")
 
@@ -146,15 +145,15 @@ class BookmarksRepositoryTest {
         pageBookmarksQueries.createRemoteBookmark("rem_id_2", 15)
         pageBookmarksQueries.createRemoteBookmark("rem_id_3", 20)
 
-        repository.deletePageBookmark(10)
-        repository.deletePageBookmark(20)
+        repository.deleteBookmark(10)
+        repository.deleteBookmark(20)
 
-        val bookmarks = repository.getAllBookmarks().first()
+        val bookmarks = repository.getAllBookmarks()
         assertEquals(1, bookmarks.size)
         assertEquals(15, bookmarks[0].requirePageBookmark().page)
 
         // Delete again
-        repository.deletePageBookmark(10)
+        repository.deleteBookmark(10)
 
         val allBookmarks = pageBookmarksQueries.getBookmarks().executeAsList()
         assertEquals(1, allBookmarks.size, "Should only have one non-deleted bookmark")
@@ -171,12 +170,12 @@ class BookmarksRepositoryTest {
         pageBookmarksQueries.setDeleted(1L)
 
         // Add another bookmark
-        repository.addPageBookmark(25)
+        repository.addBookmark(25)
 
         // Try to add a bookmark at the same location as the deleted one
-        repository.addPageBookmark(15)
+        repository.addBookmark(15)
 
-        val bookmarks = repository.getAllBookmarks().first()
+        val bookmarks = repository.getAllBookmarks()
         assertEquals(2, bookmarks.size)
         assertEquals(listOf(15, 25), bookmarks.requirePageBookmarks().map { it.page }.sorted())
 
@@ -191,10 +190,10 @@ class BookmarksRepositoryTest {
         pageBookmarksQueries.createRemoteBookmark("rem-id-1", 10L)
         assertTrue(emptyResult.isEmpty(), "Expected to return nothing when no mutations have been added.")
 
-        repository.addPageBookmark(1)
-        repository.addPageBookmark(2)
+        repository.addBookmark(1)
+        repository.addBookmark(2)
 
-        repository.deletePageBookmark(10)
+        repository.deleteBookmark(10)
 
         val result = syncRepository.fetchMutatedBookmarks()
 
@@ -277,28 +276,26 @@ class BookmarksRepositoryTest {
     }
 
     @Test
-    fun `getAllBookmarks flow updates as mutations occur`() = runTest {
-        val bookmarksFlow = repository.getAllBookmarks()
-
+    fun `getAllBookmarks reflects mutations as they occur`() = runTest {
         // Initial state should be empty
-        assertTrue(bookmarksFlow.first().isEmpty(), "Initial state should be empty")
+        assertTrue(repository.getAllBookmarks().isEmpty(), "Initial state should be empty")
 
         // Add a page bookmark
-        repository.addPageBookmark(1)
-        var bookmarks = bookmarksFlow.first()
+        repository.addBookmark(1)
+        var bookmarks = repository.getAllBookmarks()
         assertEquals(1, bookmarks.size, "Should have one bookmark after adding")
         assertEquals(1, bookmarks[0].requirePageBookmark().page, "Should be page 1")
 
         // Add another page bookmark
-        repository.addPageBookmark(2)
-        bookmarks = bookmarksFlow.first()
+        repository.addBookmark(2)
+        bookmarks = repository.getAllBookmarks()
         assertEquals(2, bookmarks.size, "Should have two bookmarks after adding second page")
         assertTrue(bookmarks.requirePageBookmarks().any { it.page == 1 }, "Should have page bookmark 1")
         assertTrue(bookmarks.requirePageBookmarks().any { it.page == 2 }, "Should have page bookmark 2")
 
         // Delete the first page bookmark
-        repository.deletePageBookmark(1)
-        bookmarks = bookmarksFlow.first()
+        repository.deleteBookmark(1)
+        bookmarks = repository.getAllBookmarks()
         assertEquals(1, bookmarks.size, "Should have one bookmark after deletion")
         assertEquals(2, bookmarks[0].requirePageBookmark().page, "Should only have page bookmark 2")
     }
@@ -306,12 +303,12 @@ class BookmarksRepositoryTest {
     @Test
     fun `applyRemoteChanges committing all local mutations and nothing else`() = runTest {
         // Setup: Create local mutations
-        repository.addPageBookmark(10) // Local creation
-        repository.addPageBookmark(20) // Local creation
+        repository.addBookmark(10) // Local creation
+        repository.addBookmark(20) // Local creation
 
         // Create remote bookmark first, then delete it to create a deletion mutation
         pageBookmarksQueries.createRemoteBookmark("remote-30", 30L)
-        repository.deletePageBookmark(30) // Local deletion of remote bookmark
+        repository.deleteBookmark(30) // Local deletion of remote bookmark
 
         // Get the local mutations to clear
         val localMutations = syncRepository.fetchMutatedBookmarks()
@@ -351,7 +348,7 @@ class BookmarksRepositoryTest {
         syncRepository.applyRemoteChanges(updatesToPersist, localMutations)
 
         // Assert: Final state
-        val finalBookmarks = repository.getAllBookmarks().first()
+        val finalBookmarks = repository.getAllBookmarks()
         assertEquals(2, finalBookmarks.size, "Should have 2 bookmarks after sync")
         assertEquals(setOf(10, 20), finalBookmarks.requirePageBookmarks().map { it.page }.toSet())
 
@@ -367,14 +364,14 @@ class BookmarksRepositoryTest {
     @Test
     fun `applyRemoteChanges overriding all local and committing only some of them`() = runTest {
         // Setup: Create local mutations
-        repository.addPageBookmark(10) // Will be committed
-        repository.addPageBookmark(20) // Will be ignored
+        repository.addBookmark(10) // Will be committed
+        repository.addBookmark(20) // Will be ignored
 
         // Create remote bookmarks first, then delete them to create deletion mutations
         pageBookmarksQueries.createRemoteBookmark("remote-30", 30L)
         pageBookmarksQueries.createRemoteBookmark("remote-40", 40L)
-        repository.deletePageBookmark(30) // Will be committed
-        repository.deletePageBookmark(40) // Will be ignored
+        repository.deleteBookmark(30) // Will be committed
+        repository.deleteBookmark(40) // Will be ignored
 
         // Get the local mutations to clear
         val localMutations = syncRepository.fetchMutatedBookmarks()
@@ -406,7 +403,7 @@ class BookmarksRepositoryTest {
         syncRepository.applyRemoteChanges(updatesToPersist, localMutations)
 
         // Assert: Final state
-        val finalBookmarks = repository.getAllBookmarks().first()
+        val finalBookmarks = repository.getAllBookmarks()
         assertEquals(2, finalBookmarks.size, "Should have 2 bookmarks after sync")
         assertEquals(setOf(10, 40), finalBookmarks.requirePageBookmarks().map { it.page }.toSet())
 
@@ -422,11 +419,11 @@ class BookmarksRepositoryTest {
     @Test
     fun `applyRemoteChanges with new remote mutations not in local mutations`() = runTest {
         // Setup: Create some local mutations
-        repository.addPageBookmark(10)
+        repository.addBookmark(10)
 
         // Create remote bookmark first, then delete it to create a deletion mutation
         pageBookmarksQueries.createRemoteBookmark("remote-20", 20L)
-        repository.deletePageBookmark(20)
+        repository.deleteBookmark(20)
 
         // Create the remote bookmark that will be deleted by the new remote mutation
         pageBookmarksQueries.createRemoteBookmark("remote-40", 40L)
@@ -478,7 +475,7 @@ class BookmarksRepositoryTest {
         syncRepository.applyRemoteChanges(updatesToPersist, localMutations)
 
         // Assert: Final state includes new remote mutations
-        val finalBookmarks = repository.getAllBookmarks().first()
+        val finalBookmarks = repository.getAllBookmarks()
         assertEquals(2, finalBookmarks.size, "Should have 2 bookmarks after sync")
         assertEquals(setOf(10, 30), finalBookmarks.requirePageBookmarks().map { it.page }.toSet())
 
@@ -494,8 +491,8 @@ class BookmarksRepositoryTest {
     @Test
     fun `applyRemoteChanges with empty lists`() = runTest {
         // Setup: Create some local mutations
-        repository.addPageBookmark(10)
-        repository.addPageBookmark(20)
+        repository.addBookmark(10)
+        repository.addBookmark(20)
 
         val localMutations = syncRepository.fetchMutatedBookmarks()
         assertEquals(2, localMutations.size)
@@ -504,7 +501,7 @@ class BookmarksRepositoryTest {
         syncRepository.applyRemoteChanges(emptyList(), localMutations)
 
         // Assert: Local mutations are cleared but no new bookmarks added
-        val finalBookmarks = repository.getAllBookmarks().first()
+        val finalBookmarks = repository.getAllBookmarks()
         assertEquals(0, finalBookmarks.size, "Should have no bookmarks after clearing local mutations")
 
         // Verify no remaining mutations
@@ -520,10 +517,10 @@ class BookmarksRepositoryTest {
         pageBookmarksQueries.createRemoteBookmark("remote-30", 30L)
 
         // Create some local mutations
-        repository.addPageBookmark(40)
+        repository.addBookmark(40)
 
         // Delete existing remote bookmark to create a deletion mutation
-        repository.deletePageBookmark(20)
+        repository.deleteBookmark(20)
 
         val localMutations = syncRepository.fetchMutatedBookmarks()
         assertEquals(2, localMutations.size)
@@ -553,7 +550,7 @@ class BookmarksRepositoryTest {
         syncRepository.applyRemoteChanges(updatesToPersist, localMutations)
 
         // Assert: Final state preserves existing remote bookmarks
-        val finalBookmarks = repository.getAllBookmarks().first()
+        val finalBookmarks = repository.getAllBookmarks()
         assertEquals(3, finalBookmarks.size, "Should have 3 bookmarks after sync")
         assertEquals(setOf(10, 30, 40), finalBookmarks.requirePageBookmarks().map { it.page }.toSet())
 
@@ -569,15 +566,15 @@ class BookmarksRepositoryTest {
     @Test
     fun `PageBookmark localId is properly populated from database`() = runTest {
         // Add a bookmark and verify localId is set
-        repository.addPageBookmark(10)
+        repository.addBookmark(10)
 
-        val bookmarks = repository.getAllBookmarks().first()
+        val bookmarks = repository.getAllBookmarks()
         assertEquals(1, bookmarks.size)
 
         val bookmark = bookmarks[0].requirePageBookmark()
         assertEquals(10, bookmark.page)
         assertNotNull(bookmark.localId, "localId should not be null")
-        assertTrue(bookmark.localId!!.isNotEmpty(), "localId should not be empty")
+        assertTrue(bookmark.localId.isNotEmpty(), "localId should not be empty")
 
         // Verify the localId matches the database local_id
         val dbBookmarks = pageBookmarksQueries.getBookmarks().executeAsList()
@@ -589,8 +586,8 @@ class BookmarksRepositoryTest {
     fun `test remoteResourcesExist returns correct existence map`() = runTest {
         // Arrange
         // Add some remote bookmarks
-        repository.addPageBookmark(1) // This will be local
-        repository.addPageBookmark(2) // This will be local
+        repository.addBookmark(1) // This will be local
+        repository.addBookmark(2) // This will be local
 
         // Simulate remote bookmarks by directly persisting them
         // Note: In a real scenario, these would come from applyRemoteChanges
