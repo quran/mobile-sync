@@ -6,25 +6,44 @@ import kotlinx.coroutines.flow.Flow
 
 interface BookmarksRepository {
     /**
-     * Returns a Flow of all bookmarks, reflecting the latest state of the data.
-     * The Flow will emit new values whenever the underlying data changes.
+     * Fetch and returns all bookmarks.
      *
-     * @return Flow<List<Bookmark>> A flow that emits the current list of bookmarks
+     * @return List<Bookmark> the current list of bookmarks
      */
     @NativeCoroutines
-    fun getAllBookmarks(): Flow<List<Bookmark>>
+    suspend fun getAllBookmarks(): List<Bookmark>
 
     /**
-     * Adds a bookmark for a specific page.
+     * Add a bookmark for a specific page.
+     *
+     * @return the [Bookmark.PageBookmark]
      */
     @NativeCoroutines
-    suspend fun addPageBookmark(page: Int)
+    suspend fun addBookmark(page: Int): Bookmark.PageBookmark
 
     /**
-     * Deletes a bookmark for a specific page.
+     * Add a bookmark for a given sura and ayah.
+     *
+     * @return the [Bookmark.AyahBookmark]
      */
     @NativeCoroutines
-    suspend fun deletePageBookmark(page: Int)
+    suspend fun addBookmark(sura: Int, ayah: Int): Bookmark
+
+    /**
+     * Delete a bookmark for a specific page.
+     *
+     * @return a boolean denoting success
+     */
+    @NativeCoroutines
+    suspend fun deleteBookmark(page: Int): Boolean
+
+    /**
+     * Delete a bookmark for a sura and ayah.
+     *
+     * @return a boolean denoting success
+     */
+    @NativeCoroutines
+    suspend fun deleteBookmark(sura: Int, ayah: Int): Boolean
 
     /**
      * Migrates existing bookmarks to the new storage format.
