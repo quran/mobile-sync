@@ -1,6 +1,5 @@
 package com.quran.shared.persistence.repository.bookmark.repository
 
-import app.cash.sqldelight.coroutines.asFlow
 import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
@@ -12,8 +11,6 @@ import com.quran.shared.persistence.repository.bookmark.extension.toBookmarkMuta
 import com.quran.shared.persistence.util.fromPlatform
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
 class BookmarksRepositoryImpl(
@@ -22,27 +19,64 @@ class BookmarksRepositoryImpl(
 
     private val logger = Logger.withTag("PageBookmarksRepository")
     private val pageBookmarkQueries = lazy { database.page_bookmarksQueries }
+    private val ayahBookmarkQueries = lazy { database.ayah_bookmarksQueries }
 
-    override fun getAllBookmarks(): Flow<List<Bookmark>> {
-        return pageBookmarkQueries.value.getBookmarks()
-            .asFlow()
-            .map { query ->
-                query.executeAsList().map { it.toBookmark() }
+    override suspend fun getAllBookmarks(): List<Bookmark> {
+        return withContext(Dispatchers.IO) {
+            val pageBookmarks = pageBookmarkQueries.value.getBookmarks()
+                .executeAsList()
+                .map { it.toBookmark() }
+            val ayahBookmarks = ayahBookmarkQueries.value.getBookmarks()
+                .executeAsList()
+                .map { it.toBookmark() }
+
+            // TODO - sort options - ex sort by location, by date added (default)
+            (pageBookmarks + ayahBookmarks).sortedByDescending { bookmark ->
+                when (bookmark) {
+                    is Bookmark.AyahBookmark -> bookmark.lastUpdated.fromPlatform().epochSeconds
+                    is Bookmark.PageBookmark -> bookmark.lastUpdated.fromPlatform().epochSeconds
+                }
             }
-    }
-
-    override suspend fun addPageBookmark(page: Int) {
-        logger.i { "Adding page bookmark for page $page" }
-        withContext(Dispatchers.IO) {
-            pageBookmarkQueries.value.addNewBookmark(page.toLong())
         }
     }
 
-    override suspend fun deletePageBookmark(page: Int) {
+    override suspend fun addBookmark(page: Int): Bookmark.PageBookmark {
+        logger.i { "Adding page bookmark for page $page" }
+        return withContext(Dispatchers.IO) {
+            pageBookmarkQueries.value.addNewBookmark(page.toLong())
+            val record = pageBookmarkQueries.value.getBookmarkForPage(page.toLong())
+                .executeAsOneOrNull()
+            requireNotNull(record) { "Expected page bookmark for page $page after insert." }
+            record.toBookmark()
+        }
+    }
+
+    override suspend fun addBookmark(sura: Int, ayah: Int): Bookmark.AyahBookmark {
+        logger.i { "Adding ayah bookmark for $sura:$ayah" }
+        return withContext(Dispatchers.IO) {
+            val ayahId = getAyahId(sura, ayah)
+            ayahBookmarkQueries.value.addNewBookmark(ayahId.toLong(), sura.toLong(), ayah.toLong())
+            val record = ayahBookmarkQueries.value.getBookmarkForAyah(sura.toLong(), ayah.toLong())
+                .executeAsOneOrNull()
+            requireNotNull(record) { "Expected ayah bookmark for $sura:$ayah after insert." }
+            record.toBookmark()
+        }
+    }
+
+    override suspend fun deleteBookmark(page: Int): Boolean {
         logger.i { "Deleting page bookmark for page $page" }
         withContext(Dispatchers.IO) {
             pageBookmarkQueries.value.deleteBookmark(page.toLong())
         }
+        return true
+    }
+
+    override suspend fun deleteBookmark(sura: Int, ayah: Int): Boolean {
+        logger.i { "Deleting page bookmark for $sura:$ayah" }
+        withContext(Dispatchers.IO) {
+            ayahBookmarkQueries.value.deleteBookmark(sura.toLong(), ayah.toLong())
+        }
+        return true
     }
 
     override suspend fun migrateBookmarks(bookmarks: List<Bookmark>) {
@@ -56,7 +90,14 @@ class BookmarksRepositoryImpl(
             database.transaction {
                 bookmarks.forEach { bookmark ->
                     when (bookmark) {
-                        is Bookmark.AyahBookmark -> TODO()
+                        is Bookmark.AyahBookmark -> {
+                            val ayahId = getAyahId(bookmark.sura, bookmark.ayah)
+                            ayahBookmarkQueries.value.addNewBookmark(
+                                ayahId.toLong(),
+                                bookmark.sura.toLong(),
+                                bookmark.ayah.toLong()
+                            )
+                        }
                         is Bookmark.PageBookmark ->
                             pageBookmarkQueries.value.addNewBookmark(bookmark.page.toLong())
                     }
@@ -67,9 +108,13 @@ class BookmarksRepositoryImpl(
 
     override suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<Bookmark>> {
         return withContext(Dispatchers.IO) {
-            pageBookmarkQueries.value.getUnsyncedBookmarks()
+            val pageMutations = pageBookmarkQueries.value.getUnsyncedBookmarks()
                 .executeAsList()
                 .map { it.toBookmarkMutation() }
+            val ayahMutations = ayahBookmarkQueries.value.getUnsyncedBookmarks()
+                .executeAsList()
+                .map { it.toBookmarkMutation() }
+            pageMutations + ayahMutations
         }
     }
 
@@ -84,7 +129,8 @@ class BookmarksRepositoryImpl(
                 // TODO: Should check that passed local IDs are valid
                 localMutationsToClear.forEach { local ->
                     when (local.model) {
-                        is Bookmark.AyahBookmark -> TODO()
+                        is Bookmark.AyahBookmark ->
+                            ayahBookmarkQueries.value.clearLocalMutationFor(id = local.localID.toLong())
                         is Bookmark.PageBookmark ->
                             pageBookmarkQueries.value.clearLocalMutationFor(id = local.localID.toLong())
                     }
@@ -106,7 +152,18 @@ class BookmarksRepositoryImpl(
 
     private fun applyRemoteBookmarkAddition(remote: RemoteModelMutation<Bookmark>) {
         when (val model = remote.model) {
-            is Bookmark.AyahBookmark -> TODO()
+            is Bookmark.AyahBookmark -> {
+                val ayahId = getAyahId(model.sura, model.ayah)
+                val updatedAt = model.lastUpdated.fromPlatform().epochSeconds
+                ayahBookmarkQueries.value.persistRemoteBookmark(
+                    remote_id = remote.remoteID,
+                    ayah_id = ayahId.toLong(),
+                    sura = model.sura.toLong(),
+                    ayah = model.ayah.toLong(),
+                    created_at = updatedAt,
+                    modified_at = updatedAt
+                )
+            }
             is Bookmark.PageBookmark ->
                 pageBookmarkQueries.value.persistRemoteBookmark(
                     remote_id = remote.remoteID,
@@ -118,10 +175,16 @@ class BookmarksRepositoryImpl(
 
     private fun applyRemoteBookmarkDeletion(remote: RemoteModelMutation<Bookmark>) {
         when (remote.model) {
-            is Bookmark.AyahBookmark -> TODO()
+            is Bookmark.AyahBookmark ->
+                ayahBookmarkQueries.value.hardDeleteBookmarkFor(remoteID = remote.remoteID)
             is Bookmark.PageBookmark ->
                 pageBookmarkQueries.value.hardDeleteBookmarkFor(remoteID = remote.remoteID)
         }
+    }
+
+    private fun getAyahId(sura: Int, ayah: Int): Int {
+        // TODO - fix this
+        return 1
     }
 
     override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> {
@@ -130,10 +193,13 @@ class BookmarksRepositoryImpl(
         }
 
         return withContext(Dispatchers.IO) {
-            val existentIDs = pageBookmarkQueries.value.checkRemoteIDsExistence(remoteIDs)
+            val pageIDs = pageBookmarkQueries.value.checkRemoteIDsExistence(remoteIDs)
                 .executeAsList()
                 .map { it.remote_id }
-                .toSet()
+            val ayahIDs = ayahBookmarkQueries.value.checkRemoteIDsExistence(remoteIDs)
+                .executeAsList()
+                .map { it.remote_id }
+            val existentIDs = (pageIDs + ayahIDs).toSet()
 
             remoteIDs.map { Pair(it, existentIDs.contains(it)) }
                 .associateBy { it.first }
