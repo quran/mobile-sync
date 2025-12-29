@@ -1,32 +1,27 @@
-package com.quran.shared.persistence.repository
+package com.quran.shared.persistence.repository.bookmark.repository
 
-import com.quran.shared.persistence.model.PageBookmark
+import com.quran.shared.persistence.model.Bookmark
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
 import kotlinx.coroutines.flow.Flow
 
-class DuplicatePageBookmarkException(message: String) : Exception(message)
-class PageBookmarkNotFoundException(message: String) : Exception(message)
-
-interface PageBookmarksRepository {
+interface BookmarksRepository {
     /**
-     * Returns a Flow of all page bookmarks, reflecting the latest state of the data.
+     * Returns a Flow of all bookmarks, reflecting the latest state of the data.
      * The Flow will emit new values whenever the underlying data changes.
      *
-     * @return Flow<List<PageBookmark>> A flow that emits the current list of bookmarks
+     * @return Flow<List<Bookmark>> A flow that emits the current list of bookmarks
      */
     @NativeCoroutines
-    fun getAllBookmarks(): Flow<List<PageBookmark>>
+    fun getAllBookmarks(): Flow<List<Bookmark>>
 
     /**
      * Adds a bookmark for a specific page.
-     * @throws DuplicatePageBookmarkException if a bookmark for this page already exists
      */
     @NativeCoroutines
     suspend fun addPageBookmark(page: Int)
 
     /**
      * Deletes a bookmark for a specific page.
-     * @throws PageBookmarkNotFoundException if no bookmark exists for this page
      */
     @NativeCoroutines
     suspend fun deletePageBookmark(page: Int)
@@ -40,5 +35,5 @@ interface PageBookmarksRepository {
      * @throws IllegalStateException if either bookmarks or mutations tables are not empty
      */
     @NativeCoroutines
-    suspend fun migrateBookmarks(bookmarks: List<PageBookmark>)
+    suspend fun migrateBookmarks(bookmarks: List<Bookmark>)
 }

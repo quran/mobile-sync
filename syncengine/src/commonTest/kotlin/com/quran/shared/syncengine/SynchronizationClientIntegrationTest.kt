@@ -4,6 +4,8 @@ package com.quran.shared.syncengine
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
+import com.quran.shared.syncengine.model.SyncBookmark
+import com.quran.shared.syncengine.model.SyncBookmark.PageBookmark
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runTest
@@ -55,11 +57,11 @@ class SynchronizationClientIntegrationTest {
     }
 
     private fun createLocalMutationsFetcher(
-        mutations: List<LocalModelMutation<PageBookmark>>,
+        mutations: List<LocalModelMutation<SyncBookmark>>,
         existingRemoteIDs: Set<String> = emptySet()
-    ): LocalDataFetcher<PageBookmark> {
-        return object : LocalDataFetcher<PageBookmark> {
-            override suspend fun fetchLocalMutations(lastModified: Long): List<LocalModelMutation<PageBookmark>> {
+    ): LocalDataFetcher<SyncBookmark> {
+        return object : LocalDataFetcher<SyncBookmark> {
+            override suspend fun fetchLocalMutations(lastModified: Long): List<LocalModelMutation<SyncBookmark>> {
                 println("Mock fetcher called with lastModified: $lastModified")
                 return mutations
             }
@@ -77,8 +79,8 @@ class SynchronizationClientIntegrationTest {
         expectedRemoteMutationsMinCount: Int = 0,
         expectedProcessedPages: Set<Int>? = null,
         expectOnlyCreationEvents: Boolean = false
-    ): ResultNotifier<PageBookmark> {
-        return object : ResultNotifier<PageBookmark> {
+    ): ResultNotifier<SyncBookmark> {
+        return object : ResultNotifier<SyncBookmark> {
 
             override suspend fun didFail(message: String) {
                 println("Got a failure. $message")
@@ -87,17 +89,17 @@ class SynchronizationClientIntegrationTest {
 
             override suspend fun didSucceed(
                 newToken: Long,
-                newRemoteMutations: List<RemoteModelMutation<PageBookmark>>,
-                processedLocalMutations: List<LocalModelMutation<PageBookmark>>
+                newRemoteMutations: List<RemoteModelMutation<SyncBookmark>>,
+                processedLocalMutations: List<LocalModelMutation<SyncBookmark>>
             ) {
                 // Verify the results
                 println("Got response. Last modification date: $newToken")
                 println("Got response. Remote mutations count: ${newRemoteMutations.count()}")
                 println("Got response. Processed local mutations count: ${processedLocalMutations.count()}")
-                println("Got response. Remote mutations IDs: ${newRemoteMutations.map { it.model.id }}")
-                println("Got response. Remote mutations pages: ${newRemoteMutations.map { it.model.page }}")
+                println("Got response. Remote mutations IDs: ${newRemoteMutations.map { it.model.idOrThrow() }}")
+                println("Got response. Remote mutations pages: ${newRemoteMutations.map { it.model.pageOrThrow() }}")
                 println("Got response. Remote mutations types: ${newRemoteMutations.map { it.mutation }}")
-                println("Got response. Processed local mutations pages: ${processedLocalMutations.map { it.model.page }}")
+                println("Got response. Processed local mutations pages: ${processedLocalMutations.map { it.model.pageOrThrow() }}")
                 
                 assertTrue(newToken > 0L, "Should return a new timestamp")
                 assertEquals(expectedLocalMutationsCount, processedLocalMutations.size, "Should have expected processed local mutations")
@@ -105,7 +107,7 @@ class SynchronizationClientIntegrationTest {
                 
                 // Verify specific pages if provided
                 expectedProcessedPages?.let { expectedPages ->
-                    val processedPages = processedLocalMutations.map { it.model.page }.toSet()
+                    val processedPages = processedLocalMutations.map { it.model.pageOrThrow() }.toSet()
                     assertEquals(expectedPages, processedPages, "Should have processed expected mutations")
                 }
                 
@@ -130,11 +132,11 @@ class SynchronizationClientIntegrationTest {
     }
 
     private fun createBookmarksConfigurations(
-        localDataFetcher: LocalDataFetcher<PageBookmark>,
-        resultNotifier: ResultNotifier<PageBookmark>,
+        localDataFetcher: LocalDataFetcher<SyncBookmark>,
+        resultNotifier: ResultNotifier<SyncBookmark>,
         localModificationDateFetcher: LocalModificationDateFetcher
-    ): PageBookmarksSynchronizationConfigurations {
-        return PageBookmarksSynchronizationConfigurations(
+    ): BookmarksSynchronizationConfigurations {
+        return BookmarksSynchronizationConfigurations(
             localDataFetcher = localDataFetcher,
             resultNotifier = resultNotifier,
             localModificationDateFetcher = localModificationDateFetcher
@@ -144,7 +146,7 @@ class SynchronizationClientIntegrationTest {
     private fun createSynchronizationClient(
         environment: SynchronizationEnvironment,
         authFetcher: AuthenticationDataFetcher,
-        bookmarksConfigurations: PageBookmarksSynchronizationConfigurations,
+        bookmarksConfigurations: BookmarksSynchronizationConfigurations,
         httpClient: HttpClient? = null
     ): SynchronizationClient {
         return SynchronizationClientBuilder.build(
@@ -250,19 +252,19 @@ class SynchronizationClientIntegrationTest {
         
         // Create test data for local mutations: 2 creations and 1 deletion
         val testLocalMutations = listOf(
-            LocalModelMutation(
+            LocalModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "local-2", page = 200, lastModified = Instant.fromEpochMilliseconds(1752350137423)),
                 remoteID = null, // No remote ID for local mutations
                 localID = "local-id-2",
                 mutation = Mutation.CREATED
             ),
-//            LocalModelMutation(
+//            LocalModelMutation<SyncBookmark>(
 //                model = PageBookmark(id = "hvpyr0q863etejgc4l4dpmhj", page = 50, lastModified = Instant.fromEpochMilliseconds(1752350137423)),
 //                remoteID = "hvpyr0q863etejgc4l4dpmhj", // This was a remote bookmark that we're deleting
 //                localID = "local-id-3",
 //                mutation = Mutation.DELETED
 //            ),
-//            LocalModelMutation(
+//            LocalModelMutation<SyncBookmark>(
 //                model = PageBookmark(id = "t8sx6yrl55oft086mx5bygl5", page = 107, lastModified = Instant.fromEpochMilliseconds(1752350137423)),
 //                remoteID = "t8sx6yrl55oft086mx5bygl5", // This was a remote bookmark that we're deleting
 //                localID = "local-id-3",
@@ -318,27 +320,27 @@ class SynchronizationClientIntegrationTest {
 
         // Create test data for local mutations: 2 creations and 1 deletion
         val testLocalMutations = listOf(
-            LocalModelMutation(
+            LocalModelMutation<SyncBookmark>(
                 // For this to work, there needs to be an expected remote delete mutation for that remote ID.
                 model = PageBookmark(id = "bnz3yxj9hqsepxtteov57bvt", page = 20, lastModified = Instant.fromEpochMilliseconds(1752350137423)),
                 remoteID = "bnz3yxj9hqsepxtteov57bvt", // To be filled
                 localID = "bnz3yxj9hqsepxtteov57bvt",
                 mutation = Mutation.DELETED
             ),
-            LocalModelMutation(
+            LocalModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "local-2", page = 20, lastModified = Instant.fromEpochMilliseconds(1752350137493)),
                 remoteID = null, // No remote ID for local mutations
                 localID = "local-id-2",
                 mutation = Mutation.CREATED
             ),
-//            LocalModelMutation(
+//            LocalModelMutation<SyncBookmark>(
 //                // TODO: Should clash with something on the BE
 //                model = PageBookmark(id = "local-2", page = 200, lastModified = Instant.fromEpochMilliseconds(1752350137423)),
 //                remoteID = null, // No remote ID for local mutations
 //                localID = "local-id-5",
 //                mutation = Mutation.CREATED
 //            ),
-            LocalModelMutation(
+            LocalModelMutation<SyncBookmark>(
                 model = PageBookmark(id = "local-2", page = 600, lastModified = Instant.fromEpochMilliseconds(1752350137423)),
                 remoteID = null, // No remote ID for local mutations
                 localID = "non-clashing-local-id",
@@ -384,3 +386,12 @@ class SynchronizationClientIntegrationTest {
         println("Sync operation with local updates completed successfully!")
     }
 }
+
+private fun SyncBookmark.pageOrThrow(): Int =
+    (this as SyncBookmark.PageBookmark).page
+
+private fun SyncBookmark.idOrThrow(): String =
+    when (this) {
+        is SyncBookmark.PageBookmark -> id
+        is SyncBookmark.AyahBookmark -> id
+    }

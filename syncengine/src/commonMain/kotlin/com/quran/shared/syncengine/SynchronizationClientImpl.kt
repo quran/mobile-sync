@@ -2,6 +2,7 @@ package com.quran.shared.syncengine
 
 import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.LocalModelMutation
+import com.quran.shared.syncengine.model.SyncBookmark
 import com.quran.shared.syncengine.network.GetMutationsRequest
 import com.quran.shared.syncengine.network.MutationsResponse
 import com.quran.shared.syncengine.network.PostMutationsRequest
@@ -13,7 +14,7 @@ import io.ktor.client.HttpClient
 internal class SynchronizationClientImpl(
     private val environment: SynchronizationEnvironment,
     private val httpClient: HttpClient,
-    private val bookmarksConfigurations: PageBookmarksSynchronizationConfigurations,
+    private val bookmarksConfigurations: BookmarksSynchronizationConfigurations,
     private val authenticationDataFetcher: AuthenticationDataFetcher): SynchronizationClient {
 
     private val logger = Logger.withTag("SynchronizationClient")
@@ -39,7 +40,7 @@ internal class SynchronizationClientImpl(
     private suspend fun startSyncOperation() {
         logger.i { "Starting sync operation" }
         
-        val pipeline = PageBookmarksSynchronizationExecutor()
+        val pipeline = BookmarksSynchronizationExecutor()
         val result = pipeline.executePipeline(
             fetchLocal = { initializePipeline() },
             fetchRemote = { lastModificationDate -> fetchRemoteModificationsPipeline(lastModificationDate) },
@@ -56,7 +57,7 @@ internal class SynchronizationClientImpl(
     }
 
     private suspend fun pushLocalMutations(
-        mutations: List<LocalModelMutation<PageBookmark>>,
+        mutations: List<LocalModelMutation<SyncBookmark>>,
         lastModificationDate: Long): MutationsResponse {
         if (mutations.isEmpty()) {
             logger.d { "No local mutations to push, skipping network request" }
@@ -79,24 +80,24 @@ internal class SynchronizationClientImpl(
         return headers
     }
 
-    // Pipeline Step Methods (now simplified to work with PageBookmarksSynchronizationExecutor)
-    private suspend fun initializePipeline(): PageBookmarksSynchronizationExecutor.PipelineInitData {
+    // Pipeline Step Methods (now simplified to work with BookmarksSynchronizationExecutor)
+    private suspend fun initializePipeline(): BookmarksSynchronizationExecutor.PipelineInitData {
         logger.d { "Fetching local data from repository" }
         val lastModificationDate = bookmarksConfigurations.localModificationDateFetcher
             .localLastModificationDate() ?: 0L
         val localMutations = bookmarksConfigurations.localDataFetcher
             .fetchLocalMutations(lastModificationDate)
         logger.i { "Local data fetched: lastModificationDate=$lastModificationDate, localMutations=${localMutations.size}" }
-        return PageBookmarksSynchronizationExecutor.PipelineInitData(lastModificationDate, localMutations)
+        return BookmarksSynchronizationExecutor.PipelineInitData(lastModificationDate, localMutations)
     }
 
-    private suspend fun fetchRemoteModificationsPipeline(lastModificationDate: Long): PageBookmarksSynchronizationExecutor.FetchedRemoteData {
+    private suspend fun fetchRemoteModificationsPipeline(lastModificationDate: Long): BookmarksSynchronizationExecutor.FetchedRemoteData {
         logger.d { "Fetching remote modifications from ${environment.endPointURL} with lastModificationDate=$lastModificationDate" }
         val authHeaders = getAuthHeaders()
         val url = environment.endPointURL
         val request = GetMutationsRequest(httpClient, url)
         val result = request.getMutations(lastModificationDate, authHeaders)
-        return PageBookmarksSynchronizationExecutor.FetchedRemoteData(result.mutations, result.lastModificationDate)
+        return BookmarksSynchronizationExecutor.FetchedRemoteData(result.mutations, result.lastModificationDate)
     }
 
     private suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> {
@@ -105,12 +106,12 @@ internal class SynchronizationClientImpl(
     }
 
     private suspend fun pushMutationsPipeline(
-        localMutations: List<LocalModelMutation<PageBookmark>>,
+        localMutations: List<LocalModelMutation<SyncBookmark>>,
         lastModificationDate: Long
-    ): PageBookmarksSynchronizationExecutor.PushResultData {
+    ): BookmarksSynchronizationExecutor.PushResultData {
         logger.d { "Executing push mutations for ${localMutations.size} mutations" }
         val result = pushLocalMutations(localMutations, lastModificationDate)
         logger.i { "Push mutations completed: ${result.mutations.size} pushed remote mutations received" }
-        return PageBookmarksSynchronizationExecutor.PushResultData(result.mutations, result.lastModificationDate)
+        return BookmarksSynchronizationExecutor.PushResultData(result.mutations, result.lastModificationDate)
     }
 }

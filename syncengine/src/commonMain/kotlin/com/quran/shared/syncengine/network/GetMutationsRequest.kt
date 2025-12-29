@@ -3,7 +3,7 @@ package com.quran.shared.syncengine.network
 
 import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.RemoteModelMutation
-import com.quran.shared.syncengine.PageBookmark
+import com.quran.shared.syncengine.model.SyncBookmark
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
@@ -94,18 +94,11 @@ class GetMutationsRequest(
     }
     
     private fun ApiResponseData.toMutationsResponse(): MutationsResponse {
-        val logger = Logger.withTag("GetMutationsResponseConverter")
-        
-        val mutations = mutations.map { apiMutation ->
-            val pageBookmark = PageBookmark(
-                id = apiMutation.resourceId,
-                page = apiMutation.data.key ?: 0,
-                lastModified = Instant.fromEpochSeconds(apiMutation.timestamp)
-            )
-            
+        val mutations = mutations.mapNotNull { apiMutation ->
+            val bookmark = apiMutation.toSyncBookmark(logger) ?: return@mapNotNull null
             val mutation = apiMutation.type.asMutation(logger)
             RemoteModelMutation(
-                model = pageBookmark,
+                model = bookmark,
                 remoteID = apiMutation.resourceId,
                 mutation = mutation
             )
@@ -117,5 +110,43 @@ class GetMutationsRequest(
         )
         
         return result
+    }
+
+    private fun ApiMutation.toSyncBookmark(logger: Logger): SyncBookmark? {
+        val normalizedType = data.bookmarkType?.lowercase()
+        val lastModified = Instant.fromEpochSeconds(timestamp)
+        return when (normalizedType) {
+            "page" -> {
+                val page = data.key
+                if (page == null) {
+                    logger.w { "Skipping bookmark mutation without page key: resourceId=$resourceId" }
+                    null
+                } else {
+                    SyncBookmark.PageBookmark(
+                        id = resourceId,
+                        page = page,
+                        lastModified = lastModified
+                    )
+                }
+            }
+            "ayah" -> {
+                val sura = data.key
+                val ayah = data.verseNumber
+                if (sura != null && ayah != null) {
+                    SyncBookmark.AyahBookmark(
+                        id = resourceId,
+                        sura = sura,
+                        ayah = ayah,
+                        lastModified = lastModified
+                    )
+                } else {
+                    null
+                }
+            }
+            else -> {
+                logger.w { "Skipping bookmark mutation with unsupported type=$normalizedType: resourceId=$resourceId" }
+                null
+            }
+        }
     }
 }

@@ -3,7 +3,8 @@ package com.quran.shared.syncengine.preprocessing
 
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
-import com.quran.shared.syncengine.PageBookmark
+import com.quran.shared.syncengine.model.SyncBookmark
+import com.quran.shared.syncengine.model.SyncBookmark.PageBookmark
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -39,7 +40,7 @@ class LocalMutationsPreprocessorTest {
             preprocessor.preprocess(listOf(mutation1, mutation2))
         }
         
-        assertTrue(exception.message?.contains("Page 1 has 2 creations") == true)
+        assertTrue(exception.message?.contains("Bookmark page=1 has 2 creations") == true)
         assertTrue(exception.message?.contains("which is not allowed") == true)
     }
     
@@ -54,7 +55,7 @@ class LocalMutationsPreprocessorTest {
             preprocessor.preprocess(listOf(mutation1, mutation2, mutation3, mutation4))
         }
         
-        assertTrue(exception.message?.contains("Page 1 has 4 mutations") == true) // After conversion, there are 4 mutations
+        assertTrue(exception.message?.contains("Bookmark page=1 has 4 mutations") == true) // After conversion, there are 4 mutations
         assertTrue(exception.message?.contains("exceeds logical limit of 2") == true)
     }
     
@@ -82,8 +83,8 @@ class LocalMutationsPreprocessorTest {
             preprocessor.preprocess(allMutations)
         }
         
-        assertTrue(exception.message?.contains("Page 1 has 2 creations") == true || 
-                  exception.message?.contains("Page 3 has 2 creations") == true)
+        assertTrue(exception.message?.contains("Bookmark page=1 has 2 creations") == true ||
+                  exception.message?.contains("Bookmark page=3 has 2 creations") == true)
     }
     
     @Test
@@ -105,7 +106,7 @@ class LocalMutationsPreprocessorTest {
             preprocessor.preprocess(allMutations)
         }
         
-        assertTrue(exception.message?.contains("Page 1 has 4 mutations") == true)
+        assertTrue(exception.message?.contains("Bookmark page=1 has 4 mutations") == true)
         assertTrue(exception.message?.contains("exceeds logical limit of 2") == true)
     }
     
@@ -127,8 +128,8 @@ class LocalMutationsPreprocessorTest {
             preprocessor.preprocess(allMutations)
         }
         
-        assertTrue(exception.message?.contains("Page 1 has 2 creations") == true || 
-                  exception.message?.contains("Page 2 has 2 creations") == true)
+        assertTrue(exception.message?.contains("Bookmark page=1 has 2 creations") == true ||
+                  exception.message?.contains("Bookmark page=2 has 2 creations") == true)
     }
     
     @Test
@@ -140,7 +141,7 @@ class LocalMutationsPreprocessorTest {
             preprocessor.preprocess(listOf(deletion1, deletion2))
         }
         
-        assertTrue(exception.message?.contains("Page 1 has 2 deletions") == true)
+        assertTrue(exception.message?.contains("Bookmark page=1 has 2 deletions") == true)
         assertTrue(exception.message?.contains("which is not allowed") == true)
     }
     
@@ -153,7 +154,7 @@ class LocalMutationsPreprocessorTest {
             preprocessor.preprocess(listOf(creation1, creation2))
         }
         
-        assertTrue(exception.message?.contains("Page 1 has 2 creations") == true)
+        assertTrue(exception.message?.contains("Bookmark page=1 has 2 creations") == true)
         assertTrue(exception.message?.contains("which is not allowed") == true)
     }
     
@@ -167,7 +168,7 @@ class LocalMutationsPreprocessorTest {
         }
         
         assertTrue(exception.message?.contains("creation followed by deletion") == true)
-        assertTrue(exception.message?.contains("two bookmarks on the same page") == true)
+        assertTrue(exception.message?.contains("two bookmarks with the same key") == true)
     }
     
     @Test
@@ -223,7 +224,7 @@ class LocalMutationsPreprocessorTest {
             preprocessor.preprocess(listOf(creation, modification))
         }
         
-        assertTrue(exception.message?.contains("Page 1 has 2 creations") == true)
+        assertTrue(exception.message?.contains("Bookmark page=1 has 2 creations") == true)
         assertTrue(exception.message?.contains("which is not allowed") == true)
     }
     
@@ -259,7 +260,7 @@ class LocalMutationsPreprocessorTest {
         assertEquals(inputMutations.map { it.localID}, result.map { it.localID}, "Order should be maintained in output")
     }
     
-    private fun createLocalMutation(page: Int, mutation: Mutation): LocalModelMutation<PageBookmark> {
+    private fun createLocalMutation(page: Int, mutation: Mutation): LocalModelMutation<SyncBookmark> {
         val timestamp = Instant.fromEpochSeconds(1000L + page * 100L)
         val model = PageBookmark(
             id = "local_${page}_${timestamp.epochSeconds}",
@@ -274,7 +275,7 @@ class LocalMutationsPreprocessorTest {
         )
     }
     
-    private fun createLocalMutationWithRemoteID(page: Int, mutation: Mutation, remoteID: String?): LocalModelMutation<PageBookmark> {
+    private fun createLocalMutationWithRemoteID(page: Int, mutation: Mutation, remoteID: String?): LocalModelMutation<SyncBookmark> {
         val timestamp = Instant.fromEpochSeconds(1000L + page * 100L)
         val model = PageBookmark(
             id = "local_${page}_${timestamp.epochSeconds}",
