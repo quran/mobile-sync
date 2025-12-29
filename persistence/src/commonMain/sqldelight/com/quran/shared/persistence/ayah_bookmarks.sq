@@ -1,6 +1,7 @@
-CREATE TABLE ayah_bookmark(
+CREATE TABLE IF NOT EXISTS ayah_bookmark(
   local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   remote_id TEXT,
+  ayah_id INTEGER NOT NULL,
   sura INTEGER NOT NULL,
   ayah INTEGER NOT NULL,
   created_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,

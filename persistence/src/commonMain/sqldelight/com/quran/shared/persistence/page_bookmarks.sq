@@ -1,4 +1,4 @@
-CREATE TABLE page_bookmark(
+CREATE TABLE IF NOT EXISTS page_bookmark(
   local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   remote_id TEXT,
   page INTEGER NOT NULL UNIQUE,
