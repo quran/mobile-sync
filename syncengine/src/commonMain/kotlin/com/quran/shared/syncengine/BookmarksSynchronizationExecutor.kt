@@ -8,37 +8,38 @@ import com.quran.shared.syncengine.conflict.ConflictDetector
 import com.quran.shared.syncengine.conflict.ConflictResolutionResult
 import com.quran.shared.syncengine.conflict.ConflictResolver
 import com.quran.shared.syncengine.conflict.ResourceConflict
+import com.quran.shared.syncengine.model.SyncBookmark
 import com.quran.shared.syncengine.preprocessing.LocalMutationsPreprocessor
 import com.quran.shared.syncengine.preprocessing.RemoteMutationsPreprocessor
 
 /**
- * Pure business logic executor for page bookmarks synchronization operations.
+ * Pure business logic executor for bookmark synchronization operations.
  * Contains no external dependencies and is fully testable.
  */
-class PageBookmarksSynchronizationExecutor {
+class BookmarksSynchronizationExecutor {
     
     private val logger = Logger.withTag("SynchronizationExecutor")
     
     // Pipeline Step Data Classes
     data class PipelineInitData(
         val lastModificationDate: Long,
-        val localMutations: List<LocalModelMutation<PageBookmark>>
+        val localMutations: List<LocalModelMutation<SyncBookmark>>
     )
 
     data class FetchedRemoteData(
-        val remoteMutations: List<RemoteModelMutation<PageBookmark>>,
+        val remoteMutations: List<RemoteModelMutation<SyncBookmark>>,
         val lastModificationDate: Long
     )
 
     data class PushResultData(
-        val pushedMutations: List<RemoteModelMutation<PageBookmark>>,
+        val pushedMutations: List<RemoteModelMutation<SyncBookmark>>,
         val lastModificationDate: Long
     )
 
     data class PipelineResult(
         val lastModificationDate: Long,
-        val remoteMutations: List<RemoteModelMutation<PageBookmark>>,
-        val localMutations: List<LocalModelMutation<PageBookmark>>
+        val remoteMutations: List<RemoteModelMutation<SyncBookmark>>,
+        val localMutations: List<LocalModelMutation<SyncBookmark>>
     )
 
     /**
@@ -54,9 +55,9 @@ class PageBookmarksSynchronizationExecutor {
         fetchLocal: suspend () -> PipelineInitData,
         fetchRemote: suspend (Long) -> FetchedRemoteData,
         checkLocalExistence: suspend (List<String>) -> Map<String, Boolean>,
-        pushLocal: suspend (List<LocalModelMutation<PageBookmark>>, Long) -> PushResultData
+        pushLocal: suspend (List<LocalModelMutation<SyncBookmark>>, Long) -> PushResultData
     ): PipelineResult {
-        logger.i { "Starting synchronization execution for page bookmarks." }
+        logger.i { "Starting synchronization execution for bookmarks." }
         
         val pipelineData = fetchLocal()
         logger.i { "Initialized with lastModificationDate=${pipelineData.lastModificationDate}, localMutations=${pipelineData.localMutations.size}" }
@@ -100,16 +101,16 @@ class PageBookmarksSynchronizationExecutor {
     }
 
     private fun preprocessLocalMutations(
-        localMutations: List<LocalModelMutation<PageBookmark>>
-    ): List<LocalModelMutation<PageBookmark>> {
+        localMutations: List<LocalModelMutation<SyncBookmark>>
+    ): List<LocalModelMutation<SyncBookmark>> {
         val preprocessor = LocalMutationsPreprocessor()
         return preprocessor.preprocess(localMutations)
     }
     
     private suspend fun preprocessRemoteMutations(
-        remoteMutations: List<RemoteModelMutation<PageBookmark>>,
+        remoteMutations: List<RemoteModelMutation<SyncBookmark>>,
         checkLocalExistence: suspend (List<String>) -> Map<String, Boolean>
-    ): List<RemoteModelMutation<PageBookmark>> {
+    ): List<RemoteModelMutation<SyncBookmark>> {
         val preprocessor = RemoteMutationsPreprocessor(checkLocalExistence)
         return preprocessor.preprocess(remoteMutations)
     }
@@ -117,23 +118,23 @@ class PageBookmarksSynchronizationExecutor {
 
 
     private fun detectConflicts(
-        remoteMutations: List<RemoteModelMutation<PageBookmark>>,
-        localMutations: List<LocalModelMutation<PageBookmark>>
-    ): ConflictDetectionResult<PageBookmark> {
+        remoteMutations: List<RemoteModelMutation<SyncBookmark>>,
+        localMutations: List<LocalModelMutation<SyncBookmark>>
+    ): ConflictDetectionResult<SyncBookmark> {
         val conflictDetector = ConflictDetector(remoteMutations, localMutations)
         return conflictDetector.getConflicts()
     }
 
-    private fun resolveConflicts(conflicts: List<ResourceConflict<PageBookmark>>): ConflictResolutionResult<PageBookmark> {
+    private fun resolveConflicts(conflicts: List<ResourceConflict<SyncBookmark>>): ConflictResolutionResult<SyncBookmark> {
         val conflictResolver = ConflictResolver(conflicts)
         return conflictResolver.resolve()
     }
 
     private fun combineRemoteMutations(
-        otherRemoteMutations: List<RemoteModelMutation<PageBookmark>>,
-        mutationsToPersist: List<RemoteModelMutation<PageBookmark>>,
-        pushedMutations: List<RemoteModelMutation<PageBookmark>>
-    ): List<RemoteModelMutation<PageBookmark>> {
+        otherRemoteMutations: List<RemoteModelMutation<SyncBookmark>>,
+        mutationsToPersist: List<RemoteModelMutation<SyncBookmark>>,
+        pushedMutations: List<RemoteModelMutation<SyncBookmark>>
+    ): List<RemoteModelMutation<SyncBookmark>> {
         return otherRemoteMutations + mutationsToPersist + pushedMutations
     }
 } 
