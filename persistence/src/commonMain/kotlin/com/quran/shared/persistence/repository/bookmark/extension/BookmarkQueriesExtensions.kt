@@ -14,7 +14,7 @@ import kotlin.time.Instant
 internal fun DatabasePageBookmark.toBookmark(): Bookmark.PageBookmark {
     return Bookmark.PageBookmark(
         page = page.toInt(),
-        lastUpdated = Instant.fromEpochSeconds(created_at).toPlatform(),
+        lastUpdated = Instant.fromEpochMilliseconds(created_at).toPlatform(),
         localId = local_id.toString()
     )
 }
@@ -31,7 +31,7 @@ internal fun DatabaseAyahBookmark.toBookmark(): Bookmark.AyahBookmark {
     return Bookmark.AyahBookmark(
         sura = sura.toInt(),
         ayah = ayah.toInt(),
-        lastUpdated = Instant.fromEpochSeconds(modified_at).toPlatform(),
+        lastUpdated = Instant.fromEpochMilliseconds(modified_at).toPlatform(),
         localId = local_id.toString()
     )
 }

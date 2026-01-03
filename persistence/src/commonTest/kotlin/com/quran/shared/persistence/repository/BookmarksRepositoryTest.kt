@@ -219,12 +219,12 @@ class BookmarksRepositoryTest {
         val bookmarks = listOf(
             Bookmark.PageBookmark(
                 page = 1,
-                lastUpdated = Instant.fromEpochSeconds(1000).toPlatform(),
+                lastUpdated = Instant.fromEpochMilliseconds(1000).toPlatform(),
                 localId = null
             ),
             Bookmark.PageBookmark(
                 page = 2,
-                lastUpdated = Instant.fromEpochSeconds(1001).toPlatform(),
+                lastUpdated = Instant.fromEpochMilliseconds(1001).toPlatform(),
                 localId = null
             )
         )
@@ -248,7 +248,7 @@ class BookmarksRepositoryTest {
         val bookmarks = listOf(
             Bookmark.PageBookmark(
                 page = 1,
-                lastUpdated = Instant.fromEpochSeconds(1000).toPlatform(),
+                lastUpdated = Instant.fromEpochMilliseconds(1000).toPlatform(),
                 localId = null
             )
         )
@@ -264,7 +264,7 @@ class BookmarksRepositoryTest {
         val bookmarks = listOf(
             Bookmark.PageBookmark(
                 page = 1,
-                lastUpdated = Instant.fromEpochSeconds(1000).toPlatform(),
+                lastUpdated = Instant.fromEpochMilliseconds(1000).toPlatform(),
                 localId = null
             )
         )
@@ -319,7 +319,7 @@ class BookmarksRepositoryTest {
             RemoteModelMutation(
                 model = Bookmark.PageBookmark(
                     page = 10,
-                    lastUpdated = Instant.fromEpochSeconds(1000).toPlatform(),
+                    lastUpdated = Instant.fromEpochMilliseconds(1000).toPlatform(),
                     localId = null
                 ),
                 remoteID = "remote-10",
@@ -328,7 +328,7 @@ class BookmarksRepositoryTest {
             RemoteModelMutation(
                 model = Bookmark.PageBookmark(
                     page = 20,
-                    lastUpdated = Instant.fromEpochSeconds(1001).toPlatform(),
+                    lastUpdated = Instant.fromEpochMilliseconds(1001).toPlatform(),
                     localId = null
                 ),
                 remoteID = "remote-20",
@@ -337,7 +337,7 @@ class BookmarksRepositoryTest {
             RemoteModelMutation(
                 model = Bookmark.PageBookmark(
                     page = 30,
-                    lastUpdated = Instant.fromEpochSeconds(1002).toPlatform(),
+                    lastUpdated = Instant.fromEpochMilliseconds(1002).toPlatform(),
                     localId = null
                 ),
                 remoteID = "remote-30",
@@ -383,7 +383,7 @@ class BookmarksRepositoryTest {
             RemoteModelMutation(
                 model = Bookmark.PageBookmark(
                     page = 10,
-                    lastUpdated = Instant.fromEpochSeconds(1000).toPlatform(),
+                    lastUpdated = Instant.fromEpochMilliseconds(1000).toPlatform(),
                     localId = null
                 ),
                 remoteID = "remote-10",
@@ -392,7 +392,7 @@ class BookmarksRepositoryTest {
             RemoteModelMutation(
                 model = Bookmark.PageBookmark(
                     page = 30,
-                    lastUpdated = Instant.fromEpochSeconds(1001).toPlatform(),
+                    lastUpdated = Instant.fromEpochMilliseconds(1001).toPlatform(),
                     localId = null
                 ),
                 remoteID = "remote-30",
@@ -436,7 +436,7 @@ class BookmarksRepositoryTest {
             RemoteModelMutation(
                 model = Bookmark.PageBookmark(
                     page = 10,
-                    lastUpdated = Instant.fromEpochSeconds(1000).toPlatform(),
+                    lastUpdated = Instant.fromEpochMilliseconds(1000).toPlatform(),
                     localId = null
                 ),
                 remoteID = "remote-10",
@@ -445,7 +445,7 @@ class BookmarksRepositoryTest {
             RemoteModelMutation(
                 model = Bookmark.PageBookmark(
                     page = 20,
-                    lastUpdated = Instant.fromEpochSeconds(1001).toPlatform(),
+                    lastUpdated = Instant.fromEpochMilliseconds(1001).toPlatform(),
                     localId = null
                 ),
                 remoteID = "remote-20",
@@ -455,7 +455,7 @@ class BookmarksRepositoryTest {
             RemoteModelMutation(
                 model = Bookmark.PageBookmark(
                     page = 30,
-                    lastUpdated = Instant.fromEpochSeconds(1002).toPlatform(),
+                    lastUpdated = Instant.fromEpochMilliseconds(1002).toPlatform(),
                     localId = null
                 ),
                 remoteID = "remote-30",
@@ -464,7 +464,7 @@ class BookmarksRepositoryTest {
             RemoteModelMutation(
                 model = Bookmark.PageBookmark(
                     page = 40,
-                    lastUpdated = Instant.fromEpochSeconds(1003).toPlatform(),
+                    lastUpdated = Instant.fromEpochMilliseconds(1003).toPlatform(),
                     localId = null
                 ),
                 remoteID = "remote-40",
@@ -530,7 +530,7 @@ class BookmarksRepositoryTest {
             RemoteModelMutation(
                 model = Bookmark.PageBookmark(
                     page = 40,
-                    lastUpdated = Instant.fromEpochSeconds(1000).toPlatform(),
+                    lastUpdated = Instant.fromEpochMilliseconds(1000).toPlatform(),
                     localId = null
                 ),
                 remoteID = "remote-40",
@@ -539,7 +539,7 @@ class BookmarksRepositoryTest {
             RemoteModelMutation(
                 model = Bookmark.PageBookmark(
                     page = 20,
-                    lastUpdated = Instant.fromEpochSeconds(1001).toPlatform(),
+                    lastUpdated = Instant.fromEpochMilliseconds(1001).toPlatform(),
                     localId = null
                 ),
                 remoteID = "remote-20",
@@ -592,12 +592,12 @@ class BookmarksRepositoryTest {
         // Simulate remote bookmarks by directly persisting them
         // Note: In a real scenario, these would come from applyRemoteChanges
         val remoteBookmark1: RemoteModelMutation<Bookmark> = RemoteModelMutation(
-            model = Bookmark.PageBookmark(3, Instant.fromEpochSeconds(1000).toPlatform(), null),
+            model = Bookmark.PageBookmark(3, Instant.fromEpochMilliseconds(1000).toPlatform(), null),
             remoteID = "remote-1",
             mutation = Mutation.CREATED
         )
         val remoteBookmark2: RemoteModelMutation<Bookmark> = RemoteModelMutation(
-            model = Bookmark.PageBookmark(4, Instant.fromEpochSeconds(1000).toPlatform(), null),
+            model = Bookmark.PageBookmark(4, Instant.fromEpochMilliseconds(1000).toPlatform(), null),
             remoteID = "remote-2",
             mutation = Mutation.CREATED
         )

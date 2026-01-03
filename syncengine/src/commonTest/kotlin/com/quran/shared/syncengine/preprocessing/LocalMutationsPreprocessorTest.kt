@@ -261,9 +261,9 @@ class LocalMutationsPreprocessorTest {
     }
     
     private fun createLocalMutation(page: Int, mutation: Mutation): LocalModelMutation<SyncBookmark> {
-        val timestamp = Instant.fromEpochSeconds(1000L + page * 100L)
+        val timestamp = Instant.fromEpochMilliseconds(1000L + page * 100L)
         val model = PageBookmark(
-            id = "local_${page}_${timestamp.epochSeconds}",
+            id = "local_${page}_${timestamp.toEpochMilliseconds()}",
             page = page,
             lastModified = timestamp
         )
@@ -276,9 +276,9 @@ class LocalMutationsPreprocessorTest {
     }
     
     private fun createLocalMutationWithRemoteID(page: Int, mutation: Mutation, remoteID: String?): LocalModelMutation<SyncBookmark> {
-        val timestamp = Instant.fromEpochSeconds(1000L + page * 100L)
+        val timestamp = Instant.fromEpochMilliseconds(1000L + page * 100L)
         val model = PageBookmark(
-            id = "local_${page}_${timestamp.epochSeconds}",
+            id = "local_${page}_${timestamp.toEpochMilliseconds()}",
             page = page,
             lastModified = timestamp
         )
