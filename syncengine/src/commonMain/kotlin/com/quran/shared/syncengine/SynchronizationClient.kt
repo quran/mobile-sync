@@ -10,7 +10,7 @@ import io.ktor.client.HttpClient
 
 interface LocalDataFetcher<Model> {
     /**
-     * Fetches local mutations that have occurred since the given timestamp.
+     * Fetches local mutations that have occurred since the given timestamp (epoch milliseconds).
      */
     suspend fun fetchLocalMutations(lastModified: Long): List<LocalModelMutation<Model>>
 
@@ -33,6 +33,9 @@ interface ResultNotifier<Model> {
 }
 
 interface LocalModificationDateFetcher {
+    /**
+     * Returns the last local modification timestamp in epoch milliseconds.
+     */
     suspend fun localLastModificationDate(): Long?
 }
 

@@ -23,17 +23,17 @@ class BookmarksSynchronizationExecutorTest {
         // Given: Remote and local mutations on different pages (no conflicts)
         val remoteMutations = listOf(
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark(id = "remote1", page = 10, lastModified = Instant.fromEpochSeconds(1000)),
+                model = PageBookmark(id = "remote1", page = 10, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "remote1",
                 mutation = Mutation.CREATED
             ),
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark(id = "remote2", page = 20, lastModified = Instant.fromEpochSeconds(1001)),
+                model = PageBookmark(id = "remote2", page = 20, lastModified = Instant.fromEpochMilliseconds(1001)),
                 remoteID = "remote2",
                 mutation = Mutation.MODIFIED
             ),
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark(id = "remote3", page = 30, lastModified = Instant.fromEpochSeconds(1002)),
+                model = PageBookmark(id = "remote3", page = 30, lastModified = Instant.fromEpochMilliseconds(1002)),
                 remoteID = "remote3",
                 mutation = Mutation.DELETED
             )
@@ -41,13 +41,13 @@ class BookmarksSynchronizationExecutorTest {
         
         val localMutations = listOf(
             LocalModelMutation<SyncBookmark>(
-                model = PageBookmark(id = "local1", page = 15, lastModified = Instant.fromEpochSeconds(1002)),
+                model = PageBookmark(id = "local1", page = 15, lastModified = Instant.fromEpochMilliseconds(1002)),
                 remoteID = null,
                 localID = "local1",
                 mutation = Mutation.CREATED
             ),
             LocalModelMutation<SyncBookmark>(
-                model = PageBookmark(id = "local2", page = 25, lastModified = Instant.fromEpochSeconds(1003)),
+                model = PageBookmark(id = "local2", page = 25, lastModified = Instant.fromEpochMilliseconds(1003)),
                 remoteID = "remote2",
                 localID = "local2",
                 mutation = Mutation.MODIFIED
@@ -93,17 +93,17 @@ class BookmarksSynchronizationExecutorTest {
         // Given: Multiple conflicts between remote and local mutations
         val remoteMutations = listOf(
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark(id = "remote1", page = 10, lastModified = Instant.fromEpochSeconds(1000)),
+                model = PageBookmark(id = "remote1", page = 10, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "remote1",
                 mutation = Mutation.CREATED
             ),
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark(id = "remote2", page = 20, lastModified = Instant.fromEpochSeconds(1001)),
+                model = PageBookmark(id = "remote2", page = 20, lastModified = Instant.fromEpochMilliseconds(1001)),
                 remoteID = "remote2",
                 mutation = Mutation.MODIFIED
             ),
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark(id = "remote3", page = 30, lastModified = Instant.fromEpochSeconds(1002)),
+                model = PageBookmark(id = "remote3", page = 30, lastModified = Instant.fromEpochMilliseconds(1002)),
                 remoteID = "remote3",
                 mutation = Mutation.DELETED
             )
@@ -112,28 +112,28 @@ class BookmarksSynchronizationExecutorTest {
         val localMutations = listOf(
             // Conflict 1: Same page as remote1
             LocalModelMutation<SyncBookmark>(
-                model = PageBookmark(id = "local1", page = 10, lastModified = Instant.fromEpochSeconds(1003)),
+                model = PageBookmark(id = "local1", page = 10, lastModified = Instant.fromEpochMilliseconds(1003)),
                 remoteID = null,
                 localID = "local1",
                 mutation = Mutation.CREATED
             ),
             // Conflict 2: Same page as remote2
             LocalModelMutation<SyncBookmark>(
-                model = PageBookmark(id = "local2", page = 20, lastModified = Instant.fromEpochSeconds(1004)),
+                model = PageBookmark(id = "local2", page = 20, lastModified = Instant.fromEpochMilliseconds(1004)),
                 remoteID = null,
                 localID = "local2",
                 mutation = Mutation.MODIFIED
             ),
             // Conflict 3: Local deletion of remote3
             LocalModelMutation<SyncBookmark>(
-                model = PageBookmark(id = "local3", page = 30, lastModified = Instant.fromEpochSeconds(1005)),
+                model = PageBookmark(id = "local3", page = 30, lastModified = Instant.fromEpochMilliseconds(1005)),
                 remoteID = "remote3",
                 localID = "local3",
                 mutation = Mutation.DELETED
             ),
             // No conflict
             LocalModelMutation<SyncBookmark>(
-                model = PageBookmark(id = "local4", page = 40, lastModified = Instant.fromEpochSeconds(1006)),
+                model = PageBookmark(id = "local4", page = 40, lastModified = Instant.fromEpochMilliseconds(1006)),
                 remoteID = null,
                 localID = "local4",
                 mutation = Mutation.CREATED
@@ -176,19 +176,19 @@ class BookmarksSynchronizationExecutorTest {
         val localMutations = listOf(
             // 3 mutations for the same page
             LocalModelMutation<SyncBookmark>(
-                model = PageBookmark(id = "local1", page = 10, lastModified = Instant.fromEpochSeconds(1000)),
+                model = PageBookmark(id = "local1", page = 10, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = null,
                 localID = "local1",
                 mutation = Mutation.CREATED
             ),
             LocalModelMutation<SyncBookmark>(
-                model = PageBookmark(id = "local2", page = 10, lastModified = Instant.fromEpochSeconds(1001)),
+                model = PageBookmark(id = "local2", page = 10, lastModified = Instant.fromEpochMilliseconds(1001)),
                 remoteID = null,
                 localID = "local2",
                 mutation = Mutation.CREATED
             ),
             LocalModelMutation<SyncBookmark>(
-                model = PageBookmark(id = "local3", page = 10, lastModified = Instant.fromEpochSeconds(1002)),
+                model = PageBookmark(id = "local3", page = 10, lastModified = Instant.fromEpochMilliseconds(1002)),
                 remoteID = "remote1",
                 localID = "local3",
                 mutation = Mutation.DELETED
@@ -232,7 +232,7 @@ class BookmarksSynchronizationExecutorTest {
     fun `test illogical scenario - deletion without remote ID`() = runTest {
         val localMutations = listOf(
             LocalModelMutation<SyncBookmark>(
-                model = PageBookmark(id = "local1", page = 10, lastModified = Instant.fromEpochSeconds(1000)),
+                model = PageBookmark(id = "local1", page = 10, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = null, // This should cause an error
                 localID = "local1",
                 mutation = Mutation.DELETED
@@ -272,12 +272,12 @@ class BookmarksSynchronizationExecutorTest {
         // Given: Remote mutations including DELETE for non-existent resource
         val remoteMutations = listOf(
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark(id = "remote1", page = 10, lastModified = Instant.fromEpochSeconds(1000)),
+                model = PageBookmark(id = "remote1", page = 10, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "remote1",
                 mutation = Mutation.CREATED
             ),
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark(id = "remote2", page = 20, lastModified = Instant.fromEpochSeconds(1001)),
+                model = PageBookmark(id = "remote2", page = 20, lastModified = Instant.fromEpochMilliseconds(1001)),
                 remoteID = "remote2",
                 mutation = Mutation.DELETED  // This should be filtered out if it doesn't exist locally
             )
