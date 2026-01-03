@@ -4,8 +4,8 @@ CREATE TABLE IF NOT EXISTS ayah_bookmark(
   ayah_id INTEGER NOT NULL,
   sura INTEGER NOT NULL,
   ayah INTEGER NOT NULL,
-  created_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
-  modified_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
+  created_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
+  modified_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
   -- Ensure deleted is either 0 or 1
   deleted INTEGER NOT NULL DEFAULT 0,
   CHECK (deleted IN (0, 1)),
@@ -23,7 +23,7 @@ addNewBookmark {
   VALUES (NULL, :ayah_id, :sura, :ayah, 0);
   UPDATE ayah_bookmark
   SET deleted = 0,
-    modified_at = strftime('%s', 'now')
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE sura = :sura AND ayah = :ayah;
 }
 
@@ -42,7 +42,7 @@ clearLocalMutationFor {
   DELETE FROM ayah_bookmark WHERE remote_id IS NULL AND local_id = :id;
   UPDATE ayah_bookmark
   SET deleted = 0,
-    modified_at = strftime('%s', 'now')
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE local_id = :id;
 }
 
@@ -54,6 +54,6 @@ deleteBookmark {
   DELETE FROM ayah_bookmark WHERE sura=:sura AND ayah=:ayah AND remote_id IS NULL;
   UPDATE ayah_bookmark
   SET deleted = 1,
-    modified_at = strftime('%s', 'now')
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE sura=:sura AND ayah=:ayah AND remote_id IS NOT NULL;
 }

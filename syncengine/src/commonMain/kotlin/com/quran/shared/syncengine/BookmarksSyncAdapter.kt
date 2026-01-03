@@ -171,7 +171,7 @@ private fun SyncMutation.toSyncBookmark(logger: Logger): SyncBookmark? {
     val data = data ?: return null
     val id = resourceId ?: return null
     val normalizedType = data.stringOrNull("bookmarkType") ?: data.stringOrNull("type")
-    val lastModified = Instant.fromEpochSeconds(timestamp ?: 0)
+    val lastModified = Instant.fromEpochMilliseconds(timestamp ?: 0)
     return when (normalizedType?.lowercase()) {
         "page" -> {
             val page = data.intOrNull("key")

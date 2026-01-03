@@ -2,8 +2,8 @@ CREATE TABLE IF NOT EXISTS page_bookmark(
   local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   remote_id TEXT,
   page INTEGER NOT NULL UNIQUE,
-  created_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
-  modified_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
+  created_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
+  modified_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
   deleted INTEGER NOT NULL DEFAULT 0,
   -- Ensure deleted is either 0 or 1
   CHECK (deleted IN (0, 1))
@@ -28,7 +28,7 @@ addNewBookmark {
   VALUES (NULL, :page, 0);
   UPDATE page_bookmark
   SET deleted = 0,
-    modified_at = strftime('%s', 'now')
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE page = :page;
 }
 
@@ -39,13 +39,13 @@ getUnsyncedBookmarks:
 setDeleted:
   UPDATE page_bookmark
   SET deleted = 1,
-    modified_at = strftime('%s', 'now')
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE local_id = ?;
 
 resetDeleted:
   UPDATE page_bookmark
   SET deleted = 0,
-    modified_at = strftime('%s', 'now')
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE local_id = ?;
 
 -- Removes the record of a local bookmark or marks it as deleted if it's remote.
@@ -53,7 +53,7 @@ deleteBookmark {
   DELETE FROM page_bookmark WHERE page=:page AND remote_id IS NULL;
   UPDATE page_bookmark
   SET deleted = 1,
-    modified_at = strftime('%s', 'now')
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE page=:page AND remote_id IS NOT NULL;
 }
 
@@ -68,14 +68,14 @@ clearLocalMutations {
   DELETE FROM page_bookmark WHERE remote_id IS NULL;
   UPDATE page_bookmark
   SET deleted = 0,
-    modified_at = strftime('%s', 'now');
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000;
 }
 
 clearLocalMutationFor {
   DELETE FROM page_bookmark WHERE remote_id IS NULL AND local_id = :id;
   UPDATE page_bookmark
   SET deleted = 0,
-    modified_at = strftime('%s', 'now')
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE local_id = :id;
 }
 

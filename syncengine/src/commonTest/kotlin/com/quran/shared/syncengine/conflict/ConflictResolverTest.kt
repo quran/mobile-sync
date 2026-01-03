@@ -31,12 +31,12 @@ class ConflictResolverTest {
     fun `resolve with single page created locally and remotely should persist remote mutation`() {
         // Given
         val remoteMutation = RemoteModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "remote-1", page = 10, lastModified = Instant.fromEpochSeconds(1000)),
+            model = PageBookmark(id = "remote-1", page = 10, lastModified = Instant.fromEpochMilliseconds(1000)),
             remoteID = "remote-1",
             mutation = Mutation.CREATED
         )
         val localMutation = LocalModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "local-1", page = 10, lastModified = Instant.fromEpochSeconds(1001)),
+            model = PageBookmark(id = "local-1", page = 10, lastModified = Instant.fromEpochMilliseconds(1001)),
             remoteID = null,
             localID = "local-1",
             mutation = Mutation.CREATED
@@ -60,12 +60,12 @@ class ConflictResolverTest {
     fun `resolve with single resource deleted locally and remotely should persist remote mutation`() {
         // Given
         val remoteMutation = RemoteModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "remote-1", page = 10, lastModified = Instant.fromEpochSeconds(1000)),
+            model = PageBookmark(id = "remote-1", page = 10, lastModified = Instant.fromEpochMilliseconds(1000)),
             remoteID = "remote-1",
             mutation = Mutation.DELETED
         )
         val localMutation = LocalModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "local-1", page = 10, lastModified = Instant.fromEpochSeconds(1001)),
+            model = PageBookmark(id = "local-1", page = 10, lastModified = Instant.fromEpochMilliseconds(1001)),
             remoteID = "remote-1",
             localID = "local-1",
             mutation = Mutation.DELETED
@@ -89,17 +89,17 @@ class ConflictResolverTest {
     fun `resolve with remote delete and create vs local delete should persist both remote mutations`() {
         // Given
         val remoteDeleteMutation = RemoteModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "remote-1", page = 0, lastModified = Instant.fromEpochSeconds(1000)),
+            model = PageBookmark(id = "remote-1", page = 0, lastModified = Instant.fromEpochMilliseconds(1000)),
             remoteID = "remote-1",
             mutation = Mutation.DELETED
         )
         val remoteCreateMutation = RemoteModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "remote-2", page = 10, lastModified = Instant.fromEpochSeconds(1001)),
+            model = PageBookmark(id = "remote-2", page = 10, lastModified = Instant.fromEpochMilliseconds(1001)),
             remoteID = "remote-2",
             mutation = Mutation.CREATED
         )
         val localDeleteMutation = LocalModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "local-1", page = 10, lastModified = Instant.fromEpochSeconds(1002)),
+            model = PageBookmark(id = "local-1", page = 10, lastModified = Instant.fromEpochMilliseconds(1002)),
             remoteID = "remote-1",
             localID = "local-1",
             mutation = Mutation.DELETED
@@ -124,18 +124,18 @@ class ConflictResolverTest {
     fun `resolve with remote delete vs local delete and create should persist remote delete and push local create`() {
         // Given
         val remoteDeleteMutation = RemoteModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "remote-1", page = 0, lastModified = Instant.fromEpochSeconds(1000)),
+            model = PageBookmark(id = "remote-1", page = 0, lastModified = Instant.fromEpochMilliseconds(1000)),
             remoteID = "remote-1",
             mutation = Mutation.DELETED
         )
         val localDeleteMutation = LocalModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "local-1", page = 10, lastModified = Instant.fromEpochSeconds(1001)),
+            model = PageBookmark(id = "local-1", page = 10, lastModified = Instant.fromEpochMilliseconds(1001)),
             remoteID = "remote-1",
             localID = "local-1",
             mutation = Mutation.DELETED
         )
         val localCreateMutation = LocalModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "local-2", page = 10, lastModified = Instant.fromEpochSeconds(1002)),
+            model = PageBookmark(id = "local-2", page = 10, lastModified = Instant.fromEpochMilliseconds(1002)),
             remoteID = null,
             localID = "local-2",
             mutation = Mutation.CREATED
@@ -160,23 +160,23 @@ class ConflictResolverTest {
     fun `resolve with delete and create on both sides should persist remote mutations only`() {
         // Given
         val remoteDeleteMutation = RemoteModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "remote-1", page = 0, lastModified = Instant.fromEpochSeconds(1000)),
+            model = PageBookmark(id = "remote-1", page = 0, lastModified = Instant.fromEpochMilliseconds(1000)),
             remoteID = "remote-1",
             mutation = Mutation.DELETED
         )
         val remoteCreateMutation = RemoteModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "remote-2", page = 10, lastModified = Instant.fromEpochSeconds(1001)),
+            model = PageBookmark(id = "remote-2", page = 10, lastModified = Instant.fromEpochMilliseconds(1001)),
             remoteID = "remote-2",
             mutation = Mutation.CREATED
         )
         val localDeleteMutation = LocalModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "local-1", page = 10, lastModified = Instant.fromEpochSeconds(1002)),
+            model = PageBookmark(id = "local-1", page = 10, lastModified = Instant.fromEpochMilliseconds(1002)),
             remoteID = "remote-1",
             localID = "local-1",
             mutation = Mutation.DELETED
         )
         val localCreateMutation = LocalModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "local-2", page = 10, lastModified = Instant.fromEpochSeconds(1003)),
+            model = PageBookmark(id = "local-2", page = 10, lastModified = Instant.fromEpochMilliseconds(1003)),
             remoteID = null,
             localID = "local-2",
             mutation = Mutation.CREATED
@@ -201,12 +201,12 @@ class ConflictResolverTest {
     fun `resolve with multiple conflict groups should handle each group independently`() {
         // Given - First conflict group: CREATE vs CREATE on page 10
         val remoteCreate1 = RemoteModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "remote-1", page = 10, lastModified = Instant.fromEpochSeconds(1000)),
+            model = PageBookmark(id = "remote-1", page = 10, lastModified = Instant.fromEpochMilliseconds(1000)),
             remoteID = "remote-1",
             mutation = Mutation.CREATED
         )
         val localCreate1 = LocalModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "local-1", page = 10, lastModified = Instant.fromEpochSeconds(1001)),
+            model = PageBookmark(id = "local-1", page = 10, lastModified = Instant.fromEpochMilliseconds(1001)),
             remoteID = null,
             localID = "local-1",
             mutation = Mutation.CREATED
@@ -218,12 +218,12 @@ class ConflictResolverTest {
         
         // Given - Second conflict group: DELETE vs DELETE on page 20
         val remoteDelete2 = RemoteModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "remote-2", page = 0, lastModified = Instant.fromEpochSeconds(1002)),
+            model = PageBookmark(id = "remote-2", page = 0, lastModified = Instant.fromEpochMilliseconds(1002)),
             remoteID = "remote-2",
             mutation = Mutation.DELETED
         )
         val localDelete2 = LocalModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "local-2", page = 20, lastModified = Instant.fromEpochSeconds(1003)),
+            model = PageBookmark(id = "local-2", page = 20, lastModified = Instant.fromEpochMilliseconds(1003)),
             remoteID = "remote-2",
             localID = "local-2",
             mutation = Mutation.DELETED
@@ -235,17 +235,17 @@ class ConflictResolverTest {
         
         // Given - Third conflict group: Remote delete+create vs local delete on page 30
         val remoteDelete3 = RemoteModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "remote-3", page = 0, lastModified = Instant.fromEpochSeconds(1004)),
+            model = PageBookmark(id = "remote-3", page = 0, lastModified = Instant.fromEpochMilliseconds(1004)),
             remoteID = "remote-3",
             mutation = Mutation.DELETED
         )
         val remoteCreate3 = RemoteModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "remote-4", page = 30, lastModified = Instant.fromEpochSeconds(1005)),
+            model = PageBookmark(id = "remote-4", page = 30, lastModified = Instant.fromEpochMilliseconds(1005)),
             remoteID = "remote-4",
             mutation = Mutation.CREATED
         )
         val localDelete3 = LocalModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "local-3", page = 30, lastModified = Instant.fromEpochSeconds(1006)),
+            model = PageBookmark(id = "local-3", page = 30, lastModified = Instant.fromEpochMilliseconds(1006)),
             remoteID = "remote-3",
             localID = "local-3",
             mutation = Mutation.DELETED
@@ -273,12 +273,12 @@ class ConflictResolverTest {
     fun `resolve with local creation vs remote deletion should throw error`() {
         // Given
         val remoteDeleteMutation = RemoteModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "remote-1", page = 0, lastModified = Instant.fromEpochSeconds(1000)),
+            model = PageBookmark(id = "remote-1", page = 0, lastModified = Instant.fromEpochMilliseconds(1000)),
             remoteID = "remote-1",
             mutation = Mutation.DELETED
         )
         val localCreateMutation = LocalModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "local-1", page = 10, lastModified = Instant.fromEpochSeconds(1001)),
+            model = PageBookmark(id = "local-1", page = 10, lastModified = Instant.fromEpochMilliseconds(1001)),
             remoteID = null,
             localID = "local-1",
             mutation = Mutation.CREATED
@@ -312,12 +312,12 @@ class ConflictResolverTest {
     fun `resolve with local deletion vs remote creation should throw error`() {
         // Given
         val remoteCreateMutation = RemoteModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "remote-1", page = 10, lastModified = Instant.fromEpochSeconds(1000)),
+            model = PageBookmark(id = "remote-1", page = 10, lastModified = Instant.fromEpochMilliseconds(1000)),
             remoteID = "remote-1",
             mutation = Mutation.CREATED
         )
         val localDeleteMutation = LocalModelMutation<SyncBookmark>(
-            model = PageBookmark(id = "local-1", page = 0, lastModified = Instant.fromEpochSeconds(1001)),
+            model = PageBookmark(id = "local-1", page = 0, lastModified = Instant.fromEpochMilliseconds(1001)),
             remoteID = "remote-1",
             localID = "local-1",
             mutation = Mutation.DELETED

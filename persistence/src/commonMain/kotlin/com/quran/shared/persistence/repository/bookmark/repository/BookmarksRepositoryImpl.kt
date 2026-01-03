@@ -33,8 +33,8 @@ class BookmarksRepositoryImpl(
             // TODO - sort options - ex sort by location, by date added (default)
             (pageBookmarks + ayahBookmarks).sortedByDescending { bookmark ->
                 when (bookmark) {
-                    is Bookmark.AyahBookmark -> bookmark.lastUpdated.fromPlatform().epochSeconds
-                    is Bookmark.PageBookmark -> bookmark.lastUpdated.fromPlatform().epochSeconds
+                    is Bookmark.AyahBookmark -> bookmark.lastUpdated.fromPlatform().toEpochMilliseconds()
+                    is Bookmark.PageBookmark -> bookmark.lastUpdated.fromPlatform().toEpochMilliseconds()
                 }
             }
         }
@@ -154,7 +154,7 @@ class BookmarksRepositoryImpl(
         when (val model = remote.model) {
             is Bookmark.AyahBookmark -> {
                 val ayahId = getAyahId(model.sura, model.ayah)
-                val updatedAt = model.lastUpdated.fromPlatform().epochSeconds
+                val updatedAt = model.lastUpdated.fromPlatform().toEpochMilliseconds()
                 ayahBookmarkQueries.value.persistRemoteBookmark(
                     remote_id = remote.remoteID,
                     ayah_id = ayahId.toLong(),
@@ -168,7 +168,7 @@ class BookmarksRepositoryImpl(
                 pageBookmarkQueries.value.persistRemoteBookmark(
                     remote_id = remote.remoteID,
                     page = model.page.toLong(),
-                    created_at = model.lastUpdated.fromPlatform().epochSeconds
+                    created_at = model.lastUpdated.fromPlatform().toEpochMilliseconds()
                 )
         }
     }
