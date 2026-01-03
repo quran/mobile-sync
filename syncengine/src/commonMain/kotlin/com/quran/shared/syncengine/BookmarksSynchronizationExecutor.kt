@@ -115,8 +115,6 @@ class BookmarksSynchronizationExecutor {
         return preprocessor.preprocess(remoteMutations)
     }
     
-
-
     private fun detectConflicts(
         remoteMutations: List<RemoteModelMutation<SyncBookmark>>,
         localMutations: List<LocalModelMutation<SyncBookmark>>
