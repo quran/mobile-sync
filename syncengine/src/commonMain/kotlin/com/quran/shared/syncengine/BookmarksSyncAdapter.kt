@@ -143,6 +143,45 @@ internal class BookmarksSyncAdapter(
         return resolver.resolve()
     }
 
+    private fun mapPushedMutations(
+        localMutations: List<LocalModelMutation<SyncBookmark>>,
+        pushedMutations: List<SyncMutation>
+    ): List<RemoteModelMutation<SyncBookmark>> {
+        if (localMutations.size != pushedMutations.size) {
+            val message = "Mismatched pushed mutation counts for $resourceName: " +
+                "local=${localMutations.size}, remote=${pushedMutations.size}"
+            logger.e { message }
+            throw IllegalStateException(message)
+        }
+
+        return localMutations.mapIndexed { index, localMutation ->
+            val pushedMutation = pushedMutations[index]
+            if (!pushedMutation.resource.equals(resourceName, ignoreCase = true)) {
+                val message = "Unexpected pushed mutation resource=${pushedMutation.resource} for $resourceName"
+                logger.e { message }
+                throw IllegalStateException(message)
+            }
+            val remoteId = pushedMutation.resourceId
+            if (remoteId == null) {
+                val message = "Missing resourceId for pushed mutation at index=$index for $resourceName"
+                logger.e { message }
+                throw IllegalStateException(message)
+            }
+            if (pushedMutation.mutation != localMutation.mutation) {
+                logger.w {
+                    "Mutation type mismatch at index=$index for $resourceName: " +
+                        "local=${localMutation.mutation}, remote=${pushedMutation.mutation}"
+                }
+            }
+
+            RemoteModelMutation(
+                model = localMutation.model,
+                remoteID = remoteId,
+                mutation = pushedMutation.mutation
+            )
+        }
+    }
+
     private inner class BookmarksResourceSyncPlan(
         private val localMutationsToClear: List<LocalModelMutation<SyncBookmark>>,
         private val remoteMutationsToPersist: List<RemoteModelMutation<SyncBookmark>>,
@@ -155,8 +194,8 @@ internal class BookmarksSyncAdapter(
         }
 
         override suspend fun complete(newToken: Long, pushedMutations: List<SyncMutation>) {
-            val parsedPushed = parseRemoteMutations(pushedMutations)
-            val preprocessedPushed = preprocessRemoteMutations(parsedPushed)
+            val mappedPushed = mapPushedMutations(localMutationsToPush, pushedMutations)
+            val preprocessedPushed = preprocessRemoteMutations(mappedPushed)
             val finalRemoteMutations = remoteMutationsToPersist + preprocessedPushed
             configurations.resultNotifier.didSucceed(
                 newToken,
