@@ -2,8 +2,7 @@
 package com.quran.shared.syncengine.network
 
 import co.touchlab.kermit.Logger
-import com.quran.shared.mutations.RemoteModelMutation
-import com.quran.shared.syncengine.model.SyncBookmark
+import com.quran.shared.syncengine.SyncMutation
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
@@ -13,7 +12,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.serialization.Serializable
-import kotlin.time.Instant
+import kotlinx.serialization.json.JsonObject
 
 class GetMutationsRequest(
     private val httpClient: HttpClient,
@@ -39,16 +38,8 @@ class GetMutationsRequest(
         val resource: String,
         val resourceId: String,
         val type: String,
-        val data: ApiMutationData,
+        val data: JsonObject? = null,
         val timestamp: Long
-    )
-
-    @Serializable
-    private data class ApiMutationData(
-        val bookmarkType: String? = null,
-        val bookmarkGroup: String? = null,
-        val key: Int? = null,
-        val verseNumber: Int? = null
     )
 
     @Serializable
@@ -61,7 +52,8 @@ class GetMutationsRequest(
     
     suspend fun getMutations(
         lastModificationDate: Long,
-        authHeaders: Map<String, String>
+        authHeaders: Map<String, String>,
+        resources: List<String> = emptyList()
     ): MutationsResponse {
         val httpResponse = httpClient.get("$url/auth/v1/sync") {
             headers {
@@ -71,6 +63,9 @@ class GetMutationsRequest(
                 contentType(ContentType.Application.Json)
             }
             parameter("mutationsSince", lastModificationDate)
+            if (resources.isNotEmpty()) {
+                parameter("resources", resources.joinToString(","))
+            }
         }
         
         logger.d { "HTTP response status: ${httpResponse.status}" }
@@ -94,13 +89,14 @@ class GetMutationsRequest(
     }
     
     private fun ApiResponseData.toMutationsResponse(): MutationsResponse {
-        val mutations = mutations.mapNotNull { apiMutation ->
-            val bookmark = apiMutation.toSyncBookmark(logger) ?: return@mapNotNull null
+        val mutations = mutations.map { apiMutation ->
             val mutation = apiMutation.type.asMutation(logger)
-            RemoteModelMutation(
-                model = bookmark,
-                remoteID = apiMutation.resourceId,
-                mutation = mutation
+            SyncMutation(
+                resource = apiMutation.resource,
+                resourceId = apiMutation.resourceId,
+                mutation = mutation,
+                data = apiMutation.data,
+                timestamp = apiMutation.timestamp
             )
         }
 
@@ -110,43 +106,5 @@ class GetMutationsRequest(
         )
         
         return result
-    }
-
-    private fun ApiMutation.toSyncBookmark(logger: Logger): SyncBookmark? {
-        val normalizedType = data.bookmarkType?.lowercase()
-        val lastModified = Instant.fromEpochSeconds(timestamp)
-        return when (normalizedType) {
-            "page" -> {
-                val page = data.key
-                if (page == null) {
-                    logger.w { "Skipping bookmark mutation without page key: resourceId=$resourceId" }
-                    null
-                } else {
-                    SyncBookmark.PageBookmark(
-                        id = resourceId,
-                        page = page,
-                        lastModified = lastModified
-                    )
-                }
-            }
-            "ayah" -> {
-                val sura = data.key
-                val ayah = data.verseNumber
-                if (sura != null && ayah != null) {
-                    SyncBookmark.AyahBookmark(
-                        id = resourceId,
-                        sura = sura,
-                        ayah = ayah,
-                        lastModified = lastModified
-                    )
-                } else {
-                    null
-                }
-            }
-            else -> {
-                logger.w { "Skipping bookmark mutation with unsupported type=$normalizedType: resourceId=$resourceId" }
-                null
-            }
-        }
     }
 }
