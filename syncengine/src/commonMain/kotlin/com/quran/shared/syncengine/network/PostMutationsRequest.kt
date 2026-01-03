@@ -2,10 +2,8 @@
 package com.quran.shared.syncengine.network
 
 import co.touchlab.kermit.Logger
-import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
-import com.quran.shared.mutations.RemoteModelMutation
-import com.quran.shared.syncengine.model.SyncBookmark
+import com.quran.shared.syncengine.SyncMutation
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.headers
@@ -16,7 +14,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.serialization.Serializable
-import kotlin.time.Instant
+import kotlinx.serialization.json.JsonObject
 
 class PostMutationsRequest(
     private val httpClient: HttpClient,
@@ -35,15 +33,7 @@ class PostMutationsRequest(
         val type: String,
         val resource: String,
         val resourceId: String?,
-        val data: MutatedResourceData?
-    )
-
-    @Serializable
-    private data class MutatedResourceData(
-        val key: Int,
-        val mushaf: Int,
-        val verseNumber: Int? = null,
-        val type: String
+        val data: JsonObject?
     )
 
     @Serializable
@@ -62,7 +52,7 @@ class PostMutationsRequest(
     private data class PostMutationResponse(
         val type: String,
         val resource: String,
-        val data: MutatedResourceData?,
+        val data: JsonObject?,
         val resourceId: String,
         val timestamp: Long? = null
     )
@@ -76,7 +66,7 @@ class PostMutationsRequest(
     // endregion
 
     suspend fun postMutations(
-        mutations: List<LocalModelMutation<SyncBookmark>>,
+        mutations: List<SyncMutation>,
         lastModificationDate: Long,
         authHeaders: Map<String, String>
     ): MutationsResponse {
@@ -84,22 +74,11 @@ class PostMutationsRequest(
 
         val requestBody = PostMutationsRequestData(
             mutations = mutations.map { localMutation ->
-                val mutationType = when (localMutation.mutation) {
-                    Mutation.CREATED -> "CREATE"
-                    Mutation.DELETED -> "DELETE"
-                    Mutation.MODIFIED -> "UPDATE"
-                }
-
                 PostMutationRequestData(
-                    type = mutationType,
-                    resource = "BOOKMARK",
-                    resourceId = localMutation.remoteID,
-
-                    data = if (localMutation.mutation == Mutation.DELETED) {
-                        null
-                    } else {
-                        localMutation.model.toResourceData()
-                    }
+                    type = localMutation.mutation.toRequestType(),
+                    resource = localMutation.resource,
+                    resourceId = localMutation.resourceId,
+                    data = if (localMutation.mutation == Mutation.DELETED) null else localMutation.data
                 )
             }
         )
@@ -136,18 +115,15 @@ class PostMutationsRequest(
     private fun PostMutationsResponseData.toMutationsResponse(): MutationsResponse {
         val logger = Logger.withTag("PostMutationsResponseConverter")
 
-        val mutations = mutations.mapNotNull { postMutation ->
+        val mutations = mutations.map { postMutation ->
             val mutation = postMutation.type.asMutation(logger)
-            val syncBookmark = postMutation.toSyncBookmark(logger)
-            if (syncBookmark != null) {
-                RemoteModelMutation(
-                    model = syncBookmark,
-                    remoteID = postMutation.resourceId,
-                    mutation = mutation
-                )
-            } else {
-                null
-            }
+            SyncMutation(
+                resource = postMutation.resource,
+                resourceId = postMutation.resourceId,
+                mutation = mutation,
+                data = postMutation.data,
+                timestamp = postMutation.timestamp
+            )
         }
 
         val result = MutationsResponse(
@@ -157,62 +133,12 @@ class PostMutationsRequest(
 
         return result
     }
+}
 
-    private fun SyncBookmark.toResourceData(): MutatedResourceData {
-        return when (this) {
-            is SyncBookmark.PageBookmark ->
-                MutatedResourceData(
-                    type = "page",
-                    key = page,
-                    // TODO: Hardcoded to 1 for now.
-                    mushaf = 1
-                )
-            is SyncBookmark.AyahBookmark ->
-                MutatedResourceData(
-                    type = "ayah",
-                    key = sura,
-                    verseNumber = ayah,
-                    // TODO: Hardcoded to 1 for now.
-                    mushaf = 1
-                )
-        }
-    }
-
-    private fun PostMutationResponse.toSyncBookmark(logger: Logger): SyncBookmark? {
-        val lastModified = timestamp?.let { Instant.fromEpochSeconds(it) } ?:
-           Instant.fromEpochSeconds(0)
-        return when (resource.lowercase()) {
-            "bookmark" ->
-                when (val normalizedType = data?.type?.lowercase()) {
-                    "page" -> {
-                        SyncBookmark.PageBookmark(
-                            id = resourceId,
-                            page = data.key,
-                            lastModified = lastModified
-                        )
-                    }
-
-                    "ayah" -> {
-                        val sura = data.key
-                        val ayah = data.verseNumber
-                        if (ayah != null) {
-                            SyncBookmark.AyahBookmark(
-                                id = resourceId,
-                                sura = sura,
-                                ayah = ayah,
-                                lastModified = lastModified
-                            )
-                        } else {
-                            null
-                        }
-                    }
-
-                    else -> {
-                        logger.w { "Unknown bookmark type=$normalizedType in mutation response: resourceId=$resourceId" }
-                        null
-                    }
-                }
-            else -> null
-        }
+private fun Mutation.toRequestType(): String {
+    return when (this) {
+        Mutation.CREATED -> "CREATE"
+        Mutation.DELETED -> "DELETE"
+        Mutation.MODIFIED -> "UPDATE"
     }
 }

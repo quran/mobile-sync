@@ -62,10 +62,11 @@ object SynchronizationClientBuilder {
         bookmarksConfigurations: BookmarksSynchronizationConfigurations,
         httpClient: HttpClient? = null
     ): SynchronizationClient {
+        val adapters = listOf(BookmarksSyncAdapter(bookmarksConfigurations))
         return SynchronizationClientImpl(
             environment,
             httpClient ?: HttpClientFactory.createHttpClient(),
-            bookmarksConfigurations,
+            adapters,
             authFetcher
         )
     }
