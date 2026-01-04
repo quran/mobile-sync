@@ -5,6 +5,7 @@ import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
+import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.repository.collection.extension.toCollection
 import com.quran.shared.persistence.repository.collection.extension.toCollectionMutation
@@ -67,7 +68,7 @@ class CollectionsRepositoryImpl(
     }
 
     override suspend fun applyRemoteChanges(
-        updatesToPersist: List<RemoteModelMutation<Collection>>,
+        updatesToPersist: List<RemoteModelMutation<RemoteCollection>>,
         localMutationsToClear: List<LocalModelMutation<Collection>>
     ) {
         logger.i {
@@ -90,7 +91,7 @@ class CollectionsRepositoryImpl(
         }
     }
 
-    private fun applyRemoteCollectionUpsert(remote: RemoteModelMutation<Collection>) {
+    private fun applyRemoteCollectionUpsert(remote: RemoteModelMutation<RemoteCollection>) {
         val name = remote.model.name
         if (name.isNullOrEmpty()) {
             logger.w { "Skipping remote collection mutation without name: remoteId=${remote.remoteID}" }
@@ -129,7 +130,7 @@ class CollectionsRepositoryImpl(
         }
     }
 
-    private fun applyRemoteCollectionDeletion(remote: RemoteModelMutation<Collection>) {
+    private fun applyRemoteCollectionDeletion(remote: RemoteModelMutation<RemoteCollection>) {
         collectionQueries.value.deleteRemoteCollection(remote_id = remote.remoteID)
     }
 

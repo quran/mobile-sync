@@ -1,6 +1,7 @@
 package com.quran.shared.persistence.repository.bookmark.repository
 
 import com.quran.shared.persistence.model.Bookmark
+import com.quran.shared.persistence.input.BookmarkMigration
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
 import kotlinx.coroutines.flow.Flow
 
@@ -50,9 +51,9 @@ interface BookmarksRepository {
      * This method should only be called once during app initialization, after
      * bookmarks are added and before any changes by the user are handled.
      *
-     * @param bookmarks List of page bookmarks to migrate
+     * @param bookmarks List of bookmarks to migrate
      * @throws IllegalStateException if either bookmarks or mutations tables are not empty
      */
     @NativeCoroutines
-    suspend fun migrateBookmarks(bookmarks: List<Bookmark>)
+    suspend fun migrateBookmarks(bookmarks: List<BookmarkMigration>)
 }
