@@ -78,7 +78,7 @@ class PostMutationsRequest(
                     type = localMutation.mutation.toRequestType(),
                     resource = localMutation.resource,
                     resourceId = localMutation.resourceId,
-                    data = if (localMutation.mutation == Mutation.DELETED) null else localMutation.data
+                    data = localMutation.data
                 )
             }
         )
