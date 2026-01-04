@@ -7,13 +7,13 @@ sealed class Bookmark {
     data class PageBookmark(
         val page: Int,
         val lastUpdated: PlatformDateTime,
-        val localId: String?
+        val localId: String
     ) : Bookmark()
 
     data class AyahBookmark(
         val sura: Int,
         val ayah: Int,
         val lastUpdated: PlatformDateTime,
-        val localId: String?
+        val localId: String
     ) : Bookmark()
 }
