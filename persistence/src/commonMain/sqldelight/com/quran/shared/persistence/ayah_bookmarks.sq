@@ -18,6 +18,9 @@ getBookmarks:
 getBookmarkForAyah:
   SELECT * FROM ayah_bookmark WHERE sura = ? AND ayah = ? LIMIT 1;
 
+getBookmarkByLocalId:
+  SELECT * FROM ayah_bookmark WHERE local_id = ? LIMIT 1;
+
 addNewBookmark {
   INSERT OR IGNORE INTO ayah_bookmark (remote_id, ayah_id, sura, ayah, deleted)
   VALUES (NULL, :ayah_id, :sura, :ayah, 0);
@@ -30,9 +33,17 @@ addNewBookmark {
 getUnsyncedBookmarks:
   SELECT * FROM ayah_bookmark WHERE remote_id IS NULL OR deleted = 1 ORDER BY created_at DESC;
 
-persistRemoteBookmark:
-  INSERT OR REPLACE INTO ayah_bookmark (remote_id, ayah_id, sura, ayah, created_at, modified_at, deleted)
-  VALUES (?, ?, ?, ?, ?, ?, 0);
+persistRemoteBookmark {
+  INSERT OR IGNORE INTO ayah_bookmark (remote_id, ayah_id, sura, ayah, created_at, modified_at, deleted)
+  VALUES (:remote_id, :ayah_id, :sura, :ayah, :created_at, :modified_at, 0);
+  UPDATE ayah_bookmark
+  SET remote_id = :remote_id,
+    ayah_id = :ayah_id,
+    created_at = :created_at,
+    modified_at = :modified_at,
+    deleted = 0
+  WHERE sura = :sura AND ayah = :ayah;
+}
 
 hardDeleteBookmarkFor {
   DELETE FROM ayah_bookmark WHERE remote_id=:remoteID;
