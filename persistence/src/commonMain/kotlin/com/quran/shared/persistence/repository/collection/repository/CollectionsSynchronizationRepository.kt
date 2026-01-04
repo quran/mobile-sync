@@ -2,6 +2,7 @@ package com.quran.shared.persistence.repository.collection.repository
 
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
+import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.model.Collection
 
 interface CollectionsSynchronizationRepository {
@@ -15,15 +16,15 @@ interface CollectionsSynchronizationRepository {
      * Persists the remote state of collections after a successful synchronization operation.
      * This method should be called after the remote server has confirmed the changes.
      *
-     * @param updatesToPersist List of collections with their remote IDs and mutation states to be
-     * persisted. These must have a remoteID setup.
+     * @param updatesToPersist List of remote collection inputs with their remote IDs and mutation
+     * states to be persisted. These must have a remoteID setup.
      * @param localMutationsToClear List of local mutations to be cleared. An item of this list
      * denotes either a mutation that was committed remotely, or a mutation that overridden. If it
      * was committed, a counterpart is expected in `updatesToPersist` to persist it as a remote
      * collection. These must be input from the list returned by `fetchMutatedCollections`.
      */
     suspend fun applyRemoteChanges(
-        updatesToPersist: List<RemoteModelMutation<Collection>>,
+        updatesToPersist: List<RemoteModelMutation<RemoteCollection>>,
         localMutationsToClear: List<LocalModelMutation<Collection>>
     )
 

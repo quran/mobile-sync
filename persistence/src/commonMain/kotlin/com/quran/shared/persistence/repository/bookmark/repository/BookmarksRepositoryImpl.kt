@@ -5,6 +5,8 @@ import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
+import com.quran.shared.persistence.input.BookmarkMigration
+import com.quran.shared.persistence.input.RemoteBookmark
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.repository.bookmark.extension.toBookmark
 import com.quran.shared.persistence.repository.bookmark.extension.toBookmarkMutation
@@ -79,7 +81,7 @@ class BookmarksRepositoryImpl(
         return true
     }
 
-    override suspend fun migrateBookmarks(bookmarks: List<Bookmark>) {
+    override suspend fun migrateBookmarks(bookmarks: List<BookmarkMigration>) {
         withContext(Dispatchers.IO) {
             // Check if the bookmarks table is empty
             val existingBookmarks = pageBookmarkQueries.value.getBookmarks().executeAsList()
@@ -90,7 +92,7 @@ class BookmarksRepositoryImpl(
             database.transaction {
                 bookmarks.forEach { bookmark ->
                     when (bookmark) {
-                        is Bookmark.AyahBookmark -> {
+                        is BookmarkMigration.Ayah -> {
                             val ayahId = getAyahId(bookmark.sura, bookmark.ayah)
                             ayahBookmarkQueries.value.addNewBookmark(
                                 ayahId.toLong(),
@@ -98,7 +100,7 @@ class BookmarksRepositoryImpl(
                                 bookmark.ayah.toLong()
                             )
                         }
-                        is Bookmark.PageBookmark ->
+                        is BookmarkMigration.Page ->
                             pageBookmarkQueries.value.addNewBookmark(bookmark.page.toLong())
                     }
                 }
@@ -119,7 +121,7 @@ class BookmarksRepositoryImpl(
     }
 
     override suspend fun applyRemoteChanges(
-        updatesToPersist: List<RemoteModelMutation<Bookmark>>,
+        updatesToPersist: List<RemoteModelMutation<RemoteBookmark>>,
         localMutationsToClear: List<LocalModelMutation<Bookmark>>
     ) {
         logger.i { "Applying remote changes with ${updatesToPersist.size} updates to persist and ${localMutationsToClear.size} local mutations to clear" }
@@ -150,9 +152,9 @@ class BookmarksRepositoryImpl(
         }
     }
 
-    private fun applyRemoteBookmarkAddition(remote: RemoteModelMutation<Bookmark>) {
+    private fun applyRemoteBookmarkAddition(remote: RemoteModelMutation<RemoteBookmark>) {
         when (val model = remote.model) {
-            is Bookmark.AyahBookmark -> {
+            is RemoteBookmark.Ayah -> {
                 val ayahId = getAyahId(model.sura, model.ayah)
                 val updatedAt = model.lastUpdated.fromPlatform().toEpochMilliseconds()
                 ayahBookmarkQueries.value.persistRemoteBookmark(
@@ -164,7 +166,7 @@ class BookmarksRepositoryImpl(
                     modified_at = updatedAt
                 )
             }
-            is Bookmark.PageBookmark ->
+            is RemoteBookmark.Page ->
                 pageBookmarkQueries.value.persistRemoteBookmark(
                     remote_id = remote.remoteID,
                     page = model.page.toLong(),
@@ -173,11 +175,11 @@ class BookmarksRepositoryImpl(
         }
     }
 
-    private fun applyRemoteBookmarkDeletion(remote: RemoteModelMutation<Bookmark>) {
+    private fun applyRemoteBookmarkDeletion(remote: RemoteModelMutation<RemoteBookmark>) {
         when (remote.model) {
-            is Bookmark.AyahBookmark ->
+            is RemoteBookmark.Ayah ->
                 ayahBookmarkQueries.value.hardDeleteBookmarkFor(remoteID = remote.remoteID)
-            is Bookmark.PageBookmark ->
+            is RemoteBookmark.Page ->
                 pageBookmarkQueries.value.hardDeleteBookmarkFor(remoteID = remote.remoteID)
         }
     }
