@@ -4,8 +4,8 @@ CREATE TABLE IF NOT EXISTS note(
   note TEXT NOT NULL,
   start_ayah_id INTEGER NOT NULL,
   end_ayah_id INTEGER NOT NULL,
-  created_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
-  modified_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
+  created_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
+  modified_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
   deleted INTEGER NOT NULL DEFAULT 0,
   -- Ensure deleted is either 0 or 1
   CHECK (deleted IN (0, 1))
@@ -13,3 +13,66 @@ CREATE TABLE IF NOT EXISTS note(
 
 CREATE INDEX IF NOT EXISTS note_start_ayah_idx ON note(start_ayah_id);
 CREATE INDEX IF NOT EXISTS note_end_ayah_idx ON note(end_ayah_id);
+
+getNotes:
+  SELECT * FROM note WHERE deleted = 0 ORDER BY created_at DESC;
+
+getNoteByLocalId:
+  SELECT * FROM note WHERE local_id = ? LIMIT 1;
+
+getLastInsertedNote:
+  SELECT * FROM note WHERE local_id = last_insert_rowid() LIMIT 1;
+
+addNewNote:
+  INSERT INTO note (remote_id, note, start_ayah_id, end_ayah_id, deleted)
+  VALUES (NULL, :note, :start_ayah_id, :end_ayah_id, 0);
+
+updateNote:
+  UPDATE note
+  SET note = :note,
+    start_ayah_id = :start_ayah_id,
+    end_ayah_id = :end_ayah_id,
+    deleted = 0,
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  WHERE local_id = :id;
+
+deleteNote {
+  DELETE FROM note WHERE local_id = :id AND remote_id IS NULL;
+  UPDATE note
+  SET deleted = 1,
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  WHERE local_id = :id AND remote_id IS NOT NULL;
+}
+
+getUnsyncedNotes:
+  SELECT * FROM note
+  WHERE remote_id IS NULL
+    OR deleted = 1
+    OR modified_at > :last_modified
+  ORDER BY created_at DESC;
+
+persistRemoteNote {
+  INSERT OR IGNORE INTO note (remote_id, note, start_ayah_id, end_ayah_id, created_at, modified_at, deleted)
+  VALUES (:remote_id, :note, :start_ayah_id, :end_ayah_id, :created_at, :modified_at, 0);
+  UPDATE note
+  SET note = :note,
+    start_ayah_id = :start_ayah_id,
+    end_ayah_id = :end_ayah_id,
+    modified_at = :modified_at,
+    deleted = 0
+  WHERE remote_id = :remote_id;
+}
+
+deleteRemoteNote:
+  DELETE FROM note WHERE remote_id = :remote_id;
+
+clearLocalMutationFor {
+  DELETE FROM note WHERE remote_id IS NULL AND local_id = :id;
+  UPDATE note
+  SET deleted = 0,
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  WHERE local_id = :id AND deleted = 0;
+}
+
+checkRemoteIDsExistence:
+  SELECT remote_id FROM note WHERE remote_id IN :queried_ids;
