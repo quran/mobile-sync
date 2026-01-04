@@ -2,20 +2,25 @@ package com.quran.shared.pipeline
 
 import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.LocalModelMutation
+import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.model.Bookmark
+import com.quran.shared.persistence.model.Collection as PersistenceCollection
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksSynchronizationRepository
+import com.quran.shared.persistence.repository.collection.repository.CollectionsSynchronizationRepository
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toPlatform
 import com.quran.shared.syncengine.AuthenticationDataFetcher
 import com.quran.shared.syncengine.LocalDataFetcher
 import com.quran.shared.syncengine.LocalModificationDateFetcher
 import com.quran.shared.syncengine.BookmarksSynchronizationConfigurations
+import com.quran.shared.syncengine.CollectionsSynchronizationConfigurations
 import com.quran.shared.syncengine.ResultNotifier
 import com.quran.shared.syncengine.SynchronizationClient
 import com.quran.shared.syncengine.SynchronizationClientBuilder
 import com.quran.shared.syncengine.SynchronizationEnvironment
 import com.quran.shared.syncengine.model.SyncBookmark
+import com.quran.shared.syncengine.model.SyncCollection
 
 interface SyncEngineCallback {
     fun synchronizationDone(newLastModificationDate: Long)
@@ -23,7 +28,8 @@ interface SyncEngineCallback {
 }
 
 public class SyncEnginePipeline(
-    val bookmarksRepository: BookmarksSynchronizationRepository
+    val bookmarksRepository: BookmarksSynchronizationRepository,
+    val collectionsRepository: CollectionsSynchronizationRepository
 ) {
     private lateinit var syncClient: SynchronizationClient
 
@@ -39,10 +45,16 @@ public class SyncEnginePipeline(
             resultNotifier = ResultReceiver(bookmarksRepository, callback),
             localDataFetcher = RepositoryDataFetcher(bookmarksRepository)
         )
+        val collectionsConf = CollectionsSynchronizationConfigurations(
+            localModificationDateFetcher = localModificationDateFetcher,
+            resultNotifier = CollectionsResultReceiver(collectionsRepository, callback),
+            localDataFetcher = CollectionsRepositoryDataFetcher(collectionsRepository)
+        )
         val syncClient = SynchronizationClientBuilder.build(
             environment = environment,
             authFetcher = authenticationDataFetcher,
-            bookmarksConfigurations = bookmarksConf
+            bookmarksConfigurations = bookmarksConf,
+            collectionsConfigurations = collectionsConf
         )
 
         this.syncClient = syncClient
@@ -70,6 +82,26 @@ private class RepositoryDataFetcher(val bookmarksRepository: BookmarksSynchroniz
 
     override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> {
         return bookmarksRepository.remoteResourcesExist(remoteIDs)
+    }
+}
+
+private class CollectionsRepositoryDataFetcher(
+    val collectionsRepository: CollectionsSynchronizationRepository
+) : LocalDataFetcher<SyncCollection> {
+
+    override suspend fun fetchLocalMutations(lastModified: Long): List<LocalModelMutation<SyncCollection>> {
+        return collectionsRepository.fetchMutatedCollections().map { repoMutation ->
+            LocalModelMutation(
+                model = repoMutation.model.toSyncEngine(repoMutation.mutation),
+                remoteID = repoMutation.remoteID,
+                localID = repoMutation.localID,
+                mutation = repoMutation.mutation
+            )
+        }
+    }
+
+    override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> {
+        return collectionsRepository.remoteResourcesExist(remoteIDs)
     }
 }
 
@@ -104,6 +136,46 @@ private class ResultReceiver(
 
         Logger.i { "Persisting ${mappedRemotes.count()} remote updates, and clearing ${mappedLocals.count()} local updates." }
         
+        repository.applyRemoteChanges(mappedRemotes, mappedLocals)
+        callback.synchronizationDone(newToken)
+    }
+}
+
+private class CollectionsResultReceiver(
+    val repository: CollectionsSynchronizationRepository,
+    val callback: SyncEngineCallback
+) : ResultNotifier<SyncCollection> {
+
+    override suspend fun didFail(message: String) {
+        callback.encounteredError(message)
+    }
+
+    override suspend fun didSucceed(
+        newToken: Long,
+        newRemoteMutations: List<RemoteModelMutation<SyncCollection>>,
+        processedLocalMutations: List<LocalModelMutation<SyncCollection>>
+    ) {
+        val mappedRemotes = newRemoteMutations.map { remoteMutation ->
+            RemoteModelMutation(
+                model = remoteMutation.model.toPersistence(),
+                remoteID = remoteMutation.remoteID,
+                mutation = remoteMutation.mutation
+            )
+        }
+        val mappedLocals = processedLocalMutations.map { localMutation ->
+            LocalModelMutation(
+                model = localMutation.model.toPersistence(),
+                localID = localMutation.localID,
+                remoteID = localMutation.remoteID,
+                mutation = localMutation.mutation
+            )
+        }
+
+        Logger.i {
+            "Persisting ${mappedRemotes.count()} collection remote updates, " +
+                "and clearing ${mappedLocals.count()} local updates."
+        }
+
         repository.applyRemoteChanges(mappedRemotes, mappedLocals)
         callback.synchronizationDone(newToken)
     }
@@ -149,4 +221,27 @@ private fun SyncBookmark.toPersistence(): Bookmark {
                 localId = this.id
             )
     }
+}
+
+private fun PersistenceCollection.toSyncEngine(mutation: Mutation): SyncCollection {
+    val localId = this.localId
+        ?: throw RuntimeException("Transforming a persistence collection without a local ID.")
+    val name = if (mutation == Mutation.DELETED) {
+        null
+    } else {
+        requireNotNull(this.name) { "Transforming a collection mutation without a name." }
+    }
+    return SyncCollection(
+        id = localId,
+        name = name,
+        lastModified = this.lastUpdated.fromPlatform()
+    )
+}
+
+private fun SyncCollection.toPersistence(): PersistenceCollection {
+    return PersistenceCollection(
+        name = this.name,
+        lastUpdated = this.lastModified.toPlatform(),
+        localId = this.id
+    )
 }
