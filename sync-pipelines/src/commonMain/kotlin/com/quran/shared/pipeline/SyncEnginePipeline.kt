@@ -2,8 +2,9 @@ package com.quran.shared.pipeline
 
 import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.LocalModelMutation
-import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
+import com.quran.shared.persistence.input.RemoteBookmark
+import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.Collection as PersistenceCollection
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksSynchronizationRepository
@@ -92,7 +93,7 @@ private class CollectionsRepositoryDataFetcher(
     override suspend fun fetchLocalMutations(lastModified: Long): List<LocalModelMutation<SyncCollection>> {
         return collectionsRepository.fetchMutatedCollections().map { repoMutation ->
             LocalModelMutation(
-                model = repoMutation.model.toSyncEngine(repoMutation.mutation),
+                model = repoMutation.model.toSyncEngine(),
                 remoteID = repoMutation.remoteID,
                 localID = repoMutation.localID,
                 mutation = repoMutation.mutation
@@ -120,7 +121,7 @@ private class ResultReceiver(
     ) {
         val mappedRemotes = newRemoteMutations.map { remoteMutation ->
             RemoteModelMutation(
-                model = remoteMutation.model.toPersistence(),
+                model = remoteMutation.model.toRemoteInput(),
                 remoteID = remoteMutation.remoteID,
                 mutation = remoteMutation.mutation
             )
@@ -157,7 +158,7 @@ private class CollectionsResultReceiver(
     ) {
         val mappedRemotes = newRemoteMutations.map { remoteMutation ->
             RemoteModelMutation(
-                model = remoteMutation.model.toPersistence(),
+                model = remoteMutation.model.toRemoteInput(),
                 remoteID = remoteMutation.remoteID,
                 mutation = remoteMutation.mutation
             )
@@ -184,19 +185,15 @@ private class CollectionsResultReceiver(
 private fun Bookmark.toSyncEngine(): SyncBookmark {
     return when (this) {
         is Bookmark.PageBookmark -> {
-            val localId = this.localId
-                ?: throw RuntimeException("Transforming a persistence PageBookmark without a local ID.")
             SyncBookmark.PageBookmark(
                 page = this.page,
-                id = localId,
+                id = this.localId,
                 lastModified = this.lastUpdated.fromPlatform()
             )
         }
         is Bookmark.AyahBookmark -> {
-            val localId = this.localId
-                ?: throw RuntimeException("Transforming a persistence AyahBookmark without a local ID.")
             SyncBookmark.AyahBookmark(
-                id = localId,
+                id = this.localId,
                 sura = this.sura,
                 ayah = this.ayah,
                 lastModified = this.lastUpdated.fromPlatform()
@@ -223,25 +220,41 @@ private fun SyncBookmark.toPersistence(): Bookmark {
     }
 }
 
-private fun PersistenceCollection.toSyncEngine(mutation: Mutation): SyncCollection {
-    val localId = this.localId
-        ?: throw RuntimeException("Transforming a persistence collection without a local ID.")
-    val name = if (mutation == Mutation.DELETED) {
-        null
-    } else {
-        requireNotNull(this.name) { "Transforming a collection mutation without a name." }
-    }
+private fun PersistenceCollection.toSyncEngine(): SyncCollection {
     return SyncCollection(
-        id = localId,
-        name = name,
+        id = this.localId,
+        name = this.name,
         lastModified = this.lastUpdated.fromPlatform()
     )
 }
 
 private fun SyncCollection.toPersistence(): PersistenceCollection {
     return PersistenceCollection(
-        name = this.name,
+        name = requireNotNull(this.name) { "Transforming a collection without a name." },
         lastUpdated = this.lastModified.toPlatform(),
         localId = this.id
+    )
+}
+
+private fun SyncBookmark.toRemoteInput(): RemoteBookmark {
+    return when (this) {
+        is SyncBookmark.PageBookmark ->
+            RemoteBookmark.Page(
+                page = this.page,
+                lastUpdated = this.lastModified.toPlatform()
+            )
+        is SyncBookmark.AyahBookmark ->
+            RemoteBookmark.Ayah(
+                sura = this.sura,
+                ayah = this.ayah,
+                lastUpdated = this.lastModified.toPlatform()
+            )
+    }
+}
+
+private fun SyncCollection.toRemoteInput(): RemoteCollection {
+    return RemoteCollection(
+        name = this.name,
+        lastUpdated = this.lastModified.toPlatform()
     )
 }
