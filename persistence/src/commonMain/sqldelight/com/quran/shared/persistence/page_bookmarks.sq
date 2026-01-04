@@ -15,13 +15,23 @@ getBookmarks:
 getBookmarkForPage:
   SELECT * FROM page_bookmark WHERE page = ? LIMIT 1;
 
+getBookmarkByLocalId:
+  SELECT * FROM page_bookmark WHERE local_id = ? LIMIT 1;
+
 createRemoteBookmark:
   INSERT INTO page_bookmark (remote_id, page, deleted)
   VALUES (?, ?, 0);
 
-persistRemoteBookmark:
-  INSERT OR REPLACE INTO page_bookmark (remote_id, page, created_at, deleted)
-  VALUES (?, ?, ?, 0);
+persistRemoteBookmark {
+  INSERT OR IGNORE INTO page_bookmark (remote_id, page, created_at, deleted)
+  VALUES (:remote_id, :page, :created_at, 0);
+  UPDATE page_bookmark
+  SET remote_id = :remote_id,
+    created_at = :created_at,
+    modified_at = :modified_at,
+    deleted = 0
+  WHERE page = :page;
+}
 
 addNewBookmark {
   INSERT OR IGNORE INTO page_bookmark (remote_id, page, deleted)

@@ -127,14 +127,22 @@ class BookmarksRepositoryImpl(
         logger.i { "Applying remote changes with ${updatesToPersist.size} updates to persist and ${localMutationsToClear.size} local mutations to clear" }
         return withContext(Dispatchers.IO) {
             database.transaction {
+                val committedCreationKeys = updatesToPersist
+                    .filter { it.mutation == Mutation.CREATED }
+                    .map { it.model.key() }
+                    .toSet()
+
                 // Clear local mutations
                 // TODO: Should check that passed local IDs are valid
                 localMutationsToClear.forEach { local ->
-                    when (local.model) {
-                        is Bookmark.AyahBookmark ->
-                            ayahBookmarkQueries.value.clearLocalMutationFor(id = local.localID.toLong())
-                        is Bookmark.PageBookmark ->
-                            pageBookmarkQueries.value.clearLocalMutationFor(id = local.localID.toLong())
+                    when (local.mutation) {
+                        Mutation.DELETED -> clearLocalMutation(local)
+                        Mutation.CREATED, Mutation.MODIFIED -> {
+                            val localKey = local.model.key()
+                            if (!committedCreationKeys.contains(localKey)) {
+                                clearLocalMutation(local)
+                            }
+                        }
                     }
                 }
 
@@ -170,8 +178,18 @@ class BookmarksRepositoryImpl(
                 pageBookmarkQueries.value.persistRemoteBookmark(
                     remote_id = remote.remoteID,
                     page = model.page.toLong(),
-                    created_at = model.lastUpdated.fromPlatform().toEpochMilliseconds()
+                    created_at = model.lastUpdated.fromPlatform().toEpochMilliseconds(),
+                    modified_at = model.lastUpdated.fromPlatform().toEpochMilliseconds()
                 )
+        }
+    }
+
+    private fun clearLocalMutation(local: LocalModelMutation<Bookmark>) {
+        when (local.model) {
+            is Bookmark.AyahBookmark ->
+                ayahBookmarkQueries.value.clearLocalMutationFor(id = local.localID.toLong())
+            is Bookmark.PageBookmark ->
+                pageBookmarkQueries.value.clearLocalMutationFor(id = local.localID.toLong())
         }
     }
 
@@ -207,5 +225,21 @@ class BookmarksRepositoryImpl(
                 .associateBy { it.first }
                 .mapValues { it.value.second }
         }
+    }
+}
+
+private data class BookmarkKey(val type: String, val first: Int, val second: Int?)
+
+private fun Bookmark.key(): BookmarkKey {
+    return when (this) {
+        is Bookmark.PageBookmark -> BookmarkKey("PAGE", page, null)
+        is Bookmark.AyahBookmark -> BookmarkKey("AYAH", sura, ayah)
+    }
+}
+
+private fun RemoteBookmark.key(): BookmarkKey {
+    return when (this) {
+        is RemoteBookmark.Page -> BookmarkKey("PAGE", page, null)
+        is RemoteBookmark.Ayah -> BookmarkKey("AYAH", sura, ayah)
     }
 }

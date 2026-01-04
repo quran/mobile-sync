@@ -5,6 +5,7 @@ package com.quran.shared.syncengine
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.syncengine.model.SyncBookmark
+import com.quran.shared.syncengine.model.SyncCollectionBookmark
 import com.quran.shared.syncengine.model.SyncCollection
 import com.quran.shared.syncengine.network.HttpClientFactory
 import io.ktor.client.HttpClient
@@ -54,6 +55,12 @@ class CollectionsSynchronizationConfigurations(
     val localModificationDateFetcher: LocalModificationDateFetcher
 )
 
+class CollectionBookmarksSynchronizationConfigurations(
+    val localDataFetcher: LocalDataFetcher<SyncCollectionBookmark>,
+    val resultNotifier: ResultNotifier<SyncCollectionBookmark>,
+    val localModificationDateFetcher: LocalModificationDateFetcher
+)
+
 interface AuthenticationDataFetcher {
     suspend fun fetchAuthenticationHeaders(): Map<String, String>
 }
@@ -71,11 +78,13 @@ object SynchronizationClientBuilder {
         authFetcher: AuthenticationDataFetcher,
         bookmarksConfigurations: BookmarksSynchronizationConfigurations,
         collectionsConfigurations: CollectionsSynchronizationConfigurations? = null,
+        collectionBookmarksConfigurations: CollectionBookmarksSynchronizationConfigurations? = null,
         httpClient: HttpClient? = null
     ): SynchronizationClient {
         val adapters = buildList<SyncResourceAdapter> {
             add(BookmarksSyncAdapter(bookmarksConfigurations))
             collectionsConfigurations?.let { add(CollectionsSyncAdapter(it)) }
+            collectionBookmarksConfigurations?.let { add(CollectionBookmarksSyncAdapter(it)) }
         }
         return SynchronizationClientImpl(
             environment,
