@@ -4,7 +4,7 @@ import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.syncengine.model.SyncBookmark
 
-class RemoteMutationsPreprocessor(
+class BookmarksRemoteMutationsPreprocessor(
     private val checkLocalExistence: suspend (List<String>) -> Map<String, Boolean>
 ) {
     

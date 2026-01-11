@@ -9,8 +9,8 @@ import com.quran.shared.syncengine.conflict.ConflictResolutionResult
 import com.quran.shared.syncengine.conflict.ConflictResolver
 import com.quran.shared.syncengine.conflict.ResourceConflict
 import com.quran.shared.syncengine.model.SyncBookmark
-import com.quran.shared.syncengine.preprocessing.LocalMutationsPreprocessor
-import com.quran.shared.syncengine.preprocessing.RemoteMutationsPreprocessor
+import com.quran.shared.syncengine.preprocessing.BookmarksLocalMutationsPreprocessor
+import com.quran.shared.syncengine.preprocessing.BookmarksRemoteMutationsPreprocessor
 
 /**
  * Pure business logic executor for bookmark synchronization operations.
@@ -103,7 +103,7 @@ class BookmarksSynchronizationExecutor {
     private fun preprocessLocalMutations(
         localMutations: List<LocalModelMutation<SyncBookmark>>
     ): List<LocalModelMutation<SyncBookmark>> {
-        val preprocessor = LocalMutationsPreprocessor()
+        val preprocessor = BookmarksLocalMutationsPreprocessor()
         return preprocessor.preprocess(localMutations)
     }
     
@@ -111,7 +111,7 @@ class BookmarksSynchronizationExecutor {
         remoteMutations: List<RemoteModelMutation<SyncBookmark>>,
         checkLocalExistence: suspend (List<String>) -> Map<String, Boolean>
     ): List<RemoteModelMutation<SyncBookmark>> {
-        val preprocessor = RemoteMutationsPreprocessor(checkLocalExistence)
+        val preprocessor = BookmarksRemoteMutationsPreprocessor(checkLocalExistence)
         return preprocessor.preprocess(remoteMutations)
     }
     
