@@ -11,13 +11,13 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
-class RemoteMutationsPreprocessorTest {
+class BookmarksRemoteMutationsPreprocessorTest {
     
     @Test
     fun `test preprocess with empty mutations list`() = runTest {
         // Arrange
         val checkLocalExistence = createMockExistenceChecker(emptySet())
-        val preprocessor = RemoteMutationsPreprocessor(checkLocalExistence)
+        val preprocessor = BookmarksRemoteMutationsPreprocessor(checkLocalExistence)
         val remoteMutations = emptyList<RemoteModelMutation<SyncBookmark>>()
         
         // Act
@@ -31,7 +31,7 @@ class RemoteMutationsPreprocessorTest {
     fun `test preprocess with only CREATED mutations`() = runTest {
         // Arrange
         val checkLocalExistence = createMockExistenceChecker(emptySet())
-        val preprocessor = RemoteMutationsPreprocessor(checkLocalExistence)
+        val preprocessor = BookmarksRemoteMutationsPreprocessor(checkLocalExistence)
         val remoteMutations = listOf(
             RemoteModelMutation<SyncBookmark>(
                 model = PageBookmark("new-1", 10, Instant.fromEpochMilliseconds(1000)),
@@ -59,7 +59,7 @@ class RemoteMutationsPreprocessorTest {
         // Arrange
         val existingRemoteIDs = setOf("existing-1")
         val checkLocalExistence = createMockExistenceChecker(existingRemoteIDs)
-        val preprocessor = RemoteMutationsPreprocessor(checkLocalExistence)
+        val preprocessor = BookmarksRemoteMutationsPreprocessor(checkLocalExistence)
         val remoteMutations = listOf(
             RemoteModelMutation<SyncBookmark>(
                 model = PageBookmark("existing-1", 10, Instant.fromEpochMilliseconds(1000)),
@@ -86,7 +86,7 @@ class RemoteMutationsPreprocessorTest {
         // Arrange
         val existingRemoteIDs = setOf("existing-1")
         val checkLocalExistence = createMockExistenceChecker(existingRemoteIDs)
-        val preprocessor = RemoteMutationsPreprocessor(checkLocalExistence)
+        val preprocessor = BookmarksRemoteMutationsPreprocessor(checkLocalExistence)
         val remoteMutations = listOf(
             RemoteModelMutation<SyncBookmark>(
                 model = PageBookmark("existing-1", 10, Instant.fromEpochMilliseconds(1000)),
@@ -118,7 +118,7 @@ class RemoteMutationsPreprocessorTest {
         // Arrange
         val existingRemoteIDs = setOf("existing-1", "existing-2")
         val checkLocalExistence = createMockExistenceChecker(existingRemoteIDs)
-        val preprocessor = RemoteMutationsPreprocessor(checkLocalExistence)
+        val preprocessor = BookmarksRemoteMutationsPreprocessor(checkLocalExistence)
         val remoteMutations = listOf(
             RemoteModelMutation<SyncBookmark>(
                 model = PageBookmark("existing-1", 10, Instant.fromEpochMilliseconds(1000)),
@@ -150,7 +150,7 @@ class RemoteMutationsPreprocessorTest {
         // Arrange
         val existingRemoteIDs = setOf("existing-1")
         val checkLocalExistence = createMockExistenceChecker(existingRemoteIDs)
-        val preprocessor = RemoteMutationsPreprocessor(checkLocalExistence)
+        val preprocessor = BookmarksRemoteMutationsPreprocessor(checkLocalExistence)
         val remoteMutations = listOf(
             RemoteModelMutation<SyncBookmark>(
                 model = PageBookmark("new-1", 10, Instant.fromEpochMilliseconds(1000)),
@@ -178,7 +178,7 @@ class RemoteMutationsPreprocessorTest {
         // Arrange
         val existingRemoteIDs = setOf("existing-1", "existing-2")
         val checkLocalExistence = createMockExistenceChecker(existingRemoteIDs)
-        val preprocessor = RemoteMutationsPreprocessor(checkLocalExistence)
+        val preprocessor = BookmarksRemoteMutationsPreprocessor(checkLocalExistence)
         val remoteMutations = listOf(
             // CREATED mutations (should be kept)
             RemoteModelMutation<SyncBookmark>(
@@ -236,7 +236,7 @@ class RemoteMutationsPreprocessorTest {
     fun `test preprocess when local data fetcher returns empty existence map`() = runTest {
         // Arrange
         val checkLocalExistence = createMockExistenceChecker(emptySet())
-        val preprocessor = RemoteMutationsPreprocessor(checkLocalExistence)
+        val preprocessor = BookmarksRemoteMutationsPreprocessor(checkLocalExistence)
         val remoteMutations = listOf(
             RemoteModelMutation<SyncBookmark>(
                 model = PageBookmark("any-id", 10, Instant.fromEpochMilliseconds(1000)),
@@ -264,7 +264,7 @@ class RemoteMutationsPreprocessorTest {
         // Arrange
         val existingRemoteIDs = setOf("existing-1", "existing-2")
         val checkLocalExistence = createMockExistenceChecker(existingRemoteIDs)
-        val preprocessor = RemoteMutationsPreprocessor(checkLocalExistence)
+        val preprocessor = BookmarksRemoteMutationsPreprocessor(checkLocalExistence)
         val remoteMutations = listOf(
             RemoteModelMutation<SyncBookmark>(
                 model = PageBookmark("existing-1", 10, Instant.fromEpochMilliseconds(1000)),
@@ -303,7 +303,7 @@ class RemoteMutationsPreprocessorTest {
         // Arrange
         val existingRemoteIDs = setOf("existing-1", "existing-3")
         val checkLocalExistence = createMockExistenceChecker(existingRemoteIDs)
-        val preprocessor = RemoteMutationsPreprocessor(checkLocalExistence)
+        val preprocessor = BookmarksRemoteMutationsPreprocessor(checkLocalExistence)
         
         // Create mutations in a specific order
         val remoteMutations = listOf(

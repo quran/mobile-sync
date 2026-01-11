@@ -89,7 +89,7 @@ object SynchronizationClientBuilder {
         notesConfigurations: NotesSynchronizationConfigurations? = null,
         httpClient: HttpClient? = null
     ): SynchronizationClient {
-        val adapters = buildList<SyncResourceAdapter> {
+        val adapters = buildList {
             add(BookmarksSyncAdapter(bookmarksConfigurations))
             collectionsConfigurations?.let { add(CollectionsSyncAdapter(it)) }
             collectionBookmarksConfigurations?.let { add(CollectionBookmarksSyncAdapter(it)) }

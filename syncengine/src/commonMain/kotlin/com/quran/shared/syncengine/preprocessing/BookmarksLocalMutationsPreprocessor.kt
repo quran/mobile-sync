@@ -6,7 +6,7 @@ import com.quran.shared.syncengine.model.SyncBookmark
 import com.quran.shared.syncengine.model.SyncBookmarkKey
 import com.quran.shared.syncengine.model.conflictKey
 
-class LocalMutationsPreprocessor {
+class BookmarksLocalMutationsPreprocessor {
     
     /**
      * Preprocesses local mutations and throws an error if illogical scenarios are detected.
