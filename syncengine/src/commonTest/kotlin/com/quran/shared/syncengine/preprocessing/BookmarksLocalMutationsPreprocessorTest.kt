@@ -11,9 +11,9 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
-class LocalMutationsPreprocessorTest {
+class BookmarksLocalMutationsPreprocessorTest {
     
-    private val preprocessor = LocalMutationsPreprocessor()
+    private val preprocessor = BookmarksLocalMutationsPreprocessor()
     
     @Test
     fun `should return empty list when no mutations provided`() {

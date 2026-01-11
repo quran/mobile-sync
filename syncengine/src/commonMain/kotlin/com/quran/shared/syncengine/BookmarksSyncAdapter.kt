@@ -10,8 +10,8 @@ import com.quran.shared.syncengine.conflict.ConflictResolver
 import com.quran.shared.syncengine.conflict.ConflictDetectionResult
 import com.quran.shared.syncengine.conflict.ResourceConflict
 import com.quran.shared.syncengine.model.SyncBookmark
-import com.quran.shared.syncengine.preprocessing.LocalMutationsPreprocessor
-import com.quran.shared.syncengine.preprocessing.RemoteMutationsPreprocessor
+import com.quran.shared.syncengine.preprocessing.BookmarksLocalMutationsPreprocessor
+import com.quran.shared.syncengine.preprocessing.BookmarksRemoteMutationsPreprocessor
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -115,14 +115,14 @@ internal class BookmarksSyncAdapter(
     private fun preprocessLocalMutations(
         mutations: List<LocalModelMutation<SyncBookmark>>
     ): List<LocalModelMutation<SyncBookmark>> {
-        val preprocessor = LocalMutationsPreprocessor()
+        val preprocessor = BookmarksLocalMutationsPreprocessor()
         return preprocessor.preprocess(mutations)
     }
 
     private suspend fun preprocessRemoteMutations(
         mutations: List<RemoteModelMutation<SyncBookmark>>
     ): List<RemoteModelMutation<SyncBookmark>> {
-        val preprocessor = RemoteMutationsPreprocessor { remoteIds ->
+        val preprocessor = BookmarksRemoteMutationsPreprocessor { remoteIds ->
             configurations.localDataFetcher.checkLocalExistence(remoteIds)
         }
         return preprocessor.preprocess(mutations)
