@@ -188,37 +188,28 @@ class CollectionBookmarksRepositoryImpl(
     ): Long? {
         return when (bookmark) {
             is RemoteCollectionBookmark.Page -> {
-                val existing = pageBookmarkQueries.value
-                    .getBookmarkForPage(bookmark.page.toLong())
+                val page = bookmark.page.toLong()
+                if (createIfMissing) {
+                    pageBookmarkQueries.value.insertBookmarkIfMissing(page)
+                }
+                pageBookmarkQueries.value.getBookmarkForPage(page)
                     .executeAsOneOrNull()
-                existing?.local_id
-                    ?: if (createIfMissing) {
-                        pageBookmarkQueries.value.addNewBookmark(bookmark.page.toLong())
-                        pageBookmarkQueries.value.getBookmarkForPage(bookmark.page.toLong())
-                            .executeAsOneOrNull()
-                            ?.local_id
-                    } else {
-                        null
-                    }
+                    ?.local_id
             }
             is RemoteCollectionBookmark.Ayah -> {
-                val existing = ayahBookmarkQueries.value
-                    .getBookmarkForAyah(bookmark.sura.toLong(), bookmark.ayah.toLong())
+                val sura = bookmark.sura.toLong()
+                val ayah = bookmark.ayah.toLong()
+                if (createIfMissing) {
+                    val ayahId = getAyahId(bookmark.sura, bookmark.ayah)
+                    ayahBookmarkQueries.value.insertBookmarkIfMissing(
+                        ayah_id = ayahId.toLong(),
+                        sura = sura,
+                        ayah = ayah
+                    )
+                }
+                ayahBookmarkQueries.value.getBookmarkForAyah(sura, ayah)
                     .executeAsOneOrNull()
-                existing?.local_id
-                    ?: if (createIfMissing) {
-                        val ayahId = getAyahId(bookmark.sura, bookmark.ayah)
-                        ayahBookmarkQueries.value.addNewBookmark(
-                            ayah_id = ayahId.toLong(),
-                            sura = bookmark.sura.toLong(),
-                            ayah = bookmark.ayah.toLong()
-                        )
-                        ayahBookmarkQueries.value.getBookmarkForAyah(bookmark.sura.toLong(), bookmark.ayah.toLong())
-                            .executeAsOneOrNull()
-                            ?.local_id
-                    } else {
-                        null
-                    }
+                    ?.local_id
             }
         }
     }

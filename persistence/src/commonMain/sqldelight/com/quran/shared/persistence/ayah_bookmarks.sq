@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS ayah_bookmark(
   UNIQUE(sura, ayah)
 );
 
+CREATE INDEX IF NOT EXISTS ayah_bookmark_remote_id_idx ON ayah_bookmark(remote_id);
+
 getBookmarks:
   SELECT * FROM ayah_bookmark WHERE deleted = 0 ORDER BY created_at DESC;
 
@@ -28,6 +30,15 @@ addNewBookmark {
   SET deleted = 0,
     modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE sura = :sura AND ayah = :ayah;
+}
+
+insertBookmarkIfMissing {
+  INSERT OR IGNORE INTO ayah_bookmark (remote_id, ayah_id, sura, ayah, deleted)
+  VALUES (NULL, :ayah_id, :sura, :ayah, 0);
+  UPDATE ayah_bookmark
+  SET deleted = 0,
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  WHERE sura = :sura AND ayah = :ayah AND deleted = 1;
 }
 
 getUnsyncedBookmarks:

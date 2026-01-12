@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS note(
 
 CREATE INDEX IF NOT EXISTS note_start_ayah_idx ON note(start_ayah_id);
 CREATE INDEX IF NOT EXISTS note_end_ayah_idx ON note(end_ayah_id);
+CREATE INDEX IF NOT EXISTS note_remote_id_idx ON note(remote_id);
 
 getNotes:
   SELECT * FROM note WHERE deleted = 0 ORDER BY created_at DESC;
@@ -68,6 +69,7 @@ deleteRemoteNote:
 
 clearLocalMutationFor {
   DELETE FROM note WHERE remote_id IS NULL AND local_id = :id;
+  DELETE FROM note WHERE local_id = :id AND deleted = 1;
   UPDATE note
   SET deleted = 0,
     modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
