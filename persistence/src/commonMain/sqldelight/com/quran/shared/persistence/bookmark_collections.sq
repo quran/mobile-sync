@@ -23,6 +23,85 @@ getCollectionBookmarksForCollection:
   WHERE collection_local_id = ? AND deleted = 0
   ORDER BY created_at DESC;
 
+getCollectionBookmarksWithDetails:
+  SELECT
+    bc.local_id,
+    bc.remote_id,
+    bc.bookmark_local_id,
+    bc.bookmark_type,
+    bc.collection_local_id,
+    bc.created_at,
+    bc.modified_at,
+    bc.deleted,
+    c.remote_id AS collection_remote_id,
+    c.name AS collection_name,
+    pb.page AS page,
+    ab.sura AS sura,
+    ab.ayah AS ayah
+  FROM bookmark_collection bc
+  JOIN collection c ON c.local_id = bc.collection_local_id
+  LEFT JOIN page_bookmark pb
+    ON pb.local_id = CAST(bc.bookmark_local_id AS INTEGER)
+    AND bc.bookmark_type = 'PAGE'
+  LEFT JOIN ayah_bookmark ab
+    ON ab.local_id = CAST(bc.bookmark_local_id AS INTEGER)
+    AND bc.bookmark_type = 'AYAH'
+  WHERE bc.deleted = 0
+  ORDER BY bc.created_at DESC;
+
+getCollectionBookmarksForCollectionWithDetails:
+  SELECT
+    bc.local_id,
+    bc.remote_id,
+    bc.bookmark_local_id,
+    bc.bookmark_type,
+    bc.collection_local_id,
+    bc.created_at,
+    bc.modified_at,
+    bc.deleted,
+    c.remote_id AS collection_remote_id,
+    c.name AS collection_name,
+    pb.page AS page,
+    ab.sura AS sura,
+    ab.ayah AS ayah
+  FROM bookmark_collection bc
+  JOIN collection c ON c.local_id = bc.collection_local_id
+  LEFT JOIN page_bookmark pb
+    ON pb.local_id = CAST(bc.bookmark_local_id AS INTEGER)
+    AND bc.bookmark_type = 'PAGE'
+  LEFT JOIN ayah_bookmark ab
+    ON ab.local_id = CAST(bc.bookmark_local_id AS INTEGER)
+    AND bc.bookmark_type = 'AYAH'
+  WHERE bc.collection_local_id = :collection_local_id
+    AND bc.deleted = 0
+  ORDER BY bc.created_at DESC;
+
+getUnsyncedCollectionBookmarksWithDetails:
+  SELECT
+    bc.local_id,
+    bc.remote_id,
+    bc.bookmark_local_id,
+    bc.bookmark_type,
+    bc.collection_local_id,
+    bc.created_at,
+    bc.modified_at,
+    bc.deleted,
+    c.remote_id AS collection_remote_id,
+    c.name AS collection_name,
+    pb.page AS page,
+    ab.sura AS sura,
+    ab.ayah AS ayah
+  FROM bookmark_collection bc
+  JOIN collection c ON c.local_id = bc.collection_local_id
+  LEFT JOIN page_bookmark pb
+    ON pb.local_id = CAST(bc.bookmark_local_id AS INTEGER)
+    AND bc.bookmark_type = 'PAGE'
+  LEFT JOIN ayah_bookmark ab
+    ON ab.local_id = CAST(bc.bookmark_local_id AS INTEGER)
+    AND bc.bookmark_type = 'AYAH'
+  WHERE bc.remote_id IS NULL OR bc.deleted = 1
+  ORDER BY bc.created_at DESC;
+
 getCollectionBookmarkFor:
   SELECT * FROM bookmark_collection
   WHERE bookmark_local_id = ? AND collection_local_id = ? LIMIT 1;
