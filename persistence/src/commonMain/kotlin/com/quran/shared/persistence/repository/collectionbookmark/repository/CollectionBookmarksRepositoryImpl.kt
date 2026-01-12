@@ -9,7 +9,6 @@ import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionBookmark
 import com.quran.shared.persistence.model.DatabaseBookmarkCollection
-import com.quran.shared.persistence.repository.bookmark.extension.toBookmark
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toPlatform
 import kotlinx.coroutines.Dispatchers
@@ -30,21 +29,21 @@ class CollectionBookmarksRepositoryImpl(
     override suspend fun getBookmarksForCollection(collectionLocalId: String): List<CollectionBookmark> {
         return withContext(Dispatchers.IO) {
             bookmarkCollectionQueries.value
-                .getCollectionBookmarksForCollection(collectionLocalId.toLong())
+                .getCollectionBookmarksForCollectionWithDetails(collection_local_id = collectionLocalId.toLong())
                 .executeAsList()
                 .mapNotNull { record ->
-                    val collection = collectionQueries.value
-                        .getCollectionByLocalId(record.collection_local_id)
-                        .executeAsOneOrNull()
-                    val bookmark = resolveBookmark(record)
-                    if (collection == null || bookmark == null) {
-                        null
-                    } else {
-                        record.toCollectionBookmark(
-                            collectionRemoteId = collection.remote_id,
-                            bookmark = bookmark
-                        )
-                    }
+                    toCollectionBookmark(
+                        bookmarkType = record.bookmark_type,
+                        bookmarkLocalId = record.bookmark_local_id,
+                        page = record.page,
+                        sura = record.sura,
+                        ayah = record.ayah,
+                        collectionLocalId = record.collection_local_id,
+                        collectionRemoteId = record.collection_remote_id,
+                        modifiedAt = record.modified_at,
+                        localId = record.local_id,
+                        logMissingBookmark = false
+                    )
                 }
         }
     }
@@ -85,29 +84,30 @@ class CollectionBookmarksRepositoryImpl(
 
     override suspend fun fetchMutatedCollectionBookmarks(): List<LocalModelMutation<CollectionBookmark>> {
         return withContext(Dispatchers.IO) {
-            bookmarkCollectionQueries.value.getUnsyncedCollectionBookmarks()
+            bookmarkCollectionQueries.value.getUnsyncedCollectionBookmarksWithDetails()
                 .executeAsList()
                 .mapNotNull { record ->
-                    val collection = collectionQueries.value
-                        .getCollectionByLocalId(record.collection_local_id)
-                        .executeAsOneOrNull()
-                    val collectionRemoteId = collection?.remote_id
+                    val collectionRemoteId = record.collection_remote_id
                     if (collectionRemoteId.isNullOrEmpty()) {
                         logger.w { "Skipping collection bookmark without remote collection ID: localId=${record.local_id}" }
                         return@mapNotNull null
                     }
-                    val bookmark = resolveBookmark(record)
-                    if (bookmark == null) {
-                        logger.w { "Skipping collection bookmark without local bookmark: localId=${record.local_id}" }
-                        return@mapNotNull null
-                    }
                     val mutation = if (record.deleted == 1L) Mutation.DELETED else Mutation.CREATED
+                    val collectionBookmark = toCollectionBookmark(
+                        bookmarkType = record.bookmark_type,
+                        bookmarkLocalId = record.bookmark_local_id,
+                        page = record.page,
+                        sura = record.sura,
+                        ayah = record.ayah,
+                        collectionLocalId = record.collection_local_id,
+                        collectionRemoteId = collectionRemoteId,
+                        modifiedAt = record.modified_at,
+                        localId = record.local_id,
+                        logMissingBookmark = true
+                    ) ?: return@mapNotNull null
                     LocalModelMutation(
                         mutation = mutation,
-                        model = record.toCollectionBookmark(
-                            collectionRemoteId = collectionRemoteId,
-                            bookmark = bookmark
-                        ),
+                        model = collectionBookmark,
                         remoteID = record.remote_id,
                         localID = record.local_id.toString()
                     )
@@ -214,24 +214,61 @@ class CollectionBookmarksRepositoryImpl(
         }
     }
 
-    private fun resolveBookmark(record: DatabaseBookmarkCollection): Bookmark? {
-        val bookmarkLocalId = record.bookmark_local_id.toLongOrNull()
-        if (bookmarkLocalId == null) {
-            logger.w { "Skipping collection bookmark with non-numeric bookmark id: ${record.bookmark_local_id}" }
+    private fun toCollectionBookmark(
+        bookmarkType: String,
+        bookmarkLocalId: String,
+        page: Long?,
+        sura: Long?,
+        ayah: Long?,
+        collectionLocalId: Long,
+        collectionRemoteId: String?,
+        modifiedAt: Long,
+        localId: Long,
+        logMissingBookmark: Boolean
+    ): CollectionBookmark? {
+        if (bookmarkLocalId.toLongOrNull() == null) {
+            logger.w { "Skipping collection bookmark with non-numeric bookmark id: $bookmarkLocalId" }
             return null
         }
-        return when (record.bookmark_type.uppercase()) {
+        val updatedAt = Instant.fromEpochMilliseconds(modifiedAt).toPlatform()
+        return when (bookmarkType.uppercase()) {
             "PAGE" -> {
-                val recordBookmark = pageBookmarkQueries.value
-                    .getBookmarkByLocalId(bookmarkLocalId)
-                    .executeAsOneOrNull()
-                recordBookmark?.toBookmark()
+                val pageValue = page?.toInt()
+                if (pageValue == null) {
+                    if (logMissingBookmark) {
+                        logger.w { "Skipping collection bookmark without local bookmark: localId=$localId" }
+                    }
+                    null
+                } else {
+                    CollectionBookmark.PageBookmark(
+                        collectionLocalId = collectionLocalId.toString(),
+                        collectionRemoteId = collectionRemoteId,
+                        bookmarkLocalId = bookmarkLocalId,
+                        page = pageValue,
+                        lastUpdated = updatedAt,
+                        localId = localId.toString()
+                    )
+                }
             }
             "AYAH" -> {
-                val recordBookmark = ayahBookmarkQueries.value
-                    .getBookmarkByLocalId(bookmarkLocalId)
-                    .executeAsOneOrNull()
-                recordBookmark?.toBookmark()
+                val suraValue = sura?.toInt()
+                val ayahValue = ayah?.toInt()
+                if (suraValue == null || ayahValue == null) {
+                    if (logMissingBookmark) {
+                        logger.w { "Skipping collection bookmark without local bookmark: localId=$localId" }
+                    }
+                    null
+                } else {
+                    CollectionBookmark.AyahBookmark(
+                        collectionLocalId = collectionLocalId.toString(),
+                        collectionRemoteId = collectionRemoteId,
+                        bookmarkLocalId = bookmarkLocalId,
+                        sura = suraValue,
+                        ayah = ayahValue,
+                        lastUpdated = updatedAt,
+                        localId = localId.toString()
+                    )
+                }
             }
             else -> null
         }
