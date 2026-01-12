@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS page_bookmark(
   CHECK (deleted IN (0, 1))
 );
 
+CREATE INDEX IF NOT EXISTS page_bookmark_remote_id_idx ON page_bookmark(remote_id);
+
 getBookmarks:
   SELECT * FROM page_bookmark WHERE deleted = 0 ORDER BY created_at DESC;
 
@@ -40,6 +42,15 @@ addNewBookmark {
   SET deleted = 0,
     modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE page = :page;
+}
+
+insertBookmarkIfMissing {
+  INSERT OR IGNORE INTO page_bookmark (remote_id, page, deleted)
+  VALUES (NULL, :page, 0);
+  UPDATE page_bookmark
+  SET deleted = 0,
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  WHERE page = :page AND deleted = 1;
 }
 
 -- TODO: Rename

@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS bookmark_collection(
   FOREIGN KEY(collection_local_id) REFERENCES collection(local_id)
 );
 
+CREATE INDEX IF NOT EXISTS bookmark_collection_remote_id_idx ON bookmark_collection(remote_id);
+
 getCollectionBookmarks:
   SELECT * FROM bookmark_collection WHERE deleted = 0 ORDER BY created_at DESC;
 
