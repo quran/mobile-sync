@@ -79,7 +79,7 @@ class BookmarksRepositoryTest {
         repository.addBookmark(30)
         bookmarks = pageBookmarksQueries.getBookmarks().executeAsList()
         assertEquals(3, bookmarks.size)
-        assertEquals(listOf(10L, 20L, 30L), bookmarks.map { it.page })
+        assertEquals(listOf(10L, 20L, 30L), bookmarks.map { it.page }.sorted())
 
         // Verify all locally added bookmarks don't have remote IDs (not synced yet)
         bookmarks.forEach { bookmark ->

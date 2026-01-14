@@ -9,6 +9,7 @@ import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionBookmark
 import com.quran.shared.persistence.model.DatabaseBookmarkCollection
+import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toPlatform
 import kotlinx.coroutines.Dispatchers
@@ -328,15 +329,17 @@ class CollectionBookmarksRepositoryImpl(
         }
 
         return withContext(Dispatchers.IO) {
-            val existentIDs = bookmarkCollectionQueries.value
-                .checkRemoteIDsExistence(remoteIDs)
-                .executeAsList()
-                .map { it.remote_id }
-                .toSet()
+            val existentIDs = mutableSetOf<String>()
+            remoteIDs.chunked(SQLITE_MAX_BIND_PARAMETERS).forEach { chunk ->
+                existentIDs.addAll(
+                    bookmarkCollectionQueries.value
+                        .checkRemoteIDsExistence(chunk)
+                        .executeAsList()
+                        .mapNotNull { it.remote_id }
+                )
+            }
 
-            remoteIDs.map { Pair(it, existentIDs.contains(it)) }
-                .associateBy { it.first }
-                .mapValues { it.value.second }
+            remoteIDs.associateWith { existentIDs.contains(it) }
         }
     }
 }

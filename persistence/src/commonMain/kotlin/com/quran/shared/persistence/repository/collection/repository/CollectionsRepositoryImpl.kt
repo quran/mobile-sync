@@ -9,6 +9,7 @@ import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.repository.collection.extension.toCollection
 import com.quran.shared.persistence.repository.collection.extension.toCollectionMutation
+import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -140,10 +141,14 @@ class CollectionsRepositoryImpl(
         }
 
         return withContext(Dispatchers.IO) {
-            val existentIDs = collectionQueries.value.checkRemoteIDsExistence(remoteIDs)
-                .executeAsList()
-                .map { it.remote_id }
-                .toSet()
+            val existentIDs = mutableSetOf<String>()
+            remoteIDs.chunked(SQLITE_MAX_BIND_PARAMETERS).forEach { chunk ->
+                existentIDs.addAll(
+                    collectionQueries.value.checkRemoteIDsExistence(chunk)
+                        .executeAsList()
+                        .mapNotNull { it.remote_id }
+                )
+            }
 
             remoteIDs.associateWith { existentIDs.contains(it) }
         }
