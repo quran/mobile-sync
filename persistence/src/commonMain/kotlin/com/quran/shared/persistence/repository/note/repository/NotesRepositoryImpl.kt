@@ -9,6 +9,7 @@ import com.quran.shared.persistence.input.RemoteNote
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.repository.note.extension.toNote
 import com.quran.shared.persistence.repository.note.extension.toNoteMutation
+import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -131,10 +132,14 @@ class NotesRepositoryImpl(
         }
 
         return withContext(Dispatchers.IO) {
-            val existentIDs = notesQueries.value.checkRemoteIDsExistence(remoteIDs)
-                .executeAsList()
-                .map { it.remote_id }
-                .toSet()
+            val existentIDs = mutableSetOf<String>()
+            remoteIDs.chunked(SQLITE_MAX_BIND_PARAMETERS).forEach { chunk ->
+                existentIDs.addAll(
+                    notesQueries.value.checkRemoteIDsExistence(chunk)
+                        .executeAsList()
+                        .mapNotNull { it.remote_id }
+                )
+            }
 
             remoteIDs.associateWith { existentIDs.contains(it) }
         }

@@ -10,6 +10,7 @@ import com.quran.shared.persistence.input.RemoteBookmark
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.repository.bookmark.extension.toBookmark
 import com.quran.shared.persistence.repository.bookmark.extension.toBookmarkMutation
+import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -213,17 +214,21 @@ class BookmarksRepositoryImpl(
         }
 
         return withContext(Dispatchers.IO) {
-            val pageIDs = pageBookmarkQueries.value.checkRemoteIDsExistence(remoteIDs)
-                .executeAsList()
-                .map { it.remote_id }
-            val ayahIDs = ayahBookmarkQueries.value.checkRemoteIDsExistence(remoteIDs)
-                .executeAsList()
-                .map { it.remote_id }
-            val existentIDs = (pageIDs + ayahIDs).toSet()
+            val existentIDs = mutableSetOf<String>()
+            remoteIDs.chunked(SQLITE_MAX_BIND_PARAMETERS).forEach { chunk ->
+                existentIDs.addAll(
+                    pageBookmarkQueries.value.checkRemoteIDsExistence(chunk)
+                        .executeAsList()
+                        .mapNotNull { it.remote_id }
+                )
+                existentIDs.addAll(
+                    ayahBookmarkQueries.value.checkRemoteIDsExistence(chunk)
+                        .executeAsList()
+                        .mapNotNull { it.remote_id }
+                )
+            }
 
-            remoteIDs.map { Pair(it, existentIDs.contains(it)) }
-                .associateBy { it.first }
-                .mapValues { it.value.second }
+            remoteIDs.associateWith { existentIDs.contains(it) }
         }
     }
 }
