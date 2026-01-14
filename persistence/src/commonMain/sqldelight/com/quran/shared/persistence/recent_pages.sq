@@ -2,8 +2,37 @@ CREATE TABLE IF NOT EXISTS recent_page(
   local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   remote_id TEXT,
   page INTEGER NOT NULL UNIQUE,
-  created_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
-  modified_at INTEGER DEFAULT (strftime('%s', 'now')) NOT NULL,
+  created_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
+  modified_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
   deleted INTEGER NOT NULL DEFAULT 0,
   CHECK (deleted IN (0, 1))
 );
+
+CREATE INDEX IF NOT EXISTS recent_page_remote_id_idx ON recent_page(remote_id);
+
+getRecentPages:
+  SELECT * FROM recent_page WHERE deleted = 0 ORDER BY modified_at DESC;
+
+getRecentPageForPage:
+  SELECT * FROM recent_page WHERE page = ? LIMIT 1;
+
+getRecentPageByLocalId:
+  SELECT * FROM recent_page WHERE local_id = ? LIMIT 1;
+
+addRecentPage {
+  INSERT OR IGNORE INTO recent_page (remote_id, page, deleted)
+  VALUES (NULL, :page, 0);
+  UPDATE recent_page
+  SET deleted = 0,
+    created_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000,
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  WHERE page = :page;
+}
+
+deleteRecentPage {
+  DELETE FROM recent_page WHERE page = :page AND remote_id IS NULL;
+  UPDATE recent_page
+  SET deleted = 1,
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  WHERE page = :page AND remote_id IS NOT NULL;
+}
