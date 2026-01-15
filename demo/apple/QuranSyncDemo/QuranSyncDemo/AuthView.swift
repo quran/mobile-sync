@@ -137,7 +137,7 @@ struct AuthView: View {
                 Button("Retry") {
                     viewModel.login()
                 }
-                .buttonStyle(.filled)
+                .buttonStyle(.borderedProminent)
             }
         }
         .padding()
