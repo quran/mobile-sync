@@ -12,20 +12,22 @@ import Shared
 class DatabaseManager {
   static let shared = DatabaseManager()
   
-  private let pageBookmarksRepository: PageBookmarksRepository
+  private let bookmarksRepository: BookmarksRepository
   
   private init() {
     let driverFactory = DriverFactory()
-    self.pageBookmarksRepository = PageBookmarksRepositoryFactory.companion.createRepository(driverFactory: driverFactory)
+    self.bookmarksRepository = BookmarksRepositoryFactory.shared.createRepository(driverFactory: driverFactory)
   }
   
-  func bookmarksSequence() -> any AsyncSequence<[PageBookmark], Error> {
-    asyncSequence(for: pageBookmarksRepository.getAllBookmarks())
+  func bookmarksSequence() -> any AsyncSequence<[Bookmark.PageBookmark], Error> {
+    return asyncSequence(for: bookmarksRepository.getBookmarksFlow()).map { bookmarks in
+      bookmarks.compactMap { $0 as? Bookmark.PageBookmark }
+    }
   }
   
   // Add a bookmark for a given page using async/await bridge.
   func addPageBookmark(page: Int) async throws {
-    try await asyncFunction(for: pageBookmarksRepository.addPageBookmark(page: Int32(page)))
+    try await asyncFunction(for: bookmarksRepository.addBookmark(page: Int32(page)))
   }
   
   // Add a random bookmark using async/await bridge.
