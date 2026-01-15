@@ -1,19 +1,19 @@
 package com.quran.shared.demo.android.ui.auth
 
 import android.app.Activity
+import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.quran.shared.auth.AuthenticationManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import java.security.MessageDigest
-import java.util.Base64
 import kotlin.random.Random
+import androidx.core.content.edit
 
 /**
  * ViewModel that manages authentication state and OAuth flow for Android.
@@ -29,9 +29,11 @@ import kotlin.random.Random
  * Follows CLAUDE.md architecture by separating UI state (ViewModel) from
  * business logic (AuthenticationManager).
  */
-class AuthViewModel(private val context: Context? = null) : ViewModel() {
+class AuthViewModel(application: Application) : AndroidViewModel(application) {
     private val authManager = AuthenticationManager()
-    private lateinit var prefs: SharedPreferences
+
+    // TODO: check if to use shared storage instead of SharedPrefs
+    private val prefs: SharedPreferences = application.getSharedPreferences("oauth", Context.MODE_PRIVATE)
 
     private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
     val authState: StateFlow<AuthState> = _authState
@@ -39,11 +41,6 @@ class AuthViewModel(private val context: Context? = null) : ViewModel() {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
-    init {
-        context?.let {
-            prefs = it.getSharedPreferences("oauth", Context.MODE_PRIVATE)
-        }
-    }
 
     /**
      * Initiates OAuth login flow.
@@ -75,6 +72,8 @@ class AuthViewModel(private val context: Context? = null) : ViewModel() {
                     codeVerifier = codeVerifier,
                     state = state
                 )
+                // TODO: remove logging from production
+                println("DEBUG: Authorization URL: $authUrl")
 
                 // Store verifier and state for callback
                 storeOAuthState(codeVerifier, state)
@@ -85,6 +84,9 @@ class AuthViewModel(private val context: Context? = null) : ViewModel() {
             } catch (e: Exception) {
                 _error.value = e.message ?: "Authentication failed"
                 _authState.value = AuthState.Error(e)
+                // TODO: remove logging from production
+                println("DEBUG: OAuth error: ${e.message}")
+                e.printStackTrace()
             }
         }
     }
@@ -249,11 +251,9 @@ class AuthViewModel(private val context: Context? = null) : ViewModel() {
      * Stores OAuth state (code_verifier, state) for callback validation.
      */
     private fun storeOAuthState(codeVerifier: String, state: String) {
-        if (::prefs.isInitialized) {
-            prefs.edit()
-                .putString("code_verifier", codeVerifier)
+        prefs.edit {
+            putString("code_verifier", codeVerifier)
                 .putString("state", state)
-                .apply()
         }
     }
 
@@ -261,11 +261,9 @@ class AuthViewModel(private val context: Context? = null) : ViewModel() {
      * Clears OAuth state after successful authentication.
      */
     private fun clearOAuthState() {
-        if (::prefs.isInitialized) {
-            prefs.edit()
-                .remove("code_verifier")
+        prefs.edit {
+            remove("code_verifier")
                 .remove("state")
-                .apply()
         }
     }
 
@@ -275,14 +273,12 @@ class AuthViewModel(private val context: Context? = null) : ViewModel() {
      * In production, use EncryptedSharedPreferences or Android Keystore.
      */
     private fun storeTokens(tokenResponse: com.quran.shared.auth.TokenResponse) {
-        if (::prefs.isInitialized) {
-            val expirationTime = System.currentTimeMillis() + (tokenResponse.expiresIn * 1000)
-            prefs.edit()
-                .putString("access_token", tokenResponse.accessToken)
+        val expirationTime = System.currentTimeMillis() + (tokenResponse.expiresIn * 1000)
+        prefs.edit {
+            putString("access_token", tokenResponse.accessToken)
                 .putString("refresh_token", tokenResponse.refreshToken)
                 .putLong("token_expiration", expirationTime)
                 .putLong("token_retrieved_at", System.currentTimeMillis())
-                .apply()
         }
     }
 
@@ -290,70 +286,48 @@ class AuthViewModel(private val context: Context? = null) : ViewModel() {
      * Retrieves stored access token.
      */
     fun retrieveStoredAccessToken(): String? {
-        return if (::prefs.isInitialized) {
-            prefs.getString("access_token", null)
-        } else {
-            null
-        }
+        return prefs.getString("access_token", null)
     }
 
     /**
      * Retrieves stored refresh token.
      */
     private fun retrieveStoredRefreshToken(): String? {
-        return if (::prefs.isInitialized) {
-            prefs.getString("refresh_token", null)
-        } else {
-            null
-        }
+        return prefs.getString("refresh_token", null)
     }
 
     /**
      * Retrieves stored code verifier for token exchange.
      */
     private fun retrieveStoredCodeVerifier(): String? {
-        return if (::prefs.isInitialized) {
-            prefs.getString("code_verifier", null)
-        } else {
-            null
-        }
+        return prefs.getString("code_verifier", null)
     }
 
     /**
      * Retrieves stored state parameter for validation.
      */
     private fun retrieveStoredState(): String? {
-        return if (::prefs.isInitialized) {
-            prefs.getString("state", null)
-        } else {
-            null
-        }
+        return prefs.getString("state", null)
     }
 
     /**
      * Retrieves token expiration time.
      */
     private fun retrieveTokenExpiration(): Long {
-        return if (::prefs.isInitialized) {
-            prefs.getLong("token_expiration", 0)
-        } else {
-            0
-        }
+        return prefs.getLong("token_expiration", 0)
     }
 
     /**
      * Clears all stored tokens.
      */
     private fun clearAllTokens() {
-        if (::prefs.isInitialized) {
-            prefs.edit()
-                .remove("access_token")
+        prefs.edit {
+            remove("access_token")
                 .remove("refresh_token")
                 .remove("token_expiration")
                 .remove("token_retrieved_at")
                 .remove("code_verifier")
                 .remove("state")
-                .apply()
         }
     }
 }
