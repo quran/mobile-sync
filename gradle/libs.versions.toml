@@ -12,6 +12,7 @@ maven-publish = "0.35.0"
 
 compose = "2025.12.01"
 coroutines = "1.10.2"
+sha2 = "0.8.0"
 sqldelight = "2.2.1"
 ktor = "3.3.3"
 
@@ -36,6 +37,7 @@ kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotl
 kotlin-test-junit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
 
 kermit = { module = "co.touchlab:kermit", version.ref = "kermit" }
+sha2 = { module = "org.kotlincrypto.hash:sha2", version.ref = "sha2" }
 sqldelight-jdbc-driver = { module = "app.cash.sqldelight:jdbc-driver", version.ref = "sqldelight" }
 
 sqldelight-extensions = { module = "app.cash.sqldelight:coroutines-extensions", version.ref = "sqldelight" }
