@@ -9,21 +9,26 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
+import io.ktor.util.encodeBase64
+import io.ktor.util.generateNonce
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import org.kotlincrypto.hash.sha2.SHA256
 import org.publicvalue.multiplatform.oidc.OpenIdConnectClient
 import org.publicvalue.multiplatform.oidc.types.CodeChallengeMethod
+import kotlin.time.Clock
 
 /**
  * Manages OAuth authentication with Quran.com using Quran Foundation's OAuth2 endpoints.
  *
  * Implements OAuth 2.0 with PKCE (RFC 7636) for secure public client authentication.
+ * Platform-agnostic implementation for Kotlin Multiplatform.
  *
  * Reference: https://api-docs.quran.foundation/docs/category/oauth2_apis
  */
 class AuthenticationManager(
-    private val usePreProduction: Boolean = false
+    private val usePreProduction: Boolean = true
 ) {
     // OAuth endpoints from Quran Foundation
     private val baseUrl = if (usePreProduction) {
@@ -32,21 +37,21 @@ class AuthenticationManager(
         "https://oauth2.quran.foundation"
     }
 
-    private val authorizationEndpoint = "$baseUrl/oauth2/authorize"
+    private val authorizationEndpoint = "$baseUrl/oauth2/auth"
     private val tokenEndpoint = "$baseUrl/oauth2/token"
     private val revokeEndpoint = "$baseUrl/oauth2/revoke"
 
     // OAuth application credentials
-    // TODO: Replace with actual credentials from Quran Foundation
-    private val clientId = "553bebb7-17bf-4bd8-b5bb-83f920eed1de"
-    private val clientSecret = "Rouwi~SU4YCRYj4UQ.yelC7QRk"
-    private val redirectUri = "https://quran.com"
+    private val clientId = "YOUR_CLIENT_ID_HERE"
+    private val clientSecret = null
+    // Mobile redirect URI - must match the deep link scheme configured in the app
+    private val redirectUri = "com.quran.oauth://callback"
 
     // Scopes requested from OAuth server
     private val requestedScopes = listOf(
-        "openid",           // OpenID Connect scope
-        "offline_access",   // Request refresh token
-        "content"           // Access to user content
+        "openid",
+        "offline_access",
+        "content"
     )
 
     // HTTP client for making token requests
@@ -71,7 +76,6 @@ class AuthenticationManager(
             clientSecret = this@AuthenticationManager.clientSecret // PKCE doesn't use client secret for public clients
             scope = requestedScopes.joinToString(" ")
             redirectUri = this@AuthenticationManager.redirectUri
-            
             codeChallengeMethod = CodeChallengeMethod.S256
         }
     )
@@ -92,15 +96,7 @@ class AuthenticationManager(
         state: String
     ): String {
         // Calculate code challenge (SHA-256 hash of code verifier)
-        val codeChallenge = codeVerifier
-            .toByteArray(Charsets.UTF_8)
-            .let { bytes ->
-                // SHA-256 hash
-                val digest = java.security.MessageDigest.getInstance("SHA-256")
-                val hashed = digest.digest(bytes)
-                // Base64 URL encoding (no padding)
-                java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(hashed)
-            }
+        val codeChallenge = calculateSHA256(codeVerifier)
 
         // Build authorization URL with PKCE parameters
         val params = mapOf(
@@ -109,12 +105,13 @@ class AuthenticationManager(
             "response_type" to "code",
             "scope" to requestedScopes.joinToString(" "),
             "state" to state,
+            "nonce" to generateNonce(),
             "code_challenge" to codeChallenge,
             "code_challenge_method" to "S256"
         )
 
         val queryString = params.entries.joinToString("&") { (key, value) ->
-            "$key=${java.net.URLEncoder.encode(value, "UTF-8")}"
+            "$key=${urlEncode(value)}"
         }
 
         return "$authorizationEndpoint?$queryString"
@@ -146,7 +143,7 @@ class AuthenticationManager(
                 val body = "grant_type=authorization_code" +
                         "&code=$code" +
                         "&client_id=$clientId" +
-                        "&redirect_uri=${java.net.URLEncoder.encode(redirectUri, "UTF-8")}" +
+                        "&redirect_uri=${urlEncode(redirectUri)}" +
                         "&code_verifier=$codeVerifier"
                 setBody(body)
             }
@@ -276,7 +273,42 @@ class AuthenticationManager(
      */
     fun isTokenValid(expirationTime: Long): Boolean {
         // Add 60 second buffer to refresh before actual expiration
-        return System.currentTimeMillis() < (expirationTime - 60_000)
+        return currentTimeMillis() < (expirationTime - 60_000)
+    }
+
+    // ========================= Helper Methods =========================
+
+    /**
+     * Calculates SHA-256 hash of input string and returns Base64URL encoded result.
+     * Platform-agnostic implementation using platform-specific functions.
+     *
+     * @param input String to hash
+     * @return Base64URL encoded SHA-256 hash (without padding)
+     */
+    private fun calculateSHA256(input: String): String {
+        val bytes = input.encodeToByteArray()
+        val digest = sha256(bytes)
+        return base64UrlEncode(digest)
+    }
+
+    /**
+     * URL encodes a string for use in query parameters.
+     * Platform-agnostic implementation using pure Kotlin.
+     *
+     * @param value String to encode
+     * @return URL-encoded string
+     */
+    private fun urlEncode(value: String): String {
+        return value.toCharArray().map { char ->
+            when (char) {
+                in 'A'..'Z', in 'a'..'z', in '0'..'9', '-', '.', '_', '~' -> char.toString()
+                ' ' -> "%20"
+                else -> {
+                    val bytes = char.toString().encodeToByteArray()
+                    bytes.joinToString("") { "%${it.toUByte().toString(16).padStart(2, '0').uppercase()}" }
+                }
+            }
+        }.joinToString("")
     }
 }
 
@@ -292,5 +324,18 @@ data class TokenResponse(
     val tokenType: String = "Bearer"
 )
 
+fun sha256(data: ByteArray): ByteArray {
+    val digest = SHA256()
+    digest.update(data)
+    return digest.digest()
+}
+fun base64UrlEncode(data: ByteArray): String {
+    val base64 = data.encodeBase64()
+    return base64.replace("+", "-")
+        .replace("/", "_")
+        .replace("=", "")
+}
+
+fun currentTimeMillis(): Long = Clock.System.now().toEpochMilliseconds()
 
 
