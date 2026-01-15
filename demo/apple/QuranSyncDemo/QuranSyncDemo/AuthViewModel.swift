@@ -3,7 +3,7 @@ import Combine
 import AuthenticationServices
 import Security
 import CryptoKit
-import auth
+import Shared
 
 /**
  * ViewModel for managing OAuth authentication on iOS.
@@ -24,7 +24,7 @@ class AuthViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentation
     @Published var authState: AuthState = .idle
     @Published var error: String?
 
-    private let authManager = AuthenticationManager()
+    private let authManager = AuthenticationManager(usePreProduction: true)
     private var cancellables = Set<AnyCancellable>()
 
     override init() {
@@ -232,25 +232,24 @@ class AuthViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentation
         }
 
         // Exchange code for tokens on background thread
-        DispatchQueue.global().async {
+        Task {
             do {
                 // Exchange authorization code for tokens
-                let tokenResponse = try self.authManager.exchangeCodeForToken(
+                let tokenResponse = try await self.authManager.exchangeCodeForToken(
                     code: authCode,
                     codeVerifier: codeVerifier
                 )
 
                 // Store tokens in Keychain
                 try self.storeTokensInKeychain(tokenResponse)
-
-                // Clear stored OAuth state
-                self.clearOAuthState()
-
-                DispatchQueue.main.async {
+                
+                let runner = await MainActor.run {
+                    // Clear stored OAuth state
+                    self.clearOAuthState()
                     self.authState = .success
                 }
             } catch {
-                DispatchQueue.main.async {
+                await MainActor.run {
                     self.error = error.localizedDescription
                     self.authState = .error
                 }
@@ -273,7 +272,7 @@ class AuthViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentation
 
             // Check if token is expired (with 60 second buffer)
             if !authManager.isTokenValid(expirationTime: Int64(expirationTime)) {
-                let newTokenResponse = try authManager.refreshToken(refreshToken: refreshToken)
+                let newTokenResponse = try await authManager.refreshToken(refreshToken: refreshToken)
                 try storeTokensInKeychain(newTokenResponse)
                 return true
             } else {
@@ -288,24 +287,23 @@ class AuthViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentation
      * Logs out user by revoking tokens and clearing storage.
      */
     func logout() {
-        DispatchQueue.global().async {
+        Task {
             do {
                 if let accessToken = try self.retrieveTokenFromKeychain(key: "accessToken") {
-                    _ = try self.authManager.revokeToken(token: accessToken, tokenTypeHint: "access_token")
+                    _ = try await self.authManager.revokeToken(token: accessToken, tokenTypeHint: "access_token")
                 }
 
                 if let refreshToken = try self.retrieveTokenFromKeychain(key: "refreshToken") {
-                    _ = try self.authManager.revokeToken(token: refreshToken, tokenTypeHint: "refresh_token")
+                    _ = try await self.authManager.revokeToken(token: refreshToken, tokenTypeHint: "refresh_token")
                 }
 
-                self.clearAllTokens()
-
-                DispatchQueue.main.async {
+                await MainActor.run {
+                    self.clearAllTokens()
                     self.authState = .idle
                     self.error = nil
                 }
             } catch {
-                DispatchQueue.main.async {
+                await MainActor.run {
                     self.error = "Logout failed: \(error.localizedDescription)"
                 }
             }
@@ -391,7 +389,7 @@ class AuthViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentation
      *
      * Keychain provides encrypted storage for sensitive data.
      */
-    private func storeTokensInKeychain(_ tokenResponse: auth.TokenResponse) throws {
+    private func storeTokensInKeychain(_ tokenResponse: Shared.TokenResponse) throws {
         let expirationTime = Date().timeIntervalSince1970 + Double(tokenResponse.expiresIn)
 
         // Store access token
