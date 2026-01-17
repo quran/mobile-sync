@@ -5,7 +5,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.lifecycle.lifecycleScope
-import com.quran.shared.auth.persistence.AuthStorage
 import com.quran.shared.demo.android.ui.auth.AuthScreen
 import com.quran.shared.auth.ui.AuthViewModel
 import kotlinx.coroutines.launch
@@ -23,7 +22,7 @@ import kotlinx.coroutines.launch
  * that redirect and passes it to the AuthViewModel for token exchange.
  */
 class MainActivity : ComponentActivity() {
-    private val authViewModel: AuthViewModel by lazy { AuthViewModel(AuthStorage()) }
+    private val authViewModel: AuthViewModel by lazy { AuthViewModel() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
