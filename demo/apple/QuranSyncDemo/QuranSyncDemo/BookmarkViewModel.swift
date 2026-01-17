@@ -51,8 +51,8 @@ class BookmarkViewModel: ObservableObject {
     return formatter.string(from: date)
   }
   
-  private static func mapToItem(_ bookmark: PageBookmark) -> BookmarkItem {
-    let identifier = bookmark.localId ?? "page-\(bookmark.page)"
+  private static func mapToItem(_ bookmark: Bookmark.PageBookmark) -> BookmarkItem {
+    let identifier = bookmark.localId
     let lastUpdatedDate = bookmark.lastUpdated
     return BookmarkItem(id: identifier, page: Int(bookmark.page), lastUpdated: lastUpdatedDate)
   }

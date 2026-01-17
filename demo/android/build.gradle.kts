@@ -13,6 +13,7 @@ android {
     defaultConfig {
         minSdk = 23
         targetSdk = 36
+        manifestPlaceholders["oidcRedirectScheme"] = "com.quran.oauth"
     }
 
     compileOptions {
@@ -32,7 +33,14 @@ android {
 dependencies {
     implementation(projects.syncengine)
     implementation(projects.persistence)
+    implementation(projects.auth)
 
+    // Android Framework & Lifecycle
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel:2.8.4")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
+
+    // Compose
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.tooling.preview)
@@ -40,5 +48,8 @@ dependencies {
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
     implementation(libs.compose.runtime)
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
+    implementation("androidx.activity:activity-compose:1.9.2")
+
     debugImplementation(libs.compose.ui.tooling)
 }

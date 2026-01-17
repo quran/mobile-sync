@@ -12,8 +12,7 @@ kotlin {
     listOf(
         iosX64(),
         iosArm64(),
-        iosSimulatorArm64(),
-        macosArm64()
+        iosSimulatorArm64()
     ).forEach { iosTarget ->
         iosTarget.binaries.framework {
             baseName = "Shared"
@@ -22,6 +21,7 @@ kotlin {
             export(projects.syncengine)
             export(projects.persistence)
             export(projects.syncPipelines)
+            export(projects.auth)
 
             binaryOption("bundleId", "com.quran.sync.$xcfName")
             xcf.add(this)
@@ -33,6 +33,7 @@ kotlin {
             api(projects.syncengine)
             api(projects.persistence)
             api(projects.syncPipelines)
+            api(projects.auth)
         }
     }
 }

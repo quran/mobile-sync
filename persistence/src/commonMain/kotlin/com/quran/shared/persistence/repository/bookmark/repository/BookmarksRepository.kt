@@ -15,6 +15,12 @@ interface BookmarksRepository {
     suspend fun getAllBookmarks(): List<Bookmark>
 
     /**
+     * Returns a flow of all bookmarks for observation.
+     */
+    @NativeCoroutines
+    fun getBookmarksFlow(): Flow<List<Bookmark>>
+
+    /**
      * Add a bookmark for a specific page.
      *
      * @return the [Bookmark.PageBookmark]

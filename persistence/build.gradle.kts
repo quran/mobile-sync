@@ -14,8 +14,6 @@ kotlin {
     iosArm64()
     iosSimulatorArm64()
 
-    macosArm64()
-
     jvm()
     androidTarget {
         publishLibraryVariants("release")
@@ -51,13 +49,16 @@ kotlin {
             implementation(libs.sqldelight.jdbc.driver)
         }
 
-        nativeTest.dependencies {
-            implementation(libs.sqldelight.native.driver)
+        val appleMain by creating {
+            dependsOn(commonMain.get())
+            dependencies {
+                implementation(libs.sqldelight.native.driver)
+            }
         }
 
-        nativeMain.dependencies {
-            implementation(libs.sqldelight.native.driver)
-        }
+        iosX64Main.get().dependsOn(appleMain)
+        iosArm64Main.get().dependsOn(appleMain)
+        iosSimulatorArm64Main.get().dependsOn(appleMain)
     }
 
     sourceSets.all {
