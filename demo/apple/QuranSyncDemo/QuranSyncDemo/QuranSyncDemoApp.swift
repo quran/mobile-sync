@@ -3,74 +3,34 @@ import UIKit
 import Shared
 
 /**
- * App delegate that handles OAuth deep link redirects on iOS.
+ * App delegate.
  *
- * When the user completes OAuth flow in the browser, the system opens the app
- * via a deep link with the authorization code. This delegate captures that
- * redirect and notifies the AuthViewModel.
+ * Kept for potential future use (e.g. push notifications setup), but URL handling
+ * is now managed by the pure SwiftUI .onOpenURL modifier.
  */
 class AppDelegate: NSObject, UIApplicationDelegate {
-
-    /**
-     * Called when the app is opened with a URL (deep link).
-     *
-     * This handles OAuth redirects from the system browser.
-     * The redirect URL format: quran-sync://oauth/callback?code=AUTH_CODE&state=STATE
-     */
-    func application(
-        _ app: UIApplication,
-        open url: URL,
-        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
-    ) -> Bool {
-        // Handle OAuth redirect
-        if url.scheme == "com.quran.oauth" && url.host == "callback" {
-            // Notify the app about the OAuth callback
-            NotificationCenter.default.post(
-                name: NSNotification.Name("OAuthRedirect"),
-                object: nil,
-                userInfo: ["url": url]
-            )
-            return true
-        }
-
-        return false
-    }
-
-    /**
-     * Called when the app is opened via scene activation (iOS 13+).
-     */
     func application(
         _ application: UIApplication,
         configurationForConnecting connectingSceneSession: UISceneSession,
         options: UIScene.ConnectionOptions
     ) -> UISceneConfiguration {
-        let configuration = UISceneConfiguration(
+        return UISceneConfiguration(
             name: nil,
             sessionRole: connectingSceneSession.role
         )
-
-        // Handle URL context from scene options
-        if let urlContext = options.urlContexts.first {
-            NotificationCenter.default.post(
-                name: NSNotification.Name("OAuthRedirect"),
-                object: nil,
-                userInfo: ["url": urlContext.url]
-            )
-        }
-
-        return configuration
     }
 }
 
 /**
  * Main App entry point for the iOS demo.
  *
- * Sets up the scene, authentication flow, and handles deep link redirects.
+ * Sets up the scene, authentication flow, and handles deep link redirects via .onOpenURL.
  */
 @main
 struct QuranSyncDemoApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    // Hoist the ViewModel if we want to share it or handle deep links at app level
+    
+    // Hoist the ViewModel to handle deep links at app level
     @StateObject private var viewModel = ObservableViewModel(Shared.AuthViewModel()) { vm, object in
         [
             vm.authState.watch { _ in object.objectWillChange.send() },
@@ -87,7 +47,6 @@ struct QuranSyncDemoApp: App {
                 AuthView(viewModel: viewModel, onAuthenticationSuccess: {
                     isAuthenticating = true
                 })
-                // .environmentObject(viewModel) // Optional if we want environment
 
                 // Overlay for showing authentication success
                 if isAuthenticating {
@@ -105,16 +64,12 @@ struct QuranSyncDemoApp: App {
                     .padding()
                 }
             }
-            .onReceive(
-                NotificationCenter.default.publisher(
-                    for: NSNotification.Name("OAuthRedirect")
-                )
-            ) { notification in
-                if let url = notification.userInfo?["url"] as? URL {
+            // Replace NotificationCenter with native SwiftUI URL handling
+            .onOpenURL { url in
+                if url.scheme == "com.quran.oauth" && url.host == "callback" {
                     viewModel.kt.handleOAuthRedirect(redirectUri: url.absoluteString)
                 }
             }
         }
     }
 }
-
