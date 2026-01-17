@@ -3,7 +3,7 @@ package com.quran.shared.auth.model
 
 
 data class AuthConfig(
-    val usePreProduction: Boolean = true,
+    val usePreProduction: Boolean = false,
     val clientId: String,
     val clientSecret: String? = null,
     val redirectUri: String = "com.quran.oauth://callback",
