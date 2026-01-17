@@ -1,5 +1,7 @@
 package com.quran.shared.demo.android.ui.auth
 
+import android.content.Context
+import android.content.Intent
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -9,6 +11,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.quran.shared.auth.ui.AuthState
+import com.quran.shared.auth.ui.AuthViewModel
+import androidx.core.net.toUri
 
 /**
  * Authentication screen for the Android demo app.
@@ -31,8 +36,12 @@ fun AuthScreen(
     val context = LocalContext.current
 
     LaunchedEffect(authState) {
-        if (authState is AuthState.Success) {
-            onAuthenticationSuccess()
+        when (authState ) {
+            is AuthState.Success -> onAuthenticationSuccess()
+            is AuthState.StartAuthFlow -> {
+                launchBrowser(context, (authState as AuthState.StartAuthFlow).authUrl)
+            }
+            else -> {}
         }
     }
 
@@ -69,7 +78,7 @@ fun AuthScreen(
                 is AuthState.Idle -> {
                     LoginButtonContent(
                         onLoginClick = {
-                            viewModel.login(context as android.app.Activity)
+                            viewModel.login()
                         }
                     )
                 }
@@ -83,13 +92,14 @@ fun AuthScreen(
                     ErrorContent(
                         error = error,
                         onRetry = {
-                            viewModel.login(context as android.app.Activity)
+                            viewModel.login()
                         },
                         onDismiss = {
                             viewModel.clearError()
                         }
                     )
                 }
+                else -> {}
             }
         }
     }
@@ -244,3 +254,10 @@ private fun ErrorContent(
     }
 }
 
+/**
+ * Launches system browser with OAuth authorization URL.
+ */
+private fun launchBrowser(activity: Context, authUrl: String) {
+    val intent = Intent(Intent.ACTION_VIEW, authUrl.toUri())
+    activity.startActivity(intent)
+}

@@ -37,15 +37,18 @@ struct AuthView: View {
 
                 // Content based on auth state
                 Group {
-                    switch viewModel.authState {
-                    case .idle:
+                    if viewModel.authState is Shared.AuthState.Idle {
                         loginButtonContent
-                    case .loading:
+                    } else if viewModel.authState is Shared.AuthState.Loading {
                         loadingContent
-                    case .success:
+                    } else if viewModel.authState is Shared.AuthState.Success {
                         successContent
-                    case .error:
+                    } else if viewModel.authState is Shared.AuthState.Error {
                         errorContent
+                    } else if viewModel.authState is Shared.AuthState.StartAuthFlow {
+                        // The StartAuthFlow is handled by the ViewModel to launch ASWebAuthenticationSession
+                        // but we can show loading meanwhile
+                        loadingContent
                     }
                 }
 
@@ -55,7 +58,7 @@ struct AuthView: View {
             .padding(.vertical, 32)
         }
         .onChange(of: viewModel.authState) { _, newState in
-            if case .success = newState {
+            if newState is Shared.AuthState.Success {
                 onAuthenticationSuccess()
             }
         }

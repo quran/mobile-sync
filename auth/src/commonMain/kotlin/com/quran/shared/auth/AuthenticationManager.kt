@@ -1,5 +1,7 @@
 package com.quran.shared.auth
 
+import com.quran.shared.auth.model.AuthConfig
+import com.quran.shared.auth.model.TokenResponse
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -9,15 +11,15 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
-import io.ktor.util.encodeBase64
 import io.ktor.util.generateNonce
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import org.kotlincrypto.hash.sha2.SHA256
 import org.publicvalue.multiplatform.oidc.OpenIdConnectClient
 import org.publicvalue.multiplatform.oidc.types.CodeChallengeMethod
-import kotlin.time.Clock
+import com.quran.shared.auth.utils.calculateSHA256
+import com.quran.shared.auth.utils.currentTimeMillis
+import com.quran.shared.auth.utils.urlEncode
 
 /**
  * Manages OAuth authentication with Quran.com using Quran Foundation's OAuth2 endpoints.
@@ -28,31 +30,8 @@ import kotlin.time.Clock
  * Reference: https://api-docs.quran.foundation/docs/category/oauth2_apis
  */
 class AuthenticationManager(
-    private val usePreProduction: Boolean = true
+    private val authConfig: AuthConfig
 ) {
-    // OAuth endpoints from Quran Foundation
-    private val baseUrl = if (usePreProduction) {
-        "https://prelive-oauth2.quran.foundation"
-    } else {
-        "https://oauth2.quran.foundation"
-    }
-
-    private val authorizationEndpoint = "$baseUrl/oauth2/auth"
-    private val tokenEndpoint = "$baseUrl/oauth2/token"
-    private val revokeEndpoint = "$baseUrl/oauth2/revoke"
-
-    // OAuth application credentials
-    private val clientId = "YOUR_CLIENT_ID_HERE"
-    private val clientSecret = null
-    // Mobile redirect URI - must match the deep link scheme configured in the app
-    private val redirectUri = "com.quran.oauth://callback"
-
-    // Scopes requested from OAuth server
-    private val requestedScopes = listOf(
-        "openid",
-        "offline_access",
-        "content"
-    )
 
     // HTTP client for making token requests
     private val httpClient = HttpClient {
@@ -68,14 +47,14 @@ class AuthenticationManager(
     private val oidcClient = OpenIdConnectClient(
         block = {
             endpoints {
-                authorizationEndpoint = this@AuthenticationManager.authorizationEndpoint
-                tokenEndpoint = this@AuthenticationManager.tokenEndpoint
+                authorizationEndpoint = authConfig.authorizationEndpoint
+                tokenEndpoint = authConfig.tokenEndpoint
             }
             
-            clientId = this@AuthenticationManager.clientId
-            clientSecret = this@AuthenticationManager.clientSecret // PKCE doesn't use client secret for public clients
-            scope = requestedScopes.joinToString(" ")
-            redirectUri = this@AuthenticationManager.redirectUri
+            clientId = authConfig.clientId
+            clientSecret = authConfig.clientSecret // PKCE doesn't use client secret for public clients
+            scope = authConfig.scopes.joinToString(" ")
+            redirectUri = authConfig.redirectUri
             codeChallengeMethod = CodeChallengeMethod.S256
         }
     )
@@ -100,10 +79,10 @@ class AuthenticationManager(
 
         // Build authorization URL with PKCE parameters
         val params = mapOf(
-            "client_id" to clientId,
-            "redirect_uri" to redirectUri,
+            "client_id" to authConfig.clientId,
+            "redirect_uri" to authConfig.redirectUri,
             "response_type" to "code",
-            "scope" to requestedScopes.joinToString(" "),
+            "scope" to authConfig.scopes.joinToString(" "),
             "state" to state,
             "nonce" to generateNonce(),
             "code_challenge" to codeChallenge,
@@ -114,7 +93,7 @@ class AuthenticationManager(
             "$key=${urlEncode(value)}"
         }
 
-        return "$authorizationEndpoint?$queryString"
+        return "${authConfig.authorizationEndpoint}?$queryString"
     }
 
     /**
@@ -137,13 +116,13 @@ class AuthenticationManager(
 
         return try {
             // Make POST request to token endpoint
-            val response: HttpResponse = httpClient.post(tokenEndpoint) {
+            val response: HttpResponse = httpClient.post(authConfig.tokenEndpoint) {
                 contentType(ContentType.Application.FormUrlEncoded)
                 // Send form-encoded body with token request parameters
                 val body = "grant_type=authorization_code" +
                         "&code=$code" +
-                        "&client_id=$clientId" +
-                        "&redirect_uri=${urlEncode(redirectUri)}" +
+                        "&client_id=${authConfig.clientId}" +
+                        "&redirect_uri=${urlEncode(authConfig.redirectUri)}" +
                         "&code_verifier=$codeVerifier"
                 setBody(body)
             }
@@ -193,11 +172,11 @@ class AuthenticationManager(
 
         return try {
             // Make POST request to token endpoint for refresh
-            val response: HttpResponse = httpClient.post(tokenEndpoint) {
+            val response: HttpResponse = httpClient.post(authConfig.tokenEndpoint) {
                 contentType(ContentType.Application.FormUrlEncoded)
                 val body = "grant_type=refresh_token" +
                         "&refresh_token=$refreshToken" +
-                        "&client_id=$clientId"
+                        "&client_id=${authConfig.clientId}"
                 setBody(body)
             }
 
@@ -246,11 +225,11 @@ class AuthenticationManager(
         return try {
             require(token.isNotEmpty()) { "Token cannot be empty" }
 
-            val response: HttpResponse = httpClient.post(revokeEndpoint) {
+            val response: HttpResponse = httpClient.post(authConfig.revokeEndpoint) {
                 contentType(ContentType.Application.FormUrlEncoded)
                 val body = buildString {
                     append("token=$token")
-                    append("&client_id=$clientId")
+                    append("&client_id=${authConfig.clientId}")
                     if (tokenTypeHint != null) {
                         append("&token_type_hint=$tokenTypeHint")
                     }
@@ -275,67 +254,4 @@ class AuthenticationManager(
         // Add 60 second buffer to refresh before actual expiration
         return currentTimeMillis() < (expirationTime - 60_000)
     }
-
-    // ========================= Helper Methods =========================
-
-    /**
-     * Calculates SHA-256 hash of input string and returns Base64URL encoded result.
-     * Platform-agnostic implementation using platform-specific functions.
-     *
-     * @param input String to hash
-     * @return Base64URL encoded SHA-256 hash (without padding)
-     */
-    private fun calculateSHA256(input: String): String {
-        val bytes = input.encodeToByteArray()
-        val digest = sha256(bytes)
-        return base64UrlEncode(digest)
-    }
-
-    /**
-     * URL encodes a string for use in query parameters.
-     * Platform-agnostic implementation using pure Kotlin.
-     *
-     * @param value String to encode
-     * @return URL-encoded string
-     */
-    private fun urlEncode(value: String): String {
-        return value.toCharArray().map { char ->
-            when (char) {
-                in 'A'..'Z', in 'a'..'z', in '0'..'9', '-', '.', '_', '~' -> char.toString()
-                ' ' -> "%20"
-                else -> {
-                    val bytes = char.toString().encodeToByteArray()
-                    bytes.joinToString("") { "%${it.toUByte().toString(16).padStart(2, '0').uppercase()}" }
-                }
-            }
-        }.joinToString("")
-    }
 }
-
-/**
- * Response from OAuth2 token endpoint.
- *
- * Reference: https://api-docs.quran.foundation/docs/category/oauth2_apis
- */
-data class TokenResponse(
-    val accessToken: String,
-    val refreshToken: String?,
-    val expiresIn: Long,
-    val tokenType: String = "Bearer"
-)
-
-fun sha256(data: ByteArray): ByteArray {
-    val digest = SHA256()
-    digest.update(data)
-    return digest.digest()
-}
-fun base64UrlEncode(data: ByteArray): String {
-    val base64 = data.encodeBase64()
-    return base64.replace("+", "-")
-        .replace("/", "_")
-        .replace("=", "")
-}
-
-fun currentTimeMillis(): Long = Clock.System.now().toEpochMilliseconds()
-
-

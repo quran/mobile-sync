@@ -1,9 +1,31 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+
+// 1. Load the local.properties file
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use { load(it) }
+    }
+}
+
+// 2. Configure BuildKonfig
+buildkonfig {
+    packageName = "com.quran.shared.auth"
+
+    defaultConfigs {
+        // Read from local.properties, provide a fallback for CI/CD environments
+        val clientId = localProperties.getProperty("OAUTH_CLIENT_ID") ?: ""
+
+        buildConfigField(com.codingfeline.buildkonfig.compiler.FieldSpec.Type.STRING, "CLIENT_ID", clientId)
+    }
+}
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.library)
     alias(libs.plugins.vanniktech.maven.publish)
+    alias(libs.plugins.buildkonfig)
 }
 
 kotlin {
@@ -27,6 +49,9 @@ kotlin {
             implementation(libs.ktor.client.content.negotiation)
             implementation(libs.ktor.serialization.json)
             implementation(libs.sha2)
+            implementation(libs.multiplatform.settings.no.arg)
+            api(libs.androidx.lifecycle.viewmodel) // using `api` for better access from swift code
+
         }
 
         commonTest.dependencies {
