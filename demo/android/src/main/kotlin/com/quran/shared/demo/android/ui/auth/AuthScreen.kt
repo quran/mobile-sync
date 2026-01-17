@@ -11,9 +11,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.quran.shared.auth.ui.AuthState
 import com.quran.shared.auth.ui.AuthViewModel
 import androidx.core.net.toUri
+import com.quran.shared.auth.ui.model.AuthState
 
 /**
  * Authentication screen for the Android demo app.
