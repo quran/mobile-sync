@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import Shared
 
 /**
  * App delegate that handles OAuth deep link redirects on iOS.
@@ -69,17 +70,24 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 @main
 struct QuranSyncDemoApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @StateObject private var authViewModel = AuthViewModel()
+    // Hoist the ViewModel if we want to share it or handle deep links at app level
+    @StateObject private var viewModel = ObservableViewModel(Shared.AuthViewModel()) { vm, object in
+        [
+            vm.authState.watch { _ in object.objectWillChange.send() },
+            vm.error.watch { _ in object.objectWillChange.send() }
+        ]
+    }
+    
     @State private var isAuthenticating = false
 
     var body: some Scene {
         WindowGroup {
             ZStack {
                 // Main auth screen
-                AuthView(onAuthenticationSuccess: {
+                AuthView(viewModel: viewModel, onAuthenticationSuccess: {
                     isAuthenticating = true
                 })
-                .environmentObject(authViewModel)
+                // .environmentObject(viewModel) // Optional if we want environment
 
                 // Overlay for showing authentication success
                 if isAuthenticating {
@@ -103,7 +111,7 @@ struct QuranSyncDemoApp: App {
                 )
             ) { notification in
                 if let url = notification.userInfo?["url"] as? URL {
-                    authViewModel.handleOAuthRedirect(url: url)
+                    viewModel.kt.handleOAuthRedirect(redirectUri: url.absoluteString)
                 }
             }
         }

@@ -10,6 +10,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+import com.quran.shared.auth.utils.CommonStateFlow
+import com.quran.shared.auth.utils.toCommonStateFlow
+
 /**
  * ViewModel for authentication UI.
  *
@@ -24,10 +27,10 @@ class AuthViewModel(
     constructor() : this(AuthConfigFactory.authRepository)
 
     private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
-    val authState: StateFlow<AuthState> = _authState
+    val authState: CommonStateFlow<AuthState> = _authState.toCommonStateFlow()
 
     private val _error = MutableStateFlow<String?>(null)
-    val error: StateFlow<String?> = _error
+    val error: CommonStateFlow<String?> = _error.toCommonStateFlow()
 
     /**
      * Initiates the OAuth login flow.
