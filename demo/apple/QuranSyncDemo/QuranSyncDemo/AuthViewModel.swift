@@ -20,8 +20,8 @@ class AuthViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentation
     @Published var error: String? = nil
     
     private var cancellables = Set<AnyCancellable>()
-    private var authStateWatcher: Shared.Job? = nil
-    private var errorWatcher: Shared.Job? = nil
+    private var authStateWatcher: Shared.FlowWatcher? = nil
+    private var errorWatcher: Shared.FlowWatcher? = nil
 
     override init() {
         self.commonViewModel = Shared.AuthViewModel()
@@ -100,7 +100,7 @@ class AuthViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentation
     }
     
     deinit {
-        authStateWatcher?.cancel(cause: nil)
-        errorWatcher?.cancel(cause: nil)
+        authStateWatcher?.cancel()
+        errorWatcher?.cancel()
     }
 }
