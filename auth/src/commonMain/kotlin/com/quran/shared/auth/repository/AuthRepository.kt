@@ -1,24 +1,21 @@
 package com.quran.shared.auth.repository
 
+import com.quran.shared.auth.model.UserInfo
 
 /**
  * Repository handling authentication operations and token persistence.
  *
  * Separates business logic and data management from the UI layer (ViewModel).
+ * Uses the OIDC library's CodeAuthFlow for browser-based authentication.
  */
 interface AuthRepository {
     /**
-     * Prepares the OAuth2 authorization URL and stores necessary PKCE state.
-     * @return The URL to open in a browser.
+     * Performs the complete OAuth2 login flow.
+     * This launches the browser, handles the redirect, and exchanges the code for tokens.
+     * 
+     * @throws Exception if authentication fails or is cancelled
      */
-    fun startLoginFlow(): String
-
-    /**
-     * Completes the OAuth2 flow by exchanging the authorization code for tokens.
-     * @param redirectUri The full redirect URI received from the provider.
-     * @throws Exception if validation fails or token exchange fails.
-     */
-    suspend fun handleRedirect(redirectUri: String)
+    suspend fun login()
 
     /**
      * Refreshes the access token if it's expired or near expiration.
@@ -42,7 +39,7 @@ interface AuthRepository {
     fun isLoggedIn(): Boolean
 
     /**
-     * Retrieves the stored state for manual validation if needed.
+     * Returns the current authenticated user info if available.
      */
-    fun getStoredState(): String?
+    fun getCurrentUser(): UserInfo?
 }

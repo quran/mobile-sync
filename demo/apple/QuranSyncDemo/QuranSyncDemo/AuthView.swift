@@ -1,22 +1,20 @@
 import SwiftUI
-import AuthenticationServices
 import Shared
 
 /**
  * Authentication screen for iOS demo app.
  *
  * Displays:
- * - Login button to initiate OAuth flow
+ * - Login button to initiate OAuth flow via OIDC library
  * - Loading state during authentication
- * - Success message after successful login
+ * - Success message after successful login with user info and bookmarks
  * - Error messages for failed authentication
  *
- * Uses SwiftUI with MVVM pattern for state management.
+ * This version uses the shared OIDC logic, which handles browser launching
+ * and redirect handling internally via ASWebAuthenticationSession.
  */
 struct AuthView: View {
     @ObservedObject var viewModel: ObservableViewModel<Shared.AuthViewModel>
-    
-    @State private var webAuthSession: ASWebAuthenticationSession?
     var onAuthenticationSuccess: () -> Void = {}
 
     var body: some View {
@@ -38,23 +36,17 @@ struct AuthView: View {
                 }
                 .padding(.bottom, 32)
                 
-                // Pure Kotlin ViewModel Access
                 // Content based on auth state
                 Group {
-                    if let state = viewModel.kt.authState.value as? Shared.AuthState {
+                    if let state = viewModel.kt.authState.value {
                         if state is Shared.AuthState.Idle {
                             loginButtonContent
                         } else if state is Shared.AuthState.Loading {
                             loadingContent
-                        } else if state is Shared.AuthState.Success {
-                            successContent
+                        } else if let successState = state as? Shared.AuthState.Success {
+                            successContent(userInfo: successState.userInfo)
                         } else if state is Shared.AuthState.Error {
                             errorContent
-                        } else if let startAuth = state as? Shared.AuthState.StartAuthFlow {
-                            loadingContent
-                            .onAppear {
-                                launchAuthSession(url: startAuth.authUrl)
-                            }
                         }
                     }
                 }
@@ -64,50 +56,13 @@ struct AuthView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 32)
         }
-        // Observe Kotlin StateFlow changes via the wrapper
-        .onChange(of: viewModel.kt.authState.value as? Shared.AuthState) { _, newState in
+        .onChange(of: viewModel.kt.authState.value) { _, newState in
             if newState is Shared.AuthState.Success {
                 onAuthenticationSuccess()
             }
         }
     }
     
-    private func launchAuthSession(url: String) {
-        guard let authUrl = URL(string: url) else { return }
-
-        webAuthSession = ASWebAuthenticationSession(
-            url: authUrl,
-            callbackURLScheme: "com.quran.oauth"
-        ) { callbackUrl, error in
-            if let error = error {
-                 // Handle cancellation
-                 if let authError = error as? ASWebAuthenticationSessionError, authError.code == .canceledLogin {
-                     // Reset state logic if needed, or rely on ViewModel
-                 }
-                 return
-            }
-
-            if let callbackUrl = callbackUrl {
-                viewModel.kt.handleOAuthRedirect(redirectUri: callbackUrl.absoluteString)
-            }
-        }
-        
-        // Context provider usually needed, but starting iOS 13+ can sometimes infer.
-        // For strict correctness we need a provider, but let's try standard start() which covers most cases
-        // or minimal context provider.
-        webAuthSession?.presentationContextProvider = ContextProvider.shared
-        webAuthSession?.prefersEphemeralWebBrowserSession = false
-        webAuthSession?.start()
-    }
-    
-    // Helper Class for ASWebAuthenticationPresentationContextProviding
-    class ContextProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
-        static let shared = ContextProvider()
-        func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-            return ASPresentationAnchor()
-        }
-    }
-
     // MARK: - Content Views
 
     private var loginButtonContent: some View {
@@ -140,20 +95,123 @@ struct AuthView: View {
         }
     }
 
-    private var successContent: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 60))
-                .foregroundColor(.green)
+    @State private var bookmarks: [Shared.Bookmark.PageBookmark] = []
+    
+    private let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
 
-            Text("Successfully signed in!")
-                .font(.headline)
+    private func successContent(userInfo: Shared.UserInfo) -> some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                // User Profile
+                VStack(spacing: 16) {
+                    if let photoUrl = userInfo.photoUrl, let url = URL(string: photoUrl) {
+                        AsyncImage(url: url) { image in
+                            image.resizable()
+                        } placeholder: {
+                            Image(systemName: "person.circle.fill")
+                                .resizable()
+                                .foregroundColor(.gray)
+                        }
+                        .frame(width: 80, height: 80)
+                        .clipShape(Circle())
+                    } else {
+                        Image(systemName: "person.circle.fill")
+                            .resizable()
+                            .foregroundColor(.gray)
+                            .frame(width: 80, height: 80)
+                    }
 
-            Text("Your session is now active.")
-                .font(.caption)
-                .foregroundColor(.secondary)
+                    VStack(spacing: 4) {
+                        Text("Welcome, \(userInfo.name ?? "User")!")
+                            .font(.title2)
+                            .fontWeight(.bold)
+
+                        if let email = userInfo.email {
+                            Text(email)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(Color(.secondarySystemBackground))
+                .cornerRadius(12)
+
+                // Bookmarks Section
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        Text("Your Bookmarks")
+                            .font(.headline)
+                        
+                        Spacer()
+                        
+                        Button(action: {
+                            Task {
+                                try? await DatabaseManager.shared.addRandomBookmark()
+                            }
+                        }) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.title2)
+                        }
+                    }
+
+                    if bookmarks.isEmpty {
+                        Text("No bookmarks yet.")
+                            .foregroundColor(.secondary)
+                            .italic()
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding()
+                    } else {
+                        ForEach(bookmarks, id: \.self) { bookmark in
+                            HStack {
+                                Image(systemName: "bookmark.fill")
+                                    .foregroundColor(.accentColor)
+                                
+                                Text("\(dateFormatter.string(from: bookmark.lastUpdated))")
+                                    .font(.body)
+                                
+                                Spacer()
+                                
+                                Text("Page \(bookmark.page)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding()
+                            .background(Color(.systemBackground))
+                            .cornerRadius(8)
+                            .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+                        }
+                    }
+                }
+                .padding()
+                .background(Color(.secondarySystemBackground).opacity(0.5))
+                .cornerRadius(12)
+                
+                Button("Sign Out") {
+                    viewModel.kt.logout()
+                }
+                .foregroundColor(.red)
+            }
+            .padding()
         }
-        .padding()
+        .task {
+            // Load bookmarks
+            do {
+                for try await list in DatabaseManager.shared.bookmarksSequence() {
+                    bookmarks = list
+                }
+            }
+            catch {
+                print("Error fetching bookmarks: \(error)")
+            }
+            
+        }
     }
 
     private var errorContent: some View {
@@ -191,8 +249,6 @@ struct AuthView: View {
     }
 }
 
-// MARK: - Preview
 #Preview {
     AuthView(viewModel: ObservableViewModel(Shared.AuthViewModel()) { _, _ in [] })
 }
-

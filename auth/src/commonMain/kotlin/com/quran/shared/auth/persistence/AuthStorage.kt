@@ -51,11 +51,19 @@ class AuthStorage(private val settings: Settings = Settings()) {
     }
 
     /**
+     * Retrieves stored id token (JWT).
+     */
+    fun retrieveStoredIdToken(): String? {
+        return settings.getStringOrNull(KEY_ID_TOKEN)
+    }
+
+    /**
      * Clears all stored tokens.
      */
     fun clearAllTokens() {
         settings.remove(KEY_ACCESS_TOKEN)
         settings.remove(KEY_REFRESH_TOKEN)
+        settings.remove(KEY_ID_TOKEN)
         settings.remove(KEY_TOKEN_EXPIRATION)
         settings.remove(KEY_TOKEN_RETRIEVED_AT)
         settings.remove(KEY_CODE_VERIFIER)
@@ -69,6 +77,7 @@ class AuthStorage(private val settings: Settings = Settings()) {
         val expirationTime = currentTimeMillis() + (tokenResponse.expiresIn * 1000)
         settings[KEY_ACCESS_TOKEN] = tokenResponse.accessToken
         settings[KEY_REFRESH_TOKEN] = tokenResponse.refreshToken
+        settings[KEY_ID_TOKEN] = tokenResponse.idToken
         settings[KEY_TOKEN_EXPIRATION] = expirationTime
         settings[KEY_TOKEN_RETRIEVED_AT] = currentTimeMillis()
     }
@@ -102,6 +111,7 @@ class AuthStorage(private val settings: Settings = Settings()) {
     companion object {
         private const val KEY_ACCESS_TOKEN = "access_token"
         private const val KEY_REFRESH_TOKEN = "refresh_token"
+        private const val KEY_ID_TOKEN = "id_token"
         private const val KEY_TOKEN_EXPIRATION = "token_expiration"
         private const val KEY_TOKEN_RETRIEVED_AT = "token_retrieved_at"
         private const val KEY_CODE_VERIFIER = "code_verifier"

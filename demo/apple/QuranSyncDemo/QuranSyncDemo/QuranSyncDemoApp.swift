@@ -30,6 +30,11 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 struct QuranSyncDemoApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
+    init() {
+        // Initialize the OIDC factory for iOS
+        Shared.AuthFlowFactoryProvider.shared.doInitialize()
+    }
+    
     // Hoist the ViewModel to handle deep links at app level
     @StateObject private var viewModel = ObservableViewModel(Shared.AuthViewModel()) { vm, object in
         [
@@ -62,12 +67,6 @@ struct QuranSyncDemoApp: App {
                     .background(Color.green.opacity(0.8))
                     .cornerRadius(12)
                     .padding()
-                }
-            }
-            // Replace NotificationCenter with native SwiftUI URL handling
-            .onOpenURL { url in
-                if url.scheme == "com.quran.oauth" && url.host == "callback" {
-                    viewModel.kt.handleOAuthRedirect(redirectUri: url.absoluteString)
                 }
             }
         }
