@@ -8,6 +8,7 @@ package com.quran.shared.auth.model
 data class TokenResponse(
     val accessToken: String,
     val refreshToken: String?,
+    val idToken: String?,
     val expiresIn: Long,
     val tokenType: String = "Bearer"
 )

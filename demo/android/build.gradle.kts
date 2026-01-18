@@ -34,6 +34,9 @@ dependencies {
     implementation(projects.syncengine)
     implementation(projects.persistence)
     implementation(projects.auth)
+    
+    // OIDC AppSupport for Android auth flow
+    implementation(libs.oidc.appsupport)
 
     // Android Framework & Lifecycle
     implementation("androidx.appcompat:appcompat:1.7.0")
@@ -48,6 +51,9 @@ dependencies {
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
     implementation(libs.compose.runtime)
+
+    implementation("androidx.compose.material:material-icons-core")
+    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
     implementation("androidx.activity:activity-compose:1.9.2")
 

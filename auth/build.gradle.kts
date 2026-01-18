@@ -16,8 +16,10 @@ buildkonfig {
     defaultConfigs {
         // Read from local.properties, provide a fallback for CI/CD environments
         val clientId = localProperties.getProperty("OAUTH_CLIENT_ID") ?: ""
+        val clientSecret = localProperties.getProperty("OAUTH_CLIENT_SECRET") ?: ""
 
         buildConfigField(com.codingfeline.buildkonfig.compiler.FieldSpec.Type.STRING, "CLIENT_ID", clientId)
+        buildConfigField(com.codingfeline.buildkonfig.compiler.FieldSpec.Type.STRING, "CLIENT_SECRET", clientSecret)
     }
 }
 
@@ -46,10 +48,12 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.oidc.appsupport)
             implementation(libs.ktor.client.core)
+            implementation(libs.ktor.client.logging)
             implementation(libs.ktor.client.content.negotiation)
             implementation(libs.ktor.serialization.json)
             implementation(libs.sha2)
             implementation(libs.multiplatform.settings.no.arg)
+            implementation(libs.kermit)
             api(libs.androidx.lifecycle.viewmodel) // using `api` for better access from swift code
 
         }

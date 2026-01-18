@@ -1,7 +1,5 @@
 package com.quran.shared.demo.android.ui.auth
 
-import android.content.Context
-import android.content.Intent
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -12,8 +10,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.quran.shared.auth.ui.AuthViewModel
-import androidx.core.net.toUri
 import com.quran.shared.auth.ui.model.AuthState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Add
+import com.quran.shared.auth.model.UserInfo
+import com.quran.shared.persistence.model.Bookmark
+import kotlinx.coroutines.launch
 
 /**
  * Authentication screen for the Android demo app.
@@ -35,27 +41,27 @@ fun AuthScreen(
     val error by viewModel.error.collectAsState()
     val context = LocalContext.current
 
-    LaunchedEffect(authState) {
-        when (authState ) {
-            is AuthState.Success -> onAuthenticationSuccess()
-            is AuthState.StartAuthFlow -> {
-                launchBrowser(context, (authState as AuthState.StartAuthFlow).authUrl)
-            }
-            else -> {}
-        }
+    val bookmarksRepository = remember {
+        val driverFactory = com.quran.shared.persistence.DriverFactory(context)
+        com.quran.shared.persistence.repository.bookmark.BookmarksRepositoryFactory.createRepository(driverFactory)
     }
+
+    val bookmarks by bookmarksRepository.getBookmarksFlow().collectAsState(initial = emptyList())
+    val coroutineScope = rememberCoroutineScope()
+
+    // The OIDC library handles browser launching internally
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.TopCenter
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
                 .fillMaxWidth()
-                .wrapContentHeight()
+                .padding(top = 32.dp)
         ) {
             // Title
             Text(
@@ -74,7 +80,7 @@ fun AuthScreen(
             )
 
             // Content based on auth state
-            when (authState) {
+            when (val state = authState) {
                 is AuthState.Idle -> {
                     LoginButtonContent(
                         onLoginClick = {
@@ -86,7 +92,18 @@ fun AuthScreen(
                     LoadingContent()
                 }
                 is AuthState.Success -> {
-                    SuccessContent()
+                    SuccessContent(
+                        userInfo = state.userInfo,
+                        bookmarks = bookmarks,
+                        onAddBookmark = {
+                            coroutineScope.launch {
+                                bookmarksRepository.addBookmark((1..604).random())
+                            }
+                        },
+                        onLogout = {
+                            viewModel.logout()
+                        }
+                    )
                 }
                 is AuthState.Error -> {
                     ErrorContent(
@@ -99,7 +116,7 @@ fun AuthScreen(
                         }
                     )
                 }
-                else -> {}
+                // No StartAuthFlow - library handles browser internally
             }
         }
     }
@@ -151,34 +168,141 @@ private fun LoadingContent() {
 }
 
 @Composable
-private fun SuccessContent() {
+private fun SuccessContent(
+    userInfo: UserInfo,
+    bookmarks: List<Bookmark>,
+    onAddBookmark: () -> Unit,
+    onLogout: () -> Unit
+) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Text(
-            text = "✓",
-            style = MaterialTheme.typography.displayLarge,
-            color = MaterialTheme.colorScheme.primary,
-            textAlign = TextAlign.Center
-        )
+        // User Info Card
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.medium,
+            color = MaterialTheme.colorScheme.secondaryContainer
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AccountCircle,
+                    contentDescription = null,
+                    modifier = Modifier.size(64.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Text(
+                    text = "Welcome, ${userInfo.name ?: "User"}!",
+                    style = MaterialTheme.typography.headlineSmall
+                )
+                
+                userInfo.email?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                    )
+                }
+            }
+        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
-        Text(
-            text = "Successfully signed in!",
-            style = MaterialTheme.typography.bodyLarge,
-            textAlign = TextAlign.Center
-        )
+        // Bookmarks Header
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Your Bookmarks",
+                style = MaterialTheme.typography.titleLarge
+            )
+            
+            IconButton(onClick = onAddBookmark) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Add Bookmark"
+                )
+            }
+        }
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        Text(
-            text = "Your session is now active.",
-            style = MaterialTheme.typography.bodySmall,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        // Bookmarks List
+        if (bookmarks.isEmpty()) {
+            Text(
+                text = "No bookmarks yet.",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(vertical = 32.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 400.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(bookmarks) { bookmark ->
+                    BookmarkItem(bookmark)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        TextButton(
+            onClick = onLogout,
+            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+        ) {
+            Text("Sign Out")
+        }
+    }
+}
+
+@Composable
+private fun BookmarkItem(bookmark: Bookmark) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.small,
+        tonalElevation = 2.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Bookmark,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+            
+            Spacer(modifier = Modifier.width(16.dp))
+            
+            Column {
+                when (bookmark) {
+                    is Bookmark.PageBookmark -> {
+                        Text(
+                            text = "Page ${bookmark.page}",
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+                    is Bookmark.AyahBookmark -> {
+                        Text(
+                            text = "Surah ${bookmark.sura}, Ayah ${bookmark.ayah}",
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -252,12 +376,4 @@ private fun ErrorContent(
             }
         }
     }
-}
-
-/**
- * Launches system browser with OAuth authorization URL.
- */
-private fun launchBrowser(activity: Context, authUrl: String) {
-    val intent = Intent(Intent.ACTION_VIEW, authUrl.toUri())
-    activity.startActivity(intent)
 }
