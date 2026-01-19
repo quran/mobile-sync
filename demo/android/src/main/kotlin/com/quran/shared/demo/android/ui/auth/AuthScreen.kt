@@ -198,7 +198,7 @@ private fun SuccessContent(
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 Text(
-                    text = "Welcome, ${userInfo.name ?: "User"}!",
+                    text = "Welcome, ${userInfo.displayName ?: "User"}!",
                     style = MaterialTheme.typography.headlineSmall
                 )
                 

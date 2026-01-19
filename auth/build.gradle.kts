@@ -28,6 +28,7 @@ plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.vanniktech.maven.publish)
     alias(libs.plugins.buildkonfig)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 kotlin {
@@ -54,6 +55,7 @@ kotlin {
             implementation(libs.sha2)
             implementation(libs.multiplatform.settings.no.arg)
             implementation(libs.kermit)
+            implementation(libs.kotlinx.serialization.json)
             api(libs.androidx.lifecycle.viewmodel) // using `api` for better access from swift code
 
         }

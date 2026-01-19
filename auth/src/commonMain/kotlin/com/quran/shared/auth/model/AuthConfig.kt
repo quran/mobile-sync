@@ -17,5 +17,6 @@ data class AuthConfig(
 
     val authorizationEndpoint = "$baseUrl/oauth2/auth"
     val tokenEndpoint = "$baseUrl/oauth2/token"
+    val userinfoEndpoint = "$baseUrl/userinfo"
     val revokeEndpoint = "$baseUrl/oauth2/revoke"
 }
