@@ -51,6 +51,13 @@ class AuthStorage(private val settings: Settings = Settings()) {
     }
 
     /**
+     * Retrieves stored user info.
+     */
+    fun retrieveUserInfo(): String? {
+        return settings.getStringOrNull(KEY_USER_INFO)
+    }
+
+    /**
      * Retrieves stored id token (JWT).
      */
     fun retrieveStoredIdToken(): String? {
@@ -64,6 +71,7 @@ class AuthStorage(private val settings: Settings = Settings()) {
         settings.remove(KEY_ACCESS_TOKEN)
         settings.remove(KEY_REFRESH_TOKEN)
         settings.remove(KEY_ID_TOKEN)
+        settings.remove(KEY_USER_INFO)
         settings.remove(KEY_TOKEN_EXPIRATION)
         settings.remove(KEY_TOKEN_RETRIEVED_AT)
         settings.remove(KEY_CODE_VERIFIER)
@@ -80,6 +88,13 @@ class AuthStorage(private val settings: Settings = Settings()) {
         settings[KEY_ID_TOKEN] = tokenResponse.idToken
         settings[KEY_TOKEN_EXPIRATION] = expirationTime
         settings[KEY_TOKEN_RETRIEVED_AT] = currentTimeMillis()
+    }
+
+    /**
+     * Stores user info as JSON string.
+     */
+    fun storeUserInfo(userInfoJson: String) {
+        settings[KEY_USER_INFO] = userInfoJson
     }
 
     /**
@@ -116,5 +131,6 @@ class AuthStorage(private val settings: Settings = Settings()) {
         private const val KEY_TOKEN_RETRIEVED_AT = "token_retrieved_at"
         private const val KEY_CODE_VERIFIER = "code_verifier"
         private const val KEY_STATE = "state"
+        private const val KEY_USER_INFO = "user_info"
     }
 }

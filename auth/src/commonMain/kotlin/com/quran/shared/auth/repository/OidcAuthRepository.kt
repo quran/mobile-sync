@@ -10,9 +10,10 @@ import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logger
 import io.ktor.client.plugins.logging.Logging
-import io.ktor.http.*
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.header
+import io.ktor.http.ContentType
+import io.ktor.http.ContentTypeMatcher
 import io.ktor.http.HttpHeaders
 import io.ktor.serialization.kotlinx.KotlinxSerializationConverter
 import io.ktor.util.decodeBase64String
@@ -35,8 +36,14 @@ import org.publicvalue.multiplatform.oidc.types.remote.AccessTokenResponse
  */
 class OidcAuthRepository(
     private val authConfig: AuthConfig,
-    private val authStorage: AuthStorage
+    private val authStorage: AuthStorage,
+    private val networkDataSource: AuthNetworkDataSource = AuthNetworkDataSource(authConfig)
 ) : AuthRepository {
+
+    private val json = Json {
+        ignoreUnknownKeys = true
+        explicitNulls = false
+    }
 
     private val oidcClient = DefaultOpenIdConnectClient(
         httpClient = HttpClient {
@@ -117,6 +124,7 @@ class OidcAuthRepository(
         )
         
         storeAccessTokenResponse(tokenResponse)
+        fetchAndStoreUserInfo()
     }
 
     /**
@@ -140,6 +148,7 @@ class OidcAuthRepository(
                 configureTokenExchange = configureTokenExchange
             )
             storeAccessTokenResponse(tokenResponse)
+            fetchAndStoreUserInfo()
         }
     }
 
@@ -152,6 +161,18 @@ class OidcAuthRepository(
             tokenType = response.token_type ?: "Bearer"
         )
         authStorage.storeTokens(tokenResponse)
+    }
+
+    private suspend fun fetchAndStoreUserInfo() {
+        try {
+            val accessToken = authStorage.retrieveStoredAccessToken() ?: return
+            val response: UserInfo = networkDataSource.fetchUserInfo(accessToken)
+            
+            val userInfoJson = json.encodeToString(response)
+            authStorage.storeUserInfo(userInfoJson)
+        } catch (e: Exception) {
+            println("OidcAuthRepository: Failed to fetch user info: ${e.message}")
+        }
     }
 
     override suspend fun refreshTokensIfNeeded(): Boolean {
@@ -198,6 +219,15 @@ class OidcAuthRepository(
     override fun isLoggedIn(): Boolean = authStorage.retrieveStoredAccessToken() != null
 
     override fun getCurrentUser(): UserInfo? {
+        val storedUserInfoJson = authStorage.retrieveUserInfo()
+        if (storedUserInfoJson != null) {
+            return try {
+                json.decodeFromString<UserInfo>(storedUserInfoJson)
+            } catch (e: Exception) {
+                null
+            }
+        }
+
         val idToken = authStorage.retrieveStoredIdToken()
         val accessToken = authStorage.retrieveStoredAccessToken()
         
@@ -222,10 +252,12 @@ class OidcAuthRepository(
         if (parts.size < 2) throw IllegalArgumentException("Invalid JWT token format")
 
         val payload = parts[1].decodeBase64String()
-        val jsonObject = Json.parseToJsonElement(payload).jsonObject
+        val jsonObject = json.parseToJsonElement(payload).jsonObject
 
         return UserInfo(
             id = jsonObject["sub"]?.jsonPrimitive?.content ?: "",
+            firstName = jsonObject["given_name"]?.jsonPrimitive?.content ?: jsonObject["first_name"]?.jsonPrimitive?.content,
+            lastName = jsonObject["family_name"]?.jsonPrimitive?.content ?: jsonObject["last_name"]?.jsonPrimitive?.content,
             name = jsonObject["name"]?.jsonPrimitive?.content,
             email = jsonObject["email"]?.jsonPrimitive?.content,
             photoUrl = jsonObject["picture"]?.jsonPrimitive?.content

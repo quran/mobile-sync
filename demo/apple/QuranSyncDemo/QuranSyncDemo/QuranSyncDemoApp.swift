@@ -47,27 +47,21 @@ struct QuranSyncDemoApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ZStack {
-                // Main auth screen
-                AuthView(viewModel: viewModel, onAuthenticationSuccess: {
-                    isAuthenticating = true
-                })
-
-                // Overlay for showing authentication success
+            VStack {
+                // Show authentication success
                 if isAuthenticating {
-                    Color.black.opacity(0.4)
-                        .ignoresSafeArea()
-
-                    VStack {
-                        Text("Ready to Sync!")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                    }
+                    Text("Ready to Sync!")
+                        .font(.headline)
+                        .foregroundColor(.white)
                     .padding()
                     .background(Color.green.opacity(0.8))
                     .cornerRadius(12)
                     .padding()
                 }
+                // Main auth screen
+                AuthView(viewModel: viewModel, onAuthenticationSuccess: {
+                    isAuthenticating = true
+                })
             }
         }
     }

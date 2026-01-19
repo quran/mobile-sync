@@ -127,7 +127,7 @@ struct AuthView: View {
                     }
 
                     VStack(spacing: 4) {
-                        Text("Welcome, \(userInfo.name ?? "User")!")
+                        Text("Welcome, \(userInfo.displayName ?? "User")!")
                             .font(.title2)
                             .fontWeight(.bold)
 

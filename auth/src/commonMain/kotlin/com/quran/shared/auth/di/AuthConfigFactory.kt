@@ -4,6 +4,7 @@ import com.quran.shared.auth.BuildKonfig
 import com.quran.shared.auth.model.AuthConfig
 import com.quran.shared.auth.persistence.AuthStorage
 import com.quran.shared.auth.repository.AuthRepository
+import com.quran.shared.auth.repository.AuthNetworkDataSource
 import com.quran.shared.auth.repository.OidcAuthRepository
 
 /**
@@ -25,7 +26,11 @@ object AuthConfigFactory {
     // Singletons
     val authStorage: AuthStorage by lazy { AuthStorage() }
     
+    val authNetworkDataSource: AuthNetworkDataSource by lazy {
+        AuthNetworkDataSource(createDefault())
+    }
+    
     val authRepository: AuthRepository by lazy { 
-        OidcAuthRepository(createDefault(), authStorage) 
+        OidcAuthRepository(createDefault(), authStorage, authNetworkDataSource) 
     }
 }
