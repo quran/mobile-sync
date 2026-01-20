@@ -37,6 +37,18 @@ class OidcAuthRepository(
         }
     }
 
+    override fun getAuthHeaders(): Map<String, String> {
+        val token = getAccessToken()
+        return if (token != null) {
+            mapOf(
+                "Authorization" to "Bearer $token",
+                "x-client-id" to authConfig.clientId
+            )
+        } else {
+            emptyMap()
+        }
+    }
+
     override suspend fun login() {
         if (isExchangingToken) return
         isExchangingToken = true

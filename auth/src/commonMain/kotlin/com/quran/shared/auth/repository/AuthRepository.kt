@@ -12,7 +12,7 @@ interface AuthRepository {
     /**
      * Performs the complete OAuth2 login flow.
      * This launches the browser, handles the redirect, and exchanges the code for tokens.
-     * 
+     *
      * @throws Exception if authentication fails or is cancelled
      */
     suspend fun login()
@@ -42,4 +42,9 @@ interface AuthRepository {
      * Returns the current authenticated user info if available.
      */
     fun getCurrentUser(): UserInfo?
+
+    /**
+     * Provides the headers required for authorized requests
+     * */
+    fun getAuthHeaders(): Map<String, String>
 }
