@@ -55,11 +55,14 @@ object AuthConfigFactory {
                 endpoints {
                     authorizationEndpoint = config.authorizationEndpoint
                     tokenEndpoint = config.tokenEndpoint
+                    endSessionEndpoint = config.endSessionEndpoint
+                    revocationEndpoint = config.revocationEndpoint
                 }
                 clientId = config.clientId
                 clientSecret = null //config.clientSecret IMPORTANT!, passing the config value even if config.clientSecret is null makes api call fail
                 scope = config.scopes.joinToString(" ")
                 redirectUri = config.redirectUri
+//                postLogoutRedirectUri = config.postLogoutRedirectUri
                 codeChallengeMethod = CodeChallengeMethod.S256
                 disableNonce = true
             }

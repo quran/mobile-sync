@@ -1,13 +1,12 @@
-// src/commonMain/kotlin/com/quran/shared/auth/model/AuthConfig.kt
 package com.quran.shared.auth.model
-
 
 data class AuthConfig(
     val usePreProduction: Boolean = false,
     val clientId: String,
     val clientSecret: String? = null,
     val redirectUri: String = "com.quran.oauth://callback",
-    val scopes: List<String> = listOf("content", "user", "bookmark")
+    val postLogoutRedirectUri: String = "com.quran.oauth://logout-callback", // todo check if we need this one, remove it if not needed
+    val scopes: List<String> = listOf("openid","content", "user", "bookmark")
 ) {
     val baseUrl: String = if (usePreProduction) {
         "https://prelive-oauth2.quran.foundation"
@@ -18,5 +17,6 @@ data class AuthConfig(
     val authorizationEndpoint = "$baseUrl/oauth2/auth"
     val tokenEndpoint = "$baseUrl/oauth2/token"
     val userinfoEndpoint = "$baseUrl/userinfo"
-    val revokeEndpoint = "$baseUrl/oauth2/revoke"
+    val endSessionEndpoint = "$baseUrl/oauth2/sessions/logout"
+    val revocationEndpoint = "$baseUrl/oauth2/revoke"
 }
