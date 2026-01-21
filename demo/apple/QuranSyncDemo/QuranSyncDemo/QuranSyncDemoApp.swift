@@ -2,54 +2,30 @@ import SwiftUI
 import UIKit
 import Shared
 
-/**
- * App delegate.
- *
- * Kept for potential future use (e.g. push notifications setup), but URL handling
- * is now managed by the pure SwiftUI .onOpenURL modifier.
- */
-class AppDelegate: NSObject, UIApplicationDelegate {
-    func application(
-        _ application: UIApplication,
-        configurationForConnecting connectingSceneSession: UISceneSession,
-        options: UIScene.ConnectionOptions
-    ) -> UISceneConfiguration {
-        return UISceneConfiguration(
-            name: nil,
-            sessionRole: connectingSceneSession.role
-        )
-    }
-}
 
 /**
  * Main App entry point for the iOS demo.
  *
- * Sets up the scene, authentication flow, and handles deep link redirects via .onOpenURL.
+ * Sets up the scene and authentication flow.
  */
 @main
 struct QuranSyncDemoApp: App {
-    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
     init() {
         // Initialize the OIDC factory for iOS
         Shared.AuthFlowFactoryProvider.shared.doInitialize()
     }
     
-    // Hoist the ViewModel to handle deep links at app level
-    @StateObject private var viewModel = ObservableViewModel(Shared.AuthViewModel()) { vm, object in
-        [
-            vm.authState.watch { _ in object.objectWillChange.send() },
-            vm.error.watch { _ in object.objectWillChange.send() }
-        ]
-    }
+    // Use the native ViewModel
+    @StateObject private var viewModel = AuthViewModel()
     
-    @State private var isAuthenticating = false
+    @State private var isAuthenticated = false
 
     var body: some Scene {
         WindowGroup {
             VStack {
                 // Show authentication success
-                if isAuthenticating {
+                if isAuthenticated {
                     Text("Ready to Sync!")
                         .font(.headline)
                         .foregroundColor(.white)
@@ -60,7 +36,7 @@ struct QuranSyncDemoApp: App {
                 }
                 // Main auth screen
                 AuthView(viewModel: viewModel, onAuthenticationSuccess: {
-                    isAuthenticating = true
+                    isAuthenticated = true
                 })
             }
         }

@@ -20,7 +20,8 @@ class DatabaseManager {
   }
   
   func bookmarksSequence() -> any AsyncSequence<[Bookmark.PageBookmark], Error> {
-    return asyncSequence(for: bookmarksRepository.getBookmarksFlow()).map { bookmarks in
+    // todo: PR comment create getPageBookmarks() method in the KMP library
+      return asyncSequence(for: bookmarksRepository.getBookmarksFlow()).map { bookmarks in
       bookmarks.compactMap { $0 as? Bookmark.PageBookmark }
     }
   }

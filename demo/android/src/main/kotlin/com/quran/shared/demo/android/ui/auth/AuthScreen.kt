@@ -10,7 +10,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.quran.shared.auth.ui.AuthViewModel
-import com.quran.shared.auth.ui.model.AuthState
+import com.quran.shared.auth.model.AuthState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -38,7 +38,6 @@ fun AuthScreen(
     onAuthenticationSuccess: () -> Unit = {}
 ) {
     val authState by viewModel.authState.collectAsState()
-    val error by viewModel.error.collectAsState()
     val context = LocalContext.current
 
     val bookmarksRepository = remember {
@@ -107,7 +106,7 @@ fun AuthScreen(
                 }
                 is AuthState.Error -> {
                     ErrorContent(
-                        error = error,
+                        error = state.message,
                         onRetry = {
                             viewModel.login()
                         },

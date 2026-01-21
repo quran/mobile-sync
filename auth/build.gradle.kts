@@ -29,6 +29,7 @@ plugins {
     alias(libs.plugins.vanniktech.maven.publish)
     alias(libs.plugins.buildkonfig)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.native.coroutines)
 }
 
 kotlin {

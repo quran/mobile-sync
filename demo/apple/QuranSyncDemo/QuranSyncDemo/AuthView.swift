@@ -14,7 +14,7 @@ import Shared
  * and redirect handling internally via ASWebAuthenticationSession.
  */
 struct AuthView: View {
-    @ObservedObject var viewModel: ObservableViewModel<Shared.AuthViewModel>
+    @ObservedObject var viewModel: AuthViewModel
     var onAuthenticationSuccess: () -> Void = {}
 
     var body: some View {
@@ -38,16 +38,15 @@ struct AuthView: View {
                 
                 // Content based on auth state
                 Group {
-                    if let state = viewModel.kt.authState.value {
-                        if state is Shared.AuthState.Idle {
-                            loginButtonContent
-                        } else if state is Shared.AuthState.Loading {
-                            loadingContent
-                        } else if let successState = state as? Shared.AuthState.Success {
-                            successContent(userInfo: successState.userInfo)
-                        } else if state is Shared.AuthState.Error {
-                            errorContent
-                        }
+                    let state = viewModel.authState
+                    if state is Shared.AuthState.Idle {
+                        loginButtonContent
+                    } else if state is Shared.AuthState.Loading {
+                        loadingContent
+                    } else if let successState = state as? Shared.AuthState.Success {
+                        successContent(userInfo: successState.userInfo)
+                    } else if state is Shared.AuthState.Error {
+                        errorContent
                     }
                 }
 
@@ -56,7 +55,7 @@ struct AuthView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 32)
         }
-        .onChange(of: viewModel.kt.authState.value) { _, newState in
+        .onChange(of: viewModel.authState) { _, newState in
             if newState is Shared.AuthState.Success {
                 onAuthenticationSuccess()
             }
@@ -67,7 +66,7 @@ struct AuthView: View {
 
     private var loginButtonContent: some View {
         VStack(spacing: 16) {
-            Button(action: { viewModel.kt.login() }) {
+            Button(action: { viewModel.login() }) {
                 Text("Sign in with OAuth")
                     .font(.headline)
                     .foregroundColor(.white)
@@ -194,7 +193,7 @@ struct AuthView: View {
                 .cornerRadius(12)
                 
                 Button("Sign Out") {
-                    viewModel.kt.logout()
+                    viewModel.logout()
                 }
                 .foregroundColor(.red)
             }
@@ -223,8 +222,8 @@ struct AuthView: View {
             Text("Authentication Failed")
                 .font(.headline)
 
-            if let error = viewModel.kt.error.value {
-                Text(error as String)
+            if let errorState = viewModel.authState as? Shared.AuthState.Error {
+                Text(errorState.message)
                     .font(.caption)
                     .foregroundColor(.red)
                     .padding(12)
@@ -235,12 +234,12 @@ struct AuthView: View {
 
             HStack(spacing: 12) {
                 Button("Dismiss") {
-                    viewModel.kt.clearError()
+                    viewModel.clearError()
                 }
                 .buttonStyle(.bordered)
 
                 Button("Retry") {
-                    viewModel.kt.login()
+                    viewModel.login()
                 }
                 .buttonStyle(.borderedProminent)
             }
@@ -250,5 +249,5 @@ struct AuthView: View {
 }
 
 #Preview {
-    AuthView(viewModel: ObservableViewModel(Shared.AuthViewModel()) { _, _ in [] })
+    AuthView(viewModel: AuthViewModel())
 }

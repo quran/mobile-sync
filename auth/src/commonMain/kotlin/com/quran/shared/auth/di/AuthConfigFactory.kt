@@ -6,6 +6,7 @@ import com.quran.shared.auth.persistence.AuthStorage
 import com.quran.shared.auth.repository.AuthRepository
 import com.quran.shared.auth.repository.AuthNetworkDataSource
 import com.quran.shared.auth.repository.OidcAuthRepository
+import com.quran.shared.auth.service.AuthService
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.logging.LogLevel
@@ -86,5 +87,9 @@ object AuthConfigFactory {
             oidcClient = oidcClient,
             networkDataSource = authNetworkDataSource
         )
+    }
+
+    val authService: AuthService by lazy {
+        AuthService(authRepository)
     }
 }

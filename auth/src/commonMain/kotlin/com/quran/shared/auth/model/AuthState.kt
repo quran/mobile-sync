@@ -1,4 +1,4 @@
-package com.quran.shared.auth.ui.model
+package com.quran.shared.auth.model
 
 import com.quran.shared.auth.model.UserInfo
 
@@ -19,5 +19,5 @@ sealed class AuthState {
     data class Success(val userInfo: UserInfo) : AuthState()
 
     /** Authentication failed with an exception */
-    data class Error(val exception: Exception) : AuthState()
+    data class Error(val exception: Exception, val message: String) : AuthState()
 }
