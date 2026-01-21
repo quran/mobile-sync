@@ -42,8 +42,8 @@ class AuthStorage(
     fun storeTokens(tokenResponse: TokenResponse) {
         val expirationTime = currentTimeMillis() + (tokenResponse.expiresIn * 1000)
         settings[KEY_ACCESS_TOKEN] = tokenResponse.accessToken
-        settings[KEY_REFRESH_TOKEN] = tokenResponse.refreshToken
-        settings[KEY_ID_TOKEN] = tokenResponse.idToken
+        tokenResponse.refreshToken?.let { settings[KEY_REFRESH_TOKEN] = it }
+        tokenResponse.idToken?.let { settings[KEY_ID_TOKEN] = it }
         settings[KEY_TOKEN_EXPIRATION] = expirationTime
         settings[KEY_TOKEN_RETRIEVED_AT] = currentTimeMillis()
     }
