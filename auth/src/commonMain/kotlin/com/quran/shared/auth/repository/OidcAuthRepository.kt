@@ -42,6 +42,7 @@ class OidcAuthRepository(
         return if (token != null) {
             mapOf(
                 "Authorization" to "Bearer $token",
+                "x-auth-token" to token,
                 "x-client-id" to authConfig.clientId
             )
         } else {
@@ -92,14 +93,34 @@ class OidcAuthRepository(
     override suspend fun logout() {
         try {
             val idToken = authStorage.retrieveStoredIdToken()
-            // Only attempt end-session if we have a token and the factory is ready
-            if (AuthFlowFactoryProvider.isInitialized() && idToken != null) {
-                AuthFlowFactoryProvider.factory.createEndSessionFlow(oidcClient).endSession(idToken)
+            val refreshToken = authStorage.retrieveStoredRefreshToken()
+
+            // 1. Revoke the Refresh Token (Back-channel)
+            // This ensures the session is killed on the server immediately.
+            refreshToken?.let {
+                try {
+                    oidcClient.revokeToken(it, configureTokenExchange)
+                } catch (e: Exception) {
+                    logger.w(e) { "Token revocation failed, moving to browser logout" }
+                }
             }
-        } catch (e: Exception) {
-            logger.w(e) { "End session failed during logout" }
-            // Network failure during logout shouldn't stop us from clearing local data
+
+            // 2. Terminate OIDC Session (Browser-side)
+            if (AuthFlowFactoryProvider.isInitialized()) {
+                try {
+                    val endSessionFlow = AuthFlowFactoryProvider.factory.createEndSessionFlow(oidcClient)
+                    endSessionFlow.endSession(idToken) {
+                        // TODO: IMPORTANT: Only add this if it is whitelisted in the Quran Foundation dashboard
+                        // as a 'post_logout_redirect_uri' (NOT just a redirect_uri).
+                        // If you get 'internal_error: not whitelisted', comment the line below.
+//                        parameters.append("post_logout_redirect_uri", authConfig.postLogoutRedirectUri)
+                    }
+                } catch (e: Exception) {
+                    logger.w(e) { "End session failed" }
+                }
+            }
         } finally {
+            // Always clear local state
             authStorage.clearAllTokens()
         }
     }
@@ -130,6 +151,7 @@ class OidcAuthRepository(
         return UserInfo.fromJwt(idToken)
     }
 
+
     // Lifecycle methods for handling app restarts during auth
     suspend fun canContinueLogin(): Boolean =
         AuthFlowFactoryProvider.isInitialized() &&
@@ -142,7 +164,6 @@ class OidcAuthRepository(
         isExchangingToken = true
         try {
             val authFlow = AuthFlowFactoryProvider.factory.createAuthFlow(oidcClient)
-            // CRITICAL: Ensure the custom header config is passed here as well
             val response = authFlow.continueLogin(configureTokenExchange)
             handleTokenResponse(response)
         } finally {
