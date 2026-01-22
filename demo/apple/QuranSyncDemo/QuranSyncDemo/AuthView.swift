@@ -15,13 +15,14 @@ import Shared
  */
 struct AuthView: View {
     @ObservedObject var viewModel: AuthViewModel
-    var onAuthenticationSuccess: () -> Void = {}
+    var onAuthenticationSuccess: () -> Void = {
+    }
 
     var body: some View {
         ZStack {
             // Background
             Color(.systemBackground)
-            .ignoresSafeArea()
+                .ignoresSafeArea()
 
             VStack(spacing: 24) {
                 // Header
@@ -35,7 +36,7 @@ struct AuthView: View {
                         .foregroundColor(.secondary)
                 }
                 .padding(.bottom, 32)
-                
+
                 // Content based on auth state
                 Group {
                     let state = viewModel.authState
@@ -60,13 +61,20 @@ struct AuthView: View {
                 onAuthenticationSuccess()
             }
         }
+        .task {
+            await viewModel.observeAuthState()
+        }
     }
-    
+
     // MARK: - Content Views
 
     private var loginButtonContent: some View {
         VStack(spacing: 16) {
-            Button(action: { viewModel.login() }) {
+            Button(action: {
+                Task {
+                    try? await viewModel.login()
+                }
+            }) {
                 Text("Sign in with OAuth")
                     .font(.headline)
                     .foregroundColor(.white)
@@ -95,7 +103,7 @@ struct AuthView: View {
     }
 
     @State private var bookmarks: [Shared.Bookmark.PageBookmark] = []
-    
+
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
@@ -147,9 +155,9 @@ struct AuthView: View {
                     HStack {
                         Text("Your Bookmarks")
                             .font(.headline)
-                        
+
                         Spacer()
-                        
+
                         Button(action: {
                             Task {
                                 try? await DatabaseManager.shared.addRandomBookmark()
@@ -171,12 +179,12 @@ struct AuthView: View {
                             HStack {
                                 Image(systemName: "bookmark.fill")
                                     .foregroundColor(.accentColor)
-                                
+
                                 Text("\(dateFormatter.string(from: bookmark.lastUpdated))")
                                     .font(.body)
-                                
+
                                 Spacer()
-                                
+
                                 Text("Page \(bookmark.page)")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
@@ -191,9 +199,11 @@ struct AuthView: View {
                 .padding()
                 .background(Color(.secondarySystemBackground).opacity(0.5))
                 .cornerRadius(12)
-                
+
                 Button("Sign Out") {
-                    viewModel.logout()
+                    Task {
+                        try? await viewModel.logout()
+                    }
                 }
                 .foregroundColor(.red)
             }
@@ -205,11 +215,10 @@ struct AuthView: View {
                 for try await list in DatabaseManager.shared.bookmarksSequence() {
                     bookmarks = list
                 }
-            }
-            catch {
+            } catch {
                 print("Error fetching bookmarks: \(error)")
             }
-            
+
         }
     }
 
@@ -239,7 +248,9 @@ struct AuthView: View {
                 .buttonStyle(.bordered)
 
                 Button("Retry") {
-                    viewModel.login()
+                    Task {
+                        try? await viewModel.login()
+                    }
                 }
                 .buttonStyle(.borderedProminent)
             }
