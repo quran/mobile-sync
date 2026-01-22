@@ -13,7 +13,7 @@ maven-publish = "0.35.0"
 compose = "2026.01.00"
 coroutines = "1.10.2"
 sqldelight = "2.2.1"
-ktor = "3.3.3"
+ktor = "3.4.0"
 
 # Android configuration
 android-compile-sdk = "36"
