@@ -1,24 +1,41 @@
-//
-//  QuranSyncDemoApp.swift
-//  QuranSyncDemo
-//
-//  Created by Ahmed El-Helw on 5/18/25.
-//
-
 import SwiftUI
+import UIKit
 import Shared
 
+
+/**
+ * Main App entry point for the iOS demo.
+ *
+ * Sets up the scene and authentication flow.
+ */
 @main
 struct QuranSyncDemoApp: App {
-  // Initialize the database manager when the app starts
-  init() {
-    // Access the shared instance to ensure it's initialized on app startup
-    let _ = DatabaseManager.shared
-  }
-  
-  var body: some Scene {
-    WindowGroup {
-      ContentView()
+
+    init() {
+        // Initialize the OIDC factory for iOS
+        Shared.AuthFlowFactoryProvider.shared.doInitialize()
     }
-  }
+
+    @StateObject private var viewModel = AuthViewModel()
+
+    @State private var isAuthenticated = false
+
+    var body: some Scene {
+        WindowGroup {
+            VStack {
+                if isAuthenticated {
+                    Text("Ready to Sync!")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .padding()
+                        .background(Color.green.opacity(0.8))
+                        .cornerRadius(12)
+                        .padding()
+                }
+                AuthView(viewModel: viewModel, onAuthenticationSuccess: {
+                    isAuthenticated = true
+                })
+            }
+        }
+    }
 }

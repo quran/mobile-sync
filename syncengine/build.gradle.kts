@@ -9,8 +9,6 @@ kotlin {
     iosArm64()
     iosSimulatorArm64()
 
-    macosArm64()
-
     jvm()
 
     sourceSets {
@@ -31,10 +29,16 @@ kotlin {
             implementation(libs.ktor.client.okhttp)
         }
 
-
-        appleMain.dependencies {
-            implementation(libs.ktor.client.darwin)
+        val appleMain by creating {
+            dependsOn(commonMain.get())
+            dependencies {
+                implementation(libs.ktor.client.darwin)
+            }
         }
+
+        iosX64Main.get().dependsOn(appleMain)
+        iosArm64Main.get().dependsOn(appleMain)
+        iosSimulatorArm64Main.get().dependsOn(appleMain)
 
         commonTest.dependencies {
             implementation(libs.kotlin.test)

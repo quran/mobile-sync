@@ -14,7 +14,11 @@ import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.withContext
+import app.cash.sqldelight.coroutines.asFlow
+import app.cash.sqldelight.coroutines.mapToList
 
 class BookmarksRepositoryImpl(
     private val database: QuranDatabase
@@ -34,11 +38,31 @@ class BookmarksRepositoryImpl(
                 .map { it.toBookmark() }
 
             // TODO - sort options - ex sort by location, by date added (default)
-            (pageBookmarks + ayahBookmarks).sortedByDescending { bookmark ->
-                when (bookmark) {
-                    is Bookmark.AyahBookmark -> bookmark.lastUpdated.fromPlatform().toEpochMilliseconds()
-                    is Bookmark.PageBookmark -> bookmark.lastUpdated.fromPlatform().toEpochMilliseconds()
-                }
+            sortBookmarks(pageBookmarks + ayahBookmarks)
+        }
+    }
+
+    override fun getBookmarksFlow(): Flow<List<Bookmark>> {
+        val pageBookmarksFlow = pageBookmarkQueries.value.getBookmarks()
+            .asFlow()
+            .mapToList(Dispatchers.IO)
+
+        val ayahBookmarksFlow = ayahBookmarkQueries.value.getBookmarks()
+            .asFlow()
+            .mapToList(Dispatchers.IO)
+
+        return combine(pageBookmarksFlow, ayahBookmarksFlow) { pageList, ayahList ->
+            val pageBookmarks = pageList.map { it.toBookmark() }
+            val ayahBookmarks = ayahList.map { it.toBookmark() }
+            sortBookmarks(pageBookmarks + ayahBookmarks)
+        }
+    }
+
+    private fun sortBookmarks(bookmarks: List<Bookmark>): List<Bookmark> {
+        return bookmarks.sortedByDescending { bookmark ->
+            when (bookmark) {
+                is Bookmark.AyahBookmark -> bookmark.lastUpdated.fromPlatform().toEpochMilliseconds()
+                is Bookmark.PageBookmark -> bookmark.lastUpdated.fromPlatform().toEpochMilliseconds()
             }
         }
     }
