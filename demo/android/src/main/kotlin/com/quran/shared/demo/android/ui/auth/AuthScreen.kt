@@ -5,11 +5,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.quran.shared.auth.ui.AuthViewModel
 import com.quran.shared.auth.model.AuthState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -19,36 +16,19 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Add
 import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.persistence.model.Bookmark
-import kotlinx.coroutines.launch
+import com.quran.shared.pipeline.MainSyncViewModel
+
 
 /**
  * Authentication screen for the Android demo app.
- *
- * Displays:
- * - Login button to initiate OAuth flow
- * - Loading state during authentication
- * - Success message after successful login
- * - Error messages for failed authentication
- *
- * Follows Jetpack Compose best practices with state management via ViewModel.
  */
 @Composable
 fun AuthScreen(
-    viewModel: AuthViewModel = viewModel(),
+    viewModel: MainSyncViewModel,
     onAuthenticationSuccess: () -> Unit = {}
 ) {
     val authState by viewModel.authState.collectAsState()
-    val context = LocalContext.current
-
-    val bookmarksRepository = remember {
-        val driverFactory = com.quran.shared.persistence.DriverFactory(context)
-        com.quran.shared.persistence.repository.bookmark.BookmarksRepositoryFactory.createRepository(driverFactory)
-    }
-
-    val bookmarks by bookmarksRepository.getBookmarksFlow().collectAsState(initial = emptyList())
-    val coroutineScope = rememberCoroutineScope()
-
-    // The OIDC library handles browser launching internally
+    val bookmarks by viewModel.bookmarks.collectAsState(initial = emptyList())
 
     Box(
         modifier = Modifier
@@ -83,7 +63,7 @@ fun AuthScreen(
                 is AuthState.Idle -> {
                     LoginButtonContent(
                         onLoginClick = {
-                            viewModel.login()
+                            viewModel.authViewModel.login()
                         }
                     )
                 }
@@ -95,12 +75,10 @@ fun AuthScreen(
                         userInfo = state.userInfo,
                         bookmarks = bookmarks,
                         onAddBookmark = {
-                            coroutineScope.launch {
-                                bookmarksRepository.addBookmark((1..604).random())
-                            }
+                            viewModel.addBookmark((1..604).random())
                         },
                         onLogout = {
-                            viewModel.logout()
+                            viewModel.authViewModel.logout()
                         }
                     )
                 }
@@ -108,14 +86,13 @@ fun AuthScreen(
                     ErrorContent(
                         error = state.message,
                         onRetry = {
-                            viewModel.login()
+                            viewModel.authViewModel.login()
                         },
                         onDismiss = {
-                            viewModel.clearError()
+                            viewModel.authViewModel.clearError()
                         }
                     )
                 }
-                // No StartAuthFlow - library handles browser internally
             }
         }
     }

@@ -65,7 +65,7 @@ class AuthService(
 
 
     @NativeCoroutines
-    suspend fun login() {
+    suspend fun login(): Unit {
         try {
             _authState.value = AuthState.Loading
             authRepository.login()
@@ -83,7 +83,7 @@ class AuthService(
 
 
     @NativeCoroutines
-    suspend fun logout() {
+    suspend fun logout(): Unit {
         try {
             authRepository.logout()
             _authState.value = AuthState.Idle

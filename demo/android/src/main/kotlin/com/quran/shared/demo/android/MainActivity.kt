@@ -3,9 +3,19 @@ package com.quran.shared.demo.android
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import com.quran.shared.demo.android.ui.auth.AuthScreen
-import com.quran.shared.auth.ui.AuthViewModel
+import com.quran.shared.auth.di.AuthConfigFactory
 import com.quran.shared.auth.di.AuthFlowFactoryProvider
+import com.quran.shared.auth.ui.AuthViewModel
+import com.quran.shared.demo.android.ui.auth.AuthScreen
+import com.quran.shared.persistence.DriverFactory
+import com.quran.shared.persistence.makeDatabase
+import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepositoryImpl
+import com.quran.shared.persistence.repository.collection.repository.CollectionsRepositoryImpl
+import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepositoryImpl
+import com.quran.shared.pipeline.SyncEnginePipeline
+import com.quran.shared.pipeline.MainSyncService
+import com.quran.shared.pipeline.MainSyncViewModel
+import com.quran.shared.syncengine.SynchronizationEnvironment
 import org.publicvalue.multiplatform.oidc.appsupport.AndroidCodeAuthFlowFactory
 
 /**
@@ -15,6 +25,7 @@ import org.publicvalue.multiplatform.oidc.appsupport.AndroidCodeAuthFlowFactory
  * - Initialize the AndroidCodeAuthFlowFactory for OAuth browser flow
  * - Register the factory with AuthFlowFactoryProvider for use by the auth module
  * - Display the authentication screen
+ * - Initialize and Start Sync Engine
  *
  * The OIDC library handles all browser launching and redirect handling internally.
  */
@@ -23,7 +34,29 @@ class MainActivity : ComponentActivity() {
     // Single instance of the factory - persists across activity recreations
     private val codeAuthFlowFactory = AndroidCodeAuthFlowFactory(useWebView = false)
     
-    private val authViewModel: AuthViewModel by lazy { AuthViewModel() }
+    private val mainViewModel: MainSyncViewModel by lazy {
+        val authService = AuthConfigFactory.authService
+        val authViewModel = AuthViewModel(authService)
+        val driverFactory = DriverFactory(context = this)
+        val database = makeDatabase(driverFactory)
+        
+        val pipeline = SyncEnginePipeline(
+            bookmarksRepository = BookmarksRepositoryImpl(database),
+            collectionsRepository = CollectionsRepositoryImpl(database),
+            collectionBookmarksRepository = CollectionBookmarksRepositoryImpl(database)
+        )
+        
+        val service = MainSyncService(
+            authService = authService,
+            pipeline = pipeline,
+            environment = SynchronizationEnvironment(endPointURL = "https://prelive-oauth2.quran.foundation")
+        )
+
+        MainSyncViewModel(
+            authViewModel = authViewModel,
+            service = service
+        )
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,9 +69,10 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             AuthScreen(
-                viewModel = authViewModel,
+                viewModel = mainViewModel,
                 onAuthenticationSuccess = {
                     println("Authentication successful!")
+                    mainViewModel.triggerSync()
                 }
             )
         }

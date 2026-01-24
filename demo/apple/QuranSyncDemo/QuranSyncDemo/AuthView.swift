@@ -1,22 +1,14 @@
 import SwiftUI
 import Shared
+import KMPNativeCoroutinesAsync
 
 /**
  * Authentication screen for iOS demo app.
- *
- * Displays:
- * - Login button to initiate OAuth flow via OIDC library
- * - Loading state during authentication
- * - Success message after successful login with user info and bookmarks
- * - Error messages for failed authentication
- *
- * This version uses the shared OIDC logic, which handles browser launching
- * and redirect handling internally via ASWebAuthenticationSession.
  */
 struct AuthView: View {
-    @ObservedObject var viewModel: AuthViewModel
-    var onAuthenticationSuccess: () -> Void = {
-    }
+    @ObservedObject var viewModel: MainSyncViewModel
+    
+    var onAuthenticationSuccess: () -> Void = {}
 
     var body: some View {
         ZStack {
@@ -62,7 +54,11 @@ struct AuthView: View {
             }
         }
         .task {
-            await viewModel.observeAuthState()
+            // Observe data flows in the background
+            await viewModel.observeData()
+        }
+        .task {
+            await viewModel.authViewModel.observeAuthState()
         }
     }
 
@@ -72,7 +68,7 @@ struct AuthView: View {
         VStack(spacing: 16) {
             Button(action: {
                 Task {
-                    try? await viewModel.login()
+                    try? await viewModel.authViewModel.login()
                 }
             }) {
                 Text("Sign in with OAuth")
@@ -101,8 +97,6 @@ struct AuthView: View {
                 .font(.body)
         }
     }
-
-    @State private var bookmarks: [Shared.Bookmark.PageBookmark] = []
 
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -159,35 +153,41 @@ struct AuthView: View {
                         Spacer()
 
                         Button(action: {
-                            Task {
-                                try? await DatabaseManager.shared.addRandomBookmark()
-                            }
+                            let randomPage = Int.random(in: 1...604)
+                            viewModel.addBookmark(page: Int32(randomPage))
                         }) {
                             Image(systemName: "plus.circle.fill")
                                 .font(.title2)
                         }
                     }
 
-                    if bookmarks.isEmpty {
+                    if viewModel.bookmarks.isEmpty {
                         Text("No bookmarks yet.")
                             .foregroundColor(.secondary)
                             .italic()
                             .frame(maxWidth: .infinity, alignment: .center)
                             .padding()
                     } else {
-                        ForEach(bookmarks, id: \.self) { bookmark in
+                        ForEach(viewModel.bookmarks, id: \.self) { bookmark in
                             HStack {
                                 Image(systemName: "bookmark.fill")
                                     .foregroundColor(.accentColor)
 
-                                Text("\(dateFormatter.string(from: bookmark.lastUpdated))")
-                                    .font(.body)
-
-                                Spacer()
-
-                                Text("Page \(bookmark.page)")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+                                if let pageBookmark = bookmark as? Shared.Bookmark.PageBookmark {
+                                    Text("\(dateFormatter.string(from: pageBookmark.lastUpdated))")
+                                        .font(.body)
+                                    Spacer()
+                                    Text("Page \(pageBookmark.page)")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                } else if let ayahBookmark = bookmark as? Shared.Bookmark.AyahBookmark {
+                                    Text("\(dateFormatter.string(from: ayahBookmark.lastUpdated))")
+                                        .font(.body)
+                                    Spacer()
+                                    Text("\(ayahBookmark.sura):\(ayahBookmark.ayah)")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
                             }
                             .padding()
                             .background(Color(.systemBackground))
@@ -202,23 +202,12 @@ struct AuthView: View {
 
                 Button("Sign Out") {
                     Task {
-                        try? await viewModel.logout()
+                        try? await viewModel.authViewModel.logout()
                     }
                 }
                 .foregroundColor(.red)
             }
             .padding()
-        }
-        .task {
-            // Load bookmarks
-            do {
-                for try await list in DatabaseManager.shared.bookmarksSequence() {
-                    bookmarks = list
-                }
-            } catch {
-                print("Error fetching bookmarks: \(error)")
-            }
-
         }
     }
 
@@ -243,13 +232,13 @@ struct AuthView: View {
 
             HStack(spacing: 12) {
                 Button("Dismiss") {
-                    viewModel.clearError()
+                    viewModel.authViewModel.clearError()
                 }
                 .buttonStyle(.bordered)
 
                 Button("Retry") {
                     Task {
-                        try? await viewModel.login()
+                        try? await viewModel.authViewModel.login()
                     }
                 }
                 .buttonStyle(.borderedProminent)
@@ -257,8 +246,4 @@ struct AuthView: View {
         }
         .padding()
     }
-}
-
-#Preview {
-    AuthView(viewModel: AuthViewModel())
 }

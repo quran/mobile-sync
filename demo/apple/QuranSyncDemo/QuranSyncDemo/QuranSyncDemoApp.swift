@@ -16,7 +16,7 @@ struct QuranSyncDemoApp: App {
         Shared.AuthFlowFactoryProvider.shared.doInitialize()
     }
 
-    @StateObject private var viewModel = AuthViewModel()
+    @StateObject private var mainViewModel = DatabaseManager.shared.mainViewModel
 
     @State private var isAuthenticated = false
 
@@ -32,7 +32,7 @@ struct QuranSyncDemoApp: App {
                         .cornerRadius(12)
                         .padding()
                 }
-                AuthView(viewModel: viewModel, onAuthenticationSuccess: {
+                AuthView(mainViewModel: mainViewModel, onAuthenticationSuccess: {
                     isAuthenticated = true
                 })
             }
