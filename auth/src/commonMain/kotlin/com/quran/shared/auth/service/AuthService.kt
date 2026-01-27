@@ -63,9 +63,7 @@ class AuthService(
         }
     }
 
-    /**
-     * Initiates the OAuth login flow.
-     */
+
     @NativeCoroutines
     suspend fun login() {
         try {
@@ -83,9 +81,7 @@ class AuthService(
         }
     }
 
-    /**
-     * Signs out the user and clears all tokens.
-     */
+
     @NativeCoroutines
     suspend fun logout() {
         try {
@@ -97,27 +93,18 @@ class AuthService(
         }
     }
 
-    /**
-     * Refreshes access tokens if necessary.
-     */
     @NativeCoroutines
     suspend fun refreshAccessTokenIfNeeded(): Boolean {
         return authRepository.refreshTokensIfNeeded()
     }
 
-    /**
-     * Check if user is currently logged in.
-     */
     fun isLoggedIn(): Boolean = authRepository.isLoggedIn()
 
-    /**
-     * Get current access token.
-     */
     fun getAccessToken(): String? = authRepository.getAccessToken()
 
-    /**
-     * Resets the error state.
-     */
+    suspend fun getAuthHeaders(): Map<String, String> = authRepository.getAuthHeaders()
+
+
     fun clearError() {
         if (_authState.value is AuthState.Error) {
             _authState.value = AuthState.Idle

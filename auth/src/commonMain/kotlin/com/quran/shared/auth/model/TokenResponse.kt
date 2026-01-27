@@ -15,7 +15,11 @@ data class TokenResponse(
     @SerialName("expires_in")
     val expiresIn: Long,
     @SerialName("token_type")
-    val tokenType: String
+    val tokenType: String,
+    @SerialName("scope")
+    val scope: String? = null,
+    @SerialName("expires_at")
+    val expiresAt: String? = null
 ) {
     companion object {
         fun fromOidc(response: AccessTokenResponse): TokenResponse {
@@ -24,7 +28,8 @@ data class TokenResponse(
                 refreshToken = response.refresh_token,
                 idToken = response.id_token,
                 expiresIn = response.expires_in?.toLong() ?: 3600L,
-                tokenType = response.token_type ?: "Bearer"
+                tokenType = response.token_type ?: "Bearer",
+                scope = response.scope
             )
         }
     }

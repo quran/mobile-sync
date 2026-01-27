@@ -44,7 +44,7 @@ interface AuthRepository {
     fun getCurrentUser(): UserInfo?
 
     /**
-     * Provides the headers required for authorized requests
+     * Provides the headers required for authorized requests, refreshing the token if needed.
      * */
-    fun getAuthHeaders(): Map<String, String>
+    suspend fun getAuthHeaders(): Map<String, String>
 }
