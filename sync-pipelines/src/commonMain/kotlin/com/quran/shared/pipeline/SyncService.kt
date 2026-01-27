@@ -2,7 +2,6 @@ package com.quran.shared.pipeline
 
 import co.touchlab.kermit.Logger
 import com.quran.shared.auth.model.AuthState
-import com.quran.shared.auth.ui.AuthViewModel
 import com.quran.shared.syncengine.AuthenticationDataFetcher
 import com.quran.shared.syncengine.LocalModificationDateFetcher
 import com.quran.shared.syncengine.SynchronizationClient
@@ -48,8 +47,7 @@ class MainSyncService(
         val dateFetcher = SettingsLocalModificationDateFetcher(settings)
         val authFetcher = object : AuthenticationDataFetcher {
             override suspend fun fetchAuthenticationHeaders(): Map<String, String> {
-                val token = authService.getAccessToken() ?: return emptyMap()
-                return mapOf("Authorization" to "Bearer $token")
+                return authService.getAuthHeaders()
             }
         }
 

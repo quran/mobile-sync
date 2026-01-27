@@ -10,7 +10,7 @@ import kotlinx.coroutines.launch
 /**
  * ViewModel wrapping the [MainSyncService].
  */
-class MainSyncViewModel(
+class SyncViewModel(
     val authViewModel: AuthViewModel,
     val service: MainSyncService
 ) : ViewModel() {

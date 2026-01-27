@@ -30,24 +30,22 @@ class GetMutationsRequest(
     @Serializable
     private data class ApiResponseData(
         val lastMutationAt: Long,
-        val mutations: List<ApiMutation>
+        val mutations: List<ApiMutation>,
+        val page: Int? = null,
+        val limit: Int? = null,
+        val total: Int? = null,
+        val hasMore: Boolean? = null
     )
 
     @Serializable
     private data class ApiMutation(
         val resource: String,
-        val resourceId: String,
+        val resourceId: String? = null,
         val type: String,
         val data: JsonObject? = null,
         val timestamp: Long
     )
 
-    @Serializable
-    private data class ErrorResponse(
-        val message: String,
-        val type: String,
-        val success: Boolean
-    )
     // endregion
     
     suspend fun getMutations(
@@ -55,10 +53,19 @@ class GetMutationsRequest(
         authHeaders: Map<String, String>,
         resources: List<String> = emptyList()
     ): MutationsResponse {
-        val httpResponse = httpClient.get("$url/auth/v1/sync") {
+        val fullUrl = "$url/v1/sync"
+        logger.i { "Starting GET mutations request to $fullUrl" }
+        logger.d { "Request params: mutationsSince=$lastModificationDate, resources=$resources" }
+
+        val httpResponse = httpClient.get(fullUrl) {
             headers {
                 authHeaders.forEach { (key, value) ->
                     append(key, value)
+                    if (key.equals("Authorization", ignoreCase = true)) {
+                        logger.v { "Header: $key=Bearer ***" }
+                    } else {
+                        logger.v { "Header: $key=$value" }
+                    }
                 }
                 contentType(ContentType.Application.Json)
             }
@@ -71,7 +78,7 @@ class GetMutationsRequest(
         logger.d { "HTTP response status: ${httpResponse.status}" }
         if (!httpResponse.status.isSuccess()) {
             httpResponse.processError(logger) {
-                httpResponse.body<ErrorResponse>().message
+                httpResponse.body<SyncErrorResponse>().message
             }
         }
         

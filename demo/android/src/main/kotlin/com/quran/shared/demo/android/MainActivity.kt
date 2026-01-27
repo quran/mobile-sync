@@ -14,7 +14,7 @@ import com.quran.shared.persistence.repository.collection.repository.Collections
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepositoryImpl
 import com.quran.shared.pipeline.SyncEnginePipeline
 import com.quran.shared.pipeline.MainSyncService
-import com.quran.shared.pipeline.MainSyncViewModel
+import com.quran.shared.pipeline.SyncViewModel
 import com.quran.shared.syncengine.SynchronizationEnvironment
 import org.publicvalue.multiplatform.oidc.appsupport.AndroidCodeAuthFlowFactory
 
@@ -34,7 +34,7 @@ class MainActivity : ComponentActivity() {
     // Single instance of the factory - persists across activity recreations
     private val codeAuthFlowFactory = AndroidCodeAuthFlowFactory(useWebView = false)
     
-    private val mainViewModel: MainSyncViewModel by lazy {
+    private val mainViewModel: SyncViewModel by lazy {
         val authService = AuthConfigFactory.authService
         val authViewModel = AuthViewModel(authService)
         val driverFactory = DriverFactory(context = this)
@@ -49,10 +49,10 @@ class MainActivity : ComponentActivity() {
         val service = MainSyncService(
             authService = authService,
             pipeline = pipeline,
-            environment = SynchronizationEnvironment(endPointURL = "https://prelive-oauth2.quran.foundation")
+            environment = SynchronizationEnvironment(endPointURL = "https://apis-prelive.quran.foundation/auth") // todo configure url env
         )
 
-        MainSyncViewModel(
+        SyncViewModel(
             authViewModel = authViewModel,
             service = service
         )

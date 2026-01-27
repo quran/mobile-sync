@@ -16,7 +16,7 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Add
 import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.persistence.model.Bookmark
-import com.quran.shared.pipeline.MainSyncViewModel
+import com.quran.shared.pipeline.SyncViewModel
 
 
 /**
@@ -24,7 +24,7 @@ import com.quran.shared.pipeline.MainSyncViewModel
  */
 @Composable
 fun AuthScreen(
-    viewModel: MainSyncViewModel,
+    viewModel: SyncViewModel,
     onAuthenticationSuccess: () -> Unit = {}
 ) {
     val authState by viewModel.authState.collectAsState()

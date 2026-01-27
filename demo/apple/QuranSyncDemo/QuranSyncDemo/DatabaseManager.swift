@@ -28,7 +28,7 @@ class DatabaseManager {
         self.syncService = MainSyncService(
             authService: authService,
             pipeline: pipeline,
-            environment: SynchronizationEnvironment(endPointURL: "https://prelive-oauth2.quran.foundation"),
+            environment: SynchronizationEnvironment(endPointURL: "https://apis-prelive.quran.foundation/auth"), // todo configure url env
             settings: MainSyncServiceKt.makeSettings()
         )
         

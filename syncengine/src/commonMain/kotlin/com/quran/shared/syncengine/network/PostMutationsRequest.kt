@@ -45,7 +45,11 @@ class PostMutationsRequest(
     @Serializable
     private data class PostMutationsResponseData(
         val lastMutationAt: Long,
-        val mutations: List<PostMutationResponse>
+        val mutations: List<PostMutationResponse>,
+        val page: Int? = null,
+        val limit: Int? = null,
+        val total: Int? = null,
+        val hasMore: Boolean? = null
     )
 
     @Serializable
@@ -57,12 +61,6 @@ class PostMutationsRequest(
         val timestamp: Long? = null
     )
 
-    @Serializable
-    private data class ErrorResponse(
-        val message: String,
-        val type: String,
-        val success: Boolean
-    )
     // endregion
 
     suspend fun postMutations(
@@ -74,19 +72,32 @@ class PostMutationsRequest(
 
         val requestBody = PostMutationsRequestData(
             mutations = mutations.map { localMutation ->
-                PostMutationRequestData(
-                    type = localMutation.mutation.toRequestType(),
-                    resource = localMutation.resource,
-                    resourceId = localMutation.resourceId,
-                    data = localMutation.data
-                )
-            }
-        )
+            PostMutationRequestData(
+                type = localMutation.mutation.toRequestType(),
+                resource = localMutation.resource,
+                resourceId = localMutation.resourceId,
+                data = localMutation.data
+            )
+        })
 
-        val httpResponse = httpClient.post("$url/auth/v1/sync") {
+        val fullUrl = "$url/v1/sync"
+        logger.i { "Starting POST mutations request to $fullUrl" }
+        
+        // Log request body summary
+        logger.d { "Request body: mutations count=${requestBody.mutations.size}, lastMutationAt=$lastModificationDate" }
+        if (requestBody.mutations.isNotEmpty()) {
+            logger.v { "First mutation sample: ${requestBody.mutations.first()}" }
+        }
+
+        val httpResponse = httpClient.post(fullUrl) {
             headers {
                 authHeaders.forEach { (key, value) ->
                     append(key, value)
+                    if (key.equals("Authorization", ignoreCase = true)) {
+                        logger.v { "Header: $key=Bearer ***" }
+                    } else {
+                        logger.v { "Header: $key=$value" }
+                    }
                 }
                 contentType(ContentType.Application.Json)
             }
@@ -98,7 +109,7 @@ class PostMutationsRequest(
 
         if (!httpResponse.status.isSuccess()) {
             httpResponse.processError(logger) {
-                httpResponse.body<ErrorResponse>().message
+                httpResponse.body<SyncErrorResponse>().message
             }
         }
 
