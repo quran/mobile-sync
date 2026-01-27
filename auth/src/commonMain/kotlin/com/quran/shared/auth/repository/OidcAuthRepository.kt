@@ -37,7 +37,8 @@ class OidcAuthRepository(
         }
     }
 
-    override fun getAuthHeaders(): Map<String, String> {
+    override suspend fun getAuthHeaders(): Map<String, String> {
+        refreshTokensIfNeeded()
         val token = getAccessToken()
         return if (token != null) {
             mapOf(

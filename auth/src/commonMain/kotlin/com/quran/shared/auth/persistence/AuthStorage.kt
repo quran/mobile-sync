@@ -5,6 +5,7 @@ import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.auth.utils.currentTimeMillis
 import com.russhwolf.settings.Settings
 import com.russhwolf.settings.set
+import kotlin.time.Instant
 import kotlinx.serialization.json.Json
 
 /**
@@ -18,6 +19,7 @@ class AuthStorage(
     fun retrieveStoredAccessToken(): String? = settings.getStringOrNull(KEY_ACCESS_TOKEN)
     fun retrieveStoredRefreshToken(): String? = settings.getStringOrNull(KEY_REFRESH_TOKEN)
     fun retrieveStoredIdToken(): String? = settings.getStringOrNull(KEY_ID_TOKEN)
+    fun retrieveStoredScope(): String? = settings.getStringOrNull(KEY_SCOPE)
     fun retrieveTokenExpiration(): Long = settings.getLong(KEY_TOKEN_EXPIRATION, 0)
     
     /**
@@ -40,10 +42,20 @@ class AuthStorage(
     }
 
     fun storeTokens(tokenResponse: TokenResponse) {
-        val expirationTime = currentTimeMillis() + (tokenResponse.expiresIn * 1000)
+        val expirationTime = if (tokenResponse.expiresAt != null) {
+            try {
+                Instant.parse(tokenResponse.expiresAt).toEpochMilliseconds()
+            } catch (e: Exception) {
+                currentTimeMillis() + (tokenResponse.expiresIn * 1000)
+            }
+        } else {
+            currentTimeMillis() + (tokenResponse.expiresIn * 1000)
+        }
+        
         settings[KEY_ACCESS_TOKEN] = tokenResponse.accessToken
         tokenResponse.refreshToken?.let { settings[KEY_REFRESH_TOKEN] = it }
         tokenResponse.idToken?.let { settings[KEY_ID_TOKEN] = it }
+        tokenResponse.scope?.let { settings[KEY_SCOPE] = it }
         settings[KEY_TOKEN_EXPIRATION] = expirationTime
         settings[KEY_TOKEN_RETRIEVED_AT] = currentTimeMillis()
     }
@@ -72,6 +84,7 @@ class AuthStorage(
         settings.remove(KEY_ACCESS_TOKEN)
         settings.remove(KEY_REFRESH_TOKEN)
         settings.remove(KEY_ID_TOKEN)
+        settings.remove(KEY_SCOPE)
         settings.remove(KEY_USER_INFO)
         settings.remove(KEY_TOKEN_EXPIRATION)
         settings.remove(KEY_TOKEN_RETRIEVED_AT)
@@ -82,6 +95,7 @@ class AuthStorage(
         private const val KEY_ACCESS_TOKEN = "access_token"
         private const val KEY_REFRESH_TOKEN = "refresh_token"
         private const val KEY_ID_TOKEN = "id_token"
+        private const val KEY_SCOPE = "scope"
         private const val KEY_TOKEN_EXPIRATION = "token_expiration"
         private const val KEY_TOKEN_RETRIEVED_AT = "token_retrieved_at"
         private const val KEY_USER_INFO = "user_info"
