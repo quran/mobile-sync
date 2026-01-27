@@ -5,7 +5,7 @@ data class AuthConfig(
     val clientId: String,
     val clientSecret: String? = null,
     val redirectUri: String = "com.quran.oauth://callback",
-    val postLogoutRedirectUri: String = "com.quran.oauth://logout-callback", // todo check if we need this one, remove it if not needed
+    val postLogoutRedirectUri: String = "com.quran.oauth://callback",
     val scopes: List<String> = listOf("openid","content", "user", "bookmark")
 ) {
     val baseUrl: String = if (usePreProduction) {

@@ -110,10 +110,7 @@ class OidcAuthRepository(
                 try {
                     val endSessionFlow = AuthFlowFactoryProvider.factory.createEndSessionFlow(oidcClient)
                     endSessionFlow.endSession(idToken) {
-                        // TODO: IMPORTANT: Only add this if it is whitelisted in the Quran Foundation dashboard
-                        // as a 'post_logout_redirect_uri' (NOT just a redirect_uri).
-                        // If you get 'internal_error: not whitelisted', comment the line below.
-//                        parameters.append("post_logout_redirect_uri", authConfig.postLogoutRedirectUri)
+                        // add any post-logout actions here
                     }
                 } catch (e: Exception) {
                     logger.w(e) { "End session failed" }
