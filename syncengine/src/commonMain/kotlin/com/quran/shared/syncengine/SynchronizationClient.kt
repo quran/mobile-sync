@@ -70,11 +70,14 @@ class NotesSynchronizationConfigurations(
 
 interface AuthenticationDataFetcher {
     suspend fun fetchAuthenticationHeaders(): Map<String, String>
+    fun isLoggedIn(): Boolean
 }
 
 interface SynchronizationClient {
     fun localDataUpdated()
     fun applicationStarted()
+    fun triggerSyncImmediately()
+    fun cancelSyncing()
 }
 
 data class SynchronizationEnvironment(val endPointURL: String)

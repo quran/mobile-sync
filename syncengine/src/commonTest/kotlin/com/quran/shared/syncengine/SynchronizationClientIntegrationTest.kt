@@ -45,6 +45,8 @@ class SynchronizationClientIntegrationTest {
                     "x-auth-token" to accessToken
                 )
             }
+
+            override fun isLoggedIn(): Boolean = true
         }
     }
 

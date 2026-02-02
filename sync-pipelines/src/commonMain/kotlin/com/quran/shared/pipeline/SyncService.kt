@@ -49,6 +49,10 @@ class MainSyncService(
             override suspend fun fetchAuthenticationHeaders(): Map<String, String> {
                 return authService.getAuthHeaders()
             }
+
+            override fun isLoggedIn(): Boolean {
+                return authService.isLoggedIn()
+            }
         }
 
         syncClient = pipeline.setup(
@@ -69,6 +73,15 @@ class MainSyncService(
         
         scope.launch {
             syncClient.applicationStarted()
+            
+            // Observe auth state and trigger sync when logged in
+            authState.collect { state ->
+                if (state is AuthState.Success) {
+                    syncClient.triggerSyncImmediately()
+                } else if (state is AuthState.Idle || state is AuthState.Error) {
+                    syncClient.cancelSyncing()
+                }
+            }
         }
     }
 
