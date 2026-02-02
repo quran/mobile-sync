@@ -32,7 +32,7 @@ struct QuranSyncDemoApp: App {
                         .cornerRadius(12)
                         .padding()
                 }
-                AuthView(mainViewModel: mainViewModel, onAuthenticationSuccess: {
+                AuthView(viewModel: mainViewModel, onAuthenticationSuccess: {
                     isAuthenticated = true
                 })
             }
