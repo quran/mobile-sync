@@ -91,9 +91,9 @@ object SynchronizationClientBuilder {
     ): SynchronizationClient {
         val adapters = buildList {
             add(BookmarksSyncAdapter(bookmarksConfigurations))
-//            collectionsConfigurations?.let { add(CollectionsSyncAdapter(it)) }
-//            collectionBookmarksConfigurations?.let { add(CollectionBookmarksSyncAdapter(it)) }
-//            notesConfigurations?.let { add(NotesSyncAdapter(it)) }
+            collectionsConfigurations?.let { add(CollectionsSyncAdapter(it)) }
+            collectionBookmarksConfigurations?.let { add(CollectionBookmarksSyncAdapter(it)) }
+            notesConfigurations?.let { add(NotesSyncAdapter(it)) }
         }
         return SynchronizationClientImpl(
             environment,
