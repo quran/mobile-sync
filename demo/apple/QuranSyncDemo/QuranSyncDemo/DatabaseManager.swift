@@ -6,8 +6,8 @@ import Shared
 class DatabaseManager {
     static let shared = DatabaseManager()
 
-    let syncService: MainSyncService
-    let mainViewModel: MainSyncViewModel
+    let syncService: SyncService
+    let syncViewModel: SyncViewModel
 
     private init() {
         let driverFactory = DriverFactory()
@@ -25,15 +25,15 @@ class DatabaseManager {
         )
         
         let authService = AuthConfigFactory.shared.authService
-        self.syncService = MainSyncService(
+        self.syncService = SyncService(
             authService: authService,
             pipeline: pipeline,
             environment: SynchronizationEnvironment(endPointURL: "https://apis-prelive.quran.foundation/auth"), // todo configure url env
             settings: SyncServiceKt.makeSettings()
         )
         
-        self.mainViewModel = MainSyncViewModel(
-            authViewModel: AuthViewModel(authService: authService),
+        self.syncViewModel = SyncViewModel(
+            authService: authService,
             service: self.syncService
         )
     }

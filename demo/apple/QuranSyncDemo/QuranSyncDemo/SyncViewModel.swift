@@ -6,19 +6,19 @@ import Combine
 /**
  * Native iOS ViewModel for Sync and Data.
  * 
- * This class wraps the shared MainSyncService and provides it to SwiftUI.
+ * This class wraps the shared SyncService and provides it to SwiftUI.
  * It uses KMP-NativeCoroutines to convert Kotlin Flows into Swift AsyncSequences.
  */
 @MainActor
-class MainSyncViewModel: ObservableObject {
-    private let service: MainSyncService
-    let authViewModel: AuthViewModel
+class SyncViewModel: ObservableObject {
+    private let service: SyncService
+    private let authService: AuthService
 
     @Published var authState: AuthState = AuthState.Idle()
     @Published var bookmarks: [Shared.Bookmark] = []
 
-    init(authViewModel: AuthViewModel, service: MainSyncService) {
-        self.authViewModel = authViewModel
+    init(authService: AuthService, service: SyncService) {
+        self.authService = authService
         self.service = service
     }
 
@@ -30,7 +30,7 @@ class MainSyncViewModel: ObservableObject {
                     self.authState = state
                 }
             } catch {
-                print("MainSyncViewModel: Error observing authState: \(error)")
+                print("SyncViewModel: Error observing authState: \(error)")
             }
         }
         
@@ -41,7 +41,7 @@ class MainSyncViewModel: ObservableObject {
                     self.bookmarks = list as [Shared.Bookmark]
                 }
             } catch {
-                print("MainSyncViewModel: Error observing bookmarksFlow: \(error)")
+                print("SyncViewModel: Error observing bookmarksFlow: \(error)")
             }
         }
     }
@@ -55,8 +55,24 @@ class MainSyncViewModel: ObservableObject {
             do {
                 try await asyncFunction(for: service.addBookmark(page: page))
             } catch {
-                print("MainSyncViewModel: Failed to add bookmark: \(error)")
+                print("SyncViewModel: Failed to add bookmark: \(error)")
             }
         }
+    }
+
+    func login() async throws {
+        try await asyncFunction(for: authService.login())
+    }
+
+    func logout() async throws {
+        try await asyncFunction(for: authService.logout())
+    }
+
+    func clearError() {
+        authService.clearError()
+    }
+
+    func observeAuthState() async {
+        // No-op for now if not needed, or implement if view needs to trigger it
     }
 }

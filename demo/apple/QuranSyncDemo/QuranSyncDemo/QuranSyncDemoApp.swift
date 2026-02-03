@@ -16,7 +16,7 @@ struct QuranSyncDemoApp: App {
         Shared.AuthFlowFactoryProvider.shared.doInitialize()
     }
 
-    @StateObject private var mainViewModel = DatabaseManager.shared.mainViewModel
+    @StateObject private var mainViewModel = DatabaseManager.shared.syncViewModel
 
     @State private var isAuthenticated = false
 

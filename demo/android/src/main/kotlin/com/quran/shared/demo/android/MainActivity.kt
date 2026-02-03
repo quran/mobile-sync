@@ -5,7 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import com.quran.shared.auth.di.AuthConfigFactory
 import com.quran.shared.auth.di.AuthFlowFactoryProvider
-import com.quran.shared.auth.ui.AuthViewModel
 import com.quran.shared.demo.android.ui.auth.AuthScreen
 import com.quran.shared.persistence.DriverFactory
 import com.quran.shared.persistence.makeDatabase
@@ -13,7 +12,7 @@ import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepo
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepositoryImpl
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepositoryImpl
 import com.quran.shared.pipeline.SyncEnginePipeline
-import com.quran.shared.pipeline.MainSyncService
+import com.quran.shared.pipeline.SyncService
 import com.quran.shared.pipeline.SyncViewModel
 import com.quran.shared.syncengine.SynchronizationEnvironment
 import org.publicvalue.multiplatform.oidc.appsupport.AndroidCodeAuthFlowFactory
@@ -36,7 +35,6 @@ class MainActivity : ComponentActivity() {
     
     private val mainViewModel: SyncViewModel by lazy {
         val authService = AuthConfigFactory.authService
-        val authViewModel = AuthViewModel(authService)
         val driverFactory = DriverFactory(context = this)
         val database = makeDatabase(driverFactory)
         
@@ -46,14 +44,14 @@ class MainActivity : ComponentActivity() {
             collectionBookmarksRepository = CollectionBookmarksRepositoryImpl(database)
         )
         
-        val service = MainSyncService(
+        val service = SyncService(
             authService = authService,
             pipeline = pipeline,
             environment = SynchronizationEnvironment(endPointURL = "https://apis-prelive.quran.foundation/auth") // todo configure url env
         )
 
         SyncViewModel(
-            authViewModel = authViewModel,
+            authService = authService,
             service = service
         )
     }

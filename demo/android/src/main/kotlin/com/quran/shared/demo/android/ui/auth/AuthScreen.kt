@@ -63,7 +63,7 @@ fun AuthScreen(
                 is AuthState.Idle -> {
                     LoginButtonContent(
                         onLoginClick = {
-                            viewModel.authViewModel.login()
+                            viewModel.login()
                         }
                     )
                 }
@@ -78,7 +78,7 @@ fun AuthScreen(
                             viewModel.addBookmark((1..604).random())
                         },
                         onLogout = {
-                            viewModel.authViewModel.logout()
+                            viewModel.logout()
                         }
                     )
                 }
@@ -86,10 +86,10 @@ fun AuthScreen(
                     ErrorContent(
                         error = state.message,
                         onRetry = {
-                            viewModel.authViewModel.login()
+                            viewModel.login()
                         },
                         onDismiss = {
-                            viewModel.authViewModel.clearError()
+                            viewModel.clearError()
                         }
                     )
                 }

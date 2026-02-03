@@ -6,7 +6,7 @@ import KMPNativeCoroutinesAsync
  * Authentication screen for iOS demo app.
  */
 struct AuthView: View {
-    @ObservedObject var viewModel: MainSyncViewModel
+    @ObservedObject var viewModel: SyncViewModel
     
     var onAuthenticationSuccess: () -> Void = {}
 
@@ -58,7 +58,7 @@ struct AuthView: View {
             await viewModel.observeData()
         }
         .task {
-            await viewModel.authViewModel.observeAuthState()
+            await viewModel.observeAuthState()
         }
     }
 
@@ -68,7 +68,7 @@ struct AuthView: View {
         VStack(spacing: 16) {
             Button(action: {
                 Task {
-                    try? await viewModel.authViewModel.login()
+                    try? await viewModel.login()
                 }
             }) {
                 Text("Sign in with OAuth")
@@ -202,7 +202,7 @@ struct AuthView: View {
 
                 Button("Sign Out") {
                     Task {
-                        try? await viewModel.authViewModel.logout()
+                        try? await viewModel.logout()
                     }
                 }
                 .foregroundColor(.red)
@@ -232,13 +232,13 @@ struct AuthView: View {
 
             HStack(spacing: 12) {
                 Button("Dismiss") {
-                    viewModel.authViewModel.clearError()
+                    viewModel.clearError()
                 }
                 .buttonStyle(.bordered)
 
                 Button("Retry") {
                     Task {
-                        try? await viewModel.authViewModel.login()
+                        try? await viewModel.login()
                     }
                 }
                 .buttonStyle(.borderedProminent)

@@ -2,21 +2,45 @@ package com.quran.shared.pipeline
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.quran.shared.auth.ui.AuthViewModel
+import com.quran.shared.auth.service.AuthService
 import com.quran.shared.persistence.model.Bookmark
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 
 /**
- * ViewModel wrapping the [MainSyncService].
+ * ViewModel wrapping the [SyncService].
  */
 class SyncViewModel(
-    val authViewModel: AuthViewModel,
-    val service: MainSyncService
+    private val authService: AuthService,
+    private val service: SyncService
 ) : ViewModel() {
 
     val authState = service.authState
     val bookmarks: Flow<List<Bookmark>> = service.bookmarks
+
+    fun login() {
+        viewModelScope.launch {
+            try {
+                authService.login()
+            } catch (e: Exception) {
+                // Error handled by service state
+            }
+        }
+    }
+
+    fun logout() {
+        viewModelScope.launch {
+            try {
+                authService.logout()
+            } catch (e: Exception) {
+                // Error handled by service state
+            }
+        }
+    }
+
+    fun clearError() {
+        authService.clearError()
+    }
 
     fun triggerSync() {
         service.triggerSync()
