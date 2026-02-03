@@ -11,29 +11,11 @@ class DatabaseManager {
 
     private init() {
         let driverFactory = DriverFactory()
-        let database = DriverFactoryKt.makeDatabase(driverFactory: driverFactory)
-        
-        let bookmarksRepository = BookmarksRepositoryImpl(database: database)
-        let collectionsRepository = CollectionsRepositoryImpl(database: database)
-        let collectionBookmarksRepository = CollectionBookmarksRepositoryImpl(database: database)
-        
-        let pipeline = SyncEnginePipeline(
-            bookmarksRepository: bookmarksRepository as BookmarksSynchronizationRepository,
-            collectionsRepository: collectionsRepository as CollectionsSynchronizationRepository,
-            collectionBookmarksRepository: collectionBookmarksRepository as CollectionBookmarksSynchronizationRepository,
-            notesRepository: nil
-        )
-        
-        let authService = AuthConfigFactory.shared.authService
-        self.syncService = SyncService(
-            authService: authService,
-            pipeline: pipeline,
-            environment: SynchronizationEnvironment(endPointURL: "https://apis-prelive.quran.foundation/auth"), // todo configure url env
-            settings: SyncServiceKt.makeSettings()
-        )
+        let environment = SynchronizationEnvironment(endPointURL: "https://apis-prelive.quran.foundation/auth") // todo configure url env
+        self.syncService = SyncPipelineFactory.shared.createSyncService(driverFactory: driverFactory, environment: environment)
         
         self.syncViewModel = SyncViewModel(
-            authService: authService,
+            authService: AuthConfigFactory.shared.authService,
             service: self.syncService
         )
     }
