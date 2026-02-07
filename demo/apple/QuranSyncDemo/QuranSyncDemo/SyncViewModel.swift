@@ -55,7 +55,27 @@ class SyncViewModel: ObservableObject {
             do {
                 try await asyncFunction(for: service.addBookmark(page: page))
             } catch {
-                print("SyncViewModel: Failed to add bookmark: \(error)")
+                print("SyncViewModel: Failed to add page bookmark: \(error)")
+            }
+        }
+    }
+
+    func addBookmark(sura: Int32, ayah: Int32) {
+        Task {
+            do {
+                try await asyncFunction(for: service.addBookmark(sura: sura, ayah: ayah))
+            } catch {
+                print("SyncViewModel: Failed to add ayah bookmark: \(error)")
+            }
+        }
+    }
+
+    func deleteBookmark(bookmark: Shared.Bookmark) {
+        Task {
+            do {
+                try await asyncFunction(for: service.deleteBookmark(bookmark: bookmark))
+            } catch {
+                print("SyncViewModel: Failed to delete bookmark: \(error)")
             }
         }
     }

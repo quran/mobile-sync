@@ -10,6 +10,7 @@ import com.quran.shared.persistence.input.RemoteBookmark
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.repository.bookmark.extension.toBookmark
 import com.quran.shared.persistence.repository.bookmark.extension.toBookmarkMutation
+import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
 import kotlinx.coroutines.Dispatchers
@@ -228,8 +229,7 @@ class BookmarksRepositoryImpl(
     }
 
     private fun getAyahId(sura: Int, ayah: Int): Int {
-        // TODO - fix this
-        return 1
+        return QuranData.getAyahId(sura, ayah)
     }
 
     override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> {

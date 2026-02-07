@@ -9,6 +9,7 @@ import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionBookmark
 import com.quran.shared.persistence.model.DatabaseBookmarkCollection
+import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toPlatform
@@ -319,8 +320,7 @@ class CollectionBookmarksRepositoryImpl(
     }
 
     private fun getAyahId(sura: Int, ayah: Int): Int {
-        // TODO - fix this
-        return 1
+        return QuranData.getAyahId(sura, ayah)
     }
 
     override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> {

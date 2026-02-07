@@ -14,8 +14,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.persistence.model.Bookmark
+import com.quran.shared.persistence.util.QuranActionsUtils.getRandomAyah
+import com.quran.shared.persistence.util.QuranActionsUtils.getRandomPage
+import com.quran.shared.persistence.util.QuranActionsUtils.getRandomSura
 import com.quran.shared.pipeline.SyncViewModel
 
 
@@ -74,8 +78,16 @@ fun AuthScreen(
                     SuccessContent(
                         userInfo = state.userInfo,
                         bookmarks = bookmarks,
-                        onAddBookmark = {
-                            viewModel.addBookmark((1..604).random())
+                        onAddPageBookmark = {
+                            viewModel.addBookmark(getRandomPage())
+                        },
+                        onAddAyahBookmark = {
+                            val sura = getRandomSura()
+                            val ayah = getRandomAyah(sura)
+                            viewModel.addBookmark(sura, ayah)
+                        },
+                        onDeleteBookmark = {
+                            viewModel.deleteBookmark(it)
                         },
                         onLogout = {
                             viewModel.logout()
@@ -147,7 +159,9 @@ private fun LoadingContent() {
 private fun SuccessContent(
     userInfo: UserInfo,
     bookmarks: List<Bookmark>,
-    onAddBookmark: () -> Unit,
+    onAddPageBookmark: () -> Unit,
+    onAddAyahBookmark: () -> Unit,
+    onDeleteBookmark: (Bookmark) -> Unit,
     onLogout: () -> Unit
 ) {
     Column(
@@ -201,11 +215,20 @@ private fun SuccessContent(
                 style = MaterialTheme.typography.titleLarge
             )
             
-            IconButton(onClick = onAddBookmark) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "Add Bookmark"
-                )
+            Row {
+                IconButton(onClick = onAddPageBookmark) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Add Page Bookmark"
+                    )
+                }
+                IconButton(onClick = onAddAyahBookmark) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Add Ayah Bookmark",
+                        tint = MaterialTheme.colorScheme.secondary
+                    )
+                }
             }
         }
 
@@ -227,7 +250,10 @@ private fun SuccessContent(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(bookmarks) { bookmark ->
-                    BookmarkItem(bookmark)
+                    BookmarkItem(
+                        bookmark = bookmark,
+                        onDelete = { onDeleteBookmark(bookmark) }
+                    )
                 }
             }
         }
@@ -244,7 +270,10 @@ private fun SuccessContent(
 }
 
 @Composable
-private fun BookmarkItem(bookmark: Bookmark) {
+private fun BookmarkItem(
+    bookmark: Bookmark,
+    onDelete: () -> Unit
+) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.small,
@@ -262,7 +291,7 @@ private fun BookmarkItem(bookmark: Bookmark) {
             
             Spacer(modifier = Modifier.width(16.dp))
             
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 when (bookmark) {
                     is Bookmark.PageBookmark -> {
                         Text(
@@ -277,6 +306,14 @@ private fun BookmarkItem(bookmark: Bookmark) {
                         )
                     }
                 }
+            }
+
+            IconButton(onClick = onDelete) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "Delete Bookmark",
+                    tint = MaterialTheme.colorScheme.error
+                )
             }
         }
     }
