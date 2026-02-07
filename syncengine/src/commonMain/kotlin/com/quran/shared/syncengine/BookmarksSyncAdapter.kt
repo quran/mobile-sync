@@ -81,7 +81,7 @@ internal class BookmarksSyncAdapter(
         configurations.resultNotifier.didFail(message)
     }
 
-    private fun parseRemoteMutations(
+    private suspend fun parseRemoteMutations(
         mutations: List<SyncMutation>
     ): List<RemoteModelMutation<SyncBookmark>> {
         return mutations.mapNotNull { mutation ->
@@ -93,7 +93,7 @@ internal class BookmarksSyncAdapter(
                 logger.w { "Skipping bookmark mutation without resourceId" }
                 return@mapNotNull null
             }
-            val bookmark = mutation.toSyncBookmark(logger) ?: return@mapNotNull null
+            val bookmark = mutation.toSyncBookmark(logger, configurations.localDataFetcher) ?: return@mapNotNull null
             RemoteModelMutation(
                 model = bookmark,
                 remoteID = resourceId,
@@ -206,14 +206,16 @@ internal class BookmarksSyncAdapter(
     }
 }
 
-private fun SyncMutation.toSyncBookmark(logger: Logger): SyncBookmark? {
-    val data = data ?: return null
+private suspend fun SyncMutation.toSyncBookmark(
+    logger: Logger,
+    localDataFetcher: LocalDataFetcher<SyncBookmark>
+): SyncBookmark? {
     val id = resourceId ?: return null
-    val normalizedType = data.stringOrNull("bookmarkType") ?: data.stringOrNull("type")
+    val normalizedType = data?.stringOrNull("bookmarkType") ?: data?.stringOrNull("type")
     val lastModified = Instant.fromEpochMilliseconds(timestamp ?: 0)
     return when (normalizedType?.lowercase()) {
         "page" -> {
-            val page = data.intOrNull("key")
+            val page = data?.intOrNull("key")
             if (page == null) {
                 logger.w { "Skipping bookmark mutation without page key: resourceId=$resourceId" }
                 null
@@ -226,8 +228,8 @@ private fun SyncMutation.toSyncBookmark(logger: Logger): SyncBookmark? {
             }
         }
         "ayah" -> {
-            val sura = data.intOrNull("key")
-            val ayah = data.intOrNull("verseNumber")
+            val sura = data?.intOrNull("key")
+            val ayah = data?.intOrNull("verseNumber")
             if (sura != null && ayah != null) {
                 SyncBookmark.AyahBookmark(
                     id = id,
@@ -240,8 +242,17 @@ private fun SyncMutation.toSyncBookmark(logger: Logger): SyncBookmark? {
             }
         }
         else -> {
-            logger.w { "Skipping bookmark mutation with unsupported type=$normalizedType: resourceId=$resourceId" }
-            null
+            val localModel = localDataFetcher.fetchLocalModel(id)
+            if (localModel != null) {
+                logger.d { "Mapped unknown bookmark type using local data: resourceId=$id" }
+                when (localModel) {
+                    is SyncBookmark.PageBookmark -> localModel.copy(lastModified = lastModified)
+                    is SyncBookmark.AyahBookmark -> localModel.copy(lastModified = lastModified)
+                }
+            } else {
+                logger.w { "Skipping bookmark mutation with unsupported type=$normalizedType: resourceId=$resourceId" }
+                null
+            }
         }
     }
 }

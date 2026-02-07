@@ -7,9 +7,6 @@ import com.quran.shared.persistence.model.Bookmark
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 
-/**
- * ViewModel wrapping the [SyncService].
- */
 class SyncViewModel(
     private val authService: AuthService,
     private val service: SyncService
@@ -46,14 +43,30 @@ class SyncViewModel(
         service.triggerSync()
     }
 
-    /**
-     * Adds a bookmark and triggers synchronization.
-     * Launches in [viewModelScope] for Android.
-     */
     fun addBookmark(page: Int) {
         viewModelScope.launch {
             try {
                 service.addBookmark(page)
+            } catch (e: Exception) {
+                // Error handled by service logging
+            }
+        }
+    }
+
+    fun addBookmark(sura: Int, ayah: Int) {
+        viewModelScope.launch {
+            try {
+                service.addBookmark(sura, ayah)
+            } catch (e: Exception) {
+                // Error handled by service logging
+            }
+        }
+    }
+
+    fun deleteBookmark(bookmark: Bookmark) {
+        viewModelScope.launch {
+            try {
+                service.deleteBookmark(bookmark)
             } catch (e: Exception) {
                 // Error handled by service logging
             }

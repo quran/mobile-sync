@@ -151,13 +151,25 @@ struct AuthView: View {
                             .font(.headline)
 
                         Spacer()
-
-                        Button(action: {
-                            let randomPage = Int.random(in: 1...604)
-                            viewModel.addBookmark(page: Int32(randomPage))
-                        }) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.title2)
+                        
+                        HStack(spacing: 12) {
+                            Button(action: {
+                                let randomPage = Shared.QuranActionsUtils().getRandomPage()
+                                viewModel.addBookmark(page: randomPage)
+                            }) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.title2)
+                            }
+                            
+                            Button(action: {
+                                let sura = Shared.QuranActionsUtils().getRandomSura()
+                                let ayah = Shared.QuranActionsUtils().getRandomAyah(sura: sura)
+                                viewModel.addBookmark(sura: sura, ayah: ayah)
+                            }) {
+                                Image(systemName: "plus.circle")
+                                    .font(.title2)
+                                    .foregroundColor(.secondary)
+                            }
                         }
                     }
 
@@ -172,21 +184,31 @@ struct AuthView: View {
                             HStack {
                                 Image(systemName: "bookmark.fill")
                                     .foregroundColor(.accentColor)
-
-                                if let pageBookmark = bookmark as? Shared.Bookmark.PageBookmark {
-                                    Text("\(dateFormatter.string(from: pageBookmark.lastUpdated))")
-                                        .font(.body)
-                                    Spacer()
-                                    Text("Page \(pageBookmark.page)")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                } else if let ayahBookmark = bookmark as? Shared.Bookmark.AyahBookmark {
-                                    Text("\(dateFormatter.string(from: ayahBookmark.lastUpdated))")
-                                        .font(.body)
-                                    Spacer()
-                                    Text("\(ayahBookmark.sura):\(ayahBookmark.ayah)")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
+                                
+                                VStack(alignment: .leading) {
+                                    if let pageBookmark = bookmark as? Shared.Bookmark.PageBookmark {
+                                        Text("Page \(pageBookmark.page)")
+                                            .font(.body)
+                                    } else if let ayahBookmark = bookmark as? Shared.Bookmark.AyahBookmark {
+                                        Text("Surah \(ayahBookmark.sura), Ayah \(ayahBookmark.ayah)")
+                                            .font(.body)
+                                    }
+                                    
+                                    let date = (bookmark as? Shared.Bookmark.PageBookmark)?.lastUpdated ?? (bookmark as? Shared.Bookmark.AyahBookmark)?.lastUpdated
+                                    if let date = date {
+                                        Text("\(dateFormatter.string(from: date))")
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                
+                                Spacer()
+                                
+                                Button(action: {
+                                    viewModel.deleteBookmark(bookmark: bookmark)
+                                }) {
+                                    Image(systemName: "trash")
+                                        .foregroundColor(.red)
                                 }
                             }
                             .padding()

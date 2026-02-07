@@ -23,6 +23,13 @@ interface LocalDataFetcher<Model> {
      * @return Map of remote ID to boolean indicating if it exists locally
      */
     suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean>
+
+    /**
+     * Fetches a local model by its remote ID.
+     * @param remoteID Remote ID of the model to fetch
+     * @return Model if found locally, null otherwise
+     */
+    suspend fun fetchLocalModel(remoteID: String): Model?
 }
 
 interface ResultNotifier<Model> {

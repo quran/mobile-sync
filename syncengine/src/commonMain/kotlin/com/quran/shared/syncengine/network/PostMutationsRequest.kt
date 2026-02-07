@@ -33,7 +33,7 @@ class PostMutationsRequest(
         val type: String,
         val resource: String,
         val resourceId: String?,
-        val data: JsonObject?
+        val data: JsonObject? = null
     )
 
     @Serializable
@@ -56,7 +56,7 @@ class PostMutationsRequest(
     private data class PostMutationResponse(
         val type: String,
         val resource: String,
-        val data: JsonObject?,
+        val data: JsonObject? = null,
         val resourceId: String,
         val timestamp: Long? = null
     )

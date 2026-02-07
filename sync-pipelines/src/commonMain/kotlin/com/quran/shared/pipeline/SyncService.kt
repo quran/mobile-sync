@@ -95,7 +95,32 @@ class SyncService(
             bookmarksRepository.addBookmark(page)
             triggerSync()
         } catch (e: Exception) {
-            Logger.e(e) { "Failed to add bookmark" }
+            Logger.e(e) { "Failed to add page bookmark" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun addBookmark(sura: Int, ayah: Int): Unit {
+        try {
+            bookmarksRepository.addBookmark(sura, ayah)
+            triggerSync()
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to add ayah bookmark" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun deleteBookmark(bookmark: Bookmark): Unit {
+        try {
+            when (bookmark) {
+                is Bookmark.PageBookmark -> bookmarksRepository.deleteBookmark(bookmark.page)
+                is Bookmark.AyahBookmark -> bookmarksRepository.deleteBookmark(bookmark.sura, bookmark.ayah)
+            }
+            triggerSync()
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to delete bookmark" }
             throw e
         }
     }

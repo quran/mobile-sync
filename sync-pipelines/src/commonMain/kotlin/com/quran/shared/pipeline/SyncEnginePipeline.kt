@@ -16,6 +16,7 @@ import com.quran.shared.persistence.repository.bookmark.repository.BookmarksSync
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksSynchronizationRepository
 import com.quran.shared.persistence.repository.collection.repository.CollectionsSynchronizationRepository
 import com.quran.shared.persistence.repository.note.repository.NotesSynchronizationRepository
+import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toPlatform
 import com.quran.shared.syncengine.AuthenticationDataFetcher
@@ -115,6 +116,10 @@ private class RepositoryDataFetcher(val bookmarksRepository: BookmarksSynchroniz
     override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> {
         return bookmarksRepository.remoteResourcesExist(remoteIDs)
     }
+
+    override suspend fun fetchLocalModel(remoteID: String): SyncBookmark? {
+        return bookmarksRepository.fetchBookmarkByRemoteId(remoteID)?.toSyncEngine()
+    }
 }
 
 private class CollectionsRepositoryDataFetcher(
@@ -135,6 +140,10 @@ private class CollectionsRepositoryDataFetcher(
     override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> {
         return collectionsRepository.remoteResourcesExist(remoteIDs)
     }
+
+    override suspend fun fetchLocalModel(remoteID: String): SyncCollection? {
+        return null
+    }
 }
 
 private class CollectionBookmarksRepositoryDataFetcher(
@@ -154,6 +163,10 @@ private class CollectionBookmarksRepositoryDataFetcher(
 
     override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> {
         return collectionBookmarksRepository.remoteResourcesExist(remoteIDs)
+    }
+
+    override suspend fun fetchLocalModel(remoteID: String): SyncCollectionBookmark? {
+        return null
     }
 }
 
@@ -181,6 +194,10 @@ private class NotesRepositoryDataFetcher(
 
     override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> {
         return notesRepository.remoteResourcesExist(remoteIDs)
+    }
+
+    override suspend fun fetchLocalModel(remoteID: String): SyncNote? {
+        return null
     }
 }
 
@@ -554,34 +571,15 @@ private fun SyncNote.primaryRangeOrNull(): NoteRange? {
     return ranges.first()
 }
 
-private val suraAyahCounts = intArrayOf(
-    7, 286, 200, 176, 120, 165, 206, 75, 129, 109, 123, 111, 43, 52, 99, 128, 111, 110, 98, 135,
-    112, 78, 118, 64, 77, 227, 93, 88, 69, 60, 34, 30, 73, 54, 45, 83, 182, 88, 75, 85, 54, 53,
-    89, 59, 37, 35, 38, 29, 18, 45, 60, 49, 62, 55, 78, 96, 29, 22, 24, 13, 14, 11, 11, 18, 12,
-    12, 30, 52, 52, 44, 28, 28, 20, 56, 40, 31, 50, 40, 46, 42, 29, 19, 36, 25, 22, 17, 19, 26,
-    30, 20, 15, 21, 11, 8, 8, 19, 5, 8, 8, 11, 11, 8, 3, 9, 5, 4, 7, 3, 6, 3, 5, 4, 5, 6
-)
-
-private val suraAyahOffsets: IntArray = run {
-    val offsets = IntArray(suraAyahCounts.size + 1)
-    var total = 0
-    for (index in suraAyahCounts.indices) {
-        offsets[index] = total
-        total += suraAyahCounts[index]
-    }
-    offsets[suraAyahCounts.size] = total
-    offsets
-}
-
 private fun suraAyahToAyahId(sura: Int, ayah: Int): Long? {
-    if (sura !in 1..suraAyahCounts.size) {
+    if (sura !in 1..QuranData.suraAyahCounts.size) {
         return null
     }
-    val count = suraAyahCounts[sura - 1]
+    val count = QuranData.suraAyahCounts[sura - 1]
     if (ayah !in 1..count) {
         return null
     }
-    val offset = suraAyahOffsets[sura - 1]
+    val offset = QuranData.suraAyahOffsets[sura - 1]
     return (offset + ayah).toLong()
 }
 
@@ -590,8 +588,8 @@ private fun ayahIdToSuraAyah(ayahId: Long): NoteAyah? {
         return null
     }
     var remaining = ayahId.toInt()
-    for (index in suraAyahCounts.indices) {
-        val count = suraAyahCounts[index]
+    for (index in QuranData.suraAyahCounts.indices) {
+        val count = QuranData.suraAyahCounts[index]
         if (remaining <= count) {
             return NoteAyah(sura = index + 1, ayah = remaining)
         }

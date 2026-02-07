@@ -20,6 +20,9 @@ getBookmarkForPage:
 getBookmarkByLocalId:
   SELECT * FROM page_bookmark WHERE local_id = ? LIMIT 1;
 
+getBookmarkByRemoteId:
+  SELECT * FROM page_bookmark WHERE remote_id = ? LIMIT 1;
+
 createRemoteBookmark:
   INSERT INTO page_bookmark (remote_id, page, deleted)
   VALUES (?, ?, 0);

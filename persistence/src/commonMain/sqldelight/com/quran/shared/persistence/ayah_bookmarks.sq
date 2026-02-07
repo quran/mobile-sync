@@ -23,6 +23,9 @@ getBookmarkForAyah:
 getBookmarkByLocalId:
   SELECT * FROM ayah_bookmark WHERE local_id = ? LIMIT 1;
 
+getBookmarkByRemoteId:
+  SELECT * FROM ayah_bookmark WHERE remote_id = ? LIMIT 1;
+
 addNewBookmark {
   INSERT OR IGNORE INTO ayah_bookmark (remote_id, ayah_id, sura, ayah, deleted)
   VALUES (NULL, :ayah_id, :sura, :ayah, 0);
