@@ -10,7 +10,12 @@ import com.russhwolf.settings.Settings
 import com.russhwolf.settings.set
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.persistence.model.Bookmark
+import com.quran.shared.persistence.model.Collection
+import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepository
+import com.quran.shared.persistence.repository.collection.repository.CollectionsRepository
+import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepository
+import com.quran.shared.persistence.repository.note.repository.NotesRepository
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutinesState
 import kotlinx.coroutines.CoroutineScope
@@ -36,12 +41,35 @@ class SyncService(
     // Cast the synchronization repository to the transactional repository
     // This allows the Service to be the single entry point for UI
     private val bookmarksRepository = pipeline.bookmarksRepository as BookmarksRepository
+    private val collectionsRepository = pipeline.collectionsRepository as CollectionsRepository
+    private val collectionBookmarksRepository = pipeline.collectionBookmarksRepository as CollectionBookmarksRepository
+    private val notesRepository = pipeline.notesRepository as NotesRepository
 
     /**
      * Flow of all bookmarks for the UI to observe.
      */
     @NativeCoroutines
     val bookmarks: Flow<List<Bookmark>> get() = bookmarksRepository.getBookmarksFlow()
+
+    /**
+     * Flow of all collections for the UI to observe.
+     */
+    @NativeCoroutines
+    val collections: Flow<List<Collection>> get() = collectionsRepository.getCollectionsFlow()
+
+    /**
+     * Flow of all notes for the UI to observe.
+     */
+    @NativeCoroutines
+    val notes: Flow<List<Note>> get() = notesRepository.getNotesFlow()
+    
+    /**
+     * Observe bookmarks for a specific collection.
+     */
+    @NativeCoroutines
+    fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<com.quran.shared.persistence.model.CollectionBookmark>> {
+        return collectionBookmarksRepository.getBookmarksForCollectionFlow(collectionLocalId)
+    }
 
     init {
         val dateFetcher = SettingsLocalModificationDateFetcher(settings)
@@ -121,6 +149,72 @@ class SyncService(
             triggerSync()
         } catch (e: Exception) {
             Logger.e(e) { "Failed to delete bookmark" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun addCollection(name: String): Unit {
+        try {
+            collectionsRepository.addCollection(name)
+            triggerSync()
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to add collection" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun deleteCollection(localId: String): Unit {
+        try {
+            collectionsRepository.deleteCollection(localId)
+            triggerSync()
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to delete collection" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun addBookmarkToCollection(collectionLocalId: String, bookmark: Bookmark): Unit {
+        try {
+            collectionBookmarksRepository.addBookmarkToCollection(collectionLocalId, bookmark)
+            triggerSync()
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to add bookmark to collection" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun removeBookmarkFromCollection(collectionLocalId: String, bookmark: Bookmark): Unit {
+        try {
+            collectionBookmarksRepository.removeBookmarkFromCollection(collectionLocalId, bookmark)
+            triggerSync()
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to remove bookmark from collection" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun addNote(body: String, startAyahId: Long, endAyahId: Long): Unit {
+        try {
+            notesRepository.addNote(body, startAyahId, endAyahId)
+            triggerSync()
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to add note" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun deleteNote(localId: String): Unit {
+        try {
+            notesRepository.deleteNote(localId)
+            triggerSync()
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to delete note" }
             throw e
         }
     }
