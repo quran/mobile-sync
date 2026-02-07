@@ -255,6 +255,20 @@ class BookmarksRepositoryImpl(
             remoteIDs.associateWith { existentIDs.contains(it) }
         }
     }
+
+    override suspend fun fetchBookmarkByRemoteId(remoteId: String): Bookmark? {
+        return withContext(Dispatchers.IO) {
+            val pageBookmark = pageBookmarkQueries.value.getBookmarkByRemoteId(remoteId)
+                .executeAsOneOrNull()
+            if (pageBookmark != null) {
+                return@withContext pageBookmark.toBookmark()
+            }
+
+            val ayahBookmark = ayahBookmarkQueries.value.getBookmarkByRemoteId(remoteId)
+                .executeAsOneOrNull()
+            ayahBookmark?.toBookmark()
+        }
+    }
 }
 
 private data class BookmarkKey(val type: String, val first: Int, val second: Int?)

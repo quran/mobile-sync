@@ -116,6 +116,10 @@ private class RepositoryDataFetcher(val bookmarksRepository: BookmarksSynchroniz
     override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> {
         return bookmarksRepository.remoteResourcesExist(remoteIDs)
     }
+
+    override suspend fun fetchLocalModel(remoteID: String): SyncBookmark? {
+        return bookmarksRepository.fetchBookmarkByRemoteId(remoteID)?.toSyncEngine()
+    }
 }
 
 private class CollectionsRepositoryDataFetcher(
@@ -136,6 +140,10 @@ private class CollectionsRepositoryDataFetcher(
     override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> {
         return collectionsRepository.remoteResourcesExist(remoteIDs)
     }
+
+    override suspend fun fetchLocalModel(remoteID: String): SyncCollection? {
+        return null
+    }
 }
 
 private class CollectionBookmarksRepositoryDataFetcher(
@@ -155,6 +163,10 @@ private class CollectionBookmarksRepositoryDataFetcher(
 
     override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> {
         return collectionBookmarksRepository.remoteResourcesExist(remoteIDs)
+    }
+
+    override suspend fun fetchLocalModel(remoteID: String): SyncCollectionBookmark? {
+        return null
     }
 }
 
@@ -182,6 +194,10 @@ private class NotesRepositoryDataFetcher(
 
     override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> {
         return notesRepository.remoteResourcesExist(remoteIDs)
+    }
+
+    override suspend fun fetchLocalModel(remoteID: String): SyncNote? {
+        return null
     }
 }
 
