@@ -39,9 +39,9 @@ dependencies {
     implementation(libs.oidc.appsupport)
 
     // Android Framework & Lifecycle
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel:2.8.4")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
+    implementation(libs.androidx.appcompat)
+    implementation(libs.androidx.lifecycle.viewmodel)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
 
     // Compose
     implementation(platform(libs.compose.bom))
@@ -52,10 +52,10 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.compose.runtime)
 
-    implementation("androidx.compose.material:material-icons-core")
-    implementation("androidx.compose.material:material-icons-extended")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
-    implementation("androidx.activity:activity-compose:1.9.2")
+    implementation(libs.compose.material.icons.core)
+    implementation(libs.compose.material.icons.extended)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.activity.compose)
 
     debugImplementation(libs.compose.ui.tooling)
 }
