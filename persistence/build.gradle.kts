@@ -59,6 +59,16 @@ kotlin {
         iosX64Main.get().dependsOn(appleMain)
         iosArm64Main.get().dependsOn(appleMain)
         iosSimulatorArm64Main.get().dependsOn(appleMain)
+
+        val nativeTest by creating {
+            dependsOn(commonTest.get())
+            dependencies {
+                implementation(libs.sqldelight.native.driver)
+            }
+        }
+        iosX64Test.get().dependsOn(nativeTest)
+        iosArm64Test.get().dependsOn(nativeTest)
+        iosSimulatorArm64Test.get().dependsOn(nativeTest)
     }
 
     sourceSets.all {
