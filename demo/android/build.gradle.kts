@@ -40,7 +40,7 @@ dependencies {
 
     // Android Framework & Lifecycle
     implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel:2.8.4")
+    implementation("androidx.lifecycle:lifecycle-viewmodel:2.10.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
 
     // Compose
