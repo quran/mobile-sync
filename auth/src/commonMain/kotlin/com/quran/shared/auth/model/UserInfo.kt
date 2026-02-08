@@ -6,6 +6,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlin.io.encoding.Base64
 
 @Serializable
 data class UserInfo(
@@ -33,7 +34,7 @@ data class UserInfo(
                 val parts = token.split(".")
                 if (parts.size < 2) return null
 
-                val payload = parts[1].decodeBase64String()
+                val payload = Base64.decode(parts[1]).decodeToString()
                 val jsonObject = json.parseToJsonElement(payload).jsonObject
 
                 UserInfo(
