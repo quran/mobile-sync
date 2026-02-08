@@ -13,6 +13,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.util.encodeBase64
 import org.publicvalue.multiplatform.oidc.OpenIdConnectClient
 import org.publicvalue.multiplatform.oidc.types.remote.AccessTokenResponse
+import kotlin.io.encoding.Base64
 
 /**
  * AuthRepository implementation that uses the OIDC library's CodeAuthFlow.
@@ -32,7 +33,7 @@ class OidcAuthRepository(
 
     private val configureTokenExchange: HttpRequestBuilder.() -> Unit = {
         authConfig.clientSecret?.let { secret ->
-            val auth = "${authConfig.clientId}:$secret".encodeToByteArray().encodeBase64()
+            val auth = Base64.encode("${authConfig.clientId}:$secret".encodeToByteArray())
             header(HttpHeaders.Authorization, "Basic $auth")
         }
     }

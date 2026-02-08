@@ -1,7 +1,7 @@
 package com.quran.shared.auth.utils
 
 import org.kotlincrypto.hash.sha2.SHA256
-import io.ktor.util.encodeBase64
+import kotlin.io.encoding.Base64
 import kotlin.random.Random
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
@@ -12,7 +12,7 @@ fun sha256(data: ByteArray): ByteArray {
     return digest.digest()
 }
 fun base64UrlEncode(data: ByteArray): String {
-    val base64 = data.encodeBase64()
+    val base64 = Base64.encode(data)
     return base64.replace("+", "-")
         .replace("/", "_")
         .replace("=", "")
