@@ -1,6 +1,7 @@
 package com.quran.shared.syncengine.scheduling
 
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -79,8 +80,10 @@ class Scheduler(
     val timings: SchedulerTimings,
     val taskFunction: suspend () -> Unit,
     val reachedMaximumFailureRetries: suspend (Exception) -> Unit,
+    private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val timeProviderMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) {
-    private val scope: CoroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    private val scope: CoroutineScope = CoroutineScope(dispatcher + SupervisorJob())
     private val logger = Logger.withTag("Scheduler")
 
     private var mutex = Mutex()
@@ -195,7 +198,7 @@ class Scheduler(
 
     // Critical-section bound
     private fun schedule(time: Duration, newState: SchedulerState) {
-        val currentTime = Clock.System.now().toEpochMilliseconds()
+        val currentTime = timeProviderMs()
         val firingTime = currentTime + time.inWholeMilliseconds
         if (state.currentlyScheduled() && firingTime >= (expectedExecutionTime ?: 0)) {
             logger.d { "Ignored schedule request: new firing time $firingTime >= current expected time $expectedExecutionTime" }
