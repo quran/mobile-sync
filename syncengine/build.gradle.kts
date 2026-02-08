@@ -5,6 +5,8 @@ plugins {
 }
 
 kotlin {
+    applyDefaultHierarchyTemplate()
+
     iosX64()
     iosArm64()
     iosSimulatorArm64()
@@ -29,16 +31,11 @@ kotlin {
             implementation(libs.ktor.client.okhttp)
         }
 
-        val appleMain by creating {
-            dependsOn(commonMain.get())
+        val iosMain by getting {
             dependencies {
                 implementation(libs.ktor.client.darwin)
             }
         }
-
-        iosX64Main.get().dependsOn(appleMain)
-        iosArm64Main.get().dependsOn(appleMain)
-        iosSimulatorArm64Main.get().dependsOn(appleMain)
 
         commonTest.dependencies {
             implementation(libs.kotlin.test)
