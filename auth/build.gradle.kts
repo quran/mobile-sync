@@ -33,6 +33,8 @@ plugins {
 }
 
 kotlin {
+    applyDefaultHierarchyTemplate()
+
     iosX64()
     iosArm64()
     iosSimulatorArm64()
@@ -70,18 +72,11 @@ kotlin {
              implementation(libs.ktor.client.okhttp)
         }
         
-        // No explicit iOS dependencies needed for oidc-appsupport unless specific override
-        // But we need a ktor engine for iOS if we pass a client.
-        val appleMain by creating {
-            dependsOn(commonMain.get())
+        val iosMain by getting {
             dependencies {
                 implementation(libs.ktor.client.darwin)
             }
         }
-        
-        iosX64Main.get().dependsOn(appleMain)
-        iosArm64Main.get().dependsOn(appleMain)
-        iosSimulatorArm64Main.get().dependsOn(appleMain)
     }
 }
 
