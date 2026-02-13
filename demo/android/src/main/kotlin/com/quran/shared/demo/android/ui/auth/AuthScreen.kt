@@ -1,6 +1,8 @@
 package com.quran.shared.demo.android.ui.auth
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -8,20 +10,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.quran.shared.auth.model.AuthState
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
 import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.persistence.model.Bookmark
+import com.quran.shared.persistence.model.Collection
+import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.util.QuranActionsUtils.getRandomAyah
 import com.quran.shared.persistence.util.QuranActionsUtils.getRandomPage
 import com.quran.shared.persistence.util.QuranActionsUtils.getRandomSura
 import com.quran.shared.pipeline.SyncViewModel
-
 
 /**
  * Authentication screen for the Android demo app.
@@ -33,6 +29,8 @@ fun AuthScreen(
 ) {
     val authState by viewModel.authState.collectAsState()
     val bookmarks by viewModel.bookmarks.collectAsState(initial = emptyList())
+    val collections by viewModel.collections.collectAsState(initial = emptyList())
+    val notes by viewModel.notes.collectAsState(initial = emptyList())
 
     Box(
         modifier = Modifier
@@ -78,6 +76,9 @@ fun AuthScreen(
                     SuccessContent(
                         userInfo = state.userInfo,
                         bookmarks = bookmarks,
+                        collections = collections,
+                        notes = notes,
+                        viewModel = viewModel,
                         onAddPageBookmark = {
                             viewModel.addBookmark(getRandomPage())
                         },
@@ -88,6 +89,18 @@ fun AuthScreen(
                         },
                         onDeleteBookmark = {
                             viewModel.deleteBookmark(it)
+                        },
+                        onAddCollection = { name ->
+                            viewModel.addCollection(name)
+                        },
+                        onDeleteCollection = { id ->
+                            viewModel.deleteCollection(id)
+                        },
+                        onAddNote = { body ->
+                            viewModel.addNote(body, 1, 1) // Just dummy range for now
+                        },
+                        onDeleteNote = { id ->
+                            viewModel.deleteNote(id)
                         },
                         onLogout = {
                             viewModel.logout()
@@ -111,59 +124,24 @@ fun AuthScreen(
 }
 
 @Composable
-private fun LoginButtonContent(onLoginClick: () -> Unit) {
-    Button(
-        onClick = onLoginClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(50.dp),
-        shape = MaterialTheme.shapes.medium
-    ) {
-        Text(
-            text = "Sign in with OAuth",
-            style = MaterialTheme.typography.labelLarge
-        )
-    }
-
-    Spacer(modifier = Modifier.height(16.dp))
-
-    Text(
-        text = "You will be redirected to Quran Foundation to securely sign in.",
-        style = MaterialTheme.typography.bodySmall,
-        textAlign = TextAlign.Center,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-}
-
-@Composable
-private fun LoadingContent() {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        CircularProgressIndicator(
-            modifier = Modifier.size(48.dp)
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text(
-            text = "Signing in...",
-            style = MaterialTheme.typography.bodyLarge,
-            textAlign = TextAlign.Center
-        )
-    }
-}
-
-@Composable
 private fun SuccessContent(
     userInfo: UserInfo,
     bookmarks: List<Bookmark>,
+    collections: List<Collection>,
+    notes: List<Note>,
+    viewModel: SyncViewModel,
     onAddPageBookmark: () -> Unit,
     onAddAyahBookmark: () -> Unit,
     onDeleteBookmark: (Bookmark) -> Unit,
+    onAddCollection: (String) -> Unit,
+    onDeleteCollection: (String) -> Unit,
+    onAddNote: (String) -> Unit,
+    onDeleteNote: (String) -> Unit,
     onLogout: () -> Unit
 ) {
+    var selectedTab by remember { mutableIntStateOf(0) }
+    val tabs = listOf("Bookmarks", "Collections", "Notes")
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth()
@@ -202,191 +180,49 @@ private fun SuccessContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        // Bookmarks Header
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Your Bookmarks",
-                style = MaterialTheme.typography.titleLarge
-            )
-            
-            Row {
-                IconButton(onClick = onAddPageBookmark) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Add Page Bookmark"
-                    )
-                }
-                IconButton(onClick = onAddAyahBookmark) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Add Ayah Bookmark",
-                        tint = MaterialTheme.colorScheme.secondary
-                    )
-                }
+        TabRow(selectedTabIndex = selectedTab) {
+            tabs.forEachIndexed { index, title ->
+                Tab(
+                    selected = selectedTab == index,
+                    onClick = { selectedTab = index },
+                    text = { Text(title) }
+                )
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        // Bookmarks List
-        if (bookmarks.isEmpty()) {
-            Text(
-                text = "No bookmarks yet.",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(vertical = 32.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 400.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(bookmarks) { bookmark ->
-                    BookmarkItem(
-                        bookmark = bookmark,
-                        onDelete = { onDeleteBookmark(bookmark) }
-                    )
-                }
+        Box(modifier = Modifier.weight(1f)) {
+            when (selectedTab) {
+                0 -> BookmarksTab(
+                    bookmarks = bookmarks,
+                    onAddPageBookmark = onAddPageBookmark,
+                    onAddAyahBookmark = onAddAyahBookmark,
+                    onDeleteBookmark = onDeleteBookmark
+                )
+                1 -> CollectionsTab(
+                    collections = collections,
+                    onAddCollection = onAddCollection,
+                    onDeleteCollection = onDeleteCollection,
+                    viewModel = viewModel
+                )
+                2 -> NotesTab(
+                    notes = notes,
+                    onAddNote = onAddNote,
+                    onDeleteNote = onDeleteNote
+                )
             }
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         TextButton(
             onClick = onLogout,
             colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
         ) {
             Text("Sign Out")
-        }
-    }
-}
-
-@Composable
-private fun BookmarkItem(
-    bookmark: Bookmark,
-    onDelete: () -> Unit
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.small,
-        tonalElevation = 2.dp
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Default.Bookmark,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
-            )
-            
-            Spacer(modifier = Modifier.width(16.dp))
-            
-            Column(modifier = Modifier.weight(1f)) {
-                when (bookmark) {
-                    is Bookmark.PageBookmark -> {
-                        Text(
-                            text = "Page ${bookmark.page}",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                    }
-                    is Bookmark.AyahBookmark -> {
-                        Text(
-                            text = "Surah ${bookmark.sura}, Ayah ${bookmark.ayah}",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                    }
-                }
-            }
-
-            IconButton(onClick = onDelete) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "Delete Bookmark",
-                    tint = MaterialTheme.colorScheme.error
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ErrorContent(
-    error: String?,
-    onRetry: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp)
-    ) {
-        Text(
-            text = "✗",
-            style = MaterialTheme.typography.displayLarge,
-            color = MaterialTheme.colorScheme.error,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text(
-            text = "Authentication Failed",
-            style = MaterialTheme.typography.bodyLarge,
-            textAlign = TextAlign.Center
-        )
-
-        if (error != null) {
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(8.dp),
-                color = MaterialTheme.colorScheme.errorContainer,
-                shape = MaterialTheme.shapes.small
-            ) {
-                Text(
-                    text = error,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                    modifier = Modifier.padding(12.dp),
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedButton(
-                onClick = onDismiss,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Dismiss")
-            }
-
-            Button(
-                onClick = onRetry,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Retry")
-            }
         }
     }
 }
