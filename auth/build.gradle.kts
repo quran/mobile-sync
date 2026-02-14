@@ -37,7 +37,7 @@ kotlin {
     iosArm64()
     iosSimulatorArm64()
 
-
+    jvm()
     androidTarget {
         publishLibraryVariants("release")
         compilerOptions {
@@ -69,6 +69,10 @@ kotlin {
         androidMain.dependencies {
              implementation(libs.ktor.client.okhttp)
         }
+
+        jvmMain.dependencies {
+            implementation(libs.ktor.client.okhttp)
+        }
         
         // No explicit iOS dependencies needed for oidc-appsupport unless specific override
         // But we need a ktor engine for iOS if we pass a client.
@@ -91,6 +95,7 @@ android {
 
     defaultConfig {
         minSdk = libs.versions.android.min.sdk.get().toInt()
+        manifestPlaceholders["oidcRedirectScheme"] = "com.quran.oauth"
     }
 
     compileOptions {

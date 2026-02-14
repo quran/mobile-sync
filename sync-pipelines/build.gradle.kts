@@ -60,6 +60,7 @@ android {
 
     defaultConfig {
         minSdk = libs.versions.android.min.sdk.get().toInt()
+        manifestPlaceholders["oidcRedirectScheme"] = "com.quran.oauth"
     }
 
     compileOptions {
