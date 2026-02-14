@@ -32,7 +32,7 @@ struct NotesTabView: View {
                                     .foregroundColor(.secondary)
                             }
                             Spacer()
-                            Button(action: { 
+                            Button(action: {
                                 Task {
                                     await viewModel.deleteNote(localId: note.localId)
                                 }
@@ -51,9 +51,10 @@ struct NotesTabView: View {
             Button("Add") {
                 let body = newNoteBody
                 if !body.isEmpty {
-                    // Using dummy range 1-1 for now like Android
                     Task {
-                        await viewModel.addNote(body: body, startAyahId: 1, endAyahId: 1)
+                        let sura = Shared.QuranActionsUtils().getRandomSura()
+                        let ayah = Shared.QuranActionsUtils().getRandomAyah(sura: sura)
+                        await viewModel.addNote(body: body, startAyahId: Int64(ayah), endAyahId: Int64(ayah))
                     }
                 }
                 newNoteBody = ""

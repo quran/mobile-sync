@@ -17,7 +17,8 @@ class SyncViewModel(
 
     val authState = service.authState
     val bookmarks: Flow<List<Bookmark>> = service.bookmarks
-    val collectionsWithBookmarks: Flow<List<CollectionWithBookmarks>> = service.collectionsWithBookmarks
+    val collectionsWithBookmarks: Flow<List<CollectionWithBookmarks>> =
+        service.collectionsWithBookmarks
     val notes: Flow<List<Note>> = service.notes
 
     fun login() {
@@ -102,10 +103,10 @@ class SyncViewModel(
                 val quranUtils = QuranActionsUtils
                 val sura = quranUtils.getRandomSura()
                 val ayah = quranUtils.getRandomAyah(sura)
-                
+
                 // Add the ayah bookmark and get the created bookmark
                 val bookmark = service.addBookmark(sura, ayah)
-                
+
                 // Add the newly created bookmark to the collection
                 service.addBookmarkToCollection(collectionId, bookmark)
             } catch (e: Exception) {
@@ -139,5 +140,10 @@ class SyncViewModel(
             } catch (e: Exception) {
             }
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        service.clear()
     }
 }

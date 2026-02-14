@@ -10,7 +10,6 @@ import com.russhwolf.settings.Settings
 import com.russhwolf.settings.set
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.persistence.model.Bookmark
-import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.model.CollectionBookmark
 import com.quran.shared.persistence.model.CollectionWithBookmarks
 import com.quran.shared.persistence.model.Note
@@ -29,6 +28,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 class SyncService(
@@ -40,15 +40,21 @@ class SyncService(
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val syncClient: SynchronizationClient
-    
+
+    fun clear() {
+        scope.cancel()
+        syncClient.cancelSyncing()
+    }
+
     @NativeCoroutinesState
     val authState: StateFlow<AuthState> get() = authService.authState
-    
+
     // Cast the synchronization repository to the transactional repository
     // This allows the Service to be the single entry point for UI
     private val bookmarksRepository = pipeline.bookmarksRepository as BookmarksRepository
     private val collectionsRepository = pipeline.collectionsRepository as CollectionsRepository
-    private val collectionBookmarksRepository = pipeline.collectionBookmarksRepository as CollectionBookmarksRepository
+    private val collectionBookmarksRepository =
+        pipeline.collectionBookmarksRepository as CollectionBookmarksRepository
     private val notesRepository = pipeline.notesRepository as NotesRepository
 
     /**
@@ -62,27 +68,28 @@ class SyncService(
      */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     @NativeCoroutines
-    val collectionsWithBookmarks: Flow<List<CollectionWithBookmarks>> get() = 
-        collectionsRepository.getCollectionsFlow().flatMapLatest { collections ->
-            if (collections.isEmpty()) {
-                flowOf(emptyList())
-            } else {
-                val flows = collections.map { collection ->
-                    collectionBookmarksRepository.getBookmarksForCollectionFlow(collection.localId)
-                        .map { bookmarks: List<CollectionBookmark> -> 
-                            CollectionWithBookmarks(collection, bookmarks) 
-                        }
+    val collectionsWithBookmarks: Flow<List<CollectionWithBookmarks>>
+        get() =
+            collectionsRepository.getCollectionsFlow().flatMapLatest { collections ->
+                if (collections.isEmpty()) {
+                    flowOf(emptyList())
+                } else {
+                    val flows = collections.map { collection ->
+                        collectionBookmarksRepository.getBookmarksForCollectionFlow(collection.localId)
+                            .map { bookmarks: List<CollectionBookmark> ->
+                                CollectionWithBookmarks(collection, bookmarks)
+                            }
+                    }
+                    combine(flows) { it.toList() }
                 }
-                combine(flows) { it.toList() }
             }
-        }
 
     /**
      * Flow of all notes for the UI to observe.
      */
     @NativeCoroutines
     val notes: Flow<List<Note>> get() = notesRepository.getNotesFlow()
-    
+
     init {
         val dateFetcher = SettingsLocalModificationDateFetcher(settings)
         val authFetcher = object : AuthenticationDataFetcher {
@@ -110,10 +117,10 @@ class SyncService(
                 }
             }
         )
-        
+
         scope.launch {
             syncClient.applicationStarted()
-            
+
             // Observe auth state and trigger sync when logged in
             authState.collect { state ->
                 if (state is AuthState.Success) {
@@ -158,7 +165,10 @@ class SyncService(
         try {
             when (bookmark) {
                 is Bookmark.PageBookmark -> bookmarksRepository.deleteBookmark(bookmark.page)
-                is Bookmark.AyahBookmark -> bookmarksRepository.deleteBookmark(bookmark.sura, bookmark.ayah)
+                is Bookmark.AyahBookmark -> bookmarksRepository.deleteBookmark(
+                    bookmark.sura,
+                    bookmark.ayah
+                )
             }
             triggerSync()
         } catch (e: Exception) {
@@ -242,7 +252,8 @@ class SyncService(
 
 fun makeSettings(): Settings = Settings()
 
-class SettingsLocalModificationDateFetcher(private val settings: Settings) : LocalModificationDateFetcher {
+class SettingsLocalModificationDateFetcher(private val settings: Settings) :
+    LocalModificationDateFetcher {
     private val KEY_LAST_MODIFIED = "com.quran.sync.last_modified_date"
 
     override suspend fun localLastModificationDate(): Long {

@@ -69,9 +69,11 @@ fun AuthScreen(
                         }
                     )
                 }
+
                 is AuthState.Loading -> {
                     LoadingContent()
                 }
+
                 is AuthState.Success -> {
                     SuccessContent(
                         userInfo = state.userInfo,
@@ -96,7 +98,13 @@ fun AuthScreen(
                             viewModel.deleteCollection(id)
                         },
                         onAddNote = { body ->
-                            viewModel.addNote(body, 1, 1) // Just dummy range for now
+                            val sura = getRandomSura()
+                            val ayah = getRandomAyah(sura)
+                            viewModel.addNote(
+                                body,
+                                ayah.toLong(),
+                                ayah.toLong()
+                            ) // Just dummy range for now
                         },
                         onDeleteNote = { id ->
                             viewModel.deleteNote(id)
@@ -109,6 +117,7 @@ fun AuthScreen(
                         }
                     )
                 }
+
                 is AuthState.Error -> {
                     ErrorContent(
                         error = state.message,
@@ -164,14 +173,14 @@ private fun SuccessContent(
                     modifier = Modifier.size(64.dp),
                     tint = MaterialTheme.colorScheme.primary
                 )
-                
+
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 Text(
                     text = "Welcome, ${userInfo.displayName ?: "User"}!",
                     style = MaterialTheme.typography.headlineSmall
                 )
-                
+
                 userInfo.email?.let {
                     Text(
                         text = it,
@@ -204,12 +213,14 @@ private fun SuccessContent(
                     onAddAyahBookmark = onAddAyahBookmark,
                     onDeleteBookmark = onDeleteBookmark
                 )
+
                 1 -> CollectionsTab(
                     collectionsWithBookmarks = collectionsWithBookmarks,
                     onAddCollection = onAddCollection,
                     onDeleteCollection = onDeleteCollection,
                     onAddRandomBookmarkToCollection = onAddRandomBookmarkToCollection
                 )
+
                 2 -> NotesTab(
                     notes = notes,
                     onAddNote = onAddNote,

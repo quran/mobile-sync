@@ -22,19 +22,25 @@ class SyncViewModel: ObservableObject {
         self.authService = authService
         self.service = service
     }
-    
+
     deinit {
-        // Since we are using .task in SwiftUI views, 
-        // the observation tasks are automatically cancelled 
-        // when the views are removed from the hierarchy.
+        service.clear()
     }
 
     func observeData() async {
         await withTaskGroup(of: Void.self) { group in
-            group.addTask { await self.observeAuthState() }
-            group.addTask { await self.observeBookmarks() }
-            group.addTask { await self.observeCollections() }
-            group.addTask { await self.observeNotes() }
+            group.addTask {
+                await self.observeAuthState()
+            }
+            group.addTask {
+                await self.observeBookmarks()
+            }
+            group.addTask {
+                await self.observeCollections()
+            }
+            group.addTask {
+                await self.observeNotes()
+            }
         }
     }
 
