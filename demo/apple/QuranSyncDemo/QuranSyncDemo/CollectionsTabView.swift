@@ -4,24 +4,38 @@ import Shared
 struct CollectionsTabView: View {
     @ObservedObject var viewModel: SyncViewModel
     @State private var showAddDialog = false
+    @State private var showSelectCollectionSheet = false
     @State private var newCollectionName = ""
+    @State private var selectedBookmarkType: SelectedBookmarkType = .page
+    
+    enum SelectedBookmarkType {
+        case page, ayah
+    }
     
     var body: some View {
         List {
             Section(header: HStack {
                 Text("Your Collections")
                 Spacer()
-                Button(action: { showAddDialog = true }) {
-                    Image(systemName: "plus.rectangle.on.folder")
+                HStack(spacing: 16) {
+                    Button(action: { 
+                        selectedBookmarkType = .ayah
+                        showSelectCollectionSheet = true 
+                    }) {
+                        Image(systemName: "plus.square")
+                    }
+                    Button(action: { showAddDialog = true }) {
+                        Image(systemName: "folder.badge.plus")
+                    }
                 }
             }) {
-                if viewModel.collections.isEmpty {
+                if viewModel.collectionsWithBookmarks.isEmpty {
                     Text("No collections yet.")
                         .foregroundColor(.secondary)
                         .italic()
                 } else {
-                    ForEach(viewModel.collections, id: \.localId) { collection in
-                        CollectionRowView(viewModel: viewModel, collection: collection)
+                    ForEach(viewModel.collectionsWithBookmarks, id: \.collection.localId) { collectionWithBookmarks in
+                        CollectionRowView(viewModel: viewModel, collectionWithBookmarks: collectionWithBookmarks)
                     }
                 }
             }
@@ -29,13 +43,38 @@ struct CollectionsTabView: View {
         .alert("New Collection", isPresented: $showAddDialog) {
             TextField("Name", text: $newCollectionName)
             Button("Add") {
-                if !newCollectionName.isEmpty {
-                    viewModel.addCollection(name: newCollectionName)
-                    newCollectionName = ""
+                let name = newCollectionName
+                if !name.isEmpty {
+                    Task {
+                        await viewModel.addCollection(name: name)
+                    }
                 }
+                newCollectionName = ""
             }
             Button("Cancel", role: .cancel) {
                 newCollectionName = ""
+            }
+        }
+        .sheet(isPresented: $showSelectCollectionSheet) {
+            NavigationView {
+                List(viewModel.collectionsWithBookmarks, id: \.collection.localId) { item in
+                    Button(action: {
+                        Task {
+                            let sura = Shared.QuranActionsUtils().getRandomSura()
+                            let ayah = Shared.QuranActionsUtils().getRandomAyah(sura: sura)
+                            if let bookmark = await viewModel.addBookmark(sura: sura, ayah: ayah) {
+                                await viewModel.addBookmarkToCollection(collectionId: item.collection.localId, bookmark: bookmark)
+                            }
+                        }
+                        showSelectCollectionSheet = false
+                    }) {
+                        Text(item.collection.name)
+                    }
+                }
+                .navigationTitle("Select Collection")
+                .navigationBarItems(trailing: Button("Close") {
+                    showSelectCollectionSheet = false
+                })
             }
         }
     }
@@ -43,8 +82,7 @@ struct CollectionsTabView: View {
 
 struct CollectionRowView: View {
     @ObservedObject var viewModel: SyncViewModel
-    let collection: Shared.Collection_
-    @State private var bookmarks: [Shared.CollectionBookmark] = []
+    let collectionWithBookmarks: Shared.CollectionWithBookmarks
     @State private var isExpanded = false
 
     var body: some View {
@@ -53,7 +91,7 @@ struct CollectionRowView: View {
                 HStack {
                     Image(systemName: "folder.fill")
                         .foregroundColor(.orange)
-                    Text(collection.name)
+                    Text(collectionWithBookmarks.collection.name)
                         .font(.headline)
                     Spacer()
                 }
@@ -64,7 +102,11 @@ struct CollectionRowView: View {
                     }
                 }
                 
-                Button(action: { viewModel.deleteCollection(localId: collection.localId) }) {
+                Button(action: { 
+                    Task {
+                        await viewModel.deleteCollection(collectionId: collectionWithBookmarks.collection.localId)
+                    }
+                }) {
                     Image(systemName: "trash")
                         .foregroundColor(.red)
                 }
@@ -73,13 +115,13 @@ struct CollectionRowView: View {
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 8) {
-                    if bookmarks.isEmpty {
+                    if collectionWithBookmarks.bookmarks.isEmpty {
                         Text("No bookmarks in this collection")
                             .font(.caption)
                             .foregroundColor(.secondary)
                             .padding(.leading, 32)
                     } else {
-                        ForEach(bookmarks, id: \.localId) { cb in
+                        ForEach(collectionWithBookmarks.bookmarks, id: \.localId) { cb in
                             HStack {
                                 Image(systemName: "bookmark")
                                     .font(.caption)
@@ -91,15 +133,6 @@ struct CollectionRowView: View {
                     }
                 }
                 .padding(.top, 8)
-            }
-        }
-        .task {
-            do {
-                for try await list in viewModel.bookmarksForCollection(collectionId: collection.localId) {
-                    self.bookmarks = list as? [Shared.CollectionBookmark] ?? []
-                }
-            } catch {
-                print("Error observing bookmarks for collection: \(error)")
             }
         }
     }

@@ -32,7 +32,11 @@ struct NotesTabView: View {
                                     .foregroundColor(.secondary)
                             }
                             Spacer()
-                            Button(action: { viewModel.deleteNote(localId: note.localId) }) {
+                            Button(action: { 
+                                Task {
+                                    await viewModel.deleteNote(localId: note.localId)
+                                }
+                            }) {
                                 Image(systemName: "trash")
                                     .foregroundColor(.red)
                             }
@@ -45,11 +49,14 @@ struct NotesTabView: View {
         .alert("New Note", isPresented: $showAddDialog) {
             TextField("Content", text: $newNoteBody)
             Button("Add") {
-                if !newNoteBody.isEmpty {
+                let body = newNoteBody
+                if !body.isEmpty {
                     // Using dummy range 1-1 for now like Android
-                    viewModel.addNote(body: newNoteBody, startAyahId: 1, endAyahId: 1)
-                    newNoteBody = ""
+                    Task {
+                        await viewModel.addNote(body: body, startAyahId: 1, endAyahId: 1)
+                    }
                 }
+                newNoteBody = ""
             }
             Button("Cancel", role: .cancel) {
                 newNoteBody = ""

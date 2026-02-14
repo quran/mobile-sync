@@ -26,10 +26,10 @@ interface LocalDataFetcher<Model> {
 
     /**
      * Fetches a local model by its remote ID.
-     * @param remoteID Remote ID of the model to fetch
+     * @param remoteId Remote ID of the model to fetch
      * @return Model if found locally, null otherwise
      */
-    suspend fun fetchLocalModel(remoteID: String): Model?
+    suspend fun fetchLocalModel(remoteId: String): Model?
 }
 
 interface ResultNotifier<Model> {

@@ -11,6 +11,8 @@ import com.russhwolf.settings.set
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.Collection
+import com.quran.shared.persistence.model.CollectionBookmark
+import com.quran.shared.persistence.model.CollectionWithBookmarks
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepository
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepository
@@ -23,6 +25,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 class SyncService(
@@ -52,10 +58,24 @@ class SyncService(
     val bookmarks: Flow<List<Bookmark>> get() = bookmarksRepository.getBookmarksFlow()
 
     /**
-     * Flow of all collections for the UI to observe.
+     * Flow of all collections with their bookmarks for the UI to observe.
      */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     @NativeCoroutines
-    val collections: Flow<List<Collection>> get() = collectionsRepository.getCollectionsFlow()
+    val collectionsWithBookmarks: Flow<List<CollectionWithBookmarks>> get() = 
+        collectionsRepository.getCollectionsFlow().flatMapLatest { collections ->
+            if (collections.isEmpty()) {
+                flowOf(emptyList())
+            } else {
+                val flows = collections.map { collection ->
+                    collectionBookmarksRepository.getBookmarksForCollectionFlow(collection.localId)
+                        .map { bookmarks: List<CollectionBookmark> -> 
+                            CollectionWithBookmarks(collection, bookmarks) 
+                        }
+                }
+                combine(flows) { it.toList() }
+            }
+        }
 
     /**
      * Flow of all notes for the UI to observe.
@@ -63,14 +83,6 @@ class SyncService(
     @NativeCoroutines
     val notes: Flow<List<Note>> get() = notesRepository.getNotesFlow()
     
-    /**
-     * Observe bookmarks for a specific collection.
-     */
-    @NativeCoroutines
-    fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<com.quran.shared.persistence.model.CollectionBookmark>> {
-        return collectionBookmarksRepository.getBookmarksForCollectionFlow(collectionLocalId)
-    }
-
     init {
         val dateFetcher = SettingsLocalModificationDateFetcher(settings)
         val authFetcher = object : AuthenticationDataFetcher {
@@ -118,10 +130,11 @@ class SyncService(
     }
 
     @NativeCoroutines
-    suspend fun addBookmark(page: Int): Unit {
+    suspend fun addBookmark(page: Int): Bookmark {
         try {
-            bookmarksRepository.addBookmark(page)
+            val bookmark = bookmarksRepository.addBookmark(page)
             triggerSync()
+            return bookmark
         } catch (e: Exception) {
             Logger.e(e) { "Failed to add page bookmark" }
             throw e
@@ -129,10 +142,11 @@ class SyncService(
     }
 
     @NativeCoroutines
-    suspend fun addBookmark(sura: Int, ayah: Int): Unit {
+    suspend fun addBookmark(sura: Int, ayah: Int): Bookmark {
         try {
-            bookmarksRepository.addBookmark(sura, ayah)
+            val bookmark = bookmarksRepository.addBookmark(sura, ayah)
             triggerSync()
+            return bookmark
         } catch (e: Exception) {
             Logger.e(e) { "Failed to add ayah bookmark" }
             throw e
@@ -218,6 +232,10 @@ class SyncService(
             throw e
         }
     }
+
+    @NativeCoroutines
+    fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<CollectionBookmark>> =
+        collectionBookmarksRepository.getBookmarksForCollectionFlow(collectionLocalId)
 
     val pipelineForIos: SyncEnginePipeline get() = pipeline
 }
