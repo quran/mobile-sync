@@ -19,14 +19,18 @@ struct BookmarksTabView: View {
                 HStack(spacing: 16) {
                     Button(action: {
                         let randomPage = Shared.QuranActionsUtils().getRandomPage()
-                        viewModel.addBookmark(page: randomPage)
+                        Task {
+                            _ = await viewModel.addBookmark(page: randomPage)
+                        }
                     }) {
                         Image(systemName: "plus.app")
                     }
                     Button(action: {
                         let sura = Shared.QuranActionsUtils().getRandomSura()
                         let ayah = Shared.QuranActionsUtils().getRandomAyah(sura: sura)
-                        viewModel.addBookmark(sura: sura, ayah: ayah)
+                        Task {
+                            _ = await viewModel.addBookmark(sura: sura, ayah: ayah)
+                        }
                     }) {
                         Image(systemName: "plus.square")
                     }
@@ -62,7 +66,9 @@ struct BookmarksTabView: View {
                             Spacer()
                             
                             Button(action: {
-                                viewModel.deleteBookmark(bookmark: bookmark)
+                                Task {
+                                    await viewModel.deleteBookmark(bookmark: bookmark)
+                                }
                             }) {
                                 Image(systemName: "trash")
                                     .foregroundColor(.red)

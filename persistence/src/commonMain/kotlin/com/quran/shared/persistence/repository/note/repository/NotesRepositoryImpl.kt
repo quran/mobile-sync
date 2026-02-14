@@ -84,7 +84,7 @@ class NotesRepositoryImpl(
 
     override suspend fun fetchMutatedNotes(lastModified: Long): List<LocalModelMutation<Note>> {
         return withContext(Dispatchers.IO) {
-            notesQueries.value.getUnsyncedNotes(last_modified = lastModified)
+            notesQueries.value.getUnsyncedNotes()
                 .executeAsList()
                 .map { it.toNoteMutation() }
         }

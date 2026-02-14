@@ -71,7 +71,7 @@ public class SyncEnginePipeline(
             CollectionBookmarksSynchronizationConfigurations(
                 localModificationDateFetcher = localModificationDateFetcher,
                 resultNotifier = CollectionBookmarksResultReceiver(repository, callback),
-                localDataFetcher = CollectionBookmarksRepositoryDataFetcher(repository)
+                localDataFetcher = CollectionBookmarksRepositoryDataFetcher(repository, bookmarksRepository)
             )
         }
         val notesConf = notesRepository?.let { repository ->
@@ -147,7 +147,8 @@ private class CollectionsRepositoryDataFetcher(
 }
 
 private class CollectionBookmarksRepositoryDataFetcher(
-    val collectionBookmarksRepository: CollectionBookmarksSynchronizationRepository
+    val collectionBookmarksRepository: CollectionBookmarksSynchronizationRepository,
+    val bookmarksRepository: BookmarksSynchronizationRepository
 ) : LocalDataFetcher<SyncCollectionBookmark> {
 
     override suspend fun fetchLocalMutations(lastModified: Long): List<LocalModelMutation<SyncCollectionBookmark>> {
@@ -165,8 +166,23 @@ private class CollectionBookmarksRepositoryDataFetcher(
         return collectionBookmarksRepository.remoteResourcesExist(remoteIDs)
     }
 
-    override suspend fun fetchLocalModel(remoteID: String): SyncCollectionBookmark? {
-        return null
+    override suspend fun fetchLocalModel(remoteId: String): SyncCollectionBookmark? {
+        val bookmark = bookmarksRepository.fetchBookmarkByRemoteId(remoteId) ?: return null
+        return when (bookmark) {
+            is Bookmark.PageBookmark -> SyncCollectionBookmark.PageBookmark(
+                collectionId = "", // Not used for this fetch
+                page = bookmark.page,
+                lastModified = bookmark.lastUpdated.fromPlatform(),
+                bookmarkId = remoteId
+            )
+            is Bookmark.AyahBookmark -> SyncCollectionBookmark.AyahBookmark(
+                collectionId = "", // Not used for this fetch
+                sura = bookmark.sura,
+                ayah = bookmark.ayah,
+                lastModified = bookmark.lastUpdated.fromPlatform(),
+                bookmarkId = remoteId
+            )
+        }
     }
 }
 

@@ -4,9 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.persistence.model.Bookmark
-import com.quran.shared.persistence.model.Collection
-import com.quran.shared.persistence.model.CollectionBookmark
+import com.quran.shared.persistence.model.CollectionWithBookmarks
 import com.quran.shared.persistence.model.Note
+import com.quran.shared.persistence.util.QuranActionsUtils
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 
@@ -17,12 +17,9 @@ class SyncViewModel(
 
     val authState = service.authState
     val bookmarks: Flow<List<Bookmark>> = service.bookmarks
-    val collections: Flow<List<Collection>> = service.collections
+    val collectionsWithBookmarks: Flow<List<CollectionWithBookmarks>> =
+        service.collectionsWithBookmarks
     val notes: Flow<List<Note>> = service.notes
-
-    fun getBookmarksForCollection(collectionId: String): Flow<List<CollectionBookmark>> {
-        return service.getBookmarksForCollectionFlow(collectionId)
-    }
 
     fun login() {
         viewModelScope.launch {
@@ -100,11 +97,20 @@ class SyncViewModel(
         }
     }
 
-    fun addBookmarkToCollection(collectionId: String, bookmark: Bookmark) {
+    fun addRandomBookmarkToCollection(collectionId: String) {
         viewModelScope.launch {
             try {
+                val quranUtils = QuranActionsUtils
+                val sura = quranUtils.getRandomSura()
+                val ayah = quranUtils.getRandomAyah(sura)
+
+                // Add the ayah bookmark and get the created bookmark
+                val bookmark = service.addBookmark(sura, ayah)
+
+                // Add the newly created bookmark to the collection
                 service.addBookmarkToCollection(collectionId, bookmark)
             } catch (e: Exception) {
+                // Error logging would be handled in service or here
             }
         }
     }
@@ -134,5 +140,10 @@ class SyncViewModel(
             } catch (e: Exception) {
             }
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        service.clear()
     }
 }

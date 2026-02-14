@@ -12,7 +12,7 @@ import androidx.compose.ui.unit.dp
 import com.quran.shared.auth.model.AuthState
 import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.persistence.model.Bookmark
-import com.quran.shared.persistence.model.Collection
+import com.quran.shared.persistence.model.CollectionWithBookmarks
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.util.QuranActionsUtils.getRandomAyah
 import com.quran.shared.persistence.util.QuranActionsUtils.getRandomPage
@@ -29,7 +29,7 @@ fun AuthScreen(
 ) {
     val authState by viewModel.authState.collectAsState()
     val bookmarks by viewModel.bookmarks.collectAsState(initial = emptyList())
-    val collections by viewModel.collections.collectAsState(initial = emptyList())
+    val collectionsWithBookmarks by viewModel.collectionsWithBookmarks.collectAsState(initial = emptyList())
     val notes by viewModel.notes.collectAsState(initial = emptyList())
 
     Box(
@@ -69,16 +69,17 @@ fun AuthScreen(
                         }
                     )
                 }
+
                 is AuthState.Loading -> {
                     LoadingContent()
                 }
+
                 is AuthState.Success -> {
                     SuccessContent(
                         userInfo = state.userInfo,
                         bookmarks = bookmarks,
-                        collections = collections,
+                        collectionsWithBookmarks = collectionsWithBookmarks,
                         notes = notes,
-                        viewModel = viewModel,
                         onAddPageBookmark = {
                             viewModel.addBookmark(getRandomPage())
                         },
@@ -97,16 +98,26 @@ fun AuthScreen(
                             viewModel.deleteCollection(id)
                         },
                         onAddNote = { body ->
-                            viewModel.addNote(body, 1, 1) // Just dummy range for now
+                            val sura = getRandomSura()
+                            val ayah = getRandomAyah(sura)
+                            viewModel.addNote(
+                                body,
+                                ayah.toLong(),
+                                ayah.toLong()
+                            ) // Just dummy range for now
                         },
                         onDeleteNote = { id ->
                             viewModel.deleteNote(id)
                         },
                         onLogout = {
                             viewModel.logout()
+                        },
+                        onAddRandomBookmarkToCollection = { id ->
+                            viewModel.addRandomBookmarkToCollection(id)
                         }
                     )
                 }
+
                 is AuthState.Error -> {
                     ErrorContent(
                         error = state.message,
@@ -127,9 +138,8 @@ fun AuthScreen(
 private fun SuccessContent(
     userInfo: UserInfo,
     bookmarks: List<Bookmark>,
-    collections: List<Collection>,
+    collectionsWithBookmarks: List<CollectionWithBookmarks>,
     notes: List<Note>,
-    viewModel: SyncViewModel,
     onAddPageBookmark: () -> Unit,
     onAddAyahBookmark: () -> Unit,
     onDeleteBookmark: (Bookmark) -> Unit,
@@ -137,7 +147,8 @@ private fun SuccessContent(
     onDeleteCollection: (String) -> Unit,
     onAddNote: (String) -> Unit,
     onDeleteNote: (String) -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onAddRandomBookmarkToCollection: (String) -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf("Bookmarks", "Collections", "Notes")
@@ -162,14 +173,14 @@ private fun SuccessContent(
                     modifier = Modifier.size(64.dp),
                     tint = MaterialTheme.colorScheme.primary
                 )
-                
+
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 Text(
                     text = "Welcome, ${userInfo.displayName ?: "User"}!",
                     style = MaterialTheme.typography.headlineSmall
                 )
-                
+
                 userInfo.email?.let {
                     Text(
                         text = it,
@@ -202,12 +213,14 @@ private fun SuccessContent(
                     onAddAyahBookmark = onAddAyahBookmark,
                     onDeleteBookmark = onDeleteBookmark
                 )
+
                 1 -> CollectionsTab(
-                    collections = collections,
+                    collectionsWithBookmarks = collectionsWithBookmarks,
                     onAddCollection = onAddCollection,
                     onDeleteCollection = onDeleteCollection,
-                    viewModel = viewModel
+                    onAddRandomBookmarkToCollection = onAddRandomBookmarkToCollection
                 )
+
                 2 -> NotesTab(
                     notes = notes,
                     onAddNote = onAddNote,

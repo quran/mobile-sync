@@ -1,11 +1,13 @@
 package com.quran.shared.demo.android.ui.auth
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.*
@@ -13,18 +15,18 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.model.CollectionBookmark
-import com.quran.shared.pipeline.SyncViewModel
+import com.quran.shared.persistence.model.CollectionWithBookmarks
 
 @Composable
 fun CollectionsTab(
-    collections: List<Collection>,
+    collectionsWithBookmarks: List<CollectionWithBookmarks>,
     onAddCollection: (String) -> Unit,
     onDeleteCollection: (String) -> Unit,
-    viewModel: SyncViewModel
+    onAddRandomBookmarkToCollection: (String) -> Unit
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
+    var showSelectCollectionDialog by remember { mutableStateOf(false) }
     var newCollectionName by remember { mutableStateOf("") }
 
     if (showAddDialog) {
@@ -57,6 +59,32 @@ fun CollectionsTab(
         )
     }
 
+    if (showSelectCollectionDialog) {
+        AlertDialog(
+            onDismissRequest = { showSelectCollectionDialog = false },
+            title = { Text("Select Collection") },
+            text = {
+                LazyColumn {
+                    items(collectionsWithBookmarks) { item ->
+                        ListItem(
+                            headlineContent = { Text(item.collection.name) },
+                            modifier = Modifier.clickable {
+                                onAddRandomBookmarkToCollection(item.collection.localId)
+                                showSelectCollectionDialog = false
+                            }
+                        )
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showSelectCollectionDialog = false }) {
+                    Text("Close")
+                }
+            }
+        )
+    }
+
     Column {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -68,25 +96,29 @@ fun CollectionsTab(
                 style = MaterialTheme.typography.titleLarge
             )
             
-            IconButton(onClick = { showAddDialog = true }) {
-                Icon(Icons.Default.Add, contentDescription = "Add Collection")
+            Row {
+                IconButton(onClick = { showSelectCollectionDialog = true }) {
+                    Icon(Icons.Default.BookmarkAdd, contentDescription = "Add Random to Collection")
+                }
+                IconButton(onClick = { showAddDialog = true }) {
+                    Icon(Icons.Default.Add, contentDescription = "Add Collection")
+                }
             }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        if (collections.isEmpty()) {
+        if (collectionsWithBookmarks.isEmpty()) {
             EmptyListMessage("No collections yet.")
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(collections) { collection ->
+                items(collectionsWithBookmarks) { collectionWithBookmarks ->
                     CollectionItem(
-                        collection = collection,
-                        onDelete = { onDeleteCollection(collection.localId) },
-                        viewModel = viewModel
+                        collectionWithBookmarks = collectionWithBookmarks,
+                        onDelete = { onDeleteCollection(collectionWithBookmarks.collection.localId) }
                     )
                 }
             }
@@ -96,11 +128,9 @@ fun CollectionsTab(
 
 @Composable
 fun CollectionItem(
-    collection: Collection,
-    onDelete: () -> Unit,
-    viewModel: SyncViewModel
+    collectionWithBookmarks: CollectionWithBookmarks,
+    onDelete: () -> Unit
 ) {
-    val bookmarks by viewModel.getBookmarksForCollection(collection.localId).collectAsState(initial = emptyList())
     var expanded by remember { mutableStateOf(false) }
 
     ElevatedCard(
@@ -112,7 +142,7 @@ fun CollectionItem(
                 Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(modifier = Modifier.width(16.dp))
                 Text(
-                    text = collection.name,
+                    text = collectionWithBookmarks.collection.name,
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f)
                 )
@@ -123,14 +153,14 @@ fun CollectionItem(
 
             if (expanded) {
                 Spacer(modifier = Modifier.height(8.dp))
-                if (bookmarks.isEmpty()) {
+                if (collectionWithBookmarks.bookmarks.isEmpty()) {
                     Text(
                         "No bookmarks in this collection",
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(start = 40.dp)
                     )
                 } else {
-                    bookmarks.forEach { cb ->
+                    collectionWithBookmarks.bookmarks.forEach { cb ->
                         Row(
                             modifier = Modifier
                                 .padding(start = 40.dp, bottom = 4.dp)
