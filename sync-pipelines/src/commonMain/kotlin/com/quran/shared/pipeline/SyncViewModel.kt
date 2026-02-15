@@ -1,44 +1,33 @@
 package com.quran.shared.pipeline
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionWithBookmarks
 import com.quran.shared.persistence.model.Note
-import com.quran.shared.persistence.util.QuranActionsUtils
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.StateFlow
 
 class SyncViewModel(
     private val authService: AuthService,
     private val service: SyncService
 ) : ViewModel() {
 
-    val authState = service.authState
+    val authState: StateFlow<com.quran.shared.auth.model.AuthState> = service.authState
+    
     val bookmarks: Flow<List<Bookmark>> = service.bookmarks
+    
     val collectionsWithBookmarks: Flow<List<CollectionWithBookmarks>> =
         service.collectionsWithBookmarks
+    
     val notes: Flow<List<Note>> = service.notes
 
-    fun login() {
-        viewModelScope.launch {
-            try {
-                authService.login()
-            } catch (e: Exception) {
-                // Error handled by service state
-            }
-        }
+    suspend fun login() {
+        authService.login()
     }
 
-    fun logout() {
-        viewModelScope.launch {
-            try {
-                authService.logout()
-            } catch (e: Exception) {
-                // Error handled by service state
-            }
-        }
+    suspend fun logout() {
+        authService.logout()
     }
 
     fun clearError() {
@@ -49,98 +38,45 @@ class SyncViewModel(
         service.triggerSync()
     }
 
-    fun addBookmark(page: Int) {
-        viewModelScope.launch {
-            try {
-                service.addBookmark(page)
-            } catch (e: Exception) {
-                // Error handled by service logging
-            }
-        }
+    suspend fun addBookmark(page: Int): Bookmark {
+        return service.addBookmark(page)
     }
 
-    fun addBookmark(sura: Int, ayah: Int) {
-        viewModelScope.launch {
-            try {
-                service.addBookmark(sura, ayah)
-            } catch (e: Exception) {
-                // Error handled by service logging
-            }
-        }
+    suspend fun addBookmark(sura: Int, ayah: Int): Bookmark {
+        return service.addBookmark(sura, ayah)
     }
 
-    fun deleteBookmark(bookmark: Bookmark) {
-        viewModelScope.launch {
-            try {
-                service.deleteBookmark(bookmark)
-            } catch (e: Exception) {
-                // Error handled by service logging
-            }
-        }
+    suspend fun deleteBookmark(bookmark: Bookmark) {
+        service.deleteBookmark(bookmark)
     }
 
-    fun addCollection(name: String) {
-        viewModelScope.launch {
-            try {
-                service.addCollection(name)
-            } catch (e: Exception) {
-            }
-        }
+    suspend fun addCollection(name: String) {
+        service.addCollection(name)
     }
 
-    fun deleteCollection(collectionId: String) {
-        viewModelScope.launch {
-            try {
-                service.deleteCollection(collectionId)
-            } catch (e: Exception) {
-            }
-        }
+    suspend fun deleteCollection(collectionId: String) {
+        service.deleteCollection(collectionId)
     }
 
-    fun addRandomBookmarkToCollection(collectionId: String) {
-        viewModelScope.launch {
-            try {
-                val quranUtils = QuranActionsUtils
-                val sura = quranUtils.getRandomSura()
-                val ayah = quranUtils.getRandomAyah(sura)
-
-                // Add the ayah bookmark and get the created bookmark
-                val bookmark = service.addBookmark(sura, ayah)
-
-                // Add the newly created bookmark to the collection
-                service.addBookmarkToCollection(collectionId, bookmark)
-            } catch (e: Exception) {
-                // Error logging would be handled in service or here
-            }
-        }
+    suspend fun addAyahBookmarkToCollection(collectionId: String, sura: Int, ayah: Int) {
+        val bookmark = service.addBookmark(sura, ayah)
+        service.addBookmarkToCollection(collectionId, bookmark)
     }
 
-    fun removeBookmarkFromCollection(collectionId: String, bookmark: Bookmark) {
-        viewModelScope.launch {
-            try {
-                service.removeBookmarkFromCollection(collectionId, bookmark)
-            } catch (e: Exception) {
-            }
-        }
+    suspend fun removeBookmarkFromCollection(collectionId: String, bookmark: Bookmark) {
+        service.removeBookmarkFromCollection(collectionId, bookmark)
     }
 
-    fun addNote(body: String, startAyahId: Long, endAyahId: Long) {
-        viewModelScope.launch {
-            try {
-                service.addNote(body, startAyahId, endAyahId)
-            } catch (e: Exception) {
-            }
-        }
+    suspend fun addNote(body: String, startAyahId: Long, endAyahId: Long) {
+        service.addNote(body, startAyahId, endAyahId)
     }
 
-    fun deleteNote(noteId: String) {
-        viewModelScope.launch {
-            try {
-                service.deleteNote(noteId)
-            } catch (e: Exception) {
-            }
-        }
+    suspend fun deleteNote(noteId: String) {
+        service.deleteNote(noteId)
     }
+
+    fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<com.quran.shared.persistence.model.CollectionBookmark>> =
+        service.getBookmarksForCollectionFlow(collectionLocalId)
 
     override fun onCleared() {
         super.onCleared()

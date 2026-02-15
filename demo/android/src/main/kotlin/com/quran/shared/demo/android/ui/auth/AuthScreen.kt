@@ -18,6 +18,7 @@ import com.quran.shared.persistence.util.QuranActionsUtils.getRandomAyah
 import com.quran.shared.persistence.util.QuranActionsUtils.getRandomPage
 import com.quran.shared.persistence.util.QuranActionsUtils.getRandomSura
 import com.quran.shared.pipeline.SyncViewModel
+import kotlinx.coroutines.launch
 
 /**
  * Authentication screen for the Android demo app.
@@ -32,6 +33,7 @@ fun AuthScreen(
     val collectionsWithBookmarks by viewModel.collectionsWithBookmarks.collectAsState(initial = emptyList())
     val notes by viewModel.notes.collectAsState(initial = emptyList())
 
+    val scope = rememberCoroutineScope()
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -65,7 +67,12 @@ fun AuthScreen(
                 is AuthState.Idle -> {
                     LoginButtonContent(
                         onLoginClick = {
-                            viewModel.login()
+                            scope.launch {
+                                try {
+                                    viewModel.login()
+                                } catch (e: Exception) {
+                                }
+                            }
                         }
                     )
                 }
@@ -81,39 +88,89 @@ fun AuthScreen(
                         collectionsWithBookmarks = collectionsWithBookmarks,
                         notes = notes,
                         onAddPageBookmark = {
-                            viewModel.addBookmark(getRandomPage())
+                            scope.launch {
+                                try {
+                                    viewModel.addBookmark(getRandomPage())
+                                } catch (e: Exception) {
+                                }
+                            }
                         },
                         onAddAyahBookmark = {
                             val sura = getRandomSura()
                             val ayah = getRandomAyah(sura)
-                            viewModel.addBookmark(sura, ayah)
+                            scope.launch {
+                                try {
+                                    viewModel.addBookmark(sura, ayah)
+                                } catch (e: Exception) {
+                                }
+                            }
                         },
                         onDeleteBookmark = {
-                            viewModel.deleteBookmark(it)
+                            scope.launch {
+                                try {
+                                    viewModel.deleteBookmark(it)
+                                } catch (e: Exception) {
+                                }
+                            }
                         },
                         onAddCollection = { name ->
-                            viewModel.addCollection(name)
+                            scope.launch {
+                                try {
+                                    viewModel.addCollection(name)
+                                } catch (e: Exception) {
+                                }
+                            }
                         },
                         onDeleteCollection = { id ->
-                            viewModel.deleteCollection(id)
+                            scope.launch {
+                                try {
+                                    viewModel.deleteCollection(id)
+                                } catch (e: Exception) {
+                                }
+                            }
                         },
                         onAddNote = { body ->
                             val sura = getRandomSura()
                             val ayah = getRandomAyah(sura)
-                            viewModel.addNote(
-                                body,
-                                ayah.toLong(),
-                                ayah.toLong()
-                            ) // Just dummy range for now
+                            scope.launch {
+                                try {
+                                    viewModel.addNote(
+                                        body,
+                                        ayah.toLong(),
+                                        ayah.toLong()
+                                    )
+                                } catch (e: Exception) {
+                                }
+                            } // Just dummy range for now
                         },
                         onDeleteNote = { id ->
-                            viewModel.deleteNote(id)
+                            scope.launch {
+                                try {
+                                    viewModel.deleteNote(id)
+                                } catch (e: Exception) {
+                                }
+                            }
                         },
                         onLogout = {
-                            viewModel.logout()
+                            scope.launch {
+                                try {
+                                    viewModel.logout()
+                                } catch (e: Exception) {
+                                }
+                            }
                         },
                         onAddRandomBookmarkToCollection = { id ->
-                            viewModel.addRandomBookmarkToCollection(id)
+                            scope.launch {
+                                try {
+                                    val sura = getRandomSura()
+                                    viewModel.addAyahBookmarkToCollection(
+                                        id,
+                                        sura,
+                                        getRandomAyah(sura)
+                                    )
+                                } catch (e: Exception) {
+                                }
+                            }
                         }
                     )
                 }
@@ -122,7 +179,12 @@ fun AuthScreen(
                     ErrorContent(
                         error = state.message,
                         onRetry = {
-                            viewModel.login()
+                            scope.launch {
+                                try {
+                                    viewModel.login()
+                                } catch (e: Exception) {
+                                }
+                            }
                         },
                         onDismiss = {
                             viewModel.clearError()
