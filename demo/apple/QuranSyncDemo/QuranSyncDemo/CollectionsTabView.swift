@@ -7,20 +7,20 @@ struct CollectionsTabView: View {
     @State private var showSelectCollectionSheet = false
     @State private var newCollectionName = ""
     @State private var selectedBookmarkType: SelectedBookmarkType = .page
-    
+
     enum SelectedBookmarkType {
         case page, ayah
     }
-    
+
     var body: some View {
         List {
             Section(header: HStack {
                 Text("Your Collections")
                 Spacer()
                 HStack(spacing: 16) {
-                    Button(action: { 
+                    Button(action: {
                         selectedBookmarkType = .ayah
-                        showSelectCollectionSheet = true 
+                        showSelectCollectionSheet = true
                     }) {
                         Image(systemName: "plus.square")
                     }
@@ -62,9 +62,9 @@ struct CollectionsTabView: View {
                         Task {
                             let sura = Shared.QuranActionsUtils().getRandomSura()
                             let ayah = Shared.QuranActionsUtils().getRandomAyah(sura: sura)
-                            if let bookmark = await viewModel.addBookmark(sura: sura, ayah: ayah) {
-                                await viewModel.addBookmarkToCollection(collectionId: item.collection.localId, bookmark: bookmark)
-                            }
+                            await viewModel.addAyahBookmarkToCollection(collectionId: item.collection.localId,
+                                                                        sura: sura,
+                                                                        ayah: ayah)
                         }
                         showSelectCollectionSheet = false
                     }) {
@@ -101,8 +101,8 @@ struct CollectionRowView: View {
                         isExpanded.toggle()
                     }
                 }
-                
-                Button(action: { 
+
+                Button(action: {
                     Task {
                         await viewModel.deleteCollection(collectionId: collectionWithBookmarks.collection.localId)
                     }
@@ -136,7 +136,7 @@ struct CollectionRowView: View {
             }
         }
     }
-    
+
     private func displayText(for cb: Shared.CollectionBookmark) -> String {
         if let pb = cb as? Shared.CollectionBookmark.PageBookmark {
             return "Page \(pb.page)"
