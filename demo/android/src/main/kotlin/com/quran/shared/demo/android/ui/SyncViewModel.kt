@@ -1,7 +1,8 @@
-package com.quran.shared.pipeline
+package com.quran.shared.demo.android.ui
 
 import androidx.lifecycle.ViewModel
 import com.quran.shared.auth.service.AuthService
+import com.quran.shared.pipeline.SyncService
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionWithBookmarks
 import com.quran.shared.persistence.model.Note

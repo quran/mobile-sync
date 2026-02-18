@@ -4,13 +4,13 @@ import KMPNativeCoroutinesAsync
 
 /**
  * Native iOS ViewModel for Sync and Data.
- * 
+ *
  * This class wraps the shared SyncService and provides it to SwiftUI.
  * It uses KMP-NativeCoroutines to convert Kotlin Flows into Swift AsyncSequences.
  */
 @MainActor
 class SyncViewModel: ObservableObject {
-    private let service: SyncService
+    private let syncService: SyncService
     private let authService: AuthService
 
     @Published var authState: AuthState = AuthState.Idle()
@@ -18,13 +18,13 @@ class SyncViewModel: ObservableObject {
     @Published var collectionsWithBookmarks: [Shared.CollectionWithBookmarks] = []
     @Published var notes: [Shared.Note_] = []
 
-    init(authService: AuthService, service: SyncService) {
+    init(authService: AuthService, syncService: SyncService) {
         self.authService = authService
-        self.service = service
+        self.syncService = syncService
     }
 
     deinit {
-        service.clear()
+        syncService.clear()
     }
 
     func observeData() async {
@@ -46,7 +46,7 @@ class SyncViewModel: ObservableObject {
 
     private func observeAuthState() async {
         do {
-            for try await state in asyncSequence(for: service.authStateFlow) {
+            for try await state in asyncSequence(for: syncService.authStateFlow) {
                 self.authState = state
             }
         } catch {
@@ -56,7 +56,7 @@ class SyncViewModel: ObservableObject {
 
     private func observeBookmarks() async {
         do {
-            for try await list in asyncSequence(for: service.bookmarks) {
+            for try await list in asyncSequence(for: syncService.bookmarks) {
                 self.bookmarks = list as [Shared.Bookmark]
             }
         } catch {
@@ -66,7 +66,7 @@ class SyncViewModel: ObservableObject {
 
     private func observeCollections() async {
         do {
-            for try await list in asyncSequence(for: service.collectionsWithBookmarks) {
+            for try await list in asyncSequence(for: syncService.collectionsWithBookmarks) {
                 self.collectionsWithBookmarks = list as [Shared.CollectionWithBookmarks]
             }
         } catch {
@@ -76,7 +76,7 @@ class SyncViewModel: ObservableObject {
 
     private func observeNotes() async {
         do {
-            for try await list in asyncSequence(for: service.notes) {
+            for try await list in asyncSequence(for: syncService.notes) {
                 self.notes = list as [Shared.Note_]
             }
         } catch {
@@ -85,12 +85,12 @@ class SyncViewModel: ObservableObject {
     }
 
     func triggerSync() {
-        service.triggerSync()
+        syncService.triggerSync()
     }
 
     func addBookmark(page: Int32) async -> Shared.Bookmark? {
         do {
-            return try await asyncFunction(for: service.addBookmark(page: page))
+            return try await asyncFunction(for: syncService.addBookmark(page: page))
         } catch {
             print("SyncViewModel: Failed to add page bookmark: \(error)")
             return nil
@@ -99,7 +99,7 @@ class SyncViewModel: ObservableObject {
 
     func addBookmark(sura: Int32, ayah: Int32) async -> Shared.Bookmark? {
         do {
-            return try await asyncFunction(for: service.addBookmark(sura: sura, ayah: ayah))
+            return try await asyncFunction(for: syncService.addBookmark(sura: sura, ayah: ayah))
         } catch {
             print("SyncViewModel: Failed to add ayah bookmark: \(error)")
             return nil
@@ -108,7 +108,7 @@ class SyncViewModel: ObservableObject {
 
     func deleteBookmark(bookmark: Shared.Bookmark) async {
         do {
-            try await asyncFunction(for: service.deleteBookmark(bookmark: bookmark))
+            try await asyncFunction(for: syncService.deleteBookmark(bookmark: bookmark))
         } catch {
             print("SyncViewModel: Failed to delete bookmark: \(error)")
         }
@@ -116,7 +116,7 @@ class SyncViewModel: ObservableObject {
 
     func addCollection(name: String) async {
         do {
-            try await asyncFunction(for: service.addCollection(name: name))
+            try await asyncFunction(for: syncService.addCollection(name: name))
         } catch {
             print("SyncViewModel: Failed to add collection: \(error)")
         }
@@ -124,7 +124,7 @@ class SyncViewModel: ObservableObject {
 
     func deleteCollection(collectionId: String) async {
         do {
-            try await asyncFunction(for: service.deleteCollection(localId: collectionId))
+            try await asyncFunction(for: syncService.deleteCollection(localId: collectionId))
         } catch {
             print("SyncViewModel: Failed to delete collection: \(error)")
         }
@@ -132,7 +132,7 @@ class SyncViewModel: ObservableObject {
 
     func addNote(body: String, startAyahId: Int64, endAyahId: Int64) async {
         do {
-            try await asyncFunction(for: service.addNote(body: body, startAyahId: startAyahId, endAyahId: endAyahId))
+            try await asyncFunction(for: syncService.addNote(body: body, startAyahId: startAyahId, endAyahId: endAyahId))
         } catch {
             print("SyncViewModel: Failed to add note: \(error)")
         }
@@ -140,7 +140,7 @@ class SyncViewModel: ObservableObject {
 
     func deleteNote(localId: String) async {
         do {
-            try await asyncFunction(for: service.deleteNote(localId: localId))
+            try await asyncFunction(for: syncService.deleteNote(localId: localId))
         } catch {
             print("SyncViewModel: Failed to delete note: \(error)")
         }
@@ -148,7 +148,7 @@ class SyncViewModel: ObservableObject {
 
     func addBookmarkToCollection(collectionId: String, bookmark: Shared.Bookmark) async {
         do {
-            try await asyncFunction(for: service.addBookmarkToCollection(collectionLocalId: collectionId, bookmark: bookmark))
+            try await asyncFunction(for: syncService.addBookmarkToCollection(collectionLocalId: collectionId, bookmark: bookmark))
         } catch {
             print("SyncViewModel: Failed to add bookmark to collection: \(error)")
         }
@@ -156,7 +156,7 @@ class SyncViewModel: ObservableObject {
 
     func removeBookmarkFromCollection(collectionId: String, bookmark: Shared.Bookmark) async {
         do {
-            try await asyncFunction(for: service.removeBookmarkFromCollection(collectionLocalId: collectionId, bookmark: bookmark))
+            try await asyncFunction(for: syncService.removeBookmarkFromCollection(collectionLocalId: collectionId, bookmark: bookmark))
         } catch {
             print("SyncViewModel: Failed to remove bookmark from collection: \(error)")
         }
@@ -164,15 +164,15 @@ class SyncViewModel: ObservableObject {
 
     func addAyahBookmarkToCollection(collectionId: String, sura: Int32, ayah: Int32) async {
         do {
-            let bookmark = try await asyncFunction(for: service.addBookmark(sura: sura, ayah: ayah))
-            try await asyncFunction(for: service.addBookmarkToCollection(collectionLocalId: collectionId, bookmark: bookmark))
+            let bookmark = try await asyncFunction(for: syncService.addBookmark(sura: sura, ayah: ayah))
+            try await asyncFunction(for: syncService.addBookmarkToCollection(collectionLocalId: collectionId, bookmark: bookmark))
         } catch {
             print("SyncViewModel: Failed to add random bookmark to collection: \(error)")
         }
     }
 
     func bookmarksForCollection(collectionId: String) -> any AsyncSequence {
-        return asyncSequence(for: service.getBookmarksForCollectionFlow(collectionLocalId: collectionId))
+        return asyncSequence(for: syncService.getBookmarksForCollectionFlow(collectionLocalId: collectionId))
     }
 
     func login() async throws {

@@ -72,6 +72,10 @@ class SynchronizationClientIntegrationTest {
                 // Mock implementation - return true only for IDs in the existingRemoteIDs set
                 return remoteIDs.associateWith { it in existingRemoteIDs }
             }
+
+            override suspend fun fetchLocalModel(remoteId: String): SyncBookmark? {
+                return mutations.find { it.remoteID == remoteId }?.model
+            }
         }
     }
 
