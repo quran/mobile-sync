@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 
 /**
  * Shared service for authentication logic and state.
- * 
+ *
  * This service centralizes authentication operations and maintains the authentication state,
  * making it easy to share across platforms while allowing native ViewModels (iOS/Android)
  * to handle platform-specific UI concerns.
@@ -27,6 +27,7 @@ class AuthService(
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
+
     @NativeCoroutinesState
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
@@ -51,7 +52,7 @@ class AuthService(
                 if (oidcRepo?.canContinueLogin() == true) {
                     _authState.value = AuthState.Loading
                     oidcRepo.continueLogin()
-                    
+
                     val user = authRepository.getCurrentUser()
                     if (user != null) {
                         _authState.value = AuthState.Success(user)
@@ -107,7 +108,11 @@ class AuthService(
 
     fun clearError() {
         if (_authState.value is AuthState.Error) {
-            _authState.value = AuthState.Idle
+            checkCurrentSession()
+            // If checkCurrentSession didn't find a session, default to Idle
+            if (_authState.value is AuthState.Error) {
+                _authState.value = AuthState.Idle
+            }
         }
     }
 
