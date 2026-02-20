@@ -2,7 +2,6 @@ package com.quran.shared.syncengine
 
 import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.LocalModelMutation
-import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.syncengine.conflict.CollectionBookmarksConflictDetector
 import com.quran.shared.syncengine.conflict.CollectionBookmarksConflictResolver
@@ -75,19 +74,20 @@ internal class CollectionBookmarksSyncAdapter(
         configurations.resultNotifier.didFail(message)
     }
 
-    private fun parseRemoteMutations(
+    private suspend fun parseRemoteMutations(
         mutations: List<SyncMutation>
     ): List<RemoteModelMutation<SyncCollectionBookmark>> {
         return mutations.mapNotNull { mutation ->
             if (!mutation.resource.equals(resourceName, ignoreCase = true)) {
                 return@mapNotNull null
             }
-            val resourceId = mutation.resourceId
+            val bookmarkId = mutation.data?.stringOrNull("bookmarkId")
+            val resourceId = mutation.resourceId ?: bookmarkId
             if (resourceId == null) {
                 logger.w { "Skipping collection bookmark mutation without resourceId" }
                 return@mapNotNull null
             }
-            val collectionBookmark = mutation.toSyncCollectionBookmark(logger) ?: return@mapNotNull null
+            val collectionBookmark = mutation.toSyncCollectionBookmark(logger, configurations.localDataFetcher) ?: return@mapNotNull null
             RemoteModelMutation(
                 model = collectionBookmark,
                 remoteID = resourceId,
@@ -193,7 +193,10 @@ internal class CollectionBookmarksSyncAdapter(
     }
 }
 
-private fun SyncMutation.toSyncCollectionBookmark(logger: Logger): SyncCollectionBookmark? {
+private suspend fun SyncMutation.toSyncCollectionBookmark(
+    logger: Logger,
+    localDataFetcher: LocalDataFetcher<SyncCollectionBookmark>
+): SyncCollectionBookmark? {
     val data = data ?: return null
     val collectionId = data.stringOrNull("collectionId")
     if (collectionId.isNullOrEmpty()) {
@@ -204,7 +207,7 @@ private fun SyncMutation.toSyncCollectionBookmark(logger: Logger): SyncCollectio
     val lastModified = Instant.fromEpochMilliseconds(timestamp ?: 0)
     val bookmarkId = data.stringOrNull("bookmarkId")
         ?: data.stringOrNull("bookmark_id")
-        ?: parseBookmarkId(resourceId, collectionId)
+        ?: parseBookmarkId(resourceId, collectionId) ?: return null
     return when (normalizedType?.lowercase()) {
         "page" -> {
             val page = data.intOrNull("key")
@@ -236,8 +239,29 @@ private fun SyncMutation.toSyncCollectionBookmark(logger: Logger): SyncCollectio
             }
         }
         else -> {
-            logger.w { "Skipping collection bookmark mutation with unsupported type=$normalizedType: resourceId=$resourceId" }
-            null
+            val localModel = localDataFetcher.fetchLocalModel(bookmarkId)
+            if(localModel != null) {
+                logger.d { "Mapped unknown collection bookmark type using local data: resourceId=$localModel" }
+                when (localModel) {
+                    is SyncCollectionBookmark.PageBookmark ->
+                        SyncCollectionBookmark.PageBookmark(
+                            collectionId = collectionId,
+                            page = localModel.page,
+                            lastModified = lastModified,
+                            bookmarkId = bookmarkId
+                        )
+                    is SyncCollectionBookmark.AyahBookmark -> SyncCollectionBookmark.AyahBookmark(
+                        collectionId = collectionId,
+                        sura = localModel.sura,
+                        ayah = localModel.ayah,
+                        lastModified = lastModified,
+                        bookmarkId = bookmarkId,
+                    )
+                }
+            } else {
+                logger.w { "Skipping collection bookmark mutation with unsupported type=$normalizedType: resourceId=$resourceId" }
+                null
+            }
         }
     }
 }

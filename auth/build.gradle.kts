@@ -39,7 +39,7 @@ kotlin {
     iosArm64()
     iosSimulatorArm64()
 
-
+    jvm()
     androidTarget {
         publishLibraryVariants("release")
         compilerOptions {
@@ -71,6 +71,10 @@ kotlin {
         androidMain.dependencies {
              implementation(libs.ktor.client.okhttp)
         }
+
+        jvmMain.dependencies {
+            implementation(libs.ktor.client.okhttp)
+        }
         
         val iosMain by getting {
             dependencies {
@@ -86,6 +90,7 @@ android {
 
     defaultConfig {
         minSdk = libs.versions.android.min.sdk.get().toInt()
+        manifestPlaceholders["oidcRedirectScheme"] = "com.quran.oauth"
     }
 
     compileOptions {

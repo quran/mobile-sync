@@ -13,6 +13,10 @@ import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.flow.Flow
+import app.cash.sqldelight.coroutines.asFlow
+import app.cash.sqldelight.coroutines.mapToList
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
 class NotesRepositoryImpl(
@@ -28,6 +32,15 @@ class NotesRepositoryImpl(
                 .executeAsList()
                 .map { it.toNote() }
         }
+    }
+
+    override fun getNotesFlow(): Flow<List<Note>> {
+        return notesQueries.value.getNotes()
+            .asFlow()
+            .mapToList(Dispatchers.IO)
+            .map { list ->
+                list.map { it.toNote() }
+            }
     }
 
     override suspend fun addNote(body: String, startAyahId: Long, endAyahId: Long): Note {
@@ -71,7 +84,7 @@ class NotesRepositoryImpl(
 
     override suspend fun fetchMutatedNotes(lastModified: Long): List<LocalModelMutation<Note>> {
         return withContext(Dispatchers.IO) {
-            notesQueries.value.getUnsyncedNotes(last_modified = lastModified)
+            notesQueries.value.getUnsyncedNotes()
                 .executeAsList()
                 .map { it.toNoteMutation() }
         }

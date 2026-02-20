@@ -29,4 +29,6 @@ interface BookmarksSynchronizationRepository {
     )
 
     suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean>
+
+    suspend fun fetchBookmarkByRemoteId(remoteId: String): Bookmark?
 }

@@ -108,11 +108,25 @@ class Scheduler(
             executeStop()
         }
     }
+
+    fun cancel() {
+        scope.launch {
+            executeCancel()
+        }
+    }
     // endregion:
 
     // region: Internal-state entry points
 
     // Entry point: starts a critical section
+    private suspend fun executeCancel() {
+        mutex.withLock {
+            logger.i { "Cancelling scheduler, resetting to Idle" }
+            resetAllState(SchedulerState.Idle)
+        }
+    }
+
+    // Entry point. Starts a critical section
     private suspend fun processInvokedTrigger(trigger: Trigger) {
         mutex.withLock {
             when (state) {

@@ -2,6 +2,8 @@ package com.quran.shared.persistence.repository.note.repository
 
 import com.quran.shared.persistence.model.Note
 
+import kotlinx.coroutines.flow.Flow
+
 interface NotesRepository {
     /**
      * Fetch and returns all notes.
@@ -22,4 +24,9 @@ interface NotesRepository {
      * Delete a note by its local ID.
      */
     suspend fun deleteNote(localId: String): Boolean
+
+    /**
+     * Observe the notes list as a Flow.
+     */
+    fun getNotesFlow(): Flow<List<Note>>
 }

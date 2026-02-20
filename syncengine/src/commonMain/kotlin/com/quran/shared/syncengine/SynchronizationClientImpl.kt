@@ -29,16 +29,39 @@ internal class SynchronizationClientImpl(
     )
 
     override fun localDataUpdated() {
-        logger.i { "Local data updated, triggering scheduler" }
-        scheduler.invoke(Trigger.LOCAL_DATA_MODIFIED)
+        if (authenticationDataFetcher.isLoggedIn()) {
+            logger.i { "Local data updated, triggering scheduler" }
+            scheduler.invoke(Trigger.LOCAL_DATA_MODIFIED)
+        } else {
+            logger.d { "Local data updated but user is not logged in, skipping trigger" }
+        }
     }
 
     override fun applicationStarted() {
-        logger.i { "Application started, triggering scheduler" }
-        scheduler.invoke(Trigger.APP_REFRESH)
+        if (authenticationDataFetcher.isLoggedIn()) {
+            logger.i { "Application started, triggering scheduler" }
+            scheduler.invoke(Trigger.APP_REFRESH)
+        } else {
+            logger.d { "Application started but user is not logged in, skipping trigger" }
+        }
+    }
+
+    override fun triggerSyncImmediately() {
+        logger.i { "Triggering immediate sync" }
+        scheduler.invoke(Trigger.IMMEDIATE)
+    }
+
+    override fun cancelSyncing() {
+        logger.i { "Cancelling all scheduled operations" }
+        scheduler.cancel()
     }
 
     private suspend fun startSyncOperation() {
+        if (!authenticationDataFetcher.isLoggedIn()) {
+            logger.i { "User is not logged in, skipping sync operation" }
+            return
+        }
+
         if (resourceAdapters.isEmpty()) {
             logger.w { "No sync resources configured, skipping sync operation" }
             return

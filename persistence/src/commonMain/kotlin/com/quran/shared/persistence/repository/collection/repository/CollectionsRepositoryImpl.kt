@@ -13,6 +13,10 @@ import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.flow.Flow
+import app.cash.sqldelight.coroutines.asFlow
+import app.cash.sqldelight.coroutines.mapToList
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
 class CollectionsRepositoryImpl(
@@ -28,6 +32,15 @@ class CollectionsRepositoryImpl(
                 .executeAsList()
                 .map { it.toCollection() }
         }
+    }
+
+    override fun getCollectionsFlow(): Flow<List<Collection>> {
+        return collectionQueries.value.getCollections()
+            .asFlow()
+            .mapToList(Dispatchers.IO)
+            .map { list ->
+                list.map { it.toCollection() }
+            }
     }
 
     override suspend fun addCollection(name: String): Collection {

@@ -6,7 +6,7 @@ data class AuthConfig(
     val clientSecret: String? = null,
     val redirectUri: String = "com.quran.oauth://callback",
     val postLogoutRedirectUri: String = "com.quran.oauth://callback",
-    val scopes: List<String> = listOf("openid", "offline_access", "content", "user", "bookmark", "sync", "collection", "reading_session", "preference")
+    val scopes: List<String> = listOf("openid", "offline_access", "content", "user", "bookmark", "sync", "collection", "reading_session", "preference", "note")
 ) {
     val baseUrl: String = if (usePreProduction) {
         "https://prelive-oauth2.quran.foundation"

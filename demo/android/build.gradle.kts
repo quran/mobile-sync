@@ -34,6 +34,7 @@ dependencies {
     implementation(projects.syncengine)
     implementation(projects.persistence)
     implementation(projects.auth)
+    implementation(projects.syncPipelines)
     
     // OIDC AppSupport for Android auth flow
     implementation(libs.oidc.appsupport)

@@ -9,12 +9,17 @@ import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionBookmark
 import com.quran.shared.persistence.model.DatabaseBookmarkCollection
+import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toPlatform
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.Flow
+import app.cash.sqldelight.coroutines.asFlow
+import app.cash.sqldelight.coroutines.mapToList
+import kotlinx.coroutines.flow.map
 import kotlin.time.Instant
 
 class CollectionBookmarksRepositoryImpl(
@@ -47,6 +52,29 @@ class CollectionBookmarksRepositoryImpl(
                     )
                 }
         }
+    }
+
+    override fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<CollectionBookmark>> {
+        return bookmarkCollectionQueries.value
+            .getCollectionBookmarksForCollectionWithDetails(collection_local_id = collectionLocalId.toLong())
+            .asFlow()
+            .mapToList(Dispatchers.IO)
+            .map { list ->
+                list.mapNotNull { record ->
+                    toCollectionBookmark(
+                        bookmarkType = record.bookmark_type,
+                        bookmarkLocalId = record.bookmark_local_id,
+                        page = record.page,
+                        sura = record.sura,
+                        ayah = record.ayah,
+                        collectionLocalId = record.collection_local_id,
+                        collectionRemoteId = record.collection_remote_id,
+                        modifiedAt = record.modified_at,
+                        localId = record.local_id,
+                        logMissingBookmark = false
+                    )
+                }
+            }
     }
 
     override suspend fun addBookmarkToCollection(collectionLocalId: String, bookmark: Bookmark): CollectionBookmark {
@@ -319,8 +347,7 @@ class CollectionBookmarksRepositoryImpl(
     }
 
     private fun getAyahId(sura: Int, ayah: Int): Int {
-        // TODO - fix this
-        return 1
+        return QuranData.getAyahId(sura, ayah)
     }
 
     override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> {

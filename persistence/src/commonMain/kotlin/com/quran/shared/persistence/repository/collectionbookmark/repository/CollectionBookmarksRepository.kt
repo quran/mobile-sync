@@ -3,6 +3,8 @@ package com.quran.shared.persistence.repository.collectionbookmark.repository
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionBookmark
 
+import kotlinx.coroutines.flow.Flow
+
 interface CollectionBookmarksRepository {
     /**
      * Returns all bookmarks linked to a collection.
@@ -18,4 +20,9 @@ interface CollectionBookmarksRepository {
      * Removes a bookmark from a collection locally.
      */
     suspend fun removeBookmarkFromCollection(collectionLocalId: String, bookmark: Bookmark): Boolean
+
+    /**
+     * Observe the bookmarks for a collection as a Flow.
+     */
+    fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<CollectionBookmark>>
 }

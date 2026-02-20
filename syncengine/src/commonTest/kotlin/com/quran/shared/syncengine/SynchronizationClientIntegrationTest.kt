@@ -45,6 +45,8 @@ class SynchronizationClientIntegrationTest {
                     "x-auth-token" to accessToken
                 )
             }
+
+            override fun isLoggedIn(): Boolean = true
         }
     }
 
@@ -69,6 +71,10 @@ class SynchronizationClientIntegrationTest {
             override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> {
                 // Mock implementation - return true only for IDs in the existingRemoteIDs set
                 return remoteIDs.associateWith { it in existingRemoteIDs }
+            }
+
+            override suspend fun fetchLocalModel(remoteId: String): SyncBookmark? {
+                return mutations.find { it.remoteID == remoteId }?.model
             }
         }
     }

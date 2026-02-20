@@ -1,6 +1,7 @@
 package com.quran.shared.persistence.repository.collection.repository
 
 import com.quran.shared.persistence.model.Collection
+import kotlinx.coroutines.flow.Flow
 
 interface CollectionsRepository {
     /**
@@ -24,4 +25,9 @@ interface CollectionsRepository {
      * Delete a collection identified by its local ID.
      */
     suspend fun deleteCollection(localId: String): Boolean
+
+    /**
+     * Observe the collections list as a Flow.
+     */
+    fun getCollectionsFlow(): Flow<List<Collection>>
 }
