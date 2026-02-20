@@ -93,35 +93,26 @@ class OidcAuthRepository(
     }
 
     override suspend fun logout() {
-        try {
-            val idToken = authStorage.retrieveStoredIdToken()
-            val refreshToken = authStorage.retrieveStoredRefreshToken()
+        val idToken = authStorage.retrieveStoredIdToken()
+        val refreshToken = authStorage.retrieveStoredRefreshToken()
 
-            // 1. Revoke the Refresh Token (Back-channel)
-            // This ensures the session is killed on the server immediately.
-            refreshToken?.let {
-                try {
-                    oidcClient.revokeToken(it, configureTokenExchange)
-                } catch (e: Exception) {
-                    logger.w(e) { "Token revocation failed, moving to browser logout" }
-                }
-            }
-
-            // 2. Terminate OIDC Session (Browser-side)
-            if (AuthFlowFactoryProvider.isInitialized()) {
-                try {
-                    val endSessionFlow = AuthFlowFactoryProvider.factory.createEndSessionFlow(oidcClient)
-                    endSessionFlow.endSession(idToken) {
-                        // add any post-logout actions here
-                    }
-                } catch (e: Exception) {
-                    logger.w(e) { "End session failed" }
-                }
-            }
-        } finally {
-            // Always clear local state
-            authStorage.clearAllTokens()
+        // 1. Revoke the Refresh Token (Back-channel)
+        // This ensures the session is killed on the server immediately.
+        // If this fails (e.g. network error), it will throw and keep the user logged in locally.
+        refreshToken?.let {
+            oidcClient.revokeToken(it, configureTokenExchange)
         }
+
+        // 2. Terminate OIDC Session (Browser-side)
+        if (AuthFlowFactoryProvider.isInitialized()) {
+            val endSessionFlow = AuthFlowFactoryProvider.factory.createEndSessionFlow(oidcClient)
+            endSessionFlow.endSession(idToken) {
+                // optional post-logout actions
+            }
+        }
+
+        // 3. Clear local state only if we reached here successfully
+        authStorage.clearAllTokens()
     }
 
     override fun getAccessToken(): String? = authStorage.retrieveStoredAccessToken()
