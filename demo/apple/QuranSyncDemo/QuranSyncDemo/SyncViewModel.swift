@@ -29,58 +29,66 @@ class SyncViewModel: ObservableObject {
 
     func observeData() async {
         await withTaskGroup(of: Void.self) { group in
-            group.addTask {
-                await self.observeAuthState()
+            group.addTask { @MainActor [weak self] in
+                guard let syncService = self?.syncService else {
+                    return
+                }
+                do {
+                    for try await state in asyncSequence(for: syncService.authStateFlow) {
+                        guard let self = self else {
+                            break
+                        }
+                        self.authState = state
+                    }
+                } catch {
+                    print("SyncViewModel: Error observing authState: \(error)")
+                }
             }
-            group.addTask {
-                await self.observeBookmarks()
+            group.addTask { @MainActor [weak self] in
+                guard let syncService = self?.syncService else {
+                    return
+                }
+                do {
+                    for try await list in asyncSequence(for: syncService.bookmarks) {
+                        guard let self = self else {
+                            break
+                        }
+                        self.bookmarks = list as [Shared.Bookmark]
+                    }
+                } catch {
+                    print("SyncViewModel: Error observing bookmarks: \(error)")
+                }
             }
-            group.addTask {
-                await self.observeCollections()
+            group.addTask { @MainActor [weak self] in
+                guard let syncService = self?.syncService else {
+                    return
+                }
+                do {
+                    for try await list in asyncSequence(for: syncService.collectionsWithBookmarks) {
+                        guard let self = self else {
+                            break
+                        }
+                        self.collectionsWithBookmarks = list as [Shared.CollectionWithBookmarks]
+                    }
+                } catch {
+                    print("SyncViewModel: Error observing collections: \(error)")
+                }
             }
-            group.addTask {
-                await self.observeNotes()
+            group.addTask { @MainActor [weak self] in
+                guard let syncService = self?.syncService else {
+                    return
+                }
+                do {
+                    for try await list in asyncSequence(for: syncService.notes) {
+                        guard let self = self else {
+                            break
+                        }
+                        self.notes = list as [Shared.Note_]
+                    }
+                } catch {
+                    print("SyncViewModel: Error observing notes: \(error)")
+                }
             }
-        }
-    }
-
-    private func observeAuthState() async {
-        do {
-            for try await state in asyncSequence(for: syncService.authStateFlow) {
-                self.authState = state
-            }
-        } catch {
-            print("SyncViewModel: Error observing authState: \(error)")
-        }
-    }
-
-    private func observeBookmarks() async {
-        do {
-            for try await list in asyncSequence(for: syncService.bookmarks) {
-                self.bookmarks = list as [Shared.Bookmark]
-            }
-        } catch {
-            print("SyncViewModel: Error observing bookmarks: \(error)")
-        }
-    }
-
-    private func observeCollections() async {
-        do {
-            for try await list in asyncSequence(for: syncService.collectionsWithBookmarks) {
-                self.collectionsWithBookmarks = list as [Shared.CollectionWithBookmarks]
-            }
-        } catch {
-            print("SyncViewModel: Error observing collections: \(error)")
-        }
-    }
-
-    private func observeNotes() async {
-        do {
-            for try await list in asyncSequence(for: syncService.notes) {
-                self.notes = list as [Shared.Note_]
-            }
-        } catch {
-            print("SyncViewModel: Error observing notes: \(error)")
         }
     }
 
