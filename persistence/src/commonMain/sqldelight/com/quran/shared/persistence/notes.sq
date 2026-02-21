@@ -7,10 +7,10 @@ CREATE TABLE IF NOT EXISTS note(
   created_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
   modified_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
   deleted INTEGER NOT NULL DEFAULT 0,
-  dirty INTEGER NOT NULL DEFAULT 0,
+  is_edited INTEGER NOT NULL DEFAULT 0,
   -- Ensure deleted is either 0 or 1
   CHECK (deleted IN (0, 1)),
-  CHECK (dirty IN (0, 1))
+  CHECK (is_edited IN (0, 1))
 );
 
 CREATE INDEX IF NOT EXISTS note_start_ayah_idx ON note(start_ayah_id);
@@ -36,7 +36,7 @@ updateNote:
     start_ayah_id = :start_ayah_id,
     end_ayah_id = :end_ayah_id,
     deleted = 0,
-    dirty = CASE WHEN remote_id IS NULL THEN 0 ELSE 1 END,
+    is_edited = CASE WHEN remote_id IS NULL THEN 0 ELSE 1 END,
     modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE local_id = :id;
 
@@ -52,11 +52,11 @@ getUnsyncedNotes:
   SELECT * FROM note
   WHERE remote_id IS NULL
     OR deleted = 1
-    OR dirty = 1
+    OR is_edited = 1
   ORDER BY created_at DESC;
 
 persistRemoteNote {
-  INSERT OR IGNORE INTO note (remote_id, note, start_ayah_id, end_ayah_id, created_at, modified_at, deleted, dirty)
+  INSERT OR IGNORE INTO note (remote_id, note, start_ayah_id, end_ayah_id, created_at, modified_at, deleted, is_edited)
   VALUES (:remote_id, :note, :start_ayah_id, :end_ayah_id, :created_at, :modified_at, 0, 0);
   UPDATE note
   SET note = :note,
@@ -64,7 +64,7 @@ persistRemoteNote {
     end_ayah_id = :end_ayah_id,
     modified_at = :modified_at,
     deleted = 0,
-    dirty = 0
+    is_edited = 0
   WHERE remote_id = :remote_id;
 }
 
@@ -76,7 +76,7 @@ clearLocalMutationFor {
   DELETE FROM note WHERE local_id = :id AND deleted = 1;
   UPDATE note
   SET deleted = 0,
-    dirty = 0,
+    is_edited = 0,
     modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE local_id = :id;
 }
