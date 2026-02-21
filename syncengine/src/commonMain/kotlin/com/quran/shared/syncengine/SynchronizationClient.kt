@@ -23,6 +23,13 @@ interface LocalDataFetcher<Model> {
      * @return Map of remote ID to boolean indicating if it exists locally
      */
     suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean>
+
+    /**
+     * Fetches a local model by its remote ID.
+     * @param remoteId Remote ID of the model to fetch
+     * @return Model if found locally, null otherwise
+     */
+    suspend fun fetchLocalModel(remoteId: String): Model?
 }
 
 interface ResultNotifier<Model> {
@@ -70,11 +77,14 @@ class NotesSynchronizationConfigurations(
 
 interface AuthenticationDataFetcher {
     suspend fun fetchAuthenticationHeaders(): Map<String, String>
+    fun isLoggedIn(): Boolean
 }
 
 interface SynchronizationClient {
     fun localDataUpdated()
     fun applicationStarted()
+    fun triggerSyncImmediately()
+    fun cancelSyncing()
 }
 
 data class SynchronizationEnvironment(val endPointURL: String)

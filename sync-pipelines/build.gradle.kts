@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.library)
     alias(libs.plugins.vanniktech.maven.publish)
+    alias(libs.plugins.native.coroutines)
 }
 
 kotlin {
@@ -26,9 +27,12 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.datetime)
             implementation(libs.kermit)
+            implementation(libs.multiplatform.settings.no.arg)
+            api(libs.androidx.lifecycle.viewmodel)
             api(projects.syncengine)
             api(projects.persistence)
             api(projects.mutationsDefinitions)
+            api(projects.auth)
         }
 
         commonTest.dependencies {
@@ -56,6 +60,7 @@ android {
 
     defaultConfig {
         minSdk = libs.versions.android.min.sdk.get().toInt()
+        manifestPlaceholders["oidcRedirectScheme"] = "com.quran.oauth"
     }
 
     compileOptions {

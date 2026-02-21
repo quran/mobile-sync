@@ -16,7 +16,7 @@ struct QuranSyncDemoApp: App {
         Shared.AuthFlowFactoryProvider.shared.doInitialize()
     }
 
-    @StateObject private var viewModel = AuthViewModel()
+    @StateObject private var viewModel: SyncViewModel = SyncPipelineFactory.createSyncViewModel()
 
     @State private var isAuthenticated = false
 
@@ -37,5 +37,18 @@ struct QuranSyncDemoApp: App {
                 })
             }
         }
+    }
+}
+
+@MainActor
+extension SyncPipelineFactory {
+    static func createSyncViewModel() -> SyncViewModel {
+        let authService = AuthConfigFactory.shared.authService
+        let syncService = SyncPipelineFactory.shared.createSyncService(
+            driverFactory: DriverFactory(),
+            environment: SynchronizationEnvironment(endPointURL: "https://apis-prelive.quran.foundation/auth"),
+            authService: authService
+        )
+        return SyncViewModel(authService: authService, syncService: syncService)
     }
 }

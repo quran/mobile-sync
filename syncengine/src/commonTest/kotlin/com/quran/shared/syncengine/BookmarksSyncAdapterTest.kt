@@ -34,6 +34,8 @@ class BookmarksSyncAdapterTest {
 
             override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> =
                 remoteIDs.associateWith { true }
+
+            override suspend fun fetchLocalModel(remoteId: String): SyncBookmark? = null
         }
 
         var capturedRemote: List<RemoteModelMutation<SyncBookmark>>? = null

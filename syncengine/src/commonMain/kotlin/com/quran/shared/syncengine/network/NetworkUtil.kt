@@ -4,6 +4,28 @@ import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.Mutation
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
+import kotlinx.serialization.Serializable
+import io.ktor.client.call.body
+
+@Serializable
+internal data class SyncErrorResponse(
+    val message: String,
+    val type: String,
+    val success: Boolean,
+    val details: SyncErrorDetails? = null
+)
+
+@Serializable
+internal data class SyncErrorDetails(
+    val success: Boolean,
+    val error: SyncErrorDetail
+)
+
+@Serializable
+internal data class SyncErrorDetail(
+    val code: String,
+    val message: String
+)
 
 internal fun String.asMutation(logger: Logger): Mutation {
     return when (this) {
