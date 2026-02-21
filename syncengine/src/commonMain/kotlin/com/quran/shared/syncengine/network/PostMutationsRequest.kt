@@ -93,11 +93,6 @@ class PostMutationsRequest(
             headers {
                 authHeaders.forEach { (key, value) ->
                     append(key, value)
-                    if (key.equals("Authorization", ignoreCase = true)) {
-                        logger.v { "Header: $key=Bearer ***" }
-                    } else {
-                        logger.v { "Header: $key=$value" }
-                    }
                 }
                 contentType(ContentType.Application.Json)
             }
