@@ -32,7 +32,7 @@ class MainActivity : ComponentActivity() {
     private val mainViewModel: SyncViewModel by lazy {
         val authService = AuthConfigFactory.authService
         val syncService = SyncPipelineFactory.createSyncService(
-            driverFactory = DriverFactory(context = this),
+            driverFactory = DriverFactory(context = this.applicationContext),
             environment = SynchronizationEnvironment(endPointURL = "https://apis-prelive.quran.foundation/auth"),
             authService = authService
         )
