@@ -14,9 +14,9 @@ import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionWithBookmarks
 import com.quran.shared.persistence.model.Note
-import com.quran.shared.persistence.util.QuranActionsUtils.getRandomAyah
-import com.quran.shared.persistence.util.QuranActionsUtils.getRandomPage
-import com.quran.shared.persistence.util.QuranActionsUtils.getRandomSura
+import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomAyah
+import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomPage
+import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomSura
 import com.quran.shared.demo.android.ui.SyncViewModel
 import kotlinx.coroutines.launch
 

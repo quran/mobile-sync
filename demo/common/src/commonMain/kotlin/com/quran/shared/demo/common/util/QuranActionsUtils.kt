@@ -1,7 +1,10 @@
-package com.quran.shared.persistence.util
+package com.quran.shared.demo.common.util
 
 import com.quran.shared.persistence.util.QuranData.suraAyahCounts
 
+import kotlin.native.ObjCName
+
+@ObjCName("QuranActionsUtils")
 object QuranActionsUtils {
 
     fun getRandomSura(): Int = (1..114).random()
