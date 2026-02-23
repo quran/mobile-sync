@@ -25,6 +25,7 @@ buildkonfig {
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.metro)
     alias(libs.plugins.android.library)
     alias(libs.plugins.vanniktech.maven.publish)
     alias(libs.plugins.buildkonfig)
@@ -56,10 +57,11 @@ kotlin {
             implementation(libs.ktor.client.content.negotiation)
             implementation(libs.ktor.serialization.json)
             implementation(libs.sha2)
-            implementation(libs.multiplatform.settings.no.arg)
+            api(libs.multiplatform.settings.no.arg)
             implementation(libs.kermit)
             implementation(libs.kotlinx.serialization.json)
             api(libs.androidx.lifecycle.viewmodel) // using `api` for better access from swift code
+            api(projects.mutationsDefinitions)
 
         }
 

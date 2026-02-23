@@ -14,9 +14,17 @@ struct QuranSyncDemoApp: App {
     init() {
         // Initialize the OIDC factory for iOS
         Shared.AuthFlowFactoryProvider.shared.doInitialize()
+
+        // Initialize Metro DI Graph
+        let driverFactory = DriverFactory()
+        let environment = SynchronizationEnvironment(endPointURL: "https://apis-prelive.quran.foundation/auth")
+        _ = SharedDependencyGraph.shared.doInit(driverFactory: driverFactory, environment: environment)
     }
 
-    @StateObject private var viewModel: SyncViewModel = SyncPipelineFactory.createSyncViewModel()
+    @StateObject private var viewModel: SyncViewModel = {
+        let graph = SharedDependencyGraph.shared.get()
+        return SyncViewModel(authService: graph.authService, syncService: graph.syncService)
+    }()
 
     @State private var isAuthenticated = false
 
@@ -40,15 +48,4 @@ struct QuranSyncDemoApp: App {
     }
 }
 
-@MainActor
-extension SyncPipelineFactory {
-    static func createSyncViewModel() -> SyncViewModel {
-        let authService = AuthConfigFactory.shared.authService
-        let syncService = SyncPipelineFactory.shared.createSyncService(
-            driverFactory: DriverFactory(),
-            environment: SynchronizationEnvironment(endPointURL: "https://apis-prelive.quran.foundation/auth"),
-            authService: authService
-        )
-        return SyncViewModel(authService: authService, syncService: syncService)
-    }
-}
+

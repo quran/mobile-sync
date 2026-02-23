@@ -1,14 +1,18 @@
 package com.quran.shared.persistence.repository.recentpage.repository
 
 import co.touchlab.kermit.Logger
+import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.model.RecentPage
 import com.quran.shared.persistence.repository.recentpage.extension.toRecentPage
+import dev.zacsweers.metro.Inject
+import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 
-class RecentPagesRepositoryImpl(
+@SingleIn(AppScope::class)
+class RecentPagesRepositoryImpl @Inject constructor(
     private val database: QuranDatabase
 ) : RecentPagesRepository {
 

@@ -2,11 +2,11 @@ package com.quran.shared.auth.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.quran.shared.auth.di.AuthConfigFactory
 import com.quran.shared.auth.model.AuthState
 import com.quran.shared.auth.service.AuthService
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import dev.zacsweers.metro.Inject
 
 /**
  * ViewModel for authentication UI, providing a platform-agnostic interface for login and logout operations.
@@ -21,8 +21,8 @@ import kotlinx.coroutines.launch
  *
  * @property authService The service handling the underlying OIDC logic and state management.
  */
-class AuthViewModel(
-    private val authService: AuthService = AuthConfigFactory.authService
+class AuthViewModel @Inject constructor(
+    private val authService: AuthService
 ) : ViewModel() {
 
     /** Current authentication state */

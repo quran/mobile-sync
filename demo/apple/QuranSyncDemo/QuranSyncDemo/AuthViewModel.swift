@@ -16,11 +16,12 @@ class AuthViewModel: ObservableObject {
 
     @Published var authState: AuthState = AuthState.Idle()
 
-    init(authService: AuthService = AuthConfigFactory.shared.authService) {
+    init(
+        authService: AuthService = SharedDependencyGraph.shared.get().authService,
+        bookmarksRepository: BookmarksRepository = SharedDependencyGraph.shared.get().bookmarksRepository
+    ) {
         self.authService = authService
-        // Initialize bookmarks repository for the sequence helper
-        let driverFactory = DriverFactory()
-        self.bookmarksRepository = BookmarksRepositoryFactory.shared.createRepository(driverFactory: driverFactory)
+        self.bookmarksRepository = bookmarksRepository
     }
 
     func bookmarksSequence() -> any AsyncSequence<[Bookmark.PageBookmark], Error> {
