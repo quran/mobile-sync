@@ -24,8 +24,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.withContext
 
+@Inject
 @SingleIn(AppScope::class)
-class BookmarksRepositoryImpl @Inject constructor(
+class BookmarksRepositoryImpl(
     private val database: QuranDatabase
 ) : BookmarksRepository, BookmarksSynchronizationRepository {
 

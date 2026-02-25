@@ -22,8 +22,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
+@Inject
 @SingleIn(AppScope::class)
-class CollectionsRepositoryImpl @Inject constructor(
+class CollectionsRepositoryImpl(
     private val database: QuranDatabase
 ) : CollectionsRepository, CollectionsSynchronizationRepository {
 

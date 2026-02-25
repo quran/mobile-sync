@@ -11,8 +11,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 
+@Inject
 @SingleIn(AppScope::class)
-class RecentPagesRepositoryImpl @Inject constructor(
+class RecentPagesRepositoryImpl(
     private val database: QuranDatabase
 ) : RecentPagesRepository {
 
