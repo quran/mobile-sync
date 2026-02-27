@@ -16,7 +16,7 @@ sha2 = "0.8.0"
 sqldelight = "2.2.1"
 ktor = "3.4.0"
 
-oidc = "0.16.4"
+oidc = "0.16.5"
 
 androidx-viewmodel = "2.10.0"
 androidx-appcompat = "1.7.1"
