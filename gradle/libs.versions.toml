@@ -10,7 +10,7 @@ native-coroutines = "1.0.1"
 
 maven-publish = "0.36.0"
 
-compose = "2026.01.01"
+compose = "2026.02.01"
 coroutines = "1.10.2"
 sha2 = "0.8.0"
 sqldelight = "2.2.1"
