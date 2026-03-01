@@ -5,22 +5,24 @@ import com.quran.shared.auth.model.AuthConfig
 import com.quran.shared.auth.repository.AuthRepository
 import com.quran.shared.auth.repository.OidcAuthRepository
 import com.quran.shared.di.AppScope
+import com.russhwolf.settings.Settings
 import dev.zacsweers.metro.Binds
 import dev.zacsweers.metro.BindingContainer
 import dev.zacsweers.metro.ContributesTo
 import dev.zacsweers.metro.Provides
 import dev.zacsweers.metro.SingleIn
+import io.ktor.client.HttpClient
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logger
 import io.ktor.client.plugins.logging.Logging
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.serialization.json.Json
+import org.publicvalue.multiplatform.oidc.DefaultOpenIdConnectClient
+import org.publicvalue.multiplatform.oidc.OpenIdConnectClient
+import org.publicvalue.multiplatform.oidc.OpenIdConnectClientConfig
 import org.publicvalue.multiplatform.oidc.types.CodeChallengeMethod
 
-typealias LibrarySettings = com.russhwolf.settings.Settings
-typealias LibraryJson = kotlinx.serialization.json.Json
-typealias LibraryHttpClient = io.ktor.client.HttpClient
-typealias LibraryOpenIdConnectClient = org.publicvalue.multiplatform.oidc.OpenIdConnectClient
 
 @ContributesTo(AppScope::class)
 @BindingContainer
@@ -32,14 +34,14 @@ abstract class AuthModule {
     companion object {
         @Provides
         @SingleIn(AppScope::class)
-        fun provideSettings(): LibrarySettings {
-            return com.russhwolf.settings.Settings()
+        fun provideSettings(): Settings {
+            return Settings()
         }
 
         @Provides
         @SingleIn(AppScope::class)
-        fun provideJson(): LibraryJson {
-            return kotlinx.serialization.json.Json {
+        fun provideJson(): Json {
+            return Json {
                 explicitNulls = false
                 ignoreUnknownKeys = true
             }
@@ -49,7 +51,7 @@ abstract class AuthModule {
         @SingleIn(AppScope::class)
         fun provideAuthConfig(): AuthConfig {
             return AuthConfig(
-                usePreProduction = true,
+                usePreProduction = BuildKonfig.IS_DEBUG,
                 clientId = BuildKonfig.CLIENT_ID,
                 clientSecret = BuildKonfig.CLIENT_SECRET
             )
@@ -57,13 +59,13 @@ abstract class AuthModule {
 
         @Provides
         @SingleIn(AppScope::class)
-        fun provideHttpClient(json: LibraryJson): LibraryHttpClient {
-            return io.ktor.client.HttpClient {
+        fun provideHttpClient(json: Json, config: AuthConfig): HttpClient {
+            return HttpClient {
                 install(Logging) {
                     logger = object : Logger {
                         override fun log(message: String) = println("HTTP Client: $message")
                     }
-                    level = LogLevel.ALL
+                    level = if (config.usePreProduction) LogLevel.NONE else LogLevel.ALL
                 }
                 install(ContentNegotiation) {
                     json(json)
@@ -75,11 +77,11 @@ abstract class AuthModule {
         @SingleIn(AppScope::class)
         fun provideOpenIdConnectClient(
             config: AuthConfig,
-            httpClient: LibraryHttpClient
-        ): LibraryOpenIdConnectClient {
-            return org.publicvalue.multiplatform.oidc.DefaultOpenIdConnectClient(
+            httpClient: HttpClient
+        ): OpenIdConnectClient {
+            return DefaultOpenIdConnectClient(
                 httpClient = httpClient,
-                config = org.publicvalue.multiplatform.oidc.OpenIdConnectClientConfig {
+                config = OpenIdConnectClientConfig {
                     endpoints {
                         authorizationEndpoint = config.authorizationEndpoint
                         tokenEndpoint = config.tokenEndpoint

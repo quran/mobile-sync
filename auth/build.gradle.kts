@@ -9,6 +9,18 @@ val localProperties = Properties().apply {
     }
 }
 
+// 2. Resolve build type from BuildKonfig flavor only.
+// Define the default flavor in gradle.properties and override with -Pbuildkonfig.flavor=release in CI/release.
+val supportedBuildTypes = setOf("debug", "release")
+val resolvedBuildType = providers.gradleProperty("buildkonfig.flavor").orNull?.lowercase()
+    ?: error("Missing 'buildkonfig.flavor'. Set it in gradle.properties or pass -Pbuildkonfig.flavor=debug|release.")
+
+require(resolvedBuildType in supportedBuildTypes) {
+    "Unsupported buildkonfig.flavor='$resolvedBuildType'. Supported values: ${supportedBuildTypes.joinToString()}."
+}
+
+val isDebugBuild = resolvedBuildType == "debug"
+
 // 2. Configure BuildKonfig
 buildkonfig {
     packageName = "com.quran.shared.auth"
@@ -20,6 +32,8 @@ buildkonfig {
 
         buildConfigField(com.codingfeline.buildkonfig.compiler.FieldSpec.Type.STRING, "CLIENT_ID", clientId)
         buildConfigField(com.codingfeline.buildkonfig.compiler.FieldSpec.Type.STRING, "CLIENT_SECRET", clientSecret)
+        buildConfigField(com.codingfeline.buildkonfig.compiler.FieldSpec.Type.STRING, "BUILD_TYPE", resolvedBuildType)
+        buildConfigField(com.codingfeline.buildkonfig.compiler.FieldSpec.Type.BOOLEAN, "IS_DEBUG", isDebugBuild.toString())
     }
 }
 
