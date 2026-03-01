@@ -11,22 +11,15 @@ import Shared
 @main
 struct QuranSyncDemoApp: App {
 
-    init() {
-        // Initialize the OIDC factory for iOS
-        Shared.AuthFlowFactoryProvider.shared.doInitialize()
-
-        // Initialize Metro DI Graph
-        let driverFactory = DriverFactory()
-        let environment = SynchronizationEnvironment(endPointURL: "https://apis-prelive.quran.foundation/auth")
-        _ = SharedDependencyGraph.shared.doInit(driverFactory: driverFactory, environment: environment)
-    }
-
-    @StateObject private var viewModel: SyncViewModel = {
-        let graph = SharedDependencyGraph.shared.get()
-        return SyncViewModel(authService: graph.authService, syncService: graph.syncService)
-    }()
-
+    @StateObject private var viewModel: SyncViewModel
     @State private var isAuthenticated = false
+
+    init() {
+        let graph = IOSDependencyGraph.shared.get()
+        _viewModel = StateObject(
+            wrappedValue: SyncViewModel(authService: graph.authService, syncService: graph.syncService)
+        )
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -47,5 +40,4 @@ struct QuranSyncDemoApp: App {
         }
     }
 }
-
 

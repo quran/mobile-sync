@@ -15,6 +15,10 @@ import com.quran.shared.syncengine.SynchronizationEnvironment
 import dev.zacsweers.metro.DependencyGraph
 import dev.zacsweers.metro.Provides
 import dev.zacsweers.metro.createGraphFactory
+import kotlinx.coroutines.InternalCoroutinesApi
+import kotlinx.coroutines.internal.SynchronizedObject
+import kotlinx.coroutines.internal.synchronized
+import kotlin.concurrent.Volatile
 
 /**
  * Central dependency graph for the application.
@@ -48,13 +52,24 @@ interface AppGraph {
 }
 
 object SharedDependencyGraph {
+    @Volatile
     private var instance: AppGraph? = null
+    @OptIn(InternalCoroutinesApi::class)
+    private val lock = SynchronizedObject()
 
-    fun init(driverFactory: DriverFactory, environment: SynchronizationEnvironment): AppGraph {
-        return createGraphFactory<AppGraph.Factory>().create(driverFactory, environment).also {
-            instance = it
-        }
+    private fun doInit(
+        driverFactory: DriverFactory,
+        environment: SynchronizationEnvironment
+    ): AppGraph {
+        return createGraphFactory<AppGraph.Factory>()
+            .create(driverFactory, environment)
+            .also { instance = it }
     }
 
-    fun get(): AppGraph = instance ?: error("Graph not initialized. Call SharedDependencyGraph.init() first.")
+    @OptIn(InternalCoroutinesApi::class)
+    fun init(driverFactory: DriverFactory, environment: SynchronizationEnvironment): AppGraph {
+        return instance ?: synchronized(lock) {
+            instance ?: doInit(driverFactory, environment)
+        }
+    }
 }
