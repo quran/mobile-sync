@@ -1,6 +1,9 @@
 package com.quran.shared.persistence.repository.bookmark.repository
 
+import app.cash.sqldelight.coroutines.asFlow
+import app.cash.sqldelight.coroutines.mapToList
 import co.touchlab.kermit.Logger
+import com.quran.shared.di.AppScope
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
@@ -13,14 +16,16 @@ import com.quran.shared.persistence.repository.bookmark.extension.toBookmarkMuta
 import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
+import dev.zacsweers.metro.Inject
+import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.withContext
-import app.cash.sqldelight.coroutines.asFlow
-import app.cash.sqldelight.coroutines.mapToList
 
+@Inject
+@SingleIn(AppScope::class)
 class BookmarksRepositoryImpl(
     private val database: QuranDatabase
 ) : BookmarksRepository, BookmarksSynchronizationRepository {
@@ -62,8 +67,11 @@ class BookmarksRepositoryImpl(
     private fun sortBookmarks(bookmarks: List<Bookmark>): List<Bookmark> {
         return bookmarks.sortedByDescending { bookmark ->
             when (bookmark) {
-                is Bookmark.AyahBookmark -> bookmark.lastUpdated.fromPlatform().toEpochMilliseconds()
-                is Bookmark.PageBookmark -> bookmark.lastUpdated.fromPlatform().toEpochMilliseconds()
+                is Bookmark.AyahBookmark -> bookmark.lastUpdated.fromPlatform()
+                    .toEpochMilliseconds()
+
+                is Bookmark.PageBookmark -> bookmark.lastUpdated.fromPlatform()
+                    .toEpochMilliseconds()
             }
         }
     }
@@ -126,6 +134,7 @@ class BookmarksRepositoryImpl(
                                 bookmark.ayah.toLong()
                             )
                         }
+
                         is BookmarkMigration.Page ->
                             pageBookmarkQueries.value.addNewBookmark(bookmark.page.toLong())
                     }
@@ -200,6 +209,7 @@ class BookmarksRepositoryImpl(
                     modified_at = updatedAt
                 )
             }
+
             is RemoteBookmark.Page ->
                 pageBookmarkQueries.value.persistRemoteBookmark(
                     remote_id = remote.remoteID,
@@ -214,6 +224,7 @@ class BookmarksRepositoryImpl(
         when (local.model) {
             is Bookmark.AyahBookmark ->
                 ayahBookmarkQueries.value.clearLocalMutationFor(id = local.localID.toLong())
+
             is Bookmark.PageBookmark ->
                 pageBookmarkQueries.value.clearLocalMutationFor(id = local.localID.toLong())
         }
@@ -223,6 +234,7 @@ class BookmarksRepositoryImpl(
         when (remote.model) {
             is RemoteBookmark.Ayah ->
                 ayahBookmarkQueries.value.hardDeleteBookmarkFor(remoteID = remote.remoteID)
+
             is RemoteBookmark.Page ->
                 pageBookmarkQueries.value.hardDeleteBookmarkFor(remoteID = remote.remoteID)
         }

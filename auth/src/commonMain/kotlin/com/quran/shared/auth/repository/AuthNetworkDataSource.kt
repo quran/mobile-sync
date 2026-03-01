@@ -2,13 +2,17 @@ package com.quran.shared.auth.repository
 
 import com.quran.shared.auth.model.AuthConfig
 import com.quran.shared.auth.model.UserInfo
+import com.quran.shared.di.AppScope
+import dev.zacsweers.metro.Inject
+import dev.zacsweers.metro.SingleIn
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.http.*
 
-class AuthNetworkDataSource(
+@SingleIn(AppScope::class)
+class AuthNetworkDataSource @Inject constructor(
     private val authConfig: AuthConfig,
     private val httpClient: HttpClient
 ) {

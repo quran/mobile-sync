@@ -10,6 +10,7 @@ native-coroutines = "1.0.1"
 
 maven-publish = "0.36.0"
 
+metro = "0.10.4"
 compose = "2026.01.01"
 coroutines = "1.10.2"
 sha2 = "0.8.0"
@@ -106,3 +107,4 @@ vanniktech-maven-publish = { id = "com.vanniktech.maven.publish", version.ref = 
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 native-coroutines = { id = "com.rickclephas.kmp.nativecoroutines", version.ref = "native-coroutines" }
 buildkonfig = { id = "com.codingfeline.buildkonfig", version.ref = "buildkonfig" }
+metro = { id = "dev.zacsweers.metro", version.ref = "metro" }

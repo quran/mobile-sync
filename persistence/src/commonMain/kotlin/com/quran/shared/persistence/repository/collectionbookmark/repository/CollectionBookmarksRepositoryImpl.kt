@@ -1,6 +1,9 @@
 package com.quran.shared.persistence.repository.collectionbookmark.repository
 
+import app.cash.sqldelight.coroutines.asFlow
+import app.cash.sqldelight.coroutines.mapToList
 import co.touchlab.kermit.Logger
+import com.quran.shared.di.AppScope
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
@@ -13,15 +16,17 @@ import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toPlatform
+import dev.zacsweers.metro.Inject
+import dev.zacsweers.metro.SingleIn
+import kotlin.time.Instant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
-import app.cash.sqldelight.coroutines.asFlow
-import app.cash.sqldelight.coroutines.mapToList
 import kotlinx.coroutines.flow.map
-import kotlin.time.Instant
+import kotlinx.coroutines.withContext
 
+@Inject
+@SingleIn(AppScope::class)
 class CollectionBookmarksRepositoryImpl(
     private val database: QuranDatabase
 ) : CollectionBookmarksRepository, CollectionBookmarksSynchronizationRepository {
@@ -77,7 +82,10 @@ class CollectionBookmarksRepositoryImpl(
             }
     }
 
-    override suspend fun addBookmarkToCollection(collectionLocalId: String, bookmark: Bookmark): CollectionBookmark {
+    override suspend fun addBookmarkToCollection(
+        collectionLocalId: String,
+        bookmark: Bookmark
+    ): CollectionBookmark {
         return withContext(Dispatchers.IO) {
             val bookmarkType = bookmark.toCollectionBookmarkType()
             bookmarkCollectionQueries.value.addBookmarkToCollection(
@@ -101,7 +109,10 @@ class CollectionBookmarksRepositoryImpl(
         }
     }
 
-    override suspend fun removeBookmarkFromCollection(collectionLocalId: String, bookmark: Bookmark): Boolean {
+    override suspend fun removeBookmarkFromCollection(
+        collectionLocalId: String,
+        bookmark: Bookmark
+    ): Boolean {
         return withContext(Dispatchers.IO) {
             bookmarkCollectionQueries.value.deleteBookmarkFromCollection(
                 bookmark_local_id = bookmark.localId,
@@ -150,7 +161,7 @@ class CollectionBookmarksRepositoryImpl(
     ) {
         logger.i {
             "Applying remote collection bookmark changes with " +
-                "${updatesToPersist.size} updates to persist and ${localMutationsToClear.size} local mutations to clear"
+                    "${updatesToPersist.size} updates to persist and ${localMutationsToClear.size} local mutations to clear"
         }
         return withContext(Dispatchers.IO) {
             database.transaction {
@@ -225,6 +236,7 @@ class CollectionBookmarksRepositoryImpl(
                     .executeAsOneOrNull()
                     ?.local_id
             }
+
             is RemoteCollectionBookmark.Ayah -> {
                 val sura = bookmark.sura.toLong()
                 val ayah = bookmark.ayah.toLong()
@@ -279,6 +291,7 @@ class CollectionBookmarksRepositoryImpl(
                     )
                 }
             }
+
             "AYAH" -> {
                 val suraValue = sura?.toInt()
                 val ayahValue = ayah?.toInt()
@@ -299,6 +312,7 @@ class CollectionBookmarksRepositoryImpl(
                     )
                 }
             }
+
             else -> null
         }
     }
@@ -318,6 +332,7 @@ class CollectionBookmarksRepositoryImpl(
                     lastUpdated = updatedAt,
                     localId = local_id.toString()
                 )
+
             is Bookmark.AyahBookmark ->
                 CollectionBookmark.AyahBookmark(
                     collectionLocalId = collection_local_id.toString(),

@@ -1,6 +1,9 @@
 package com.quran.shared.persistence.repository.collection.repository
 
+import app.cash.sqldelight.coroutines.asFlow
+import app.cash.sqldelight.coroutines.mapToList
 import co.touchlab.kermit.Logger
+import com.quran.shared.di.AppScope
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
@@ -11,14 +14,16 @@ import com.quran.shared.persistence.repository.collection.extension.toCollection
 import com.quran.shared.persistence.repository.collection.extension.toCollectionMutation
 import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
+import dev.zacsweers.metro.Inject
+import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.Flow
-import app.cash.sqldelight.coroutines.asFlow
-import app.cash.sqldelight.coroutines.mapToList
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
+@Inject
+@SingleIn(AppScope::class)
 class CollectionsRepositoryImpl(
     private val database: QuranDatabase
 ) : CollectionsRepository, CollectionsSynchronizationRepository {
@@ -87,7 +92,7 @@ class CollectionsRepositoryImpl(
     ) {
         logger.i {
             "Applying collection remote changes with ${updatesToPersist.size} updates " +
-                "and clearing ${localMutationsToClear.size} local mutations"
+                    "and clearing ${localMutationsToClear.size} local mutations"
         }
         return withContext(Dispatchers.IO) {
             database.transaction {
