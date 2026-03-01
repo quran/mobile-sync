@@ -17,8 +17,8 @@ class AuthViewModel: ObservableObject {
     @Published var authState: AuthState = AuthState.Idle()
 
     init(
-        authService: AuthService = SharedDependencyGraph.shared.get().authService,
-        bookmarksRepository: BookmarksRepository = SharedDependencyGraph.shared.get().bookmarksRepository
+        authService: AuthService,
+        bookmarksRepository: BookmarksRepository
     ) {
         self.authService = authService
         self.bookmarksRepository = bookmarksRepository
