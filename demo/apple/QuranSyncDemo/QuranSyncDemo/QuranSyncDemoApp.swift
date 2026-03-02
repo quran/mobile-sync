@@ -15,7 +15,7 @@ struct QuranSyncDemoApp: App {
     @State private var isAuthenticated = false
 
     init() {
-        let graph = IOSDependencyGraph.shared.get()
+        let graph = AppContainer.graph
         _viewModel = StateObject(
             wrappedValue: SyncViewModel(authService: graph.authService, syncService: graph.syncService)
         )
@@ -40,4 +40,3 @@ struct QuranSyncDemoApp: App {
         }
     }
 }
-
