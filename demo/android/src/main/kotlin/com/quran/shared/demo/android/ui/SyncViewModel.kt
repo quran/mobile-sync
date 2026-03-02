@@ -79,8 +79,4 @@ class SyncViewModel(
     fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<com.quran.shared.persistence.model.CollectionBookmark>> =
         service.getBookmarksForCollectionFlow(collectionLocalId)
 
-    override fun onCleared() {
-        super.onCleared()
-        service.clear()
-    }
 }
