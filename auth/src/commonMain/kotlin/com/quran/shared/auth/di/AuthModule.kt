@@ -65,7 +65,7 @@ abstract class AuthModule {
                     logger = object : Logger {
                         override fun log(message: String) = println("HTTP Client: $message")
                     }
-                    level = if (config.usePreProduction) LogLevel.NONE else LogLevel.ALL
+                    level = if (config.usePreProduction) LogLevel.ALL else LogLevel.NONE
                 }
                 install(ContentNegotiation) {
                     json(json)
