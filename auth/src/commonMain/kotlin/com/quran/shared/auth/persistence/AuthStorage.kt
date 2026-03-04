@@ -3,17 +3,21 @@ package com.quran.shared.auth.persistence
 import com.quran.shared.auth.model.TokenResponse
 import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.auth.utils.currentTimeMillis
+import com.quran.shared.di.AppScope
 import com.russhwolf.settings.Settings
 import com.russhwolf.settings.set
+import dev.zacsweers.metro.Inject
+import dev.zacsweers.metro.SingleIn
 import kotlin.time.Instant
 import kotlinx.serialization.json.Json
 
 /**
  * Persists authentication tokens and OAuth state across app restarts.
  */
-class AuthStorage(
-    private val settings: Settings = Settings(),
-    private val json: Json = Json { ignoreUnknownKeys = true }
+@SingleIn(AppScope::class)
+class AuthStorage @Inject constructor(
+    private val settings: Settings,
+    private val json: Json
 ) {
 
     fun retrieveStoredAccessToken(): String? = settings.getStringOrNull(KEY_ACCESS_TOKEN)
@@ -21,7 +25,7 @@ class AuthStorage(
     fun retrieveStoredIdToken(): String? = settings.getStringOrNull(KEY_ID_TOKEN)
     fun retrieveStoredScope(): String? = settings.getStringOrNull(KEY_SCOPE)
     fun retrieveTokenExpiration(): Long = settings.getLong(KEY_TOKEN_EXPIRATION, 0)
-    
+
     /**
      * Retrieves stored code verifier for token exchange (survival after process death).
      */
@@ -51,7 +55,7 @@ class AuthStorage(
         } else {
             currentTimeMillis() + (tokenResponse.expiresIn * 1000)
         }
-        
+
         settings[KEY_ACCESS_TOKEN] = tokenResponse.accessToken
         tokenResponse.refreshToken?.let { settings[KEY_REFRESH_TOKEN] = it }
         tokenResponse.idToken?.let { settings[KEY_ID_TOKEN] = it }

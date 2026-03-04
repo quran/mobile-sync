@@ -1,11 +1,13 @@
 package com.quran.shared.auth.service
 
-import com.quran.shared.auth.di.AuthConfigFactory
 import com.quran.shared.auth.model.AuthState
 import com.quran.shared.auth.repository.AuthRepository
 import com.quran.shared.auth.repository.OidcAuthRepository
+import com.quran.shared.di.AppScope
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutinesState
+import dev.zacsweers.metro.Inject
+import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -21,8 +23,9 @@ import kotlinx.coroutines.launch
  * making it easy to share across platforms while allowing native ViewModels (iOS/Android)
  * to handle platform-specific UI concerns.
  */
-class AuthService(
-    private val authRepository: AuthRepository = AuthConfigFactory.authRepository
+@SingleIn(AppScope::class)
+class AuthService @Inject constructor(
+    private val authRepository: AuthRepository
 ) {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 

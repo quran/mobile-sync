@@ -23,10 +23,6 @@ class SyncViewModel: ObservableObject {
         self.syncService = syncService
     }
 
-    deinit {
-        syncService.clear()
-    }
-
     func observeData() async {
         await withTaskGroup(of: Void.self) { group in
             group.addTask { @MainActor [weak self] in

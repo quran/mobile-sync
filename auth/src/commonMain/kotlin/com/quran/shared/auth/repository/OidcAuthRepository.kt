@@ -7,18 +7,21 @@ import com.quran.shared.auth.model.TokenResponse
 import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.auth.persistence.AuthStorage
 import com.quran.shared.auth.utils.currentTimeMillis
+import com.quran.shared.di.AppScope
+import dev.zacsweers.metro.Inject
+import dev.zacsweers.metro.SingleIn
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.header
 import io.ktor.http.HttpHeaders
-import io.ktor.util.encodeBase64
+import kotlin.io.encoding.Base64
 import org.publicvalue.multiplatform.oidc.OpenIdConnectClient
 import org.publicvalue.multiplatform.oidc.types.remote.AccessTokenResponse
-import kotlin.io.encoding.Base64
 
 /**
  * AuthRepository implementation that uses the OIDC library's CodeAuthFlow.
  */
-class OidcAuthRepository(
+@SingleIn(AppScope::class)
+class OidcAuthRepository @Inject constructor(
     private val authConfig: AuthConfig,
     private val authStorage: AuthStorage,
     private val oidcClient: OpenIdConnectClient,

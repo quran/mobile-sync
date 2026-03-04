@@ -2,13 +2,8 @@ package com.quran.shared.pipeline
 
 import co.touchlab.kermit.Logger
 import com.quran.shared.auth.model.AuthState
-import com.quran.shared.syncengine.AuthenticationDataFetcher
-import com.quran.shared.syncengine.LocalModificationDateFetcher
-import com.quran.shared.syncengine.SynchronizationClient
-import com.quran.shared.syncengine.SynchronizationEnvironment
-import com.russhwolf.settings.Settings
-import com.russhwolf.settings.set
 import com.quran.shared.auth.service.AuthService
+import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionBookmark
 import com.quran.shared.persistence.model.CollectionWithBookmarks
@@ -17,25 +12,41 @@ import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepo
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepository
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepository
 import com.quran.shared.persistence.repository.note.repository.NotesRepository
+import com.quran.shared.syncengine.AuthenticationDataFetcher
+import com.quran.shared.syncengine.LocalModificationDateFetcher
+import com.quran.shared.syncengine.SynchronizationClient
+import com.quran.shared.syncengine.SynchronizationEnvironment
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutinesState
+import com.russhwolf.settings.Settings
+import com.russhwolf.settings.set
+import dev.zacsweers.metro.Inject
+import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
+/**
+ * Orchestrates synchronization and provides a unified data layer for the UI.
+ *
+ * This class must be obtained from the [com.quran.shared.pipeline.di.AppGraph] DI graph
+ * via [com.quran.shared.pipeline.di.SharedDependencyGraph]. Direct construction is not supported.
+ */
+@Inject
+@SingleIn(AppScope::class)
 class SyncService(
     private val authService: AuthService,
     private val pipeline: SyncEnginePipeline,
     private val environment: SynchronizationEnvironment,
-    private val settings: Settings = Settings()
+    private val settings: Settings
 ) {
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())

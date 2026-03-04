@@ -6,9 +6,8 @@ import androidx.activity.compose.setContent
 import com.quran.shared.auth.di.AuthFlowFactoryProvider
 import com.quran.shared.demo.android.ui.auth.AuthScreen
 import com.quran.shared.persistence.DriverFactory
-import com.quran.shared.pipeline.SyncPipelineFactory
+import com.quran.shared.pipeline.di.SharedDependencyGraph
 import com.quran.shared.demo.android.ui.SyncViewModel
-import com.quran.shared.auth.di.AuthConfigFactory
 
 import com.quran.shared.syncengine.SynchronizationEnvironment
 import org.publicvalue.multiplatform.oidc.appsupport.AndroidCodeAuthFlowFactory
@@ -30,13 +29,11 @@ class MainActivity : ComponentActivity() {
     private val codeAuthFlowFactory = AndroidCodeAuthFlowFactory(useWebView = false)
 
     private val mainViewModel: SyncViewModel by lazy {
-        val authService = AuthConfigFactory.authService
-        val syncService = SyncPipelineFactory.createSyncService(
-            driverFactory = DriverFactory(context = this.applicationContext),
-            environment = SynchronizationEnvironment(endPointURL = "https://apis-prelive.quran.foundation/auth"),
-            authService = authService
-        )
-        SyncViewModel(authService, syncService)
+        val environment = SynchronizationEnvironment(endPointURL = "https://apis-prelive.quran.foundation/auth")
+        val driverFactory = DriverFactory(context = this.applicationContext)
+        val graph = SharedDependencyGraph.init(driverFactory, environment)
+        
+        SyncViewModel(graph.authService, graph.syncService)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

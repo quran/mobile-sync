@@ -1,30 +1,31 @@
 package com.quran.shared.pipeline
 
 import co.touchlab.kermit.Logger
+import com.quran.shared.di.AppScope
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.input.RemoteBookmark
-import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.input.RemoteCollection
+import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.input.RemoteNote
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionBookmark
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.Collection as PersistenceCollection
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksSynchronizationRepository
-import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksSynchronizationRepository
 import com.quran.shared.persistence.repository.collection.repository.CollectionsSynchronizationRepository
+import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksSynchronizationRepository
 import com.quran.shared.persistence.repository.note.repository.NotesSynchronizationRepository
 import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toPlatform
 import com.quran.shared.syncengine.AuthenticationDataFetcher
-import com.quran.shared.syncengine.LocalDataFetcher
-import com.quran.shared.syncengine.LocalModificationDateFetcher
 import com.quran.shared.syncengine.BookmarksSynchronizationConfigurations
 import com.quran.shared.syncengine.CollectionBookmarksSynchronizationConfigurations
 import com.quran.shared.syncengine.CollectionsSynchronizationConfigurations
+import com.quran.shared.syncengine.LocalDataFetcher
+import com.quran.shared.syncengine.LocalModificationDateFetcher
 import com.quran.shared.syncengine.NotesSynchronizationConfigurations
 import com.quran.shared.syncengine.ResultNotifier
 import com.quran.shared.syncengine.SynchronizationClient
@@ -33,20 +34,24 @@ import com.quran.shared.syncengine.SynchronizationEnvironment
 import com.quran.shared.syncengine.model.NoteAyah
 import com.quran.shared.syncengine.model.NoteRange
 import com.quran.shared.syncengine.model.SyncBookmark
-import com.quran.shared.syncengine.model.SyncCollectionBookmark
 import com.quran.shared.syncengine.model.SyncCollection
+import com.quran.shared.syncengine.model.SyncCollectionBookmark
 import com.quran.shared.syncengine.model.SyncNote
+import dev.zacsweers.metro.Inject
+import dev.zacsweers.metro.SingleIn
 
 interface SyncEngineCallback {
     fun synchronizationDone(newLastModificationDate: Long)
     fun encounteredError(errorMsg: String)
 }
 
-public class SyncEnginePipeline(
+@Inject
+@SingleIn(AppScope::class)
+class SyncEnginePipeline(
     val bookmarksRepository: BookmarksSynchronizationRepository,
     val collectionsRepository: CollectionsSynchronizationRepository,
-    val collectionBookmarksRepository: CollectionBookmarksSynchronizationRepository? = null,
-    val notesRepository: NotesSynchronizationRepository? = null
+    val collectionBookmarksRepository: CollectionBookmarksSynchronizationRepository,
+    val notesRepository: NotesSynchronizationRepository
 ) {
     private lateinit var syncClient: SynchronizationClient
 
@@ -67,20 +72,16 @@ public class SyncEnginePipeline(
             resultNotifier = CollectionsResultReceiver(collectionsRepository, callback),
             localDataFetcher = CollectionsRepositoryDataFetcher(collectionsRepository)
         )
-        val collectionBookmarksConf = collectionBookmarksRepository?.let { repository ->
-            CollectionBookmarksSynchronizationConfigurations(
-                localModificationDateFetcher = localModificationDateFetcher,
-                resultNotifier = CollectionBookmarksResultReceiver(repository, callback),
-                localDataFetcher = CollectionBookmarksRepositoryDataFetcher(repository, bookmarksRepository)
-            )
-        }
-        val notesConf = notesRepository?.let { repository ->
-            NotesSynchronizationConfigurations(
-                localModificationDateFetcher = localModificationDateFetcher,
-                resultNotifier = NotesResultReceiver(repository, callback),
-                localDataFetcher = NotesRepositoryDataFetcher(repository)
-            )
-        }
+        val collectionBookmarksConf = CollectionBookmarksSynchronizationConfigurations(
+            localModificationDateFetcher = localModificationDateFetcher,
+            resultNotifier = CollectionBookmarksResultReceiver(collectionBookmarksRepository, callback),
+            localDataFetcher = CollectionBookmarksRepositoryDataFetcher(collectionBookmarksRepository, bookmarksRepository)
+        )
+        val notesConf = NotesSynchronizationConfigurations(
+            localModificationDateFetcher = localModificationDateFetcher,
+            resultNotifier = NotesResultReceiver(notesRepository, callback),
+            localDataFetcher = NotesRepositoryDataFetcher(notesRepository)
+        )
         val syncClient = SynchronizationClientBuilder.build(
             environment = environment,
             authFetcher = authenticationDataFetcher,
