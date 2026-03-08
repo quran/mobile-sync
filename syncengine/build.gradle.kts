@@ -56,7 +56,7 @@ kotlin {
 mavenPublishing {
     publishToMavenCentral()
     signAllPublications()
-    coordinates(libs.versions.project.group.get(), "syncengine", libs.versions.project.version.get())
+    coordinates(group.toString(), "syncengine", version.toString())
 
     pom {
         name = "Quran.com Sync Engine"

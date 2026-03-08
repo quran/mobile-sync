@@ -11,8 +11,13 @@ plugins {
     alias(libs.plugins.native.coroutines) apply false
 }
 
-group = "com.quran.shared"
+group = libs.versions.project.group.get()
 version = providers.gradleProperty("version").orElse("0.0.1-SNAPSHOT").get()
+
+allprojects {
+    group = rootProject.group
+    version = rootProject.version
+}
 
 // Configure test logging - show details only for failures
 allprojects {

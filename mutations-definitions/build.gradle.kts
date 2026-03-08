@@ -33,8 +33,9 @@ kotlin {
 }
 
 mavenPublishing {
+    publishToMavenCentral()
     signAllPublications()
-    coordinates(libs.versions.project.group.get(), "mutations-definitions", libs.versions.project.version.get())
+    coordinates(group.toString(), "mutations-definitions", version.toString())
 
     pom {
         name = "Quran.com Mutations Definitions"
@@ -43,4 +44,3 @@ mavenPublishing {
         url = "https://github.com/quran/mobile-sync"
     }
 }
-

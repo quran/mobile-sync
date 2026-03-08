@@ -34,9 +34,8 @@ android-java-version = "17"
 
 # Project metadata
 project-group = "com.quran"
-project-version = "1.0.0"
 project-inception-year = "2025"
-project-url = "https://github.com/quran/mobile-data"
+project-url = "https://github.com/quran/mobile-sync"
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }

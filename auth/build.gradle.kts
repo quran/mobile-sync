@@ -118,7 +118,7 @@ android {
 mavenPublishing {
     publishToMavenCentral()
     signAllPublications()
-    coordinates(libs.versions.project.group.get(), "auth", libs.versions.project.version.get())
+    coordinates(group.toString(), "auth", version.toString())
 
     pom {
         name = "Quran.com Auth Layer"
