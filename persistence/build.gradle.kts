@@ -112,7 +112,7 @@ sqldelight {
 mavenPublishing {
     publishToMavenCentral()
     signAllPublications()
-    coordinates(libs.versions.project.group.get(), "persistence", libs.versions.project.version.get())
+    coordinates(group.toString(), "persistence", version.toString())
 
     pom {
         name = "Quran.com Persistence Layer"

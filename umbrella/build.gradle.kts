@@ -43,7 +43,7 @@ kotlin {
 mavenPublishing {
     publishToMavenCentral()
     signAllPublications()
-    coordinates(group.toString(), "syncengine", version.toString())
+    coordinates(group.toString(), "umbrella", version.toString())
 
     pom {
         name = "Quran.com Umbrella Framework"

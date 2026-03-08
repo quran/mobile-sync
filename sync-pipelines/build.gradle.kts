@@ -71,14 +71,14 @@ android {
 }
 
 mavenPublishing {
+    publishToMavenCentral()
     signAllPublications()
-    coordinates(libs.versions.project.group.get(), "sync-pipelines", libs.versions.project.version.get())
+    coordinates(group.toString(), "mobile-sync", version.toString())
 
     pom {
-        name = "Quran.com Sync Integration-Pipeline"
-        description = "A library for integrating syncengine and persistence"
+        name = "Quran.com Mobile Sync"
+        description = "Top-level mobile sync artifact integrating auth, persistence, and syncengine"
         inceptionYear = "2025"
         url = "https://github.com/quran/mobile-sync/"
     }
 }
-
