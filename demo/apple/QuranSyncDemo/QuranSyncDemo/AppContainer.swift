@@ -19,13 +19,10 @@ final class AppContainer {
         Shared.AuthFlowFactoryProvider.shared.doInitialize()
 
         let driverFactory = DriverFactory()
-        let environment = SynchronizationEnvironment(
-            endPointURL: "https://apis-prelive.quran.foundation/auth"
-        )
 
         self.graph = SharedDependencyGraph.shared.doInit(
             driverFactory: driverFactory,
-            environment: environment
+            appEnvironment: AppEnvironment.prelive
         )
     }
 }

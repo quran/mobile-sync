@@ -1,7 +1,8 @@
 package com.quran.shared.auth.di
 
-import com.quran.shared.auth.BuildKonfig
+import com.quran.shared.auth.model.AuthEnvironment
 import com.quran.shared.auth.model.AuthConfig
+import com.quran.shared.auth.model.defaultAuthConfig
 import com.quran.shared.auth.repository.AuthRepository
 import com.quran.shared.auth.repository.OidcAuthRepository
 import com.quran.shared.di.AppScope
@@ -49,12 +50,8 @@ abstract class AuthModule {
 
         @Provides
         @SingleIn(AppScope::class)
-        fun provideAuthConfig(): AuthConfig {
-            return AuthConfig(
-                usePreProduction = BuildKonfig.IS_DEBUG,
-                clientId = BuildKonfig.CLIENT_ID,
-                clientSecret = BuildKonfig.CLIENT_SECRET
-            )
+        fun provideAuthConfig(authEnvironment: AuthEnvironment): AuthConfig {
+            return defaultAuthConfig(authEnvironment)
         }
 
         @Provides
@@ -65,7 +62,7 @@ abstract class AuthModule {
                     logger = object : Logger {
                         override fun log(message: String) = println("HTTP Client: $message")
                     }
-                    level = if (config.usePreProduction) LogLevel.ALL else LogLevel.NONE
+                    level = if (config.environment.enableVerboseLogging) LogLevel.ALL else LogLevel.NONE
                 }
                 install(ContentNegotiation) {
                     json(json)
