@@ -48,7 +48,25 @@ mavenPublishing {
     pom {
         name = "Quran.com Umbrella Framework"
         description = "An umbrella framework for Quran.com Persistence and SyncEngine"
-        inceptionYear = "2025"
-        url = "https://github.com/quran/mobile-sync"
+        inceptionYear = libs.versions.project.inception.year.get()
+        url = libs.versions.project.url.get()
+
+        licenses {
+            license {
+                name.set(libs.versions.project.license.name.get())
+                url.set(libs.versions.project.license.url.get())
+            }
+        }
+        developers {
+            developer {
+                id.set(libs.versions.project.developer.id.get())
+                name.set(libs.versions.project.developer.name.get())
+            }
+        }
+        scm {
+            url.set(libs.versions.project.url.get())
+            connection.set(libs.versions.project.scm.connection.get())
+            developerConnection.set(libs.versions.project.scm.developer.connection.get())
+        }
     }
 }
