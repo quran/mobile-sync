@@ -1,6 +1,8 @@
 package com.quran.shared.pipeline.di
 
 import com.quran.shared.auth.di.AuthModule
+import com.quran.shared.auth.model.AuthEnvironment
+import com.quran.shared.auth.model.defaultAuthEnvironment
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.DriverFactory
@@ -10,7 +12,9 @@ import com.quran.shared.persistence.repository.collection.repository.Collections
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepository
 import com.quran.shared.persistence.repository.note.repository.NotesRepository
 import com.quran.shared.persistence.repository.recentpage.repository.RecentPagesRepository
+import com.quran.shared.pipeline.AppEnvironment
 import com.quran.shared.pipeline.SyncService
+import com.quran.shared.pipeline.defaultAppEnvironment
 import com.quran.shared.syncengine.SynchronizationEnvironment
 import dev.zacsweers.metro.DependencyGraph
 import dev.zacsweers.metro.Provides
@@ -46,7 +50,8 @@ interface AppGraph {
     fun interface Factory {
         fun create(
             @Provides driverFactory: DriverFactory,
-            @Provides environment: SynchronizationEnvironment
+            @Provides environment: SynchronizationEnvironment,
+            @Provides authEnvironment: AuthEnvironment
         ): AppGraph
     }
 }
@@ -59,17 +64,34 @@ object SharedDependencyGraph {
 
     private fun doInit(
         driverFactory: DriverFactory,
-        environment: SynchronizationEnvironment
+        environment: SynchronizationEnvironment,
+        authEnvironment: AuthEnvironment
     ): AppGraph {
         return createGraphFactory<AppGraph.Factory>()
-            .create(driverFactory, environment)
+            .create(driverFactory, environment, authEnvironment)
             .also { instance = it }
     }
 
     @OptIn(InternalCoroutinesApi::class)
-    fun init(driverFactory: DriverFactory, environment: SynchronizationEnvironment): AppGraph {
+    fun init(
+        driverFactory: DriverFactory,
+        appEnvironment: AppEnvironment = defaultAppEnvironment()
+    ): AppGraph {
+        return init(
+            driverFactory = driverFactory,
+            environment = appEnvironment.synchronizationEnvironment(),
+            authEnvironment = appEnvironment.authEnvironment
+        )
+    }
+
+    @OptIn(InternalCoroutinesApi::class)
+    fun init(
+        driverFactory: DriverFactory,
+        environment: SynchronizationEnvironment,
+        authEnvironment: AuthEnvironment = defaultAuthEnvironment()
+    ): AppGraph {
         return instance ?: synchronized(lock) {
-            instance ?: doInit(driverFactory, environment)
+            instance ?: doInit(driverFactory, environment, authEnvironment)
         }
     }
 }

@@ -84,8 +84,8 @@ cd mobile-sync
 ```kotlin
 import com.quran.shared.auth.di.AuthFlowFactoryProvider
 import com.quran.shared.persistence.DriverFactory
+import com.quran.shared.pipeline.AppEnvironment
 import com.quran.shared.pipeline.di.SharedDependencyGraph
-import com.quran.shared.syncengine.SynchronizationEnvironment
 import org.publicvalue.multiplatform.oidc.appsupport.AndroidCodeAuthFlowFactory
 
 val authFactory = AndroidCodeAuthFlowFactory(useWebView = false)
@@ -94,9 +94,7 @@ AuthFlowFactoryProvider.initialize(authFactory)
 
 val graph = SharedDependencyGraph.init(
     driverFactory = DriverFactory(context = applicationContext),
-    environment = SynchronizationEnvironment(
-        endPointURL = "https://apis-prelive.quran.foundation/auth"
-    )
+    appEnvironment = AppEnvironment.PRELIVE
 )
 
 val authService = graph.authService
@@ -117,15 +115,27 @@ final class AppContainer {
     private init() {
         Shared.AuthFlowFactoryProvider.shared.doInitialize()
         let driverFactory = DriverFactory()
-        let environment = SynchronizationEnvironment(
-            endPointURL: "https://apis-prelive.quran.foundation/auth"
-        )
         graph = SharedDependencyGraph.shared.doInit(
             driverFactory: driverFactory,
-            environment: environment
+            appEnvironment: AppEnvironment.prelive
         )
     }
 }
+```
+
+Advanced override for custom endpoints remains available:
+
+```kotlin
+import com.quran.shared.auth.model.AuthEnvironment
+import com.quran.shared.syncengine.SynchronizationEnvironment
+
+val graph = SharedDependencyGraph.init(
+    driverFactory = DriverFactory(context = applicationContext),
+    environment = SynchronizationEnvironment(
+        endPointURL = "https://custom-sync.example.com/auth"
+    ),
+    authEnvironment = AuthEnvironment.PRELIVE
+)
 ```
 
 ### 3. Use `SyncService`
@@ -139,11 +149,22 @@ Lifecycle note:
 - `SyncService` is app-scoped. Initialize once via `SharedDependencyGraph.init(...)`.
 - Do not clear app-scoped services from UI/view-model teardown.
 
-### 4. Build type flavor
+### 4. App environment selection
 
-`auth` uses BuildKonfig flavor to expose build type values.
+The published artifact can target either environment at runtime:
 
-Default (`gradle.properties`):
+- `AppEnvironment.PRELIVE` / `AppEnvironment.prelive`
+- `AppEnvironment.PRODUCTION` / `AppEnvironment.production`
+
+`AppEnvironment` keeps auth and sync aligned by default:
+
+- `PRELIVE` -> `https://prelive-oauth2.quran.foundation` and `https://apis-prelive.quran.foundation/auth`
+- `PRODUCTION` -> `https://oauth2.quran.foundation` and `https://apis.quran.foundation/auth`
+
+`buildkonfig.flavor` now only controls the default fallback used when the app does not pass an explicit app environment.
+
+Default fallback (`gradle.properties`):
+
 ```properties
 buildkonfig.flavor=debug
 ```
