@@ -36,6 +36,12 @@ android-java-version = "17"
 project-group = "com.quran"
 project-inception-year = "2025"
 project-url = "https://github.com/quran/mobile-sync"
+project-license-name = "GNU General Public License v3.0"
+project-license-url = "https://www.gnu.org/licenses/gpl-3.0.txt"
+project-scm-connection = "scm:git:git://github.com/quran/mobile-sync.git"
+project-scm-developer-connection = "scm:git:ssh://git@github.com/quran/mobile-sync.git"
+project-developer-id = "quran"
+project-developer-name = "Quran Foundation"
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
