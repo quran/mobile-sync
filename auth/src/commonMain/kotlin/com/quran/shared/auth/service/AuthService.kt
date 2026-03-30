@@ -106,6 +106,7 @@ class AuthService @Inject constructor(
 
     fun getAccessToken(): String? = authRepository.getAccessToken()
 
+    @NativeCoroutines
     suspend fun getAuthHeaders(): Map<String, String> = authRepository.getAuthHeaders()
 
 
