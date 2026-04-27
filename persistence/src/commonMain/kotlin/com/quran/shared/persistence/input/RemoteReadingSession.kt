@@ -1,11 +1,10 @@
-package com.quran.shared.persistence.model
+package com.quran.shared.persistence.input
 
 import com.quran.shared.persistence.util.PlatformDateTime
 
-data class RecentPage(
+data class RemoteReadingSession(
     val page: Int,
     val chapterNumber: Int,
     val verseNumber: Int,
-    val lastUpdated: PlatformDateTime,
-    val localId: String
+    val lastUpdated: PlatformDateTime
 )

@@ -15,10 +15,13 @@ interface RecentPagesRepository {
     /**
      * Add a page to the recent pages list.
      *
+     * @param page the page number
+     * @param firstAyahSura the sura number of the first ayah on the page
+     * @param firstAyahVerse the verse number of the first ayah on the page
      * @return the [RecentPage]
      */
     @NativeCoroutines
-    suspend fun addRecentPage(page: Int): RecentPage
+    suspend fun addRecentPage(page: Int, firstAyahSura: Int, firstAyahVerse: Int): RecentPage
 
     /**
      * Delete a page from the recent pages list.

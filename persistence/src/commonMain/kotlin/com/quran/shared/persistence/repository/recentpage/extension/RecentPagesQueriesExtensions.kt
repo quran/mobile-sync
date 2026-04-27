@@ -11,6 +11,8 @@ import kotlin.time.Instant
 internal fun DatabaseRecentPage.toRecentPage(): RecentPage {
     return RecentPage(
         page = page.toInt(),
+        chapterNumber = first_ayah_sura?.toInt() ?: 0,
+        verseNumber = first_ayah_verse?.toInt() ?: 0,
         lastUpdated = Instant.fromEpochMilliseconds(modified_at).toPlatform(),
         localId = local_id.toString()
     )

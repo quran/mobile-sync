@@ -2,9 +2,13 @@ CREATE TABLE IF NOT EXISTS recent_page(
   local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   remote_id TEXT,
   page INTEGER NOT NULL UNIQUE,
+  first_ayah_sura INTEGER,
+  first_ayah_verse INTEGER,
+  is_edited INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
   modified_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
   deleted INTEGER NOT NULL DEFAULT 0,
+  CHECK (is_edited IN (0, 1)),
   CHECK (deleted IN (0, 1))
 );
 
@@ -19,12 +23,17 @@ getRecentPageForPage:
 getRecentPageByLocalId:
   SELECT * FROM recent_page WHERE local_id = ? LIMIT 1;
 
+getRecentPageByRemoteId:
+  SELECT * FROM recent_page WHERE remote_id = ? LIMIT 1;
+
 addRecentPage {
-  INSERT OR IGNORE INTO recent_page (remote_id, page, deleted)
-  VALUES (NULL, :page, 0);
+  INSERT OR IGNORE INTO recent_page (remote_id, page, first_ayah_sura, first_ayah_verse, is_edited, deleted)
+  VALUES (NULL, :page, :first_ayah_sura, :first_ayah_verse, 0, 0);
   UPDATE recent_page
   SET deleted = 0,
-    created_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000,
+    first_ayah_sura = :first_ayah_sura,
+    first_ayah_verse = :first_ayah_verse,
+    is_edited = CASE WHEN remote_id IS NULL THEN 0 ELSE 1 END,
     modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE page = :page;
 }
@@ -33,9 +42,39 @@ deleteRecentPage {
   DELETE FROM recent_page WHERE page = :page AND remote_id IS NULL;
   UPDATE recent_page
   SET deleted = 1,
+    is_edited = 1,
     modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE page = :page AND remote_id IS NOT NULL;
 }
+
+getUnsyncedRecentPages:
+  SELECT * FROM recent_page WHERE remote_id IS NULL OR is_edited = 1 OR deleted = 1 ORDER BY modified_at DESC;
+
+persistRemoteRecentPage {
+  INSERT OR IGNORE INTO recent_page (remote_id, page, first_ayah_sura, first_ayah_verse, is_edited, created_at, modified_at, deleted)
+  VALUES (:remote_id, :page, :first_ayah_sura, :first_ayah_verse, 0, :created_at, :modified_at, 0);
+  UPDATE recent_page
+  SET remote_id = :remote_id,
+    first_ayah_sura = :first_ayah_sura,
+    first_ayah_verse = :first_ayah_verse,
+    is_edited = 0,
+    created_at = :created_at,
+    modified_at = :modified_at,
+    deleted = 0
+  WHERE page = :page;
+}
+
+clearLocalMutationFor {
+  DELETE FROM recent_page WHERE remote_id IS NULL AND local_id = :id;
+  UPDATE recent_page
+  SET deleted = 0,
+    is_edited = 0,
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  WHERE local_id = :id;
+}
+
+checkRemoteIDsExistence:
+  SELECT remote_id FROM recent_page WHERE remote_id IN :queried_ids;
 
 deleteAll:
   DELETE FROM recent_page;
