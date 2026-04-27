@@ -184,3 +184,6 @@ clearLocalMutationFor {
 
 checkRemoteIDsExistence:
   SELECT remote_id FROM bookmark_collection WHERE remote_id IN :queried_ids;
+
+deleteAll:
+  DELETE FROM bookmark_collection;

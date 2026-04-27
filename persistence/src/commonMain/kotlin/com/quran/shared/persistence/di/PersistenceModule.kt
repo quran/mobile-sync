@@ -23,6 +23,8 @@ import com.quran.shared.persistence.repository.note.repository.NotesRepositoryIm
 import com.quran.shared.persistence.repository.note.repository.NotesSynchronizationRepository
 import com.quran.shared.persistence.repository.recentpage.repository.RecentPagesRepository
 import com.quran.shared.persistence.repository.recentpage.repository.RecentPagesRepositoryImpl
+import com.quran.shared.persistence.repository.PersistenceResetRepository
+import com.quran.shared.persistence.repository.PersistenceResetRepositoryImpl
 
 import dev.zacsweers.metro.Binds
 
@@ -64,4 +66,7 @@ abstract class PersistenceModule {
 
     @Binds
     abstract fun bindRecentPagesRepository(impl: RecentPagesRepositoryImpl): RecentPagesRepository
+
+    @Binds
+    abstract fun bindPersistenceResetRepository(impl: PersistenceResetRepositoryImpl): PersistenceResetRepository
 }

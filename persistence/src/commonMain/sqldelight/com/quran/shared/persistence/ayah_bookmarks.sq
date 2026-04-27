@@ -82,3 +82,6 @@ deleteBookmark {
     modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE sura=:sura AND ayah=:ayah AND remote_id IS NOT NULL;
 }
+
+deleteAll:
+  DELETE FROM ayah_bookmark;

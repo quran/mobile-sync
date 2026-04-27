@@ -9,6 +9,7 @@ import com.quran.shared.persistence.model.CollectionBookmark
 import com.quran.shared.persistence.model.CollectionWithBookmarks
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepository
+import com.quran.shared.persistence.repository.PersistenceResetRepository
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepository
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepository
 import com.quran.shared.persistence.repository.note.repository.NotesRepository
@@ -46,6 +47,7 @@ class SyncService(
     private val authService: AuthService,
     private val pipeline: SyncEnginePipeline,
     private val environment: SynchronizationEnvironment,
+    private val persistenceResetRepository: PersistenceResetRepository,
     private val settings: Settings
 ) {
 
@@ -140,6 +142,21 @@ class SyncService(
                     syncClient.cancelSyncing()
                 }
             }
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun logout(clearLocalData: Boolean = false): Unit {
+        try {
+            authService.logout()
+            syncClient.cancelSyncing()
+            if (clearLocalData) {
+                persistenceResetRepository.deleteAllData()
+                SettingsLocalModificationDateFetcher(settings).updateLastModificationDate(0L)
+            }
+        } catch (e: Exception) {
+            Logger.e(e) { "Logout failed" }
+            throw e
         }
     }
 

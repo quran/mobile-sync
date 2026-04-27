@@ -69,10 +69,10 @@ class AuthService @Inject constructor(
 
 
     @NativeCoroutines
-    suspend fun login(): Unit {
+    suspend fun login(forcePrompt: Boolean = false): Unit {
         try {
             _authState.value = AuthState.Loading
-            authRepository.login()
+            authRepository.login(forcePrompt)
             val user = authRepository.getCurrentUser()
             if (user != null) {
                 _authState.value = AuthState.Success(user)

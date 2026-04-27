@@ -55,12 +55,19 @@ class OidcAuthRepository @Inject constructor(
         }
     }
 
-    override suspend fun login() {
+    override suspend fun login(forcePrompt: Boolean) {
         if (isExchangingToken) return
         isExchangingToken = true
         try {
             val authFlow = AuthFlowFactoryProvider.factory.createAuthFlow(oidcClient)
-            val response = authFlow.getAccessToken(configureTokenExchange = configureTokenExchange)
+            val response = authFlow.getAccessToken(
+                configureAuthUrl = {
+                    if (forcePrompt) {
+                        parameters.append("prompt", "login")
+                    }
+                },
+                configureTokenExchange = configureTokenExchange
+            )
             handleTokenResponse(response)
         } catch (e: Exception) {
             logger.e(e) { "Login failed" }
