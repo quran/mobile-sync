@@ -4,10 +4,14 @@ CREATE TABLE IF NOT EXISTS ayah_bookmark(
   ayah_id INTEGER NOT NULL,
   sura INTEGER NOT NULL,
   ayah INTEGER NOT NULL,
+  is_reading INTEGER NOT NULL DEFAULT 0,
+  is_edited INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
   modified_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
-  -- Ensure deleted is either 0 or 1
+  -- Ensure boolean fields are either 0 or 1
   deleted INTEGER NOT NULL DEFAULT 0,
+  CHECK (is_reading IN (0, 1)),
+  CHECK (is_edited IN (0, 1)),
   CHECK (deleted IN (0, 1)),
   UNIQUE(sura, ayah)
 );
@@ -26,33 +30,46 @@ getBookmarkByLocalId:
 getBookmarkByRemoteId:
   SELECT * FROM ayah_bookmark WHERE remote_id = ? LIMIT 1;
 
-addNewBookmark {
-  INSERT OR IGNORE INTO ayah_bookmark (remote_id, ayah_id, sura, ayah, deleted)
-  VALUES (NULL, :ayah_id, :sura, :ayah, 0);
+clearReadingBookmarks:
   UPDATE ayah_bookmark
-  SET deleted = 0,
+  SET is_reading = 0,
+    is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  WHERE is_reading = 1;
+
+addNewBookmark {
+  INSERT OR IGNORE INTO ayah_bookmark (remote_id, ayah_id, sura, ayah, is_reading, is_edited, deleted)
+  VALUES (NULL, :ayah_id, :sura, :ayah, :is_reading, 0, 0);
+  UPDATE ayah_bookmark
+  SET is_reading = :is_reading,
+    is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
+    deleted = 0,
     modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE sura = :sura AND ayah = :ayah;
 }
 
 insertBookmarkIfMissing {
-  INSERT OR IGNORE INTO ayah_bookmark (remote_id, ayah_id, sura, ayah, deleted)
-  VALUES (NULL, :ayah_id, :sura, :ayah, 0);
+  INSERT OR IGNORE INTO ayah_bookmark (remote_id, ayah_id, sura, ayah, is_reading, is_edited, deleted)
+  VALUES (NULL, :ayah_id, :sura, :ayah, :is_reading, 0, 0);
   UPDATE ayah_bookmark
-  SET deleted = 0,
+  SET is_reading = :is_reading,
+    is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
+    deleted = 0,
     modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
-  WHERE sura = :sura AND ayah = :ayah AND deleted = 1;
+  WHERE sura = :sura AND ayah = :ayah AND (deleted = 1 OR is_reading != :is_reading);
 }
 
 getUnsyncedBookmarks:
-  SELECT * FROM ayah_bookmark WHERE remote_id IS NULL OR deleted = 1 ORDER BY created_at DESC;
+  SELECT * FROM ayah_bookmark WHERE remote_id IS NULL OR is_edited = 1 OR deleted = 1 ORDER BY created_at DESC;
 
 persistRemoteBookmark {
-  INSERT OR IGNORE INTO ayah_bookmark (remote_id, ayah_id, sura, ayah, created_at, modified_at, deleted)
-  VALUES (:remote_id, :ayah_id, :sura, :ayah, :created_at, :modified_at, 0);
+  INSERT OR IGNORE INTO ayah_bookmark (remote_id, ayah_id, sura, ayah, is_reading, is_edited, created_at, modified_at, deleted)
+  VALUES (:remote_id, :ayah_id, :sura, :ayah, :is_reading, 0, :created_at, :modified_at, 0);
   UPDATE ayah_bookmark
   SET remote_id = :remote_id,
     ayah_id = :ayah_id,
+    is_reading = :is_reading,
+    is_edited = 0,
     created_at = :created_at,
     modified_at = :modified_at,
     deleted = 0
@@ -67,6 +84,7 @@ clearLocalMutationFor {
   DELETE FROM ayah_bookmark WHERE remote_id IS NULL AND local_id = :id;
   UPDATE ayah_bookmark
   SET deleted = 0,
+    is_edited = 0,
     modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE local_id = :id;
 }
@@ -79,6 +97,7 @@ deleteBookmark {
   DELETE FROM ayah_bookmark WHERE sura=:sura AND ayah=:ayah AND remote_id IS NULL;
   UPDATE ayah_bookmark
   SET deleted = 1,
+    is_edited = 1,
     modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE sura=:sura AND ayah=:ayah AND remote_id IS NOT NULL;
 }

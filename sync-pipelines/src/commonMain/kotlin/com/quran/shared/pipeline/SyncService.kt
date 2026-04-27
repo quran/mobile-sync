@@ -165,9 +165,9 @@ class SyncService(
     }
 
     @NativeCoroutines
-    suspend fun addBookmark(page: Int): Bookmark {
+    suspend fun addBookmark(page: Int, isReading: Boolean = false): Bookmark {
         try {
-            val bookmark = bookmarksRepository.addBookmark(page)
+            val bookmark = bookmarksRepository.addBookmark(page, isReading)
             triggerSync()
             return bookmark
         } catch (e: Exception) {
@@ -177,9 +177,9 @@ class SyncService(
     }
 
     @NativeCoroutines
-    suspend fun addBookmark(sura: Int, ayah: Int): Bookmark {
+    suspend fun addBookmark(sura: Int, ayah: Int, isReading: Boolean = false): Bookmark {
         try {
-            val bookmark = bookmarksRepository.addBookmark(sura, ayah)
+            val bookmark = bookmarksRepository.addBookmark(sura, ayah, isReading)
             triggerSync()
             return bookmark
         } catch (e: Exception) {
