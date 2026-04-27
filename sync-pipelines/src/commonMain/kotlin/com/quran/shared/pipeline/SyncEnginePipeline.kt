@@ -9,6 +9,7 @@ import com.quran.shared.persistence.input.RemoteBookmark
 import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.input.RemoteNote
+import com.quran.shared.persistence.input.RemoteReadingSession
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionBookmark
 import com.quran.shared.persistence.model.Note
@@ -17,6 +18,8 @@ import com.quran.shared.persistence.repository.bookmark.repository.BookmarksSync
 import com.quran.shared.persistence.repository.collection.repository.CollectionsSynchronizationRepository
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksSynchronizationRepository
 import com.quran.shared.persistence.repository.note.repository.NotesSynchronizationRepository
+import com.quran.shared.persistence.repository.recentpage.repository.RecentPagesSynchronizationRepository
+import com.quran.shared.persistence.model.RecentPage
 import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toPlatform
@@ -27,6 +30,7 @@ import com.quran.shared.syncengine.CollectionsSynchronizationConfigurations
 import com.quran.shared.syncengine.LocalDataFetcher
 import com.quran.shared.syncengine.LocalModificationDateFetcher
 import com.quran.shared.syncengine.NotesSynchronizationConfigurations
+import com.quran.shared.syncengine.ReadingSessionsSynchronizationConfigurations
 import com.quran.shared.syncengine.ResultNotifier
 import com.quran.shared.syncengine.SynchronizationClient
 import com.quran.shared.syncengine.SynchronizationClientBuilder
@@ -37,6 +41,7 @@ import com.quran.shared.syncengine.model.SyncBookmark
 import com.quran.shared.syncengine.model.SyncCollection
 import com.quran.shared.syncengine.model.SyncCollectionBookmark
 import com.quran.shared.syncengine.model.SyncNote
+import com.quran.shared.syncengine.model.SyncReadingSession
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 
@@ -51,7 +56,8 @@ class SyncEnginePipeline(
     val bookmarksRepository: BookmarksSynchronizationRepository,
     val collectionsRepository: CollectionsSynchronizationRepository,
     val collectionBookmarksRepository: CollectionBookmarksSynchronizationRepository,
-    val notesRepository: NotesSynchronizationRepository
+    val notesRepository: NotesSynchronizationRepository,
+    val recentPagesRepository: RecentPagesSynchronizationRepository
 ) {
     private lateinit var syncClient: SynchronizationClient
 
@@ -82,13 +88,19 @@ class SyncEnginePipeline(
             resultNotifier = NotesResultReceiver(notesRepository, callback),
             localDataFetcher = NotesRepositoryDataFetcher(notesRepository)
         )
+        val readingSessionsConf = ReadingSessionsSynchronizationConfigurations(
+            localModificationDateFetcher = localModificationDateFetcher,
+            resultNotifier = ReadingSessionsResultReceiver(recentPagesRepository, callback),
+            localDataFetcher = ReadingSessionsRepositoryDataFetcher(recentPagesRepository)
+        )
         val syncClient = SynchronizationClientBuilder.build(
             environment = environment,
             authFetcher = authenticationDataFetcher,
             bookmarksConfigurations = bookmarksConf,
             collectionsConfigurations = collectionsConf,
             collectionBookmarksConfigurations = collectionBookmarksConf,
-            notesConfigurations = notesConf
+            notesConfigurations = notesConf,
+            readingSessionsConfigurations = readingSessionsConf
         )
 
         this.syncClient = syncClient
@@ -215,6 +227,30 @@ private class NotesRepositoryDataFetcher(
 
     override suspend fun fetchLocalModel(remoteId: String): SyncNote? {
         return null
+    }
+}
+
+private class ReadingSessionsRepositoryDataFetcher(
+    val recentPagesRepository: RecentPagesSynchronizationRepository
+) : LocalDataFetcher<SyncReadingSession> {
+
+    override suspend fun fetchLocalMutations(lastModified: Long): List<LocalModelMutation<SyncReadingSession>> {
+        return recentPagesRepository.fetchMutatedRecentPages().map { repoMutation ->
+            LocalModelMutation(
+                model = repoMutation.model.toSyncEngine(),
+                remoteID = repoMutation.remoteID,
+                localID = repoMutation.localID,
+                mutation = repoMutation.mutation
+            )
+        }
+    }
+
+    override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> {
+        return recentPagesRepository.remoteResourcesExist(remoteIDs)
+    }
+
+    override suspend fun fetchLocalModel(remoteId: String): SyncReadingSession? {
+        return recentPagesRepository.fetchRecentPageByRemoteId(remoteId)?.toSyncEngine()
     }
 }
 
@@ -389,6 +425,46 @@ private class NotesResultReceiver(
 
         Logger.i {
             "Persisting ${mappedRemotes.count()} note remote updates, " +
+                "and clearing ${mappedLocals.count()} local updates."
+        }
+
+        repository.applyRemoteChanges(mappedRemotes, mappedLocals)
+        callback.synchronizationDone(newToken)
+    }
+}
+
+private class ReadingSessionsResultReceiver(
+    val repository: RecentPagesSynchronizationRepository,
+    val callback: SyncEngineCallback
+) : ResultNotifier<SyncReadingSession> {
+
+    override suspend fun didFail(message: String) {
+        callback.encounteredError(message)
+    }
+
+    override suspend fun didSucceed(
+        newToken: Long,
+        newRemoteMutations: List<RemoteModelMutation<SyncReadingSession>>,
+        processedLocalMutations: List<LocalModelMutation<SyncReadingSession>>
+    ) {
+        val mappedRemotes = newRemoteMutations.map { remoteMutation ->
+            RemoteModelMutation(
+                model = remoteMutation.model.toRemoteInput(),
+                remoteID = remoteMutation.remoteID,
+                mutation = remoteMutation.mutation
+            )
+        }
+        val mappedLocals = processedLocalMutations.map { localMutation ->
+            LocalModelMutation(
+                model = localMutation.model.toPersistence(),
+                localID = localMutation.localID,
+                remoteID = localMutation.remoteID,
+                mutation = localMutation.mutation
+            )
+        }
+
+        Logger.i {
+            "Persisting ${mappedRemotes.count()} reading session remote updates, " +
                 "and clearing ${mappedLocals.count()} local updates."
         }
 
@@ -617,4 +693,33 @@ private fun ayahIdToSuraAyah(ayahId: Long): NoteAyah? {
         remaining -= count
     }
     return null
+}
+
+private fun RecentPage.toSyncEngine(): SyncReadingSession {
+    return SyncReadingSession(
+        id = localId,
+        page = page,
+        chapterNumber = chapterNumber,
+        verseNumber = verseNumber,
+        lastModified = lastUpdated.fromPlatform()
+    )
+}
+
+private fun SyncReadingSession.toPersistence(): RecentPage {
+    return RecentPage(
+        page = page,
+        chapterNumber = chapterNumber,
+        verseNumber = verseNumber,
+        lastUpdated = lastModified.toPlatform(),
+        localId = id
+    )
+}
+
+private fun SyncReadingSession.toRemoteInput(): RemoteReadingSession {
+    return RemoteReadingSession(
+        page = page,
+        chapterNumber = chapterNumber,
+        verseNumber = verseNumber,
+        lastUpdated = lastModified.toPlatform()
+    )
 }
