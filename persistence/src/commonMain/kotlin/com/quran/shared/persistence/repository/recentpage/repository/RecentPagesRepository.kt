@@ -14,6 +14,12 @@ interface RecentPagesRepository {
     suspend fun getRecentPages(): List<RecentPage>
 
     /**
+     * Returns a flow of all recent pages for observation.
+     */
+    @NativeCoroutines
+    fun getRecentPagesFlow(): Flow<List<RecentPage>>
+
+    /**
      * Add a page to the recent pages list.
      *
      * @param page the page number

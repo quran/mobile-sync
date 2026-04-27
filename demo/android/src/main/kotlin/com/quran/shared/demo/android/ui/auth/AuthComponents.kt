@@ -8,29 +8,40 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
+import androidx.compose.runtime.*
+
 @Composable
-fun LoginButtonContent(onLoginClick: () -> Unit) {
-    Button(
-        onClick = onLoginClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(50.dp),
-        shape = MaterialTheme.shapes.medium
-    ) {
+fun LoginButtonContent(onLoginClick: (Boolean) -> Unit) {
+    var forcePrompt by remember { mutableStateOf(false) }
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = forcePrompt, onCheckedChange = { forcePrompt = it })
+            Text("Force prompt login", style = MaterialTheme.typography.bodySmall)
+        }
+
+        Button(
+            onClick = { onLoginClick(forcePrompt) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp),
+            shape = MaterialTheme.shapes.medium
+        ) {
+            Text(
+                text = "Sign in with OAuth",
+                style = MaterialTheme.typography.labelLarge
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
         Text(
-            text = "Sign in with OAuth",
-            style = MaterialTheme.typography.labelLarge
+            text = "You will be redirected to Quran Foundation to securely sign in.",
+            style = MaterialTheme.typography.bodySmall,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
-
-    Spacer(modifier = Modifier.height(16.dp))
-
-    Text(
-        text = "You will be redirected to Quran Foundation to securely sign in.",
-        style = MaterialTheme.typography.bodySmall,
-        textAlign = TextAlign.Center,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
 }
 
 @Composable

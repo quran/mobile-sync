@@ -81,16 +81,54 @@ internal class ReadingSessionsSyncAdapter(
         remote: List<RemoteModelMutation<SyncReadingSession>>,
         local: List<LocalModelMutation<SyncReadingSession>>
     ): ConflictDetectionResult<SyncReadingSession> {
-        // Reading sessions are usually last-write-wins by modified_at
-        val conflictDetector = ConflictDetector(remote, local)
-        return conflictDetector.getConflicts()
+        val remoteByRemoteId = remote.associateBy { it.remoteID }
+        val localMutationsByRemoteId = local.mapNotNull { localMutation ->
+            localMutation.remoteID?.let { it to localMutation }
+        }.toMap()
+
+        val conflicts = mutableListOf<ResourceConflict<SyncReadingSession>>()
+        val nonConflictingRemote = mutableListOf<RemoteModelMutation<SyncReadingSession>>()
+        val nonConflictingLocal = mutableListOf<LocalModelMutation<SyncReadingSession>>()
+
+        remote.forEach { remoteMutation ->
+            val localMutation = localMutationsByRemoteId[remoteMutation.remoteID]
+            if (localMutation != null) {
+                conflicts.add(ResourceConflict(listOf(localMutation), listOf(remoteMutation)))
+            } else {
+                nonConflictingRemote.add(remoteMutation)
+            }
+        }
+
+        local.forEach { localMutation ->
+            if (localMutation.remoteID == null || !remoteByRemoteId.containsKey(localMutation.remoteID)) {
+                nonConflictingLocal.add(localMutation)
+            }
+        }
+
+        return ConflictDetectionResult(conflicts, nonConflictingRemote, nonConflictingLocal)
     }
 
     private fun resolveConflicts(
         conflicts: List<ResourceConflict<SyncReadingSession>>
     ): ConflictResolutionResult<SyncReadingSession> {
-        val resolver = ConflictResolver(conflicts)
-        return resolver.resolve()
+        val mutationsToPush = mutableListOf<LocalModelMutation<SyncReadingSession>>()
+        val mutationsToPersist = mutableListOf<RemoteModelMutation<SyncReadingSession>>()
+
+        for (conflict in conflicts) {
+            val local = conflict.localMutations.first()
+            val remote = conflict.remoteMutations.first()
+
+            val localDate = local.model.lastModified
+            val remoteDate = remote.model.lastModified
+
+            if (localDate > remoteDate) {
+                mutationsToPush.add(local)
+            } else {
+                mutationsToPersist.add(remote)
+            }
+        }
+
+        return ConflictResolutionResult(mutationsToPersist, mutationsToPush)
     }
 
     private fun mapPushedMutations(
