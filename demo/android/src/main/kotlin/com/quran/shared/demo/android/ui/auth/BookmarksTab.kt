@@ -17,8 +17,8 @@ import com.quran.shared.persistence.model.Bookmark
 @Composable
 fun BookmarksTab(
     bookmarks: List<Bookmark>,
-    onAddPageBookmark: () -> Unit,
-    onAddAyahBookmark: () -> Unit,
+    onAddPageBookmark: (Boolean) -> Unit,
+    onAddAyahBookmark: (Boolean) -> Unit,
     onDeleteBookmark: (Bookmark) -> Unit
 ) {
     Column {
@@ -33,17 +33,24 @@ fun BookmarksTab(
             )
             
             Row {
-                IconButton(onClick = onAddPageBookmark) {
+                IconButton(onClick = { onAddPageBookmark(false) }) {
                     Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = "Add Page Bookmark"
                     )
                 }
-                IconButton(onClick = onAddAyahBookmark) {
+                IconButton(onClick = { onAddAyahBookmark(false) }) {
                     Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = "Add Ayah Bookmark",
                         tint = MaterialTheme.colorScheme.secondary
+                    )
+                }
+                IconButton(onClick = { onAddPageBookmark(true) }) {
+                    Icon(
+                        imageVector = Icons.Default.Bookmark,
+                        contentDescription = "Add Reading Bookmark",
+                        tint = MaterialTheme.colorScheme.tertiary
                     )
                 }
             }
@@ -103,6 +110,21 @@ fun BookmarkItem(
                         Text(
                             text = "Surah ${bookmark.sura}, Ayah ${bookmark.ayah}",
                             style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+                }
+                
+                if (bookmark.isReading) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.tertiaryContainer,
+                        shape = MaterialTheme.shapes.extraSmall
+                    ) {
+                        Text(
+                            text = "READING",
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
                         )
                     }
                 }

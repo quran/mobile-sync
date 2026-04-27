@@ -14,6 +14,7 @@ import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionWithBookmarks
 import com.quran.shared.persistence.model.Note
+import com.quran.shared.persistence.model.RecentPage
 import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomAyah
 import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomPage
 import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomSura
@@ -32,6 +33,7 @@ fun AuthScreen(
     val bookmarks by viewModel.bookmarks.collectAsState(initial = emptyList())
     val collectionsWithBookmarks by viewModel.collectionsWithBookmarks.collectAsState(initial = emptyList())
     val notes by viewModel.notes.collectAsState(initial = emptyList())
+    val recentPages by viewModel.recentPages.collectAsState(initial = emptyList())
 
     val scope = rememberCoroutineScope()
     Box(
@@ -66,10 +68,10 @@ fun AuthScreen(
             when (val state = authState) {
                 is AuthState.Idle -> {
                     LoginButtonContent(
-                        onLoginClick = {
+                        onLoginClick = { forcePrompt ->
                             scope.launch {
                                 try {
-                                    viewModel.login()
+                                    viewModel.login(forcePrompt)
                                 } catch (e: Exception) {
                                 }
                             }
@@ -87,20 +89,20 @@ fun AuthScreen(
                         bookmarks = bookmarks,
                         collectionsWithBookmarks = collectionsWithBookmarks,
                         notes = notes,
-                        onAddPageBookmark = {
+                        onAddPageBookmark = { isReading ->
                             scope.launch {
                                 try {
-                                    viewModel.addBookmark(getRandomPage())
+                                    viewModel.addBookmark(getRandomPage(), isReading)
                                 } catch (e: Exception) {
                                 }
                             }
                         },
-                        onAddAyahBookmark = {
+                        onAddAyahBookmark = { isReading ->
                             val sura = getRandomSura()
                             val ayah = getRandomAyah(sura)
                             scope.launch {
                                 try {
-                                    viewModel.addBookmark(sura, ayah)
+                                    viewModel.addBookmark(sura, ayah, isReading)
                                 } catch (e: Exception) {
                                 }
                             }
@@ -151,23 +153,24 @@ fun AuthScreen(
                                 }
                             }
                         },
-                        onLogout = {
+                        onLogout = { clearLocalData ->
                             scope.launch {
                                 try {
-                                    viewModel.logout()
+                                    viewModel.logout(clearLocalData)
                                 } catch (e: Exception) {
                                 }
                             }
                         },
                         onAddRandomBookmarkToCollection = { id ->
+                        },
+                        recentPages = recentPages,
+                        onAddRecentPage = {
+                            val page = getRandomPage()
+                            val sura = getRandomSura()
+                            val ayah = getRandomAyah(sura)
                             scope.launch {
                                 try {
-                                    val sura = getRandomSura()
-                                    viewModel.addAyahBookmarkToCollection(
-                                        id,
-                                        sura,
-                                        getRandomAyah(sura)
-                                    )
+                                    viewModel.addRecentPage(page, sura, ayah)
                                 } catch (e: Exception) {
                                 }
                             }
@@ -202,18 +205,20 @@ private fun SuccessContent(
     bookmarks: List<Bookmark>,
     collectionsWithBookmarks: List<CollectionWithBookmarks>,
     notes: List<Note>,
-    onAddPageBookmark: () -> Unit,
-    onAddAyahBookmark: () -> Unit,
+    onAddPageBookmark: (Boolean) -> Unit,
+    onAddAyahBookmark: (Boolean) -> Unit,
     onDeleteBookmark: (Bookmark) -> Unit,
     onAddCollection: (String) -> Unit,
     onDeleteCollection: (String) -> Unit,
     onAddNote: (String) -> Unit,
     onDeleteNote: (String) -> Unit,
-    onLogout: () -> Unit,
-    onAddRandomBookmarkToCollection: (String) -> Unit
+    onLogout: (Boolean) -> Unit,
+    onAddRandomBookmarkToCollection: (String) -> Unit,
+    recentPages: List<RecentPage>,
+    onAddRecentPage: () -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Bookmarks", "Collections", "Notes")
+    val tabs = listOf("Bookmarks", "Collections", "Notes", "Recent")
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -288,13 +293,24 @@ private fun SuccessContent(
                     onAddNote = onAddNote,
                     onDeleteNote = onDeleteNote
                 )
+
+                3 -> RecentPagesTab(
+                    recentPages = recentPages,
+                    onAddRecentPage = onAddRecentPage
+                )
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        var clearLocalData by remember { mutableStateOf(false) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = clearLocalData, onCheckedChange = { clearLocalData = it })
+            Text("Clear local data on sign out", style = MaterialTheme.typography.bodySmall)
+        }
+
         TextButton(
-            onClick = onLogout,
+            onClick = { onLogout(clearLocalData) },
             colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
         ) {
             Text("Sign Out")

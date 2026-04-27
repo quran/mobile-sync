@@ -2,13 +2,17 @@ import SwiftUI
 import Shared
 
 struct LoginButtonContent: View {
-    let onLogin: () async -> Void
+    let onLogin: (Bool) async -> Void
+    @State private var forcePrompt: Bool = false
 
     var body: some View {
         VStack(spacing: 16) {
+            Toggle("Force prompt login", isOn: $forcePrompt)
+                .font(.caption)
+            
             Button(action: {
                 Task {
-                    await onLogin()
+                    await onLogin(forcePrompt)
                 }
             }) {
                 Text("Sign in with OAuth")

@@ -17,6 +17,7 @@ class SyncViewModel: ObservableObject {
     @Published var bookmarks: [Shared.Bookmark] = []
     @Published var collectionsWithBookmarks: [Shared.CollectionWithBookmarks] = []
     @Published var notes: [Shared.Note_] = []
+    @Published var recentPages: [Shared.RecentPage] = []
 
     init(authService: AuthService, syncService: SyncService) {
         self.authService = authService
@@ -85,6 +86,21 @@ class SyncViewModel: ObservableObject {
                     print("SyncViewModel: Error observing notes: \(error)")
                 }
             }
+            group.addTask { @MainActor [weak self] in
+                guard let syncService = self?.syncService else {
+                    return
+                }
+                do {
+                    for try await list in asyncSequence(for: syncService.recentPages) {
+                        guard let self = self else {
+                            break
+                        }
+                        self.recentPages = list as [Shared.RecentPage]
+                    }
+                } catch {
+                    print("SyncViewModel: Error observing recentPages: \(error)")
+                }
+            }
         }
     }
 
@@ -92,20 +108,29 @@ class SyncViewModel: ObservableObject {
         syncService.triggerSync()
     }
 
-    func addBookmark(page: Int32) async -> Shared.Bookmark? {
+    func addBookmark(page: Int32, isReading: Bool = false) async -> Shared.Bookmark? {
         do {
-            return try await asyncFunction(for: syncService.addBookmark(page: page))
+            return try await asyncFunction(for: syncService.addBookmark(page: page, isReading: isReading))
         } catch {
             print("SyncViewModel: Failed to add page bookmark: \(error)")
             return nil
         }
     }
 
-    func addBookmark(sura: Int32, ayah: Int32) async -> Shared.Bookmark? {
+    func addBookmark(sura: Int32, ayah: Int32, isReading: Bool = false) async -> Shared.Bookmark? {
         do {
-            return try await asyncFunction(for: syncService.addBookmark(sura: sura, ayah: ayah))
+            return try await asyncFunction(for: syncService.addBookmark(sura: sura, ayah: ayah, isReading: isReading))
         } catch {
             print("SyncViewModel: Failed to add ayah bookmark: \(error)")
+            return nil
+        }
+    }
+
+    func addRecentPage(page: Int32, firstAyahSura: Int32, firstAyahVerse: Int32) async -> Shared.RecentPage? {
+        do {
+            return try await asyncFunction(for: syncService.addRecentPage(page: page, firstAyahSura: firstAyahSura, firstAyahVerse: firstAyahVerse))
+        } catch {
+            print("SyncViewModel: Failed to add recent page: \(error)")
             return nil
         }
     }
@@ -168,7 +193,7 @@ class SyncViewModel: ObservableObject {
 
     func addAyahBookmarkToCollection(collectionId: String, sura: Int32, ayah: Int32) async {
         do {
-            let bookmark = try await asyncFunction(for: syncService.addBookmark(sura: sura, ayah: ayah))
+            let bookmark = try await asyncFunction(for: syncService.addBookmark(sura: sura, ayah: ayah, isReading: false))
             try await asyncFunction(for: syncService.addBookmarkToCollection(collectionLocalId: collectionId, bookmark: bookmark))
         } catch {
             print("SyncViewModel: Failed to add random bookmark to collection: \(error)")
@@ -179,12 +204,12 @@ class SyncViewModel: ObservableObject {
         return asyncSequence(for: syncService.getBookmarksForCollectionFlow(collectionLocalId: collectionId))
     }
 
-    func login() async throws {
-        try await asyncFunction(for: authService.login())
+    func login(forcePrompt: Bool = false) async throws {
+        try await asyncFunction(for: authService.login(forcePrompt: forcePrompt))
     }
 
-    func logout() async throws {
-        try await asyncFunction(for: authService.logout())
+    func logout(clearLocalData: Bool = false) async throws {
+        try await asyncFunction(for: syncService.logout(clearLocalData: clearLocalData))
     }
 
     func clearError() {

@@ -20,7 +20,7 @@ struct BookmarksTabView: View {
                     Button(action: {
                         let randomPage = Shared.QuranActionsUtils().getRandomPage()
                         Task {
-                            _ = await viewModel.addBookmark(page: randomPage)
+                            _ = await viewModel.addBookmark(page: randomPage, isReading: false)
                         }
                     }) {
                         Image(systemName: "plus.app")
@@ -29,10 +29,19 @@ struct BookmarksTabView: View {
                         let sura = Shared.QuranActionsUtils().getRandomSura()
                         let ayah = Shared.QuranActionsUtils().getRandomAyah(sura: sura)
                         Task {
-                            _ = await viewModel.addBookmark(sura: sura, ayah: ayah)
+                            _ = await viewModel.addBookmark(sura: sura, ayah: ayah, isReading: false)
                         }
                     }) {
                         Image(systemName: "plus.square")
+                    }
+                    Button(action: {
+                        let randomPage = Shared.QuranActionsUtils().getRandomPage()
+                        Task {
+                            _ = await viewModel.addBookmark(page: randomPage, isReading: true)
+                        }
+                    }) {
+                        Image(systemName: "bookmark")
+                            .foregroundColor(.orange)
                     }
                 }
             }) {
@@ -41,7 +50,7 @@ struct BookmarksTabView: View {
                         .foregroundColor(.secondary)
                         .italic()
                 } else {
-                    ForEach(viewModel.bookmarks, id: \.self) { bookmark in
+                    ForEach(viewModel.bookmarks, id: \.localId) { bookmark in
                         HStack {
                             Image(systemName: "bookmark.fill")
                                 .foregroundColor(.accentColor)
@@ -60,6 +69,16 @@ struct BookmarksTabView: View {
                                     Text("\(dateFormatter.string(from: date))")
                                         .font(.caption2)
                                         .foregroundColor(.secondary)
+                                }
+                                
+                                if (bookmark as? Shared.Bookmark.PageBookmark)?.isReading == true || (bookmark as? Shared.Bookmark.AyahBookmark)?.isReading == true {
+                                    Text("READING")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(.orange)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.orange.opacity(0.2))
+                                        .cornerRadius(4)
                                 }
                             }
                             
