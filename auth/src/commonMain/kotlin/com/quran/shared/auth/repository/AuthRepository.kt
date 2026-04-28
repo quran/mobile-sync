@@ -13,10 +13,17 @@ interface AuthRepository {
      * Performs the complete OAuth2 login flow.
      * This launches the browser, handles the redirect, and exchanges the code for tokens.
      *
-     * @param forcePrompt if true, forces the user to re-authenticate (e.g. prompt=login)
      * @throws Exception if authentication fails or is cancelled
      */
-    suspend fun login(forcePrompt: Boolean = false)
+    suspend fun login()
+
+    /**
+     * Performs a login flow while forcing re-authentication on the provider.
+     * Equivalent to passing `prompt=login` in the OIDC authorization request.
+     *
+     * @throws Exception if authentication fails or is cancelled
+     */
+    suspend fun loginWithReauthentication()
 
     /**
      * Refreshes the access token if it's expired or near expiration.

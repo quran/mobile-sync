@@ -55,7 +55,15 @@ class OidcAuthRepository @Inject constructor(
         }
     }
 
-    override suspend fun login(forcePrompt: Boolean) {
+    override suspend fun login() {
+        login(false)
+    }
+
+    override suspend fun loginWithReauthentication() {
+        login(true)
+    }
+
+    private suspend fun login(forcePrompt: Boolean) {
         if (isExchangingToken) return
         isExchangingToken = true
         try {
