@@ -6,7 +6,6 @@ import com.quran.shared.pipeline.SyncService
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionWithBookmarks
 import com.quran.shared.persistence.model.Note
-import com.quran.shared.persistence.model.RecentPage
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -23,15 +22,13 @@ class SyncViewModel(
         service.collectionsWithBookmarks
     
     val notes: Flow<List<Note>> = service.notes
-    
-    val recentPages: Flow<List<RecentPage>> = service.recentPages
 
-    suspend fun login(forcePrompt: Boolean = false) {
-        authService.login(forcePrompt)
+    suspend fun login() {
+        authService.login()
     }
 
-    suspend fun logout(clearLocalData: Boolean = false) {
-        service.logout(clearLocalData)
+    suspend fun logout() {
+        authService.logout()
     }
 
     fun clearError() {
@@ -42,16 +39,24 @@ class SyncViewModel(
         service.triggerSync()
     }
 
-    suspend fun addBookmark(page: Int, isReading: Boolean = false): Bookmark {
-        return service.addBookmark(page, isReading)
+    suspend fun addBookmark(page: Int): Bookmark {
+        return service.addBookmark(page)
     }
 
-    suspend fun addBookmark(sura: Int, ayah: Int, isReading: Boolean = false): Bookmark {
-        return service.addBookmark(sura, ayah, isReading)
+    suspend fun addReadingBookmark(page: Int): Bookmark {
+        return service.addReadingBookmark(page)
     }
 
-    suspend fun addRecentPage(page: Int, firstAyahSura: Int, firstAyahVerse: Int): RecentPage {
-        return service.addRecentPage(page, firstAyahSura, firstAyahVerse)
+    suspend fun addBookmark(sura: Int, ayah: Int): Bookmark {
+        return service.addBookmark(sura, ayah)
+    }
+
+    suspend fun addReadingBookmark(sura: Int, ayah: Int): Bookmark {
+        return service.addReadingBookmark(sura, ayah)
+    }
+
+    suspend fun deleteReadingBookmark() {
+        service.deleteReadingBookmark()
     }
 
     suspend fun deleteBookmark(bookmark: Bookmark) {

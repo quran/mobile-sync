@@ -44,8 +44,12 @@ class AuthViewModel: ObservableObject {
         }
     }
 
-    func login(forcePrompt: Bool = false) async throws {
-        try await asyncFunction(for: authService.login(forcePrompt: forcePrompt))
+    func login() async throws {
+        try await asyncFunction(for: authService.login())
+    }
+
+    func loginWithReauthentication() async throws {
+        try await asyncFunction(for: authService.loginWithReauthentication())
     }
 
 
