@@ -24,22 +24,45 @@ interface BookmarksRepository {
      * Add a bookmark for a specific page.
      *
      * @param page the page number
-     * @param isReading if true, this is the current reading location
      * @return the [Bookmark.PageBookmark]
      */
     @NativeCoroutines
-    suspend fun addBookmark(page: Int, isReading: Boolean = false): Bookmark.PageBookmark
+    suspend fun addBookmark(page: Int): Bookmark.PageBookmark
+
+    /**
+     * Add a bookmark for a specific page and mark it as the current reading location.
+     *
+     * @param page the page number
+     * @return the [Bookmark.PageBookmark]
+     */
+    @NativeCoroutines
+    suspend fun addReadingBookmark(page: Int): Bookmark.PageBookmark
 
     /**
      * Add a bookmark for a given sura and ayah.
      *
      * @param sura the sura number
      * @param ayah the ayah number
-     * @param isReading if true, this is the current reading location
      * @return the [Bookmark.AyahBookmark]
      */
     @NativeCoroutines
-    suspend fun addBookmark(sura: Int, ayah: Int, isReading: Boolean = false): Bookmark
+    suspend fun addBookmark(sura: Int, ayah: Int): Bookmark
+
+    /**
+     * Add a bookmark for a given sura and ayah and mark it as the current reading location.
+     *
+     * @param sura the sura number
+     * @param ayah the ayah number
+     * @return the [Bookmark.AyahBookmark]
+     */
+    @NativeCoroutines
+    suspend fun addReadingBookmark(sura: Int, ayah: Int): Bookmark
+
+    /**
+     * Delete the bookmark currently marked as the reading location.
+     */
+    @NativeCoroutines
+    suspend fun deleteReadingBookmark(): Boolean
 
     /**
      * Delete a bookmark for a specific page.

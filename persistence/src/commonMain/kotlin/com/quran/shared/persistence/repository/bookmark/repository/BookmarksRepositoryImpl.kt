@@ -76,17 +76,29 @@ class BookmarksRepositoryImpl(
         }
     }
 
-    override suspend fun addBookmark(page: Int, isReading: Boolean): Bookmark.PageBookmark {
+    override suspend fun addBookmark(page: Int): Bookmark.PageBookmark =
+        addBookmark(page = page, isReading = false)
+
+    override suspend fun addReadingBookmark(page: Int): Bookmark.PageBookmark =
+        addBookmark(page = page, isReading = true)
+
+    override suspend fun addBookmark(sura: Int, ayah: Int): Bookmark =
+        addBookmark(sura = sura, ayah = ayah, isReading = false)
+
+    override suspend fun addReadingBookmark(sura: Int, ayah: Int): Bookmark =
+        addBookmark(sura = sura, ayah = ayah, isReading = true)
+
+    private suspend fun addBookmark(page: Int, isReading: Boolean): Bookmark.PageBookmark {
         logger.i { "Adding page bookmark for page $page (isReading=$isReading)" }
         return withContext(Dispatchers.IO) {
-            database.transaction {
-                if (isReading) {
-                    pageBookmarkQueries.value.clearReadingBookmarks()
-                    ayahBookmarkQueries.value.clearReadingBookmarks()
-                }
+            if (isReading) {
+                pageBookmarkQueries.value.addNewReadingBookmark(
+                    page = page.toLong()
+                )
+            } else {
                 pageBookmarkQueries.value.addNewBookmark(
                     page = page.toLong(),
-                    is_reading = if (isReading) 1L else 0L
+                    is_reading = 0L
                 )
             }
             val record = pageBookmarkQueries.value.getBookmarkForPage(page.toLong())
@@ -96,20 +108,22 @@ class BookmarksRepositoryImpl(
         }
     }
 
-    override suspend fun addBookmark(sura: Int, ayah: Int, isReading: Boolean): Bookmark.AyahBookmark {
+    private suspend fun addBookmark(sura: Int, ayah: Int, isReading: Boolean): Bookmark.AyahBookmark {
         logger.i { "Adding ayah bookmark for $sura:$ayah (isReading=$isReading)" }
         return withContext(Dispatchers.IO) {
-            database.transaction {
-                if (isReading) {
-                    pageBookmarkQueries.value.clearReadingBookmarks()
-                    ayahBookmarkQueries.value.clearReadingBookmarks()
-                }
-                val ayahId = getAyahId(sura, ayah)
+            val ayahId = getAyahId(sura, ayah)
+            if (isReading) {
+                ayahBookmarkQueries.value.addNewReadingBookmark(
+                    ayah_id = ayahId.toLong(),
+                    sura = sura.toLong(),
+                    ayah = ayah.toLong()
+                )
+            } else {
                 ayahBookmarkQueries.value.addNewBookmark(
                     ayah_id = ayahId.toLong(),
                     sura = sura.toLong(),
                     ayah = ayah.toLong(),
-                    is_reading = if (isReading) 1L else 0L
+                    is_reading = 0L
                 )
             }
             val record = ayahBookmarkQueries.value.getBookmarkForAyah(sura.toLong(), ayah.toLong())
@@ -133,6 +147,36 @@ class BookmarksRepositoryImpl(
             ayahBookmarkQueries.value.deleteBookmark(sura.toLong(), ayah.toLong())
         }
         return true
+    }
+
+    override suspend fun deleteReadingBookmark(): Boolean {
+        logger.i { "Deleting current reading bookmarks" }
+        return withContext(Dispatchers.IO) {
+            val pageReadingPages = pageBookmarkQueries.value.getBookmarks()
+                .executeAsList()
+                .filter { it.is_reading == 1L }
+                .map { it.page.toInt() }
+
+            val ayahReadingBookmarks = ayahBookmarkQueries.value.getBookmarks()
+                .executeAsList()
+                .filter { it.is_reading == 1L }
+                .map { it.sura.toInt() to it.ayah.toInt() }
+
+            if (pageReadingPages.isEmpty() && ayahReadingBookmarks.isEmpty()) {
+                return@withContext false
+            }
+
+            database.transaction {
+                pageReadingPages.forEach { page ->
+                    pageBookmarkQueries.value.deleteBookmark(page.toLong())
+                }
+                ayahReadingBookmarks.forEach { (sura, ayah) ->
+                    ayahBookmarkQueries.value.deleteBookmark(sura.toLong(), ayah.toLong())
+                }
+            }
+
+            true
+        }
     }
 
     override suspend fun migrateBookmarks(bookmarks: List<BookmarkMigration>) {

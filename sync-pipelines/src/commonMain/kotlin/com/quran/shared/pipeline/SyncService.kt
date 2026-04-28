@@ -165,9 +165,9 @@ class SyncService(
     }
 
     @NativeCoroutines
-    suspend fun addBookmark(page: Int, isReading: Boolean = false): Bookmark {
+    suspend fun addBookmark(page: Int): Bookmark {
         try {
-            val bookmark = bookmarksRepository.addBookmark(page, isReading)
+            val bookmark = bookmarksRepository.addBookmark(page)
             triggerSync()
             return bookmark
         } catch (e: Exception) {
@@ -177,13 +177,51 @@ class SyncService(
     }
 
     @NativeCoroutines
-    suspend fun addBookmark(sura: Int, ayah: Int, isReading: Boolean = false): Bookmark {
+    suspend fun addBookmark(sura: Int, ayah: Int): Bookmark {
         try {
-            val bookmark = bookmarksRepository.addBookmark(sura, ayah, isReading)
+            val bookmark = bookmarksRepository.addBookmark(sura, ayah)
             triggerSync()
             return bookmark
         } catch (e: Exception) {
             Logger.e(e) { "Failed to add ayah bookmark" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun addReadingBookmark(page: Int): Bookmark {
+        try {
+            val bookmark = bookmarksRepository.addReadingBookmark(page)
+            triggerSync()
+            return bookmark
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to add reading page bookmark" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun addReadingBookmark(sura: Int, ayah: Int): Bookmark {
+        try {
+            val bookmark = bookmarksRepository.addReadingBookmark(sura, ayah)
+            triggerSync()
+            return bookmark
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to add reading ayah bookmark" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun deleteReadingBookmark(): Boolean {
+        try {
+            val deleted = bookmarksRepository.deleteReadingBookmark()
+            if (deleted) {
+                triggerSync()
+            }
+            return deleted
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to delete current reading bookmark" }
             throw e
         }
     }

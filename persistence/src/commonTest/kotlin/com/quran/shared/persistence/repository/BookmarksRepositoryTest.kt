@@ -110,6 +110,47 @@ class BookmarksRepositoryTest {
     }
 
     @Test
+    fun `adding reading bookmark marks it as reading`() = runTest {
+        repository.addReadingBookmark(10)
+
+        val bookmarks = repository.getAllBookmarks()
+        assertEquals(1, bookmarks.size, "Expected single bookmark")
+        val page = bookmarks[0].requirePageBookmark()
+        assertEquals(10, page.page)
+        assertTrue(page.isReading)
+        assertTrue(repository.deleteReadingBookmark())
+    }
+
+    @Test
+    fun `adding reading bookmark clears previous reading bookmark`() = runTest {
+        repository.addReadingBookmark(10)
+        repository.addBookmark(20)
+        repository.addReadingBookmark(30)
+
+        val bookmarks = repository.getAllBookmarks().requirePageBookmarks()
+        assertEquals(3, bookmarks.size)
+        assertEquals(setOf(10, 20, 30), bookmarks.map { it.page }.toSet())
+        assertTrue(bookmarks.single { it.page == 30 }.isReading)
+        assertTrue(bookmarks.none { it.page != 30 && it.isReading })
+    }
+
+    @Test
+    fun `deleting reading bookmark removes currently reading bookmarks only`() = runTest {
+        repository.addReadingBookmark(10)
+        repository.addBookmark(20)
+
+        val deleted = repository.deleteReadingBookmark()
+        assertTrue(deleted)
+
+        val bookmarks = repository.getAllBookmarks()
+        assertEquals(1, bookmarks.size)
+        assertEquals(20, bookmarks[0].requirePageBookmark().page)
+
+        assertTrue(repository.getAllBookmarks().requirePageBookmarks().none { it.isReading })
+        assertTrue(!repository.deleteReadingBookmark())
+    }
+
+    @Test
     fun `deleting local bookmarks removes them from the database`() = runTest {
         repository.addBookmark(12)
         repository.addBookmark(13)
