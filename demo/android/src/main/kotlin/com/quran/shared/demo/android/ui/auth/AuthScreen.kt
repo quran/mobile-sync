@@ -68,10 +68,18 @@ fun AuthScreen(
             when (val state = authState) {
                 is AuthState.Idle -> {
                     LoginButtonContent(
-                        onLoginClick = { forcePrompt ->
+                        onLoginClick = {
                             scope.launch {
                                 try {
-                                    viewModel.login(forcePrompt)
+                                    viewModel.login()
+                                } catch (e: Exception) {
+                                }
+                            }
+                        },
+                        onReauthenticateLoginClick = {
+                            scope.launch {
+                                try {
+                                    viewModel.loginWithReauthentication()
                                 } catch (e: Exception) {
                                 }
                             }
@@ -89,20 +97,38 @@ fun AuthScreen(
                         bookmarks = bookmarks,
                         collectionsWithBookmarks = collectionsWithBookmarks,
                         notes = notes,
-                        onAddPageBookmark = { isReading ->
+                        onAddPageBookmark = {
                             scope.launch {
                                 try {
-                                    viewModel.addBookmark(getRandomPage(), isReading)
+                                    viewModel.addBookmark(getRandomPage())
                                 } catch (e: Exception) {
                                 }
                             }
                         },
-                        onAddAyahBookmark = { isReading ->
+                        onAddAyahBookmark = {
                             val sura = getRandomSura()
                             val ayah = getRandomAyah(sura)
                             scope.launch {
                                 try {
-                                    viewModel.addBookmark(sura, ayah, isReading)
+                                    viewModel.addBookmark(sura, ayah)
+                                } catch (e: Exception) {
+                                }
+                            }
+                        },
+                        onAddReadingPageBookmark = {
+                            scope.launch {
+                                try {
+                                    viewModel.addReadingBookmark(getRandomPage())
+                                } catch (e: Exception) {
+                                }
+                            }
+                        },
+                        onAddReadingAyahBookmark = {
+                            val sura = getRandomSura()
+                            val ayah = getRandomAyah(sura)
+                            scope.launch {
+                                try {
+                                    viewModel.addReadingBookmark(sura, ayah)
                                 } catch (e: Exception) {
                                 }
                             }
@@ -205,8 +231,10 @@ private fun SuccessContent(
     bookmarks: List<Bookmark>,
     collectionsWithBookmarks: List<CollectionWithBookmarks>,
     notes: List<Note>,
-    onAddPageBookmark: (Boolean) -> Unit,
-    onAddAyahBookmark: (Boolean) -> Unit,
+    onAddPageBookmark: () -> Unit,
+    onAddAyahBookmark: () -> Unit,
+    onAddReadingPageBookmark: () -> Unit,
+    onAddReadingAyahBookmark: () -> Unit,
     onDeleteBookmark: (Bookmark) -> Unit,
     onAddCollection: (String) -> Unit,
     onDeleteCollection: (String) -> Unit,
@@ -278,6 +306,8 @@ private fun SuccessContent(
                     bookmarks = bookmarks,
                     onAddPageBookmark = onAddPageBookmark,
                     onAddAyahBookmark = onAddAyahBookmark,
+                    onAddReadingPageBookmark = onAddReadingPageBookmark,
+                    onAddReadingAyahBookmark = onAddReadingAyahBookmark,
                     onDeleteBookmark = onDeleteBookmark
                 )
 
