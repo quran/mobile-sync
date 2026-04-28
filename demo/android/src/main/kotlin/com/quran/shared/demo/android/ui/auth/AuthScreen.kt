@@ -188,6 +188,14 @@ fun AuthScreen(
                             }
                         },
                         onAddRandomBookmarkToCollection = { id ->
+                            scope.launch {
+                                try {
+                                    val sura = getRandomSura()
+                                    val ayah = getRandomAyah(sura)
+                                    viewModel.addAyahBookmarkToCollection(id, sura, ayah)
+                                } catch (e: Exception) {
+                                }
+                            }
                         },
                         recentPages = recentPages,
                         onAddRecentPage = {
