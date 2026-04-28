@@ -36,9 +36,14 @@ struct AuthView: View {
                 Group {
                     let state = viewModel.authState
                     if state is Shared.AuthState.Idle {
-                        LoginButtonContent { forcePrompt in
-                            try? await viewModel.login(forcePrompt: forcePrompt)
-                        }
+                        LoginButtonContent(
+                            onLogin: {
+                                try? await viewModel.login()
+                            },
+                            onReauthenticateLogin: {
+                                try? await viewModel.loginWithReauthentication()
+                            }
+                        )
                         .padding(.horizontal, 16)
                     } else if state is Shared.AuthState.Loading {
                         LoadingContent()

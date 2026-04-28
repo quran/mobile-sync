@@ -43,7 +43,11 @@ struct RecentPagesTabView: View {
                             let page = Int32.random(in: 1...604)
                             let sura = Int32.random(in: 1...114)
                             let ayah = Int32.random(in: 1...7)
-                            _ = await viewModel.addRecentPage(page: page, firstAyahSura: sura, firstAyahVerse: ayah)
+                            _ = await viewModel.addRecentPage(
+                                page: page,
+                                firstAyahSura: sura,
+                                firstAyahVerse: ayah
+                            )
                         }
                     }) {
                         Image(systemName: "plus")

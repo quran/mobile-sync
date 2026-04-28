@@ -11,7 +11,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.*
 
 @Composable
-fun LoginButtonContent(onLoginClick: (Boolean) -> Unit) {
+fun LoginButtonContent(
+    onLoginClick: () -> Unit,
+    onReauthenticateLoginClick: () -> Unit
+) {
     var forcePrompt by remember { mutableStateOf(false) }
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -21,7 +24,13 @@ fun LoginButtonContent(onLoginClick: (Boolean) -> Unit) {
         }
 
         Button(
-            onClick = { onLoginClick(forcePrompt) },
+            onClick = {
+                if (forcePrompt) {
+                    onReauthenticateLoginClick()
+                } else {
+                    onLoginClick()
+                }
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(50.dp),

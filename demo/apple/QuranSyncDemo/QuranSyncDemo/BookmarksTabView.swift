@@ -20,7 +20,7 @@ struct BookmarksTabView: View {
                     Button(action: {
                         let randomPage = Shared.QuranActionsUtils().getRandomPage()
                         Task {
-                            _ = await viewModel.addBookmark(page: randomPage, isReading: false)
+                            _ = await viewModel.addBookmark(page: randomPage)
                         }
                     }) {
                         Image(systemName: "plus.app")
@@ -29,7 +29,7 @@ struct BookmarksTabView: View {
                         let sura = Shared.QuranActionsUtils().getRandomSura()
                         let ayah = Shared.QuranActionsUtils().getRandomAyah(sura: sura)
                         Task {
-                            _ = await viewModel.addBookmark(sura: sura, ayah: ayah, isReading: false)
+                            _ = await viewModel.addBookmark(sura: sura, ayah: ayah)
                         }
                     }) {
                         Image(systemName: "plus.square")
@@ -37,7 +37,7 @@ struct BookmarksTabView: View {
                     Button(action: {
                         let randomPage = Shared.QuranActionsUtils().getRandomPage()
                         Task {
-                            _ = await viewModel.addBookmark(page: randomPage, isReading: true)
+                            _ = await viewModel.addReadingBookmark(page: randomPage)
                         }
                     }) {
                         Image(systemName: "bookmark")

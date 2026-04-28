@@ -17,8 +17,10 @@ import com.quran.shared.persistence.model.Bookmark
 @Composable
 fun BookmarksTab(
     bookmarks: List<Bookmark>,
-    onAddPageBookmark: (Boolean) -> Unit,
-    onAddAyahBookmark: (Boolean) -> Unit,
+    onAddPageBookmark: () -> Unit,
+    onAddAyahBookmark: () -> Unit,
+    onAddReadingPageBookmark: () -> Unit,
+    onAddReadingAyahBookmark: () -> Unit,
     onDeleteBookmark: (Bookmark) -> Unit
 ) {
     Column {
@@ -33,24 +35,32 @@ fun BookmarksTab(
             )
             
             Row {
-                IconButton(onClick = { onAddPageBookmark(false) }) {
+                IconButton(onClick = onAddPageBookmark) {
                     Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = "Add Page Bookmark"
                     )
                 }
-                IconButton(onClick = { onAddAyahBookmark(false) }) {
+                IconButton(onClick = onAddAyahBookmark) {
                     Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = "Add Ayah Bookmark",
                         tint = MaterialTheme.colorScheme.secondary
                     )
                 }
-                IconButton(onClick = { onAddPageBookmark(true) }) {
+                IconButton(onClick = onAddReadingPageBookmark) {
                     Icon(
                         imageVector = Icons.Default.Bookmark,
                         contentDescription = "Add Reading Bookmark",
                         tint = MaterialTheme.colorScheme.tertiary
+                    )
+                }
+
+                IconButton(onClick = onAddReadingAyahBookmark) {
+                    Icon(
+                        imageVector = Icons.Default.Bookmark,
+                        contentDescription = "Add Reading Ayah Bookmark",
+                        tint = MaterialTheme.colorScheme.tertiaryContainer
                     )
                 }
             }

@@ -2,7 +2,8 @@ import SwiftUI
 import Shared
 
 struct LoginButtonContent: View {
-    let onLogin: (Bool) async -> Void
+    let onLogin: () async -> Void
+    let onReauthenticateLogin: () async -> Void
     @State private var forcePrompt: Bool = false
 
     var body: some View {
@@ -12,7 +13,11 @@ struct LoginButtonContent: View {
             
             Button(action: {
                 Task {
-                    await onLogin(forcePrompt)
+                    if forcePrompt {
+                        await onReauthenticateLogin()
+                    } else {
+                        await onLogin()
+                    }
                 }
             }) {
                 Text("Sign in with OAuth")

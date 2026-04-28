@@ -17,6 +17,7 @@ class SyncViewModel: ObservableObject {
     @Published var bookmarks: [Shared.Bookmark] = []
     @Published var collectionsWithBookmarks: [Shared.CollectionWithBookmarks] = []
     @Published var notes: [Shared.Note_] = []
+    @Published var recentPages: [Shared.RecentPage] = []
 
     init(authService: AuthService, syncService: SyncService) {
         self.authService = authService
@@ -83,6 +84,21 @@ class SyncViewModel: ObservableObject {
                     }
                 } catch {
                     print("SyncViewModel: Error observing notes: \(error)")
+                }
+            }
+            group.addTask { @MainActor [weak self] in
+                guard let syncService = self?.syncService else {
+                    return
+                }
+                do {
+                    for try await list in asyncSequence(for: syncService.recentPages) {
+                        guard let self = self else {
+                            break
+                        }
+                        self.recentPages = list as [Shared.RecentPage]
+                    }
+                } catch {
+                    print("SyncViewModel: Error observing recent pages: \(error)")
                 }
             }
         }
@@ -205,6 +221,21 @@ class SyncViewModel: ObservableObject {
         }
     }
 
+    func addRecentPage(page: Int32, firstAyahSura: Int32, firstAyahVerse: Int32) async -> Shared.RecentPage? {
+        do {
+            return try await asyncFunction(
+                for: syncService.addRecentPage(
+                    page: page,
+                    firstAyahSura: firstAyahSura,
+                    firstAyahVerse: firstAyahVerse
+                )
+            )
+        } catch {
+            print("SyncViewModel: Failed to add recent page: \(error)")
+            return nil
+        }
+    }
+
     func deleteReadingBookmark() async {
         do {
             _ = try await asyncFunction(for: syncService.deleteReadingBookmark())
@@ -213,8 +244,8 @@ class SyncViewModel: ObservableObject {
         }
     }
 
-    func logout() async throws {
-        try await asyncFunction(for: authService.logout())
+    func logout(clearLocalData: Bool = false) async throws {
+        try await asyncFunction(for: syncService.logout(clearLocalData: clearLocalData))
     }
 
     func clearError() {
