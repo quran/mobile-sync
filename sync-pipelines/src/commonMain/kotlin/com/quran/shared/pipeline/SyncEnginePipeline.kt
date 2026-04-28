@@ -403,7 +403,8 @@ private fun Bookmark.toSyncEngine(): SyncBookmark {
             SyncBookmark.PageBookmark(
                 page = this.page,
                 id = this.localId,
-                lastModified = this.lastUpdated.fromPlatform()
+                lastModified = this.lastUpdated.fromPlatform(),
+                isReading = this.isReading
             )
         }
         is Bookmark.AyahBookmark -> {
@@ -411,7 +412,8 @@ private fun Bookmark.toSyncEngine(): SyncBookmark {
                 id = this.localId,
                 sura = this.sura,
                 ayah = this.ayah,
-                lastModified = this.lastUpdated.fromPlatform()
+                lastModified = this.lastUpdated.fromPlatform(),
+                isReading = this.isReading
             )
         }
     }
@@ -456,13 +458,15 @@ private fun SyncBookmark.toRemoteInput(): RemoteBookmark {
         is SyncBookmark.PageBookmark ->
             RemoteBookmark.Page(
                 page = this.page,
-                lastUpdated = this.lastModified.toPlatform()
+                lastUpdated = this.lastModified.toPlatform(),
+                isReading = this.isReading
             )
         is SyncBookmark.AyahBookmark ->
             RemoteBookmark.Ayah(
                 sura = this.sura,
                 ayah = this.ayah,
-                lastUpdated = this.lastModified.toPlatform()
+                lastUpdated = this.lastModified.toPlatform(),
+                isReading = this.isReading
             )
     }
 }

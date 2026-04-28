@@ -259,19 +259,19 @@ class SynchronizationClientIntegrationTest {
         // Create test data for local mutations: 2 creations and 1 deletion
         val testLocalMutations = listOf(
             LocalModelMutation<SyncBookmark>(
-                model = PageBookmark(id = "local-2", page = 200, lastModified = Instant.fromEpochMilliseconds(1752350137423)),
+                model = PageBookmark(id = "local-2", page = 200, isReading = false, lastModified = Instant.fromEpochMilliseconds(1752350137423)),
                 remoteID = null, // No remote ID for local mutations
                 localID = "local-id-2",
                 mutation = Mutation.CREATED
             ),
 //            LocalModelMutation<SyncBookmark>(
-//                model = PageBookmark(id = "hvpyr0q863etejgc4l4dpmhj", page = 50, lastModified = Instant.fromEpochMilliseconds(1752350137423)),
+//                model = PageBookmark(id = "hvpyr0q863etejgc4l4dpmhj", page = 50, isReading = false, lastModified = Instant.fromEpochMilliseconds(1752350137423)),
 //                remoteID = "hvpyr0q863etejgc4l4dpmhj", // This was a remote bookmark that we're deleting
 //                localID = "local-id-3",
 //                mutation = Mutation.DELETED
 //            ),
 //            LocalModelMutation<SyncBookmark>(
-//                model = PageBookmark(id = "t8sx6yrl55oft086mx5bygl5", page = 107, lastModified = Instant.fromEpochMilliseconds(1752350137423)),
+//                model = PageBookmark(id = "t8sx6yrl55oft086mx5bygl5", page = 107, isReading = false, lastModified = Instant.fromEpochMilliseconds(1752350137423)),
 //                remoteID = "t8sx6yrl55oft086mx5bygl5", // This was a remote bookmark that we're deleting
 //                localID = "local-id-3",
 //                mutation = Mutation.DELETED
@@ -328,26 +328,26 @@ class SynchronizationClientIntegrationTest {
         val testLocalMutations = listOf(
             LocalModelMutation<SyncBookmark>(
                 // For this to work, there needs to be an expected remote delete mutation for that remote ID.
-                model = PageBookmark(id = "bnz3yxj9hqsepxtteov57bvt", page = 20, lastModified = Instant.fromEpochMilliseconds(1752350137423)),
+                model = PageBookmark(id = "bnz3yxj9hqsepxtteov57bvt", page = 20, isReading = false, lastModified = Instant.fromEpochMilliseconds(1752350137423)),
                 remoteID = "bnz3yxj9hqsepxtteov57bvt", // To be filled
                 localID = "bnz3yxj9hqsepxtteov57bvt",
                 mutation = Mutation.DELETED
             ),
             LocalModelMutation<SyncBookmark>(
-                model = PageBookmark(id = "local-2", page = 20, lastModified = Instant.fromEpochMilliseconds(1752350137493)),
+                model = PageBookmark(id = "local-2", page = 20, isReading = false, lastModified = Instant.fromEpochMilliseconds(1752350137493)),
                 remoteID = null, // No remote ID for local mutations
                 localID = "local-id-2",
                 mutation = Mutation.CREATED
             ),
 //            LocalModelMutation<SyncBookmark>(
 //                // TODO: Should clash with something on the BE
-//                model = PageBookmark(id = "local-2", page = 200, lastModified = Instant.fromEpochMilliseconds(1752350137423)),
+//                model = PageBookmark(id = "local-2", page = 200, isReading = false, lastModified = Instant.fromEpochMilliseconds(1752350137423)),
 //                remoteID = null, // No remote ID for local mutations
 //                localID = "local-id-5",
 //                mutation = Mutation.CREATED
 //            ),
             LocalModelMutation<SyncBookmark>(
-                model = PageBookmark(id = "local-2", page = 600, lastModified = Instant.fromEpochMilliseconds(1752350137423)),
+                model = PageBookmark(id = "local-2", page = 600, isReading = false, lastModified = Instant.fromEpochMilliseconds(1752350137423)),
                 remoteID = null, // No remote ID for local mutations
                 localID = "non-clashing-local-id",
                 mutation = Mutation.CREATED

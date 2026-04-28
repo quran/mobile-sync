@@ -230,7 +230,7 @@ class CollectionBookmarksRepositoryImpl(
             is RemoteCollectionBookmark.Page -> {
                 val page = bookmark.page.toLong()
                 if (createIfMissing) {
-                    pageBookmarkQueries.value.insertBookmarkIfMissing(page)
+                    pageBookmarkQueries.value.insertBookmarkIfMissing(page, 0L) // todo check if actually needed
                 }
                 pageBookmarkQueries.value.getBookmarkForPage(page)
                     .executeAsOneOrNull()
@@ -245,7 +245,8 @@ class CollectionBookmarksRepositoryImpl(
                     ayahBookmarkQueries.value.insertBookmarkIfMissing(
                         ayah_id = ayahId.toLong(),
                         sura = sura,
-                        ayah = ayah
+                        ayah = ayah,
+                        is_reading = 0L // todo check if collection bookmarks need is_reading
                     )
                 }
                 ayahBookmarkQueries.value.getBookmarkForAyah(sura, ayah)

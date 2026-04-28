@@ -6,7 +6,7 @@ sealed class SyncBookmark {
     data class PageBookmark(
         val id: String,
         val page: Int,
-        val isReading: Boolean = false,
+        val isReading: Boolean,
         val lastModified: Instant
     ) : SyncBookmark()
 
@@ -14,7 +14,7 @@ sealed class SyncBookmark {
         val id: String,
         val sura: Int,
         val ayah: Int,
-        val isReading: Boolean = false,
+        val isReading: Boolean,
         val lastModified: Instant
     ) : SyncBookmark()
 }
