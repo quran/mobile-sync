@@ -1,26 +1,25 @@
 @file:OptIn(ExperimentalTime::class)
 
-package com.quran.shared.persistence.repository.recentpage.extension
+package com.quran.shared.persistence.repository.readingsession.extension
 
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
-import com.quran.shared.persistence.model.DatabaseRecentPage
-import com.quran.shared.persistence.model.RecentPage
+import com.quran.shared.persistence.model.DatabaseReadingSession
+import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.util.toPlatform
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 
-internal fun DatabaseRecentPage.toRecentPage(): RecentPage {
-    return RecentPage(
-        page = page.toInt(),
-        chapterNumber = first_ayah_sura?.toInt() ?: 0,
-        verseNumber = first_ayah_verse?.toInt() ?: 0,
+internal fun DatabaseReadingSession.toReadingSession(): ReadingSession {
+    return ReadingSession(
+        chapterNumber = chapter_number.toInt(),
+        verseNumber = verse_number.toInt(),
         lastUpdated = Instant.fromEpochMilliseconds(modified_at).toPlatform(),
         localId = local_id.toString()
     )
 }
 
-internal fun DatabaseRecentPage.toRecentPageMutation(): LocalModelMutation<RecentPage> {
+internal fun DatabaseReadingSession.toReadingSessionMutation(): LocalModelMutation<ReadingSession> {
     val mutation = when {
         deleted == 1L -> Mutation.DELETED
         is_edited == 1L -> Mutation.MODIFIED
@@ -28,7 +27,7 @@ internal fun DatabaseRecentPage.toRecentPageMutation(): LocalModelMutation<Recen
     }
     return LocalModelMutation(
         mutation = mutation,
-        model = toRecentPage(),
+        model = toReadingSession(),
         remoteID = remote_id,
         localID = local_id.toString()
     )

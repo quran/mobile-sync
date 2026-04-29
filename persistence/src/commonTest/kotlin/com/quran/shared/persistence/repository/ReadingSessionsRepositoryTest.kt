@@ -7,7 +7,7 @@ import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.TestDatabaseDriver
 import com.quran.shared.persistence.input.RemoteReadingSession
-import com.quran.shared.persistence.repository.recentpage.repository.RecentPagesRepositoryImpl
+import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepositoryImpl
 import com.quran.shared.persistence.util.toPlatform
 import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
@@ -17,30 +17,29 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
-class RecentPagesRepositoryTest {
+class ReadingSessionsRepositoryTest {
     private lateinit var database: QuranDatabase
-    private lateinit var repository: RecentPagesRepositoryImpl
+    private lateinit var repository: ReadingSessionsRepositoryImpl
 
     @BeforeTest
     fun setup() {
         database = QuranDatabase(TestDatabaseDriver().createDriver())
-        repository = RecentPagesRepositoryImpl(database)
+        repository = ReadingSessionsRepositoryImpl(database)
     }
 
     @Test
-    fun `applyRemoteChanges removes deleted remote recent page after successful sync`() = runTest {
-        database.recent_pagesQueries.persistRemoteRecentPage(
-            remote_id = "remote-recent-page-id",
-            page = 42L,
-            first_ayah_sura = 2L,
-            first_ayah_verse = 255L,
+    fun `applyRemoteChanges removes deleted remote reading session after successful sync`() = runTest {
+        database.reading_sessionsQueries.persistRemoteReadingSession(
+            remote_id = "remote-reading-session-id",
+            chapter_number = 2L,
+            verse_number = 255L,
             created_at = 1L,
             modified_at = 1L
         )
 
-        repository.deleteRecentPage(42)
+        repository.deleteReadingSession(2, 255)
 
-        val localMutations = repository.fetchMutatedRecentPages()
+        val localMutations = repository.fetchMutatedReadingSessions()
         assertEquals(1, localMutations.size)
         assertEquals(Mutation.DELETED, localMutations.single().mutation)
 
@@ -52,20 +51,20 @@ class RecentPagesRepositoryTest {
                         verseNumber = 255,
                         lastUpdated = Instant.fromEpochMilliseconds(1000L).toPlatform()
                     ),
-                    remoteID = "remote-recent-page-id",
+                    remoteID = "remote-reading-session-id",
                     mutation = Mutation.DELETED
                 )
             ),
             localMutationIdsToClear = localMutations.map { it.localID }
         )
 
-        assertTrue(repository.getRecentPages().isEmpty())
-        assertNull(database.recent_pagesQueries.getRecentPageForPage(42L).executeAsOneOrNull())
+        assertTrue(repository.getReadingSessions().isEmpty())
+        assertNull(database.reading_sessionsQueries.getReadingSessionForChapterVerse(2L, 255L).executeAsOneOrNull())
     }
 
     @Test
-    fun `applyRemoteChanges persists remote recent page using matching local page`() = runTest {
-        val localRecentPage = repository.addRecentPage(42, 2, 255)
+    fun `applyRemoteChanges persists remote reading session using matching local session`() = runTest {
+        val localReadingSession = repository.addReadingSession(2, 255)
 
         repository.applyRemoteChanges(
             updatesToPersist = listOf(
@@ -75,17 +74,16 @@ class RecentPagesRepositoryTest {
                         verseNumber = 255,
                         lastUpdated = Instant.fromEpochMilliseconds(1000L).toPlatform()
                     ),
-                    remoteID = "remote-recent-page-id",
+                    remoteID = "remote-reading-session-id",
                     mutation = Mutation.CREATED
                 )
             ),
-            localMutationIdsToClear = listOf(localRecentPage.localId)
+            localMutationIdsToClear = listOf(localReadingSession.localId)
         )
 
-        val recentPages = repository.getRecentPages()
-        assertEquals(1, recentPages.size)
-        assertEquals(42, recentPages.single().page)
-        assertEquals(2, recentPages.single().chapterNumber)
-        assertEquals(255, recentPages.single().verseNumber)
+        val readingSessions = repository.getReadingSessions()
+        assertEquals(1, readingSessions.size)
+        assertEquals(2, readingSessions.single().chapterNumber)
+        assertEquals(255, readingSessions.single().verseNumber)
     }
 }

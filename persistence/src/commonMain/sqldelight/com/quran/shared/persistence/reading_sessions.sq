@@ -1,0 +1,84 @@
+CREATE TABLE IF NOT EXISTS reading_session(
+  local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  remote_id TEXT,
+  chapter_number INTEGER NOT NULL,
+  verse_number INTEGER NOT NULL,
+  is_edited INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
+  modified_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
+  deleted INTEGER NOT NULL DEFAULT 0,
+  CHECK (is_edited IN (0, 1)),
+  CHECK (deleted IN (0, 1)),
+  UNIQUE (chapter_number, verse_number)
+);
+
+CREATE INDEX IF NOT EXISTS reading_session_remote_id_idx ON reading_session(remote_id);
+
+getReadingSessions:
+  SELECT * FROM reading_session WHERE deleted = 0 ORDER BY modified_at DESC;
+
+getReadingSessionForChapterVerse:
+  SELECT * FROM reading_session WHERE chapter_number = ? AND verse_number = ? LIMIT 1;
+
+getReadingSessionByLocalId:
+  SELECT * FROM reading_session WHERE local_id = ? LIMIT 1;
+
+getReadingSessionByRemoteId:
+  SELECT * FROM reading_session WHERE remote_id = ? LIMIT 1;
+
+addReadingSession {
+  INSERT OR IGNORE INTO reading_session (remote_id, chapter_number, verse_number, is_edited, deleted)
+  VALUES (NULL, :chapter_number, :verse_number, 0, 0);
+  UPDATE reading_session
+  SET deleted = 0,
+    chapter_number = :chapter_number,
+    verse_number = :verse_number,
+    is_edited = CASE WHEN remote_id IS NULL THEN 0 ELSE 1 END,
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  WHERE chapter_number = :chapter_number AND verse_number = :verse_number;
+}
+
+deleteReadingSession {
+  DELETE FROM reading_session WHERE chapter_number = :chapter_number AND verse_number = :verse_number AND remote_id IS NULL;
+  UPDATE reading_session
+  SET deleted = 1,
+    is_edited = 1,
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  WHERE chapter_number = :chapter_number AND verse_number = :verse_number AND remote_id IS NOT NULL;
+}
+
+getUnsyncedReadingSessions:
+  SELECT * FROM reading_session WHERE remote_id IS NULL OR is_edited = 1 OR deleted = 1 ORDER BY modified_at DESC;
+
+persistRemoteReadingSession {
+  INSERT OR IGNORE INTO reading_session (remote_id, chapter_number, verse_number, is_edited, created_at, modified_at, deleted)
+  VALUES (:remote_id, :chapter_number, :verse_number, 0, :created_at, :modified_at, 0);
+  UPDATE reading_session
+  SET remote_id = :remote_id,
+    chapter_number = :chapter_number,
+    verse_number = :verse_number,
+    is_edited = 0,
+    created_at = :created_at,
+    modified_at = :modified_at,
+    deleted = 0
+  WHERE remote_id = :remote_id OR (chapter_number = :chapter_number AND verse_number = :verse_number);
+}
+
+hardDeleteReadingSessionFor {
+  DELETE FROM reading_session WHERE remote_id = :remoteID;
+}
+
+clearLocalMutationFor {
+  DELETE FROM reading_session WHERE remote_id IS NULL AND local_id = :id;
+  UPDATE reading_session
+  SET deleted = 0,
+    is_edited = 0,
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  WHERE local_id = :id;
+}
+
+checkRemoteIDsExistence:
+  SELECT remote_id FROM reading_session WHERE remote_id IN :queried_ids;
+
+deleteAll:
+  DELETE FROM reading_session;

@@ -18,8 +18,8 @@ import com.quran.shared.persistence.repository.bookmark.repository.BookmarksSync
 import com.quran.shared.persistence.repository.collection.repository.CollectionsSynchronizationRepository
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksSynchronizationRepository
 import com.quran.shared.persistence.repository.note.repository.NotesSynchronizationRepository
-import com.quran.shared.persistence.repository.recentpage.repository.RecentPagesSynchronizationRepository
-import com.quran.shared.persistence.model.RecentPage
+import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsSynchronizationRepository
+import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toPlatform
@@ -57,7 +57,7 @@ class SyncEnginePipeline(
     val collectionsRepository: CollectionsSynchronizationRepository,
     val collectionBookmarksRepository: CollectionBookmarksSynchronizationRepository,
     val notesRepository: NotesSynchronizationRepository,
-    val recentPagesRepository: RecentPagesSynchronizationRepository
+    val readingSessionsRepository: ReadingSessionsSynchronizationRepository
 ) {
     private lateinit var syncClient: SynchronizationClient
 
@@ -90,9 +90,8 @@ class SyncEnginePipeline(
         )
         val readingSessionsConf = ReadingSessionsSynchronizationConfigurations(
             localModificationDateFetcher = localModificationDateFetcher,
-            resultNotifier = ReadingSessionsResultReceiver(repository = recentPagesRepository, callback = callback
-            ),
-            localDataFetcher = ReadingSessionsRepositoryDataFetcher(recentPagesRepository)
+            resultNotifier = ReadingSessionsResultReceiver(repository = readingSessionsRepository, callback = callback),
+            localDataFetcher = ReadingSessionsRepositoryDataFetcher(readingSessionsRepository)
         )
         val syncClient = SynchronizationClientBuilder.build(
             environment = environment,
@@ -232,11 +231,11 @@ private class NotesRepositoryDataFetcher(
 }
 
 private class ReadingSessionsRepositoryDataFetcher(
-    val recentPagesRepository: RecentPagesSynchronizationRepository
+    val readingSessionsRepository: ReadingSessionsSynchronizationRepository
 ) : LocalDataFetcher<SyncReadingSession> {
 
     override suspend fun fetchLocalMutations(lastModified: Long): List<LocalModelMutation<SyncReadingSession>> {
-        return recentPagesRepository.fetchMutatedRecentPages().map { repoMutation ->
+        return readingSessionsRepository.fetchMutatedReadingSessions().map { repoMutation ->
             LocalModelMutation(
                 model = repoMutation.model.toSyncEngine(),
                 remoteID = repoMutation.remoteID,
@@ -247,11 +246,11 @@ private class ReadingSessionsRepositoryDataFetcher(
     }
 
     override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> {
-        return recentPagesRepository.remoteResourcesExist(remoteIDs)
+        return readingSessionsRepository.remoteResourcesExist(remoteIDs)
     }
 
     override suspend fun fetchLocalModel(remoteId: String): SyncReadingSession? {
-        return recentPagesRepository.fetchRecentPageByRemoteId(remoteId)?.toSyncEngine()
+        return readingSessionsRepository.fetchReadingSessionByRemoteId(remoteId)?.toSyncEngine()
     }
 }
 
@@ -435,7 +434,7 @@ private class NotesResultReceiver(
 }
 
 private class ReadingSessionsResultReceiver(
-    val repository: RecentPagesSynchronizationRepository,
+    val repository: ReadingSessionsSynchronizationRepository,
     val callback: SyncEngineCallback
 ) : ResultNotifier<SyncReadingSession> {
 
@@ -688,7 +687,7 @@ private fun ayahIdToSuraAyah(ayahId: Long): NoteAyah? {
     return null
 }
 
-private fun RecentPage.toSyncEngine(): SyncReadingSession {
+private fun ReadingSession.toSyncEngine(): SyncReadingSession {
     return SyncReadingSession(
         id = localId,
         chapterNumber = chapterNumber,

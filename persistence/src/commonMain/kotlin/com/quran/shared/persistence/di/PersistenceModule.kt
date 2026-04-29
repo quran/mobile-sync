@@ -21,9 +21,9 @@ import com.quran.shared.persistence.repository.collectionbookmark.repository.Col
 import com.quran.shared.persistence.repository.note.repository.NotesRepository
 import com.quran.shared.persistence.repository.note.repository.NotesRepositoryImpl
 import com.quran.shared.persistence.repository.note.repository.NotesSynchronizationRepository
-import com.quran.shared.persistence.repository.recentpage.repository.RecentPagesRepository
-import com.quran.shared.persistence.repository.recentpage.repository.RecentPagesRepositoryImpl
-import com.quran.shared.persistence.repository.recentpage.repository.RecentPagesSynchronizationRepository
+import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepository
+import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepositoryImpl
+import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsSynchronizationRepository
 import com.quran.shared.persistence.repository.PersistenceResetRepository
 import com.quran.shared.persistence.repository.PersistenceResetRepositoryImpl
 
@@ -66,10 +66,10 @@ abstract class PersistenceModule {
     abstract fun bindNotesSynchronizationRepository(impl: NotesRepositoryImpl): NotesSynchronizationRepository
 
     @Binds
-    abstract fun bindRecentPagesRepository(impl: RecentPagesRepositoryImpl): RecentPagesRepository
+    abstract fun bindReadingSessionsRepository(impl: ReadingSessionsRepositoryImpl): ReadingSessionsRepository
 
     @Binds
-    abstract fun bindRecentPagesSynchronizationRepository(impl: RecentPagesRepositoryImpl): RecentPagesSynchronizationRepository
+    abstract fun bindReadingSessionsSynchronizationRepository(impl: ReadingSessionsRepositoryImpl): ReadingSessionsSynchronizationRepository
 
     @Binds
     abstract fun bindPersistenceResetRepository(impl: PersistenceResetRepositoryImpl): PersistenceResetRepository

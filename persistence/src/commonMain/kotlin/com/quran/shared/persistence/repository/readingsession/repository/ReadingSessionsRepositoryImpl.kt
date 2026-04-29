@@ -1,4 +1,4 @@
-package com.quran.shared.persistence.repository.recentpage.repository
+package com.quran.shared.persistence.repository.readingsession.repository
 
 import co.touchlab.kermit.Logger
 import com.quran.shared.di.AppScope
@@ -7,9 +7,9 @@ import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.input.RemoteReadingSession
-import com.quran.shared.persistence.model.RecentPage
-import com.quran.shared.persistence.repository.recentpage.extension.toRecentPage
-import com.quran.shared.persistence.repository.recentpage.extension.toRecentPageMutation
+import com.quran.shared.persistence.model.ReadingSession
+import com.quran.shared.persistence.repository.readingsession.extension.toReadingSession
+import com.quran.shared.persistence.repository.readingsession.extension.toReadingSessionMutation
 import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
 import dev.zacsweers.metro.Inject
@@ -24,56 +24,61 @@ import app.cash.sqldelight.coroutines.mapToList
 
 @Inject
 @SingleIn(AppScope::class)
-class RecentPagesRepositoryImpl(
+class ReadingSessionsRepositoryImpl(
     private val database: QuranDatabase
-) : RecentPagesRepository, RecentPagesSynchronizationRepository {
+) : ReadingSessionsRepository, ReadingSessionsSynchronizationRepository {
 
-    private val logger = Logger.withTag("RecentPagesRepository")
-    private val recentPagesQueries = lazy { database.recent_pagesQueries }
+    private val logger = Logger.withTag("ReadingSessionsRepository")
+    private val readingSessionsQueries = lazy { database.reading_sessionsQueries }
 
-    override suspend fun getRecentPages(): List<RecentPage> {
+    override suspend fun getReadingSessions(): List<ReadingSession> {
         return withContext(Dispatchers.IO) {
-            recentPagesQueries.value.getRecentPages()
+            readingSessionsQueries.value.getReadingSessions()
                 .executeAsList()
-                .map { it.toRecentPage() }
+                .map { it.toReadingSession() }
         }
     }
 
-    override fun getRecentPagesFlow(): Flow<List<RecentPage>> {
-        return recentPagesQueries.value.getRecentPages()
+    override fun getReadingSessionsFlow(): Flow<List<ReadingSession>> {
+        return readingSessionsQueries.value.getReadingSessions()
             .asFlow()
             .mapToList(Dispatchers.IO)
-            .map { list -> list.map { it.toRecentPage() } }
+            .map { list -> list.map { it.toReadingSession() } }
     }
 
-    override suspend fun addRecentPage(page: Int, firstAyahSura: Int, firstAyahVerse: Int): RecentPage {
-        logger.i { "Adding recent page $page ($firstAyahSura:$firstAyahVerse)" }
+    override suspend fun addReadingSession(chapterNumber: Int, verseNumber: Int): ReadingSession {
+        logger.i { "Adding reading session ($chapterNumber:$verseNumber)" }
         return withContext(Dispatchers.IO) {
-            recentPagesQueries.value.addRecentPage(
-                page = page.toLong(),
-                first_ayah_sura = firstAyahSura.toLong(),
-                first_ayah_verse = firstAyahVerse.toLong()
+            readingSessionsQueries.value.addReadingSession(
+                chapter_number = chapterNumber.toLong(),
+                verse_number = verseNumber.toLong()
             )
-            val record = recentPagesQueries.value.getRecentPageForPage(page.toLong())
+            val record = readingSessionsQueries.value.getReadingSessionForChapterVerse(
+                chapterNumber.toLong(),
+                verseNumber.toLong()
+            )
                 .executeAsOneOrNull()
-            requireNotNull(record) { "Expected recent page for page $page after insert." }
-            record.toRecentPage()
+            requireNotNull(record) { "Expected reading session for $chapterNumber:$verseNumber after insert." }
+            record.toReadingSession()
         }
     }
 
-    override suspend fun deleteRecentPage(page: Int): Boolean {
-        logger.i { "Deleting recent page for page $page" }
+    override suspend fun deleteReadingSession(chapterNumber: Int, verseNumber: Int): Boolean {
+        logger.i { "Deleting reading session for $chapterNumber:$verseNumber" }
         withContext(Dispatchers.IO) {
-            recentPagesQueries.value.deleteRecentPage(page.toLong())
+            readingSessionsQueries.value.deleteReadingSession(
+                chapter_number = chapterNumber.toLong(),
+                verse_number = verseNumber.toLong()
+            )
         }
         return true
     }
 
-    override suspend fun fetchMutatedRecentPages(): List<LocalModelMutation<RecentPage>> {
+    override suspend fun fetchMutatedReadingSessions(): List<LocalModelMutation<ReadingSession>> {
         return withContext(Dispatchers.IO) {
-            recentPagesQueries.value.getUnsyncedRecentPages()
+            readingSessionsQueries.value.getUnsyncedReadingSessions()
                 .executeAsList()
-                .map { it.toRecentPageMutation() }
+                .map { it.toReadingSessionMutation() }
         }
     }
 
@@ -82,7 +87,7 @@ class RecentPagesRepositoryImpl(
         localMutationIdsToClear: List<String>
     ) {
         logger.i {
-            "Applying remote changes for recent pages: updates=${updatesToPersist.size}, " +
+            "Applying remote changes for reading sessions: updates=${updatesToPersist.size}, " +
                 "toClear=${localMutationIdsToClear.size}"
         }
         return withContext(Dispatchers.IO) {
@@ -92,40 +97,39 @@ class RecentPagesRepositoryImpl(
                     when (remote.mutation) {
                         Mutation.CREATED, Mutation.MODIFIED -> {
                             val model = remote.model
-                            val existingPage = recentPagesQueries.value.getRecentPageByRemoteId(remote.remoteID)
+                            val existingSession = readingSessionsQueries.value.getReadingSessionByRemoteId(remote.remoteID)
                                 .executeAsOneOrNull()
-                                ?: recentPagesQueries.value.getRecentPages()
+                                ?: readingSessionsQueries.value.getReadingSessions()
                                     .executeAsList()
                                     .firstOrNull { record ->
-                                        record.first_ayah_sura?.toInt() == model.chapterNumber &&
-                                            record.first_ayah_verse?.toInt() == model.verseNumber
+                                        record.chapter_number.toInt() == model.chapterNumber &&
+                                            record.verse_number.toInt() == model.verseNumber
                                     }
-                            if (existingPage == null) {
+                            if (existingSession == null) {
                                 logger.w {
-                                    "Skipping reading session mutation without local page match: " +
+                                    "Skipping reading session mutation without local session match: " +
                                         "remoteId=${remote.remoteID}, chapter=${model.chapterNumber}, verse=${model.verseNumber}"
                                 }
                                 return@forEach
                             }
                             val updatedAt = model.lastUpdated.fromPlatform().toEpochMilliseconds()
-                            recentPagesQueries.value.persistRemoteRecentPage(
+                            readingSessionsQueries.value.persistRemoteReadingSession(
                                 remote_id = remote.remoteID,
-                                page = existingPage.page,
-                                first_ayah_sura = model.chapterNumber.toLong(),
-                                first_ayah_verse = model.verseNumber.toLong(),
+                                chapter_number = model.chapterNumber.toLong(),
+                                verse_number = model.verseNumber.toLong(),
                                 created_at = updatedAt,
                                 modified_at = updatedAt
                             )
                         }
                         Mutation.DELETED -> {
-                            recentPagesQueries.value.hardDeleteRecentPageFor(remoteID = remote.remoteID)
+                            readingSessionsQueries.value.hardDeleteReadingSessionFor(remoteID = remote.remoteID)
                         }
                     }
                 }
 
                 // Clear local mutations after remote upserts so newly-synced rows keep their remote IDs.
                 localMutationIdsToClear.forEach { localId ->
-                    recentPagesQueries.value.clearLocalMutationFor(id = localId.toLong())
+                    readingSessionsQueries.value.clearLocalMutationFor(id = localId.toLong())
                 }
             }
         }
@@ -137,7 +141,7 @@ class RecentPagesRepositoryImpl(
             val existentIDs = mutableSetOf<String>()
             remoteIDs.chunked(SQLITE_MAX_BIND_PARAMETERS).forEach { chunk ->
                 existentIDs.addAll(
-                    recentPagesQueries.value.checkRemoteIDsExistence(chunk)
+                    readingSessionsQueries.value.checkRemoteIDsExistence(chunk)
                         .executeAsList()
                         .mapNotNull { it.remote_id }
                 )
@@ -146,11 +150,11 @@ class RecentPagesRepositoryImpl(
         }
     }
 
-    override suspend fun fetchRecentPageByRemoteId(remoteId: String): RecentPage? {
+    override suspend fun fetchReadingSessionByRemoteId(remoteId: String): ReadingSession? {
         return withContext(Dispatchers.IO) {
-            recentPagesQueries.value.getRecentPageByRemoteId(remoteId)
+            readingSessionsQueries.value.getReadingSessionByRemoteId(remoteId)
                 .executeAsOneOrNull()
-                ?.toRecentPage()
+                ?.toReadingSession()
         }
     }
 }
