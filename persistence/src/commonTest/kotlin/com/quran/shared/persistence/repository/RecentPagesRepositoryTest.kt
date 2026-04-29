@@ -48,7 +48,6 @@ class RecentPagesRepositoryTest {
             updatesToPersist = listOf(
                 RemoteModelMutation(
                     model = RemoteReadingSession(
-                        page = 42,
                         chapterNumber = 2,
                         verseNumber = 255,
                         lastUpdated = Instant.fromEpochMilliseconds(1000L).toPlatform()
@@ -57,10 +56,36 @@ class RecentPagesRepositoryTest {
                     mutation = Mutation.DELETED
                 )
             ),
-            localMutationsToClear = localMutations
+            localMutationIdsToClear = localMutations.map { it.localID }
         )
 
         assertTrue(repository.getRecentPages().isEmpty())
         assertNull(database.recent_pagesQueries.getRecentPageForPage(42L).executeAsOneOrNull())
+    }
+
+    @Test
+    fun `applyRemoteChanges persists remote recent page using matching local page`() = runTest {
+        val localRecentPage = repository.addRecentPage(42, 2, 255)
+
+        repository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                RemoteModelMutation(
+                    model = RemoteReadingSession(
+                        chapterNumber = 2,
+                        verseNumber = 255,
+                        lastUpdated = Instant.fromEpochMilliseconds(1000L).toPlatform()
+                    ),
+                    remoteID = "remote-recent-page-id",
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationIdsToClear = listOf(localRecentPage.localId)
+        )
+
+        val recentPages = repository.getRecentPages()
+        assertEquals(1, recentPages.size)
+        assertEquals(42, recentPages.single().page)
+        assertEquals(2, recentPages.single().chapterNumber)
+        assertEquals(255, recentPages.single().verseNumber)
     }
 }

@@ -4,8 +4,10 @@ import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
-import com.quran.shared.syncengine.conflict.ConflictResolutionResult
 import com.quran.shared.syncengine.conflict.ConflictDetectionResult
+import com.quran.shared.syncengine.conflict.ConflictResolutionResult
+import com.quran.shared.syncengine.conflict.ReadingSessionsConflictDetector
+import com.quran.shared.syncengine.conflict.ReadingSessionsConflictResolver
 import com.quran.shared.syncengine.conflict.ResourceConflict
 import com.quran.shared.syncengine.model.SyncReadingSession
 import kotlinx.serialization.json.JsonObject
@@ -32,17 +34,13 @@ internal class ReadingSessionsSyncAdapter(
         val localMutations = configurations.localDataFetcher.fetchLocalMutations(lastModificationDate)
         val parsedRemote = parseRemoteMutations(remoteMutations)
 
-        // Reading sessions usually don't need complex preprocessing like bookmarks
         val conflictDetection = detectConflicts(parsedRemote, localMutations)
         val conflictResolution = resolveConflicts(conflictDetection.conflicts)
 
-        val mutationsToPush = conflictDetection.nonConflictingLocalMutations + conflictResolution.mutationsToPush
-        val mutationsToPersist = conflictDetection.nonConflictingRemoteMutations + conflictResolution.mutationsToPersist
-
         return ReadingSessionsResourceSyncPlan(
             localMutationsToClear = localMutations,
-            remoteMutationsToPersist = mutationsToPersist,
-            localMutationsToPush = mutationsToPush
+            remoteMutationsToPersist = conflictDetection.nonConflictingRemoteMutations + conflictResolution.mutationsToPersist,
+            localMutationsToPush = conflictDetection.nonConflictingLocalMutations + conflictResolution.mutationsToPush
         )
     }
 
@@ -81,16 +79,13 @@ internal class ReadingSessionsSyncAdapter(
         remote: List<RemoteModelMutation<SyncReadingSession>>,
         local: List<LocalModelMutation<SyncReadingSession>>
     ): ConflictDetectionResult<SyncReadingSession> {
-        // Reading sessions are usually last-write-wins by modified_at
-        val conflictDetector = ConflictDetector(remote, local)
-        return conflictDetector.getConflicts()
+        return ReadingSessionsConflictDetector(remote, local).getConflicts()
     }
 
     private fun resolveConflicts(
         conflicts: List<ResourceConflict<SyncReadingSession>>
     ): ConflictResolutionResult<SyncReadingSession> {
-        val resolver = ConflictResolver(conflicts)
-        return resolver.resolve()
+        return ReadingSessionsConflictResolver(conflicts).resolve()
     }
 
     private fun mapPushedMutations(
@@ -142,7 +137,6 @@ private fun SyncMutation.toSyncReadingSession(logger: Logger): SyncReadingSessio
 
     return SyncReadingSession(
         id = id,
-        page = 0, // Page is local convenience, not synced
         chapterNumber = sura,
         verseNumber = ayah,
         lastModified = Instant.fromEpochMilliseconds(timestamp ?: 0)

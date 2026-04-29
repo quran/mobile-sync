@@ -79,25 +79,38 @@ class RecentPagesRepositoryImpl(
 
     override suspend fun applyRemoteChanges(
         updatesToPersist: List<RemoteModelMutation<RemoteReadingSession>>,
-        localMutationsToClear: List<LocalModelMutation<RecentPage>>
+        localMutationIdsToClear: List<String>
     ) {
-        logger.i { "Applying remote changes for recent pages: updates=${updatesToPersist.size}, toClear=${localMutationsToClear.size}" }
+        logger.i {
+            "Applying remote changes for recent pages: updates=${updatesToPersist.size}, " +
+                "toClear=${localMutationIdsToClear.size}"
+        }
         return withContext(Dispatchers.IO) {
             database.transaction {
-                // Clear local mutations
-                localMutationsToClear.forEach { local ->
-                    recentPagesQueries.value.clearLocalMutationFor(id = local.localID.toLong())
-                }
-
                 // Apply remote updates
                 updatesToPersist.forEach { remote ->
                     when (remote.mutation) {
                         Mutation.CREATED, Mutation.MODIFIED -> {
                             val model = remote.model
+                            val existingPage = recentPagesQueries.value.getRecentPageByRemoteId(remote.remoteID)
+                                .executeAsOneOrNull()
+                                ?: recentPagesQueries.value.getRecentPages()
+                                    .executeAsList()
+                                    .firstOrNull { record ->
+                                        record.first_ayah_sura?.toInt() == model.chapterNumber &&
+                                            record.first_ayah_verse?.toInt() == model.verseNumber
+                                    }
+                            if (existingPage == null) {
+                                logger.w {
+                                    "Skipping reading session mutation without local page match: " +
+                                        "remoteId=${remote.remoteID}, chapter=${model.chapterNumber}, verse=${model.verseNumber}"
+                                }
+                                return@forEach
+                            }
                             val updatedAt = model.lastUpdated.fromPlatform().toEpochMilliseconds()
                             recentPagesQueries.value.persistRemoteRecentPage(
                                 remote_id = remote.remoteID,
-                                page = model.page.toLong(),
+                                page = existingPage.page,
                                 first_ayah_sura = model.chapterNumber.toLong(),
                                 first_ayah_verse = model.verseNumber.toLong(),
                                 created_at = updatedAt,
@@ -108,6 +121,11 @@ class RecentPagesRepositoryImpl(
                             recentPagesQueries.value.hardDeleteRecentPageFor(remoteID = remote.remoteID)
                         }
                     }
+                }
+
+                // Clear local mutations after remote upserts so newly-synced rows keep their remote IDs.
+                localMutationIdsToClear.forEach { localId ->
+                    recentPagesQueries.value.clearLocalMutationFor(id = localId.toLong())
                 }
             }
         }

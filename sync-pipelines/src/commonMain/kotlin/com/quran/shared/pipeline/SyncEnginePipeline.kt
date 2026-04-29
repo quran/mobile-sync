@@ -90,7 +90,8 @@ class SyncEnginePipeline(
         )
         val readingSessionsConf = ReadingSessionsSynchronizationConfigurations(
             localModificationDateFetcher = localModificationDateFetcher,
-            resultNotifier = ReadingSessionsResultReceiver(recentPagesRepository, callback),
+            resultNotifier = ReadingSessionsResultReceiver(repository = recentPagesRepository, callback = callback
+            ),
             localDataFetcher = ReadingSessionsRepositoryDataFetcher(recentPagesRepository)
         )
         val syncClient = SynchronizationClientBuilder.build(
@@ -454,21 +455,13 @@ private class ReadingSessionsResultReceiver(
                 mutation = remoteMutation.mutation
             )
         }
-        val mappedLocals = processedLocalMutations.map { localMutation ->
-            LocalModelMutation(
-                model = localMutation.model.toPersistence(),
-                localID = localMutation.localID,
-                remoteID = localMutation.remoteID,
-                mutation = localMutation.mutation
-            )
-        }
 
         Logger.i {
             "Persisting ${mappedRemotes.count()} reading session remote updates, " +
-                "and clearing ${mappedLocals.count()} local updates."
+                "and clearing ${processedLocalMutations.count()} local updates."
         }
 
-        repository.applyRemoteChanges(mappedRemotes, mappedLocals)
+        repository.applyRemoteChanges(mappedRemotes, processedLocalMutations.map { it.localID })
         callback.synchronizationDone(newToken)
     }
 }
@@ -698,26 +691,14 @@ private fun ayahIdToSuraAyah(ayahId: Long): NoteAyah? {
 private fun RecentPage.toSyncEngine(): SyncReadingSession {
     return SyncReadingSession(
         id = localId,
-        page = page,
         chapterNumber = chapterNumber,
         verseNumber = verseNumber,
         lastModified = lastUpdated.fromPlatform()
     )
 }
 
-private fun SyncReadingSession.toPersistence(): RecentPage {
-    return RecentPage(
-        page = page,
-        chapterNumber = chapterNumber,
-        verseNumber = verseNumber,
-        lastUpdated = lastModified.toPlatform(),
-        localId = id
-    )
-}
-
 private fun SyncReadingSession.toRemoteInput(): RemoteReadingSession {
     return RemoteReadingSession(
-        page = page,
         chapterNumber = chapterNumber,
         verseNumber = verseNumber,
         lastUpdated = lastModified.toPlatform()

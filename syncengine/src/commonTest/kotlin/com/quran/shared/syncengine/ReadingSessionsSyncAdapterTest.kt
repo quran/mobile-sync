@@ -17,7 +17,6 @@ class ReadingSessionsSyncAdapterTest {
         val localMutation = LocalModelMutation<SyncReadingSession>(
             model = SyncReadingSession(
                 id = "local-1",
-                page = 12,
                 chapterNumber = 2,
                 verseNumber = 255,
                 lastModified = Instant.fromEpochMilliseconds(1000)

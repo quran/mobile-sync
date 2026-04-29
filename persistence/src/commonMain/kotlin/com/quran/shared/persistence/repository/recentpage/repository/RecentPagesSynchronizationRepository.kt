@@ -9,7 +9,7 @@ interface RecentPagesSynchronizationRepository {
     suspend fun fetchMutatedRecentPages(): List<LocalModelMutation<RecentPage>>
     suspend fun applyRemoteChanges(
         updatesToPersist: List<RemoteModelMutation<RemoteReadingSession>>,
-        localMutationsToClear: List<LocalModelMutation<RecentPage>>
+        localMutationIdsToClear: List<String>
     )
     suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean>
     suspend fun fetchRecentPageByRemoteId(remoteId: String): RecentPage?
