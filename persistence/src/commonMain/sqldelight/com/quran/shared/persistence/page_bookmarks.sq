@@ -82,12 +82,6 @@ addNewReadingBookmark {
 insertBookmarkIfMissing {
   INSERT OR IGNORE INTO page_bookmark (remote_id, page, is_reading, is_edited, deleted)
   VALUES (NULL, :page, :is_reading, 0, 0);
-  UPDATE page_bookmark
-  SET is_reading = :is_reading,
-    is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
-    deleted = 0,
-    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
-  WHERE page = :page AND (deleted = 1 OR is_reading != :is_reading);
 }
 
 -- TODO: Rename

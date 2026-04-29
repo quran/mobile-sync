@@ -7,6 +7,7 @@ import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.TestDatabaseDriver
 import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepositoryImpl
+import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.toPlatform
 import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
@@ -105,5 +106,45 @@ class CollectionBookmarksRepositoryTest {
             createdBookmark.is_reading,
             "Remote collection sync should insert missing page bookmarks as non-reading."
         )
+    }
+
+    @Test
+    fun `insertBookmarkIfMissing keeps existing reading page bookmark unchanged`() = runTest {
+        database.page_bookmarksQueries.addNewReadingBookmark(page = 42L)
+        val before = database.page_bookmarksQueries.getBookmarkForPage(42L).executeAsOne()
+        assertEquals(1L, before.is_reading)
+
+        database.page_bookmarksQueries.insertBookmarkIfMissing(page = 42L, is_reading = 0L)
+
+        val after = database.page_bookmarksQueries.getBookmarkForPage(42L).executeAsOne()
+        assertEquals(1L, after.is_reading)
+        assertEquals(before.local_id, after.local_id)
+    }
+
+    @Test
+    fun `insertBookmarkIfMissing keeps existing reading ayah bookmark unchanged`() = runTest {
+        val sura = 2L
+        val ayah = 255L
+        val ayahId = QuranData.getAyahId(sura.toInt(), ayah.toInt())
+
+        database.ayah_bookmarksQueries.addNewReadingBookmark(
+            ayah_id = ayahId.toLong(),
+            sura = sura,
+            ayah = ayah
+        )
+
+        val before = database.ayah_bookmarksQueries.getBookmarkForAyah(sura, ayah).executeAsOne()
+        assertEquals(1L, before.is_reading)
+
+        database.ayah_bookmarksQueries.insertBookmarkIfMissing(
+            ayah_id = ayahId.toLong(),
+            sura = sura,
+            ayah = ayah,
+            is_reading = 0L
+        )
+
+        val after = database.ayah_bookmarksQueries.getBookmarkForAyah(sura, ayah).executeAsOne()
+        assertEquals(1L, after.is_reading)
+        assertEquals(before.local_id, after.local_id)
     }
 }

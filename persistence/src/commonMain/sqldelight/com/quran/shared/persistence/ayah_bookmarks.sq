@@ -72,12 +72,6 @@ addNewReadingBookmark {
 insertBookmarkIfMissing {
   INSERT OR IGNORE INTO ayah_bookmark (remote_id, ayah_id, sura, ayah, is_reading, is_edited, deleted)
   VALUES (NULL, :ayah_id, :sura, :ayah, :is_reading, 0, 0);
-  UPDATE ayah_bookmark
-  SET is_reading = :is_reading,
-    is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
-    deleted = 0,
-    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
-  WHERE sura = :sura AND ayah = :ayah AND (deleted = 1 OR is_reading != :is_reading);
 }
 
 getUnsyncedBookmarks:
