@@ -8,13 +8,13 @@ import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionBookmark
 import com.quran.shared.persistence.model.CollectionWithBookmarks
 import com.quran.shared.persistence.model.Note
+import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepository
 import com.quran.shared.persistence.repository.PersistenceResetRepository
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepository
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepository
 import com.quran.shared.persistence.repository.note.repository.NotesRepository
-import com.quran.shared.persistence.repository.recentpage.repository.RecentPagesRepository
-import com.quran.shared.persistence.model.RecentPage
+import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepository
 import com.quran.shared.syncengine.AuthenticationDataFetcher
 import com.quran.shared.syncengine.LocalModificationDateFetcher
 import com.quran.shared.syncengine.SynchronizationClient
@@ -71,7 +71,7 @@ class SyncService(
     private val collectionBookmarksRepository =
         pipeline.collectionBookmarksRepository as CollectionBookmarksRepository
     private val notesRepository = pipeline.notesRepository as NotesRepository
-    private val recentPagesRepository = pipeline.recentPagesRepository as RecentPagesRepository
+    private val readingSessionsRepository = pipeline.readingSessionsRepository as ReadingSessionsRepository
 
     /**
      * Flow of all bookmarks for the UI to observe.
@@ -107,10 +107,10 @@ class SyncService(
     val notes: Flow<List<Note>> get() = notesRepository.getNotesFlow()
 
     /**
-     * Flow of all recent pages for the UI to observe.
+     * Flow of all reading sessions for the UI to observe.
      */
     @NativeCoroutines
-    val recentPages: Flow<List<RecentPage>> get() = recentPagesRepository.getRecentPagesFlow()
+    val readingSessions: Flow<List<ReadingSession>> get() = readingSessionsRepository.getReadingSessionsFlow()
 
     init {
         val dateFetcher = SettingsLocalModificationDateFetcher(settings)
@@ -222,6 +222,18 @@ class SyncService(
     }
 
     @NativeCoroutines
+    suspend fun addReadingSession(chapterNumber: Int, verseNumber: Int): ReadingSession {
+        try {
+            val readingSession = readingSessionsRepository.addReadingSession(chapterNumber, verseNumber)
+            triggerSync()
+            return readingSession
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to add reading session" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
     suspend fun deleteReadingBookmark(): Boolean {
         try {
             val deleted = bookmarksRepository.deleteReadingBookmark()
@@ -314,18 +326,6 @@ class SyncService(
             triggerSync()
         } catch (e: Exception) {
             Logger.e(e) { "Failed to delete note" }
-            throw e
-        }
-    }
-
-    @NativeCoroutines
-    suspend fun addRecentPage(page: Int, firstAyahSura: Int, firstAyahVerse: Int): RecentPage {
-        try {
-            val recentPage = recentPagesRepository.addRecentPage(page, firstAyahSura, firstAyahVerse)
-            triggerSync()
-            return recentPage
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to add recent page" }
             throw e
         }
     }

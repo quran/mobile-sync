@@ -6,7 +6,7 @@ import com.quran.shared.pipeline.SyncService
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionWithBookmarks
 import com.quran.shared.persistence.model.Note
-import com.quran.shared.persistence.model.RecentPage
+import com.quran.shared.persistence.model.ReadingSession
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -23,7 +23,7 @@ class SyncViewModel(
         service.collectionsWithBookmarks
     
     val notes: Flow<List<Note>> = service.notes
-    val recentPages: Flow<List<RecentPage>> = service.recentPages
+    val readingSessions: Flow<List<ReadingSession>> = service.readingSessions
 
     suspend fun login() {
         authService.login()
@@ -37,8 +37,8 @@ class SyncViewModel(
         service.logout(clearLocalData)
     }
 
-    suspend fun addRecentPage(page: Int, firstAyahSura: Int, firstAyahVerse: Int): RecentPage {
-        return service.addRecentPage(page, firstAyahSura, firstAyahVerse)
+    suspend fun addReadingSession(chapterNumber: Int, verseNumber: Int): ReadingSession {
+        return service.addReadingSession(chapterNumber, verseNumber)
     }
 
     fun clearError() {

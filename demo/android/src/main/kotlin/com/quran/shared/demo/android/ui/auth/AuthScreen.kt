@@ -14,7 +14,7 @@ import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionWithBookmarks
 import com.quran.shared.persistence.model.Note
-import com.quran.shared.persistence.model.RecentPage
+import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomAyah
 import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomPage
 import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomSura
@@ -33,7 +33,7 @@ fun AuthScreen(
     val bookmarks by viewModel.bookmarks.collectAsState(initial = emptyList())
     val collectionsWithBookmarks by viewModel.collectionsWithBookmarks.collectAsState(initial = emptyList())
     val notes by viewModel.notes.collectAsState(initial = emptyList())
-    val recentPages by viewModel.recentPages.collectAsState(initial = emptyList())
+    val readingSessions by viewModel.readingSessions.collectAsState(initial = emptyList())
 
     val scope = rememberCoroutineScope()
     Box(
@@ -197,14 +197,13 @@ fun AuthScreen(
                                 }
                             }
                         },
-                        recentPages = recentPages,
-                        onAddRecentPage = {
-                            val page = getRandomPage()
+                        readingSessions = readingSessions,
+                        onAddReadingSession = {
                             val sura = getRandomSura()
                             val ayah = getRandomAyah(sura)
                             scope.launch {
                                 try {
-                                    viewModel.addRecentPage(page, sura, ayah)
+                                    viewModel.addReadingSession(sura, ayah)
                                 } catch (e: Exception) {
                                 }
                             }
@@ -250,11 +249,11 @@ private fun SuccessContent(
     onDeleteNote: (String) -> Unit,
     onLogout: (Boolean) -> Unit,
     onAddRandomBookmarkToCollection: (String) -> Unit,
-    recentPages: List<RecentPage>,
-    onAddRecentPage: () -> Unit
+    readingSessions: List<ReadingSession>,
+    onAddReadingSession: () -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Bookmarks", "Collections", "Notes", "Recent")
+    val tabs = listOf("Bookmarks", "Collections", "Notes", "Reading")
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -332,9 +331,9 @@ private fun SuccessContent(
                     onDeleteNote = onDeleteNote
                 )
 
-                3 -> RecentPagesTab(
-                    recentPages = recentPages,
-                    onAddRecentPage = onAddRecentPage
+                3 -> ReadingSessionsTab(
+                    readingSessions = readingSessions,
+                    onAddReadingSession = onAddReadingSession
                 )
             }
         }

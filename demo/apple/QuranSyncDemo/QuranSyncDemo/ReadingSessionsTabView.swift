@@ -1,32 +1,29 @@
 import SwiftUI
 import Shared
 
-struct RecentPagesTabView: View {
+struct ReadingSessionsTabView: View {
     @ObservedObject var viewModel: SyncViewModel
     
     var body: some View {
         NavigationView {
             Group {
-                if viewModel.recentPages.isEmpty {
+                if viewModel.readingSessions.isEmpty {
                     VStack {
                         Spacer()
-                        Text("No recent pages yet.")
+                        Text("No reading sessions yet.")
                             .foregroundColor(.secondary)
                         Spacer()
                     }
                 } else {
                     List {
-                        ForEach(viewModel.recentPages.indices, id: \.self) { index in
-                            let page = viewModel.recentPages[index]
+                        ForEach(viewModel.readingSessions.indices, id: \.self) { index in
+                            let readingSession = viewModel.readingSessions[index]
                             HStack {
                                 Image(systemName: "clock")
                                     .foregroundColor(.blue)
                                 VStack(alignment: .leading) {
-                                    Text("Page \(page.page)")
+                                    Text("Surah \(readingSession.chapterNumber), Ayah \(readingSession.verseNumber)")
                                         .font(.body)
-                                    Text("First Ayah: \(page.chapterNumber):\(page.verseNumber)")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
                                 }
                             }
                         }
@@ -34,20 +31,15 @@ struct RecentPagesTabView: View {
                     .listStyle(.plain)
                 }
             }
-            .navigationTitle("Recent Pages")
+            .navigationTitle("Reading Sessions")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
                         Task {
-                            let page = Int32.random(in: 1...604)
                             let sura = Int32.random(in: 1...114)
                             let ayah = Int32.random(in: 1...7)
-                            _ = await viewModel.addRecentPage(
-                                page: page,
-                                firstAyahSura: sura,
-                                firstAyahVerse: ayah
-                            )
+                            _ = await viewModel.addReadingSession(chapterNumber: sura, verseNumber: ayah)
                         }
                     }) {
                         Image(systemName: "plus")

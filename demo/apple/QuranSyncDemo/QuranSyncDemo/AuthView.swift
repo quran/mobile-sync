@@ -134,9 +134,9 @@ struct SuccessTabView: View {
                     }
                     .tag(2)
                     
-                RecentPagesTabView(viewModel: viewModel)
+                ReadingSessionsTabView(viewModel: viewModel)
                     .tabItem {
-                        Label("Recent", systemImage: "clock")
+                        Label("Reading", systemImage: "clock")
                     }
                     .tag(3)
             }

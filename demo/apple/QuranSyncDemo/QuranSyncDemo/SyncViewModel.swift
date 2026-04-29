@@ -17,7 +17,7 @@ class SyncViewModel: ObservableObject {
     @Published var bookmarks: [Shared.Bookmark] = []
     @Published var collectionsWithBookmarks: [Shared.CollectionWithBookmarks] = []
     @Published var notes: [Shared.Note_] = []
-    @Published var recentPages: [Shared.RecentPage] = []
+    @Published var readingSessions: [Shared.ReadingSession] = []
 
     init(authService: AuthService, syncService: SyncService) {
         self.authService = authService
@@ -91,14 +91,14 @@ class SyncViewModel: ObservableObject {
                     return
                 }
                 do {
-                    for try await list in asyncSequence(for: syncService.recentPages) {
+                    for try await list in asyncSequence(for: syncService.readingSessions) {
                         guard let self = self else {
                             break
                         }
-                        self.recentPages = list as [Shared.RecentPage]
+                        self.readingSessions = list as [Shared.ReadingSession]
                     }
                 } catch {
-                    print("SyncViewModel: Error observing recent pages: \(error)")
+                    print("SyncViewModel: Error observing reading sessions: \(error)")
                 }
             }
         }
@@ -221,17 +221,11 @@ class SyncViewModel: ObservableObject {
         }
     }
 
-    func addRecentPage(page: Int32, firstAyahSura: Int32, firstAyahVerse: Int32) async -> Shared.RecentPage? {
+    func addReadingSession(chapterNumber: Int32, verseNumber: Int32) async -> Shared.ReadingSession? {
         do {
-            return try await asyncFunction(
-                for: syncService.addRecentPage(
-                    page: page,
-                    firstAyahSura: firstAyahSura,
-                    firstAyahVerse: firstAyahVerse
-                )
-            )
+            return try await asyncFunction(for: syncService.addReadingSession(chapterNumber: chapterNumber, verseNumber: verseNumber))
         } catch {
-            print("SyncViewModel: Failed to add recent page: \(error)")
+            print("SyncViewModel: Failed to add reading session: \(error)")
             return nil
         }
     }

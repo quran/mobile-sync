@@ -10,12 +10,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.quran.shared.persistence.model.RecentPage
+import com.quran.shared.persistence.model.ReadingSession
 
 @Composable
-fun RecentPagesTab(
-    recentPages: List<RecentPage>,
-    onAddRecentPage: () -> Unit
+fun ReadingSessionsTab(
+    readingSessions: List<ReadingSession>,
+    onAddReadingSession: () -> Unit
 ) {
     Column {
         Row(
@@ -24,26 +24,26 @@ fun RecentPagesTab(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Recent Pages",
+                text = "Reading Sessions",
                 style = MaterialTheme.typography.titleLarge
             )
             
-            Button(onClick = onAddRecentPage) {
+            Button(onClick = onAddReadingSession) {
                 Text("Add Random")
             }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        if (recentPages.isEmpty()) {
-            EmptyListMessage("No recent pages yet.")
+        if (readingSessions.isEmpty()) {
+            EmptyListMessage("No reading sessions yet.")
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(recentPages) { page ->
-                    RecentPageItem(page = page)
+                items(readingSessions) { readingSession ->
+                    ReadingSessionItem(readingSession = readingSession)
                 }
             }
         }
@@ -51,7 +51,7 @@ fun RecentPagesTab(
 }
 
 @Composable
-fun RecentPageItem(page: RecentPage) {
+fun ReadingSessionItem(readingSession: ReadingSession) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.small,
@@ -71,13 +71,8 @@ fun RecentPageItem(page: RecentPage) {
             
             Column {
                 Text(
-                    text = "Page ${page.page}",
+                    text = "Surah ${readingSession.chapterNumber}, Ayah ${readingSession.verseNumber}",
                     style = MaterialTheme.typography.bodyLarge
-                )
-                Text(
-                    text = "First Ayah: ${page.chapterNumber}:${page.verseNumber}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
