@@ -105,8 +105,7 @@ class RecentPagesRepositoryImpl(
                             )
                         }
                         Mutation.DELETED -> {
-                            // Logic for remote deletion if needed, but usually recent pages are upserted.
-                            // The plan mentions sync payload parse/write.
+                            recentPagesQueries.value.hardDeleteRecentPageFor(remoteID = remote.remoteID)
                         }
                     }
                 }

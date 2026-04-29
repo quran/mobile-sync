@@ -64,6 +64,10 @@ persistRemoteRecentPage {
   WHERE page = :page;
 }
 
+hardDeleteRecentPageFor {
+  DELETE FROM recent_page WHERE remote_id = :remoteID;
+}
+
 clearLocalMutationFor {
   DELETE FROM recent_page WHERE remote_id IS NULL AND local_id = :id;
   UPDATE recent_page

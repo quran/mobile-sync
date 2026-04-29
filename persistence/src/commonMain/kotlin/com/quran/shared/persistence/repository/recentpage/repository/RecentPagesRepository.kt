@@ -2,6 +2,7 @@ package com.quran.shared.persistence.repository.recentpage.repository
 
 import com.quran.shared.persistence.model.RecentPage
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
+import kotlinx.coroutines.flow.Flow
 
 interface RecentPagesRepository {
     /**
@@ -22,6 +23,12 @@ interface RecentPagesRepository {
      */
     @NativeCoroutines
     suspend fun addRecentPage(page: Int, firstAyahSura: Int, firstAyahVerse: Int): RecentPage
+
+    /**
+     * Returns a flow of all recent pages for observation.
+     */
+    @NativeCoroutines
+    fun getRecentPagesFlow(): Flow<List<RecentPage>>
 
     /**
      * Delete a page from the recent pages list.
