@@ -97,22 +97,11 @@ class ReadingSessionsRepositoryImpl(
                     when (remote.mutation) {
                         Mutation.CREATED, Mutation.MODIFIED -> {
                             val model = remote.model
-                            val existingSession = readingSessionsQueries.value.getReadingSessionByRemoteId(remote.remoteID)
-                                .executeAsOneOrNull()
-                                ?: readingSessionsQueries.value.getReadingSessions()
-                                    .executeAsList()
-                                    .firstOrNull { record ->
-                                        record.chapter_number.toInt() == model.chapterNumber &&
-                                            record.verse_number.toInt() == model.verseNumber
-                                    }
-                            if (existingSession == null) {
-                                logger.w {
-                                    "Skipping reading session mutation without local session match: " +
-                                        "remoteId=${remote.remoteID}, chapter=${model.chapterNumber}, verse=${model.verseNumber}"
-                                }
-                                return@forEach
-                            }
                             val updatedAt = model.lastUpdated.fromPlatform().toEpochMilliseconds()
+                            logger.i {
+                                "Persisting remote reading session: remoteId=${remote.remoteID}, " +
+                                    "chapter=${model.chapterNumber}, verse=${model.verseNumber}"
+                            }
                             readingSessionsQueries.value.persistRemoteReadingSession(
                                 remote_id = remote.remoteID,
                                 chapter_number = model.chapterNumber.toLong(),

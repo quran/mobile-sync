@@ -86,4 +86,33 @@ class ReadingSessionsRepositoryTest {
         assertEquals(2, readingSessions.single().chapterNumber)
         assertEquals(255, readingSessions.single().verseNumber)
     }
+
+    @Test
+    fun `applyRemoteChanges persists remote reading session without local row`() = runTest {
+        repository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                RemoteModelMutation(
+                    model = RemoteReadingSession(
+                        chapterNumber = 2,
+                        verseNumber = 255,
+                        lastUpdated = Instant.fromEpochMilliseconds(1000L).toPlatform()
+                    ),
+                    remoteID = "remote-reading-session-id",
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationIdsToClear = emptyList()
+        )
+
+        val readingSessions = repository.getReadingSessions()
+        assertEquals(1, readingSessions.size)
+        assertEquals(2, readingSessions.single().chapterNumber)
+        assertEquals(255, readingSessions.single().verseNumber)
+        assertEquals(
+            "remote-reading-session-id",
+            database.reading_sessionsQueries.getReadingSessionForChapterVerse(2L, 255L)
+                .executeAsOne()
+                .remote_id
+        )
+    }
 }
