@@ -24,13 +24,8 @@ class AuthViewModel: ObservableObject {
         self.bookmarksRepository = bookmarksRepository
     }
 
-    func bookmarksSequence() -> any AsyncSequence<[Bookmark.PageBookmark], Error> {
-        // todo: PR comment create getPageBookmarks() method in the KMP library
-        return asyncSequence(for: bookmarksRepository.getBookmarksFlow()).map { bookmarks in
-            bookmarks.compactMap {
-                $0 as? Bookmark.PageBookmark
-            }
-        }
+    func bookmarksSequence() -> any AsyncSequence<[Bookmark], Error> {
+        return asyncSequence(for: bookmarksRepository.getBookmarksFlow())
     }
 
     func observeAuthState() async {

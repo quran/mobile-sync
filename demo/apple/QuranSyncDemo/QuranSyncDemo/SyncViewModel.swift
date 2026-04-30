@@ -108,15 +108,6 @@ class SyncViewModel: ObservableObject {
         syncService.triggerSync()
     }
 
-    func addBookmark(page: Int32) async -> Shared.Bookmark? {
-        do {
-            return try await asyncFunction(for: syncService.addBookmark(page: page))
-        } catch {
-            print("SyncViewModel: Failed to add page bookmark: \(error)")
-            return nil
-        }
-    }
-
     func addBookmark(sura: Int32, ayah: Int32) async -> Shared.Bookmark? {
         do {
             return try await asyncFunction(for: syncService.addBookmark(sura: sura, ayah: ayah))
@@ -203,16 +194,7 @@ class SyncViewModel: ObservableObject {
         try await asyncFunction(for: authService.loginWithReauthentication())
     }
 
-    func addReadingBookmark(page: Int32) async -> Shared.Bookmark? {
-        do {
-            return try await asyncFunction(for: syncService.addReadingBookmark(page: page))
-        } catch {
-            print("SyncViewModel: Failed to add current reading page bookmark: \(error)")
-            return nil
-        }
-    }
-
-    func addReadingBookmark(sura: Int32, ayah: Int32) async -> Shared.Bookmark? {
+    func addReadingBookmark(sura: Int32, ayah: Int32) async -> Shared.ReadingBookmark? {
         do {
             return try await asyncFunction(for: syncService.addReadingBookmark(sura: sura, ayah: ayah))
         } catch {

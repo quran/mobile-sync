@@ -10,7 +10,7 @@ interface BookmarksSynchronizationRepository {
      * Returns a list of bookmarks that have been mutated locally (created or deleted)
      * and need to be synchronized with the remote server.
      */
-    suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<Bookmark>>
+    suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<Bookmark.AyahBookmark>>
 
     /**
      * Persists the remote state of bookmarks after a successful synchronization operation.
@@ -24,11 +24,11 @@ interface BookmarksSynchronizationRepository {
      * bookmark. These must be input from the list returned by `fetchMutatedBookmarks`.
      */
     suspend fun applyRemoteChanges(
-        updatesToPersist: List<RemoteModelMutation<RemoteBookmark>>,
-        localMutationsToClear: List<LocalModelMutation<Bookmark>>
+        updatesToPersist: List<RemoteModelMutation<RemoteBookmark.Ayah>>,
+        localMutationsToClear: List<LocalModelMutation<Bookmark.AyahBookmark>>
     )
 
     suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean>
 
-    suspend fun fetchBookmarkByRemoteId(remoteId: String): Bookmark?
+    suspend fun fetchBookmarkByRemoteId(remoteId: String): Bookmark.AyahBookmark?
 }

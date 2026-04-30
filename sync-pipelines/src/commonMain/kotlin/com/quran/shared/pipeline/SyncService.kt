@@ -8,12 +8,14 @@ import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionBookmark
 import com.quran.shared.persistence.model.CollectionWithBookmarks
 import com.quran.shared.persistence.model.Note
+import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepository
 import com.quran.shared.persistence.repository.PersistenceResetRepository
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepository
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepository
 import com.quran.shared.persistence.repository.note.repository.NotesRepository
+import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksRepository
 import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepository
 import com.quran.shared.syncengine.AuthenticationDataFetcher
 import com.quran.shared.syncengine.LocalModificationDateFetcher
@@ -67,6 +69,7 @@ class SyncService(
     // Cast the synchronization repository to the transactional repository
     // This allows the Service to be the single entry point for UI
     private val bookmarksRepository = pipeline.bookmarksRepository as BookmarksRepository
+    private val readingBookmarksRepository = pipeline.readingBookmarksRepository as ReadingBookmarksRepository
     private val collectionsRepository = pipeline.collectionsRepository as CollectionsRepository
     private val collectionBookmarksRepository =
         pipeline.collectionBookmarksRepository as CollectionBookmarksRepository
@@ -78,6 +81,9 @@ class SyncService(
      */
     @NativeCoroutines
     val bookmarks: Flow<List<Bookmark>> get() = bookmarksRepository.getBookmarksFlow()
+
+    @NativeCoroutines
+    val readingBookmark: Flow<ReadingBookmark?> get() = readingBookmarksRepository.getReadingBookmarkFlow()
 
     /**
      * Flow of all collections with their bookmarks for the UI to observe.
@@ -174,18 +180,6 @@ class SyncService(
     }
 
     @NativeCoroutines
-    suspend fun addBookmark(page: Int): Bookmark {
-        try {
-            val bookmark = bookmarksRepository.addBookmark(page)
-            triggerSync()
-            return bookmark
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to add page bookmark" }
-            throw e
-        }
-    }
-
-    @NativeCoroutines
     suspend fun addBookmark(sura: Int, ayah: Int): Bookmark {
         try {
             val bookmark = bookmarksRepository.addBookmark(sura, ayah)
@@ -198,21 +192,9 @@ class SyncService(
     }
 
     @NativeCoroutines
-    suspend fun addReadingBookmark(page: Int): Bookmark {
+    suspend fun addReadingBookmark(sura: Int, ayah: Int): ReadingBookmark {
         try {
-            val bookmark = bookmarksRepository.addReadingBookmark(page)
-            triggerSync()
-            return bookmark
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to add reading page bookmark" }
-            throw e
-        }
-    }
-
-    @NativeCoroutines
-    suspend fun addReadingBookmark(sura: Int, ayah: Int): Bookmark {
-        try {
-            val bookmark = bookmarksRepository.addReadingBookmark(sura, ayah)
+            val bookmark = readingBookmarksRepository.addReadingBookmark(sura, ayah)
             triggerSync()
             return bookmark
         } catch (e: Exception) {
@@ -236,7 +218,7 @@ class SyncService(
     @NativeCoroutines
     suspend fun deleteReadingBookmark(): Boolean {
         try {
-            val deleted = bookmarksRepository.deleteReadingBookmark()
+            val deleted = readingBookmarksRepository.deleteReadingBookmark()
             if (deleted) {
                 triggerSync()
             }
@@ -250,13 +232,7 @@ class SyncService(
     @NativeCoroutines
     suspend fun deleteBookmark(bookmark: Bookmark): Unit {
         try {
-            when (bookmark) {
-                is Bookmark.PageBookmark -> bookmarksRepository.deleteBookmark(bookmark.page)
-                is Bookmark.AyahBookmark -> bookmarksRepository.deleteBookmark(
-                    bookmark.sura,
-                    bookmark.ayah
-                )
-            }
+            bookmarksRepository.deleteBookmark(bookmark.sura, bookmark.ayah)
             triggerSync()
         } catch (e: Exception) {
             Logger.e(e) { "Failed to delete bookmark" }

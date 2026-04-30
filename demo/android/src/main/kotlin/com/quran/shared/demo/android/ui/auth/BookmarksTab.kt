@@ -17,9 +17,7 @@ import com.quran.shared.persistence.model.Bookmark
 @Composable
 fun BookmarksTab(
     bookmarks: List<Bookmark>,
-    onAddPageBookmark: () -> Unit,
     onAddAyahBookmark: () -> Unit,
-    onAddReadingPageBookmark: () -> Unit,
     onAddReadingAyahBookmark: () -> Unit,
     onDeleteBookmark: (Bookmark) -> Unit
 ) {
@@ -35,12 +33,6 @@ fun BookmarksTab(
             )
             
             Row {
-                IconButton(onClick = onAddPageBookmark) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Add Page Bookmark"
-                    )
-                }
                 IconButton(onClick = onAddAyahBookmark) {
                     Icon(
                         imageVector = Icons.Default.Add,
@@ -48,14 +40,6 @@ fun BookmarksTab(
                         tint = MaterialTheme.colorScheme.secondary
                     )
                 }
-                IconButton(onClick = onAddReadingPageBookmark) {
-                    Icon(
-                        imageVector = Icons.Default.Bookmark,
-                        contentDescription = "Add Reading Bookmark",
-                        tint = MaterialTheme.colorScheme.tertiary
-                    )
-                }
-
                 IconButton(onClick = onAddReadingAyahBookmark) {
                     Icon(
                         imageVector = Icons.Default.Bookmark,
@@ -109,35 +93,10 @@ fun BookmarkItem(
             Spacer(modifier = Modifier.width(16.dp))
             
             Column(modifier = Modifier.weight(1f)) {
-                when (bookmark) {
-                    is Bookmark.PageBookmark -> {
-                        Text(
-                            text = "Page ${bookmark.page}",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                    }
-                    is Bookmark.AyahBookmark -> {
-                        Text(
-                            text = "Surah ${bookmark.sura}, Ayah ${bookmark.ayah}",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                    }
-                }
-                
-                if (bookmark.isReading) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Surface(
-                        color = MaterialTheme.colorScheme.tertiaryContainer,
-                        shape = MaterialTheme.shapes.extraSmall
-                    ) {
-                        Text(
-                            text = "READING",
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer
-                        )
-                    }
-                }
+                Text(
+                    text = "Surah ${bookmark.sura}, Ayah ${bookmark.ayah}",
+                    style = MaterialTheme.typography.bodyLarge
+                )
             }
 
             IconButton(onClick = onDelete) {

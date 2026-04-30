@@ -1,7 +1,9 @@
 package com.quran.shared.persistence.repository.bookmark.repository
 
+import com.quran.shared.mutations.LocalModelMutation
+import com.quran.shared.mutations.RemoteModelMutation
+import com.quran.shared.persistence.input.RemoteBookmark
 import com.quran.shared.persistence.model.Bookmark
-import com.quran.shared.persistence.input.BookmarkMigration
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
 import kotlinx.coroutines.flow.Flow
 
@@ -21,24 +23,6 @@ interface BookmarksRepository {
     fun getBookmarksFlow(): Flow<List<Bookmark>>
 
     /**
-     * Add a bookmark for a specific page.
-     *
-     * @param page the page number
-     * @return the [Bookmark.PageBookmark]
-     */
-    @NativeCoroutines
-    suspend fun addBookmark(page: Int): Bookmark.PageBookmark
-
-    /**
-     * Add a bookmark for a specific page and mark it as the current reading location.
-     *
-     * @param page the page number
-     * @return the [Bookmark.PageBookmark]
-     */
-    @NativeCoroutines
-    suspend fun addReadingBookmark(page: Int): Bookmark.PageBookmark
-
-    /**
      * Add a bookmark for a given sura and ayah.
      *
      * @param sura the sura number
@@ -46,48 +30,13 @@ interface BookmarksRepository {
      * @return the [Bookmark.AyahBookmark]
      */
     @NativeCoroutines
-    suspend fun addBookmark(sura: Int, ayah: Int): Bookmark
+    suspend fun addBookmark(sura: Int, ayah: Int): Bookmark.AyahBookmark
 
     /**
-     * Add a bookmark for a given sura and ayah and mark it as the current reading location.
-     *
-     * @param sura the sura number
-     * @param ayah the ayah number
-     * @return the [Bookmark.AyahBookmark]
-     */
-    @NativeCoroutines
-    suspend fun addReadingBookmark(sura: Int, ayah: Int): Bookmark
-
-    /**
-     * Delete the bookmark currently marked as the reading location.
-     */
-    @NativeCoroutines
-    suspend fun deleteReadingBookmark(): Boolean
-
-    /**
-     * Delete a bookmark for a specific page.
-     *
-     * @return a boolean denoting success
-     */
-    @NativeCoroutines
-    suspend fun deleteBookmark(page: Int): Boolean
-
-    /**
-     * Delete a bookmark for a sura and ayah.
+     * Delete a bookmark for a specific sura and ayah.
      *
      * @return a boolean denoting success
      */
     @NativeCoroutines
     suspend fun deleteBookmark(sura: Int, ayah: Int): Boolean
-
-    /**
-     * Migrates existing bookmarks to the new storage format.
-     * This method should only be called once during app initialization, after
-     * bookmarks are added and before any changes by the user are handled.
-     *
-     * @param bookmarks List of bookmarks to migrate
-     * @throws IllegalStateException if either bookmarks or mutations tables are not empty
-     */
-    @NativeCoroutines
-    suspend fun migrateBookmarks(bookmarks: List<BookmarkMigration>)
 }

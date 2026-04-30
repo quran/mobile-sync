@@ -16,7 +16,6 @@ import com.quran.shared.persistence.model.CollectionWithBookmarks
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomAyah
-import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomPage
 import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomSura
 import com.quran.shared.demo.android.ui.SyncViewModel
 import kotlinx.coroutines.launch
@@ -97,28 +96,12 @@ fun AuthScreen(
                         bookmarks = bookmarks,
                         collectionsWithBookmarks = collectionsWithBookmarks,
                         notes = notes,
-                        onAddPageBookmark = {
-                            scope.launch {
-                                try {
-                                    viewModel.addBookmark(getRandomPage())
-                                } catch (e: Exception) {
-                                }
-                            }
-                        },
                         onAddAyahBookmark = {
                             val sura = getRandomSura()
                             val ayah = getRandomAyah(sura)
                             scope.launch {
                                 try {
                                     viewModel.addBookmark(sura, ayah)
-                                } catch (e: Exception) {
-                                }
-                            }
-                        },
-                        onAddReadingPageBookmark = {
-                            scope.launch {
-                                try {
-                                    viewModel.addReadingBookmark(getRandomPage())
                                 } catch (e: Exception) {
                                 }
                             }
@@ -238,9 +221,7 @@ private fun SuccessContent(
     bookmarks: List<Bookmark>,
     collectionsWithBookmarks: List<CollectionWithBookmarks>,
     notes: List<Note>,
-    onAddPageBookmark: () -> Unit,
     onAddAyahBookmark: () -> Unit,
-    onAddReadingPageBookmark: () -> Unit,
     onAddReadingAyahBookmark: () -> Unit,
     onDeleteBookmark: (Bookmark) -> Unit,
     onAddCollection: (String) -> Unit,
@@ -311,9 +292,7 @@ private fun SuccessContent(
             when (selectedTab) {
                 0 -> BookmarksTab(
                     bookmarks = bookmarks,
-                    onAddPageBookmark = onAddPageBookmark,
                     onAddAyahBookmark = onAddAyahBookmark,
-                    onAddReadingPageBookmark = onAddReadingPageBookmark,
                     onAddReadingAyahBookmark = onAddReadingAyahBookmark,
                     onDeleteBookmark = onDeleteBookmark
                 )

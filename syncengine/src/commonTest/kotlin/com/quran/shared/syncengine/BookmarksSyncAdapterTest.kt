@@ -18,9 +18,10 @@ class BookmarksSyncAdapterTest {
     @Test
     fun `complete maps pushed mutations by order and uses local models`() = runTest {
         val localMutation = LocalModelMutation<SyncBookmark>(
-            model = SyncBookmark.PageBookmark(
+            model = SyncBookmark.AyahBookmark(
                 id = "local-1",
-                page = 12,
+                sura = 12,
+                ayah = 1,
                 isReading = true,
                 lastModified = Instant.fromEpochMilliseconds(1000)
             ),
@@ -89,7 +90,7 @@ class BookmarksSyncAdapterTest {
         val remote = assertNotNull(capturedRemote)
         assertEquals(1, remote.size)
         assertEquals("remote-123", remote[0].remoteID)
-        assertEquals("local-1", (remote[0].model as SyncBookmark.PageBookmark).id)
+        assertEquals("local-1", (remote[0].model as SyncBookmark.AyahBookmark).id)
 
         val local = assertNotNull(capturedLocal)
         assertEquals(1, local.size)

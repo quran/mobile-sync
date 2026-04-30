@@ -5,7 +5,7 @@ import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.syncengine.model.SyncBookmark
-import com.quran.shared.syncengine.model.SyncBookmark.PageBookmark
+import com.quran.shared.syncengine.PageBookmark
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runTest
@@ -394,10 +394,9 @@ class SynchronizationClientIntegrationTest {
 }
 
 private fun SyncBookmark.pageOrThrow(): Int =
-    (this as SyncBookmark.PageBookmark).page
+    (this as SyncBookmark.AyahBookmark).sura
 
 private fun SyncBookmark.idOrThrow(): String =
     when (this) {
-        is SyncBookmark.PageBookmark -> id
         is SyncBookmark.AyahBookmark -> id
     }

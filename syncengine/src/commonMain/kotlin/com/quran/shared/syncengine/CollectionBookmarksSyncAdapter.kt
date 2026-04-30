@@ -209,20 +209,6 @@ private suspend fun SyncMutation.toSyncCollectionBookmark(
         ?: data.stringOrNull("bookmark_id")
         ?: parseBookmarkId(resourceId, collectionId) ?: return null
     return when (normalizedType?.lowercase()) {
-        "page" -> {
-            val page = data.intOrNull("key")
-            if (page == null) {
-                logger.w { "Skipping collection bookmark mutation without page key: resourceId=$resourceId" }
-                null
-            } else {
-                SyncCollectionBookmark.PageBookmark(
-                    collectionId = collectionId,
-                    page = page,
-                    lastModified = lastModified,
-                    bookmarkId = bookmarkId
-                )
-            }
-        }
         "ayah" -> {
             val sura = data.intOrNull("key")
             val ayah = data.intOrNull("verseNumber")
@@ -243,13 +229,6 @@ private suspend fun SyncMutation.toSyncCollectionBookmark(
             if(localModel != null) {
                 logger.d { "Mapped unknown collection bookmark type using local data: resourceId=$localModel" }
                 when (localModel) {
-                    is SyncCollectionBookmark.PageBookmark ->
-                        SyncCollectionBookmark.PageBookmark(
-                            collectionId = collectionId,
-                            page = localModel.page,
-                            lastModified = lastModified,
-                            bookmarkId = bookmarkId
-                        )
                     is SyncCollectionBookmark.AyahBookmark -> SyncCollectionBookmark.AyahBookmark(
                         collectionId = collectionId,
                         sura = localModel.sura,
@@ -268,23 +247,14 @@ private suspend fun SyncMutation.toSyncCollectionBookmark(
 
 private fun SyncCollectionBookmark.toResourceData(): JsonObject {
     return when (this) {
-        is SyncCollectionBookmark.PageBookmark ->
-            buildJsonObject {
-                put("collectionId", collectionId)
-                put("type", "page")
-                put("key", page)
-                put("mushaf", 1)
-                bookmarkId?.let { put("bookmarkId", it) }
-            }
-        is SyncCollectionBookmark.AyahBookmark ->
-            buildJsonObject {
-                put("collectionId", collectionId)
-                put("type", "ayah")
-                put("key", sura)
-                put("verseNumber", ayah)
-                put("mushaf", 1)
-                bookmarkId?.let { put("bookmarkId", it) }
-            }
+        is SyncCollectionBookmark.AyahBookmark -> buildJsonObject {
+            put("collectionId", collectionId)
+            put("type", "ayah")
+            put("key", sura)
+            put("verseNumber", ayah)
+            put("mushaf", 1)
+            bookmarkId?.let { put("bookmarkId", it) }
+        }
     }
 }
 

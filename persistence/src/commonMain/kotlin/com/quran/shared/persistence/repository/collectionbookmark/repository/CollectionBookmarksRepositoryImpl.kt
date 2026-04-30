@@ -33,7 +33,6 @@ class CollectionBookmarksRepositoryImpl(
 
     private val logger = Logger.withTag("CollectionBookmarksRepository")
     private val bookmarkCollectionQueries = lazy { database.bookmark_collectionsQueries }
-    private val pageBookmarkQueries = lazy { database.page_bookmarksQueries }
     private val ayahBookmarkQueries = lazy { database.ayah_bookmarksQueries }
     private val collectionQueries = lazy { database.collectionsQueries }
 
@@ -46,7 +45,6 @@ class CollectionBookmarksRepositoryImpl(
                     toCollectionBookmark(
                         bookmarkType = record.bookmark_type,
                         bookmarkLocalId = record.bookmark_local_id,
-                        page = record.page,
                         sura = record.sura,
                         ayah = record.ayah,
                         collectionLocalId = record.collection_local_id,
@@ -69,7 +67,6 @@ class CollectionBookmarksRepositoryImpl(
                     toCollectionBookmark(
                         bookmarkType = record.bookmark_type,
                         bookmarkLocalId = record.bookmark_local_id,
-                        page = record.page,
                         sura = record.sura,
                         ayah = record.ayah,
                         collectionLocalId = record.collection_local_id,
@@ -136,7 +133,6 @@ class CollectionBookmarksRepositoryImpl(
                     val collectionBookmark = toCollectionBookmark(
                         bookmarkType = record.bookmark_type,
                         bookmarkLocalId = record.bookmark_local_id,
-                        page = record.page,
                         sura = record.sura,
                         ayah = record.ayah,
                         collectionLocalId = record.collection_local_id,
@@ -227,17 +223,7 @@ class CollectionBookmarksRepositoryImpl(
         createIfMissing: Boolean
     ): Long? {
         return when (bookmark) {
-            is RemoteCollectionBookmark.Page -> {
-                val page = bookmark.page.toLong()
-                val existingBookmark = pageBookmarkQueries.value.getBookmarkForPage(page)
-                    .executeAsOneOrNull()
-                if (createIfMissing && existingBookmark == null) {
-                    pageBookmarkQueries.value.insertBookmarkIfMissing(page, 0L)
-                }
-                (existingBookmark
-                    ?: pageBookmarkQueries.value.getBookmarkForPage(page).executeAsOneOrNull())
-                    ?.local_id
-            }
+            is RemoteCollectionBookmark.Page -> null
 
             is RemoteCollectionBookmark.Ayah -> {
                 val sura = bookmark.sura.toLong()
@@ -250,7 +236,6 @@ class CollectionBookmarksRepositoryImpl(
                         ayah_id = ayahId.toLong(),
                         sura = sura,
                         ayah = ayah,
-                        is_reading = 0L
                     )
                 }
                 (existingBookmark
@@ -263,7 +248,6 @@ class CollectionBookmarksRepositoryImpl(
     private fun toCollectionBookmark(
         bookmarkType: String,
         bookmarkLocalId: String,
-        page: Long?,
         sura: Long?,
         ayah: Long?,
         collectionLocalId: Long,
@@ -278,25 +262,6 @@ class CollectionBookmarksRepositoryImpl(
         }
         val updatedAt = Instant.fromEpochMilliseconds(modifiedAt).toPlatform()
         return when (bookmarkType.uppercase()) {
-            "PAGE" -> {
-                val pageValue = page?.toInt()
-                if (pageValue == null) {
-                    if (logMissingBookmark) {
-                        logger.w { "Skipping collection bookmark without local bookmark: localId=$localId" }
-                    }
-                    null
-                } else {
-                    CollectionBookmark.PageBookmark(
-                        collectionLocalId = collectionLocalId.toString(),
-                        collectionRemoteId = collectionRemoteId,
-                        bookmarkLocalId = bookmarkLocalId,
-                        page = pageValue,
-                        lastUpdated = updatedAt,
-                        localId = localId.toString()
-                    )
-                }
-            }
-
             "AYAH" -> {
                 val suraValue = sura?.toInt()
                 val ayahValue = ayah?.toInt()
@@ -328,16 +293,6 @@ class CollectionBookmarksRepositoryImpl(
     ): CollectionBookmark {
         val updatedAt = Instant.fromEpochMilliseconds(modified_at).toPlatform()
         return when (bookmark) {
-            is Bookmark.PageBookmark ->
-                CollectionBookmark.PageBookmark(
-                    collectionLocalId = collection_local_id.toString(),
-                    collectionRemoteId = collectionRemoteId,
-                    bookmarkLocalId = bookmark.localId,
-                    page = bookmark.page,
-                    lastUpdated = updatedAt,
-                    localId = local_id.toString()
-                )
-
             is Bookmark.AyahBookmark ->
                 CollectionBookmark.AyahBookmark(
                     collectionLocalId = collection_local_id.toString(),
@@ -354,16 +309,13 @@ class CollectionBookmarksRepositoryImpl(
     private fun RemoteCollectionBookmark.toBookmarkTypeWithTimestamp(): Pair<String, Long> {
         val updatedAt = lastUpdated.fromPlatform().toEpochMilliseconds()
         return when (this) {
-            is RemoteCollectionBookmark.Page -> "PAGE" to updatedAt
+            is RemoteCollectionBookmark.Page -> error("Page collection bookmarks are not supported.")
             is RemoteCollectionBookmark.Ayah -> "AYAH" to updatedAt
         }
     }
 
     private fun Bookmark.toCollectionBookmarkType(): String {
-        return when (this) {
-            is Bookmark.PageBookmark -> "PAGE"
-            is Bookmark.AyahBookmark -> "AYAH"
-        }
+        return "AYAH"
     }
 
     private fun getAyahId(sura: Int, ayah: Int): Int {

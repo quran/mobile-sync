@@ -1,17 +1,17 @@
 @file:OptIn(ExperimentalTime::class)
 
-package com.quran.shared.persistence.repository.bookmark.extension
+package com.quran.shared.persistence.repository.readingbookmark.extension
 
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
-import com.quran.shared.persistence.model.Bookmark
-import com.quran.shared.persistence.model.DatabaseAyahBookmark
+import com.quran.shared.persistence.model.DatabaseReadingBookmark
+import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.util.toPlatform
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 
-internal fun DatabaseAyahBookmark.toBookmark(): Bookmark.AyahBookmark {
-    return Bookmark.AyahBookmark(
+internal fun DatabaseReadingBookmark.toReadingBookmark(): ReadingBookmark {
+    return ReadingBookmark(
         sura = sura.toInt(),
         ayah = ayah.toInt(),
         lastUpdated = Instant.fromEpochMilliseconds(modified_at).toPlatform(),
@@ -19,7 +19,7 @@ internal fun DatabaseAyahBookmark.toBookmark(): Bookmark.AyahBookmark {
     )
 }
 
-internal fun DatabaseAyahBookmark.toBookmarkMutation(): LocalModelMutation<Bookmark.AyahBookmark> {
+internal fun DatabaseReadingBookmark.toReadingBookmarkMutation(): LocalModelMutation<ReadingBookmark> {
     val mutation = when {
         deleted == 1L -> Mutation.DELETED
         is_edited == 1L -> Mutation.MODIFIED
@@ -27,7 +27,7 @@ internal fun DatabaseAyahBookmark.toBookmarkMutation(): LocalModelMutation<Bookm
     }
     return LocalModelMutation(
         mutation = mutation,
-        model = toBookmark(),
+        model = toReadingBookmark(),
         remoteID = remote_id,
         localID = local_id.toString()
     )

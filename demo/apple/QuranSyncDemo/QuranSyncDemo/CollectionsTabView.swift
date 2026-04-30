@@ -6,11 +6,6 @@ struct CollectionsTabView: View {
     @State private var showAddDialog = false
     @State private var showSelectCollectionSheet = false
     @State private var newCollectionName = ""
-    @State private var selectedBookmarkType: SelectedBookmarkType = .page
-
-    enum SelectedBookmarkType {
-        case page, ayah
-    }
 
     var body: some View {
         List {
@@ -19,7 +14,6 @@ struct CollectionsTabView: View {
                 Spacer()
                 HStack(spacing: 16) {
                     Button(action: {
-                        selectedBookmarkType = .ayah
                         showSelectCollectionSheet = true
                     }) {
                         Image(systemName: "plus.square")
@@ -138,9 +132,7 @@ struct CollectionRowView: View {
     }
 
     private func displayText(for cb: Shared.CollectionBookmark) -> String {
-        if let pb = cb as? Shared.CollectionBookmark.PageBookmark {
-            return "Page \(pb.page)"
-        } else if let ab = cb as? Shared.CollectionBookmark.AyahBookmark {
+        if let ab = cb as? Shared.CollectionBookmark.AyahBookmark {
             return "Sura \(ab.sura), Ayah \(ab.ayah)"
         }
         return ""
