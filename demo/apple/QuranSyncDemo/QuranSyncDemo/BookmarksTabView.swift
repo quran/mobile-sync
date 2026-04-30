@@ -3,6 +3,7 @@ import Shared
 
 struct BookmarksTabView: View {
     @ObservedObject var viewModel: SyncViewModel
+    let readingBookmark: Shared.ReadingBookmark?
     
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -13,6 +14,33 @@ struct BookmarksTabView: View {
 
     var body: some View {
         List {
+            Section(header: Text("Current Reading Bookmark")) {
+                if let readingBookmark = readingBookmark {
+                    HStack {
+                        Image(systemName: "bookmark.fill")
+                            .foregroundColor(.orange)
+                        VStack(alignment: .leading) {
+                            Text("Surah \(readingBookmark.sura), Ayah \(readingBookmark.ayah)")
+                                .font(.body)
+                        }
+                        Spacer()
+                        Button(action: {
+                            Task {
+                                await viewModel.deleteReadingBookmark()
+                            }
+                        }) {
+                            Image(systemName: "trash")
+                                .foregroundColor(.red)
+                        }
+                        .buttonStyle(BorderlessButtonStyle())
+                    }
+                } else {
+                    Text("No reading bookmark set.")
+                        .foregroundColor(.secondary)
+                        .italic()
+                }
+            }
+
             Section(header: HStack {
                 Text("Your Bookmarks")
                 Spacer()

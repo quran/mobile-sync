@@ -116,7 +116,7 @@ struct SuccessTabView: View {
             .background(Color(.secondarySystemBackground))
 
             TabView(selection: $selectedTab) {
-                BookmarksTabView(viewModel: viewModel)
+                BookmarksTabView(viewModel: viewModel, readingBookmark: viewModel.readingBookmark)
                     .tabItem {
                         Label("Bookmarks", systemImage: "bookmark")
                     }

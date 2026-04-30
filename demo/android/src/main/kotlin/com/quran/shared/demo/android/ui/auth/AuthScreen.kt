@@ -14,6 +14,7 @@ import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionWithBookmarks
 import com.quran.shared.persistence.model.Note
+import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomAyah
 import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomSura
@@ -30,6 +31,7 @@ fun AuthScreen(
 ) {
     val authState by viewModel.authState.collectAsState()
     val bookmarks by viewModel.bookmarks.collectAsState(initial = emptyList())
+    val readingBookmark by viewModel.readingBookmark.collectAsState(initial = null)
     val collectionsWithBookmarks by viewModel.collectionsWithBookmarks.collectAsState(initial = emptyList())
     val notes by viewModel.notes.collectAsState(initial = emptyList())
     val readingSessions by viewModel.readingSessions.collectAsState(initial = emptyList())
@@ -94,6 +96,7 @@ fun AuthScreen(
                     SuccessContent(
                         userInfo = state.userInfo,
                         bookmarks = bookmarks,
+                        readingBookmark = readingBookmark,
                         collectionsWithBookmarks = collectionsWithBookmarks,
                         notes = notes,
                         onAddAyahBookmark = {
@@ -120,6 +123,14 @@ fun AuthScreen(
                             scope.launch {
                                 try {
                                     viewModel.deleteBookmark(it)
+                                } catch (e: Exception) {
+                                }
+                            }
+                        },
+                        onDeleteReadingBookmark = {
+                            scope.launch {
+                                try {
+                                    viewModel.deleteReadingBookmark()
                                 } catch (e: Exception) {
                                 }
                             }
@@ -219,11 +230,13 @@ fun AuthScreen(
 private fun SuccessContent(
     userInfo: UserInfo,
     bookmarks: List<Bookmark>,
+    readingBookmark: ReadingBookmark?,
     collectionsWithBookmarks: List<CollectionWithBookmarks>,
     notes: List<Note>,
     onAddAyahBookmark: () -> Unit,
     onAddReadingAyahBookmark: () -> Unit,
     onDeleteBookmark: (Bookmark) -> Unit,
+    onDeleteReadingBookmark: () -> Unit,
     onAddCollection: (String) -> Unit,
     onDeleteCollection: (String) -> Unit,
     onAddNote: (String) -> Unit,
@@ -292,8 +305,10 @@ private fun SuccessContent(
             when (selectedTab) {
                 0 -> BookmarksTab(
                     bookmarks = bookmarks,
+                    readingBookmark = readingBookmark,
                     onAddAyahBookmark = onAddAyahBookmark,
                     onAddReadingAyahBookmark = onAddReadingAyahBookmark,
+                    onDeleteReadingBookmark = onDeleteReadingBookmark,
                     onDeleteBookmark = onDeleteBookmark
                 )
 

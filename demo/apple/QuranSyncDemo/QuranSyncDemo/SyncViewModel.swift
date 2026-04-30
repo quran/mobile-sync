@@ -15,6 +15,7 @@ class SyncViewModel: ObservableObject {
 
     @Published var authState: AuthState = AuthState.Idle()
     @Published var bookmarks: [Shared.Bookmark] = []
+    @Published var readingBookmark: Shared.ReadingBookmark? = nil
     @Published var collectionsWithBookmarks: [Shared.CollectionWithBookmarks] = []
     @Published var notes: [Shared.Note_] = []
     @Published var readingSessions: [Shared.ReadingSession] = []
@@ -54,6 +55,21 @@ class SyncViewModel: ObservableObject {
                     }
                 } catch {
                     print("SyncViewModel: Error observing bookmarks: \(error)")
+                }
+            }
+            group.addTask { @MainActor [weak self] in
+                guard let syncService = self?.syncService else {
+                    return
+                }
+                do {
+                    for try await bookmark in asyncSequence(for: syncService.readingBookmark) {
+                        guard let self = self else {
+                            break
+                        }
+                        self.readingBookmark = bookmark
+                    }
+                } catch {
+                    print("SyncViewModel: Error observing reading bookmark: \(error)")
                 }
             }
             group.addTask { @MainActor [weak self] in
