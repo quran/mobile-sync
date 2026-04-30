@@ -9,6 +9,7 @@ import com.quran.shared.persistence.input.RemoteBookmark
 import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.input.RemoteNote
+import com.quran.shared.persistence.input.RemoteReadingSession
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionBookmark
 import com.quran.shared.persistence.model.Note
@@ -17,6 +18,8 @@ import com.quran.shared.persistence.repository.bookmark.repository.BookmarksSync
 import com.quran.shared.persistence.repository.collection.repository.CollectionsSynchronizationRepository
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksSynchronizationRepository
 import com.quran.shared.persistence.repository.note.repository.NotesSynchronizationRepository
+import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsSynchronizationRepository
+import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toPlatform
@@ -27,6 +30,7 @@ import com.quran.shared.syncengine.CollectionsSynchronizationConfigurations
 import com.quran.shared.syncengine.LocalDataFetcher
 import com.quran.shared.syncengine.LocalModificationDateFetcher
 import com.quran.shared.syncengine.NotesSynchronizationConfigurations
+import com.quran.shared.syncengine.ReadingSessionsSynchronizationConfigurations
 import com.quran.shared.syncengine.ResultNotifier
 import com.quran.shared.syncengine.SynchronizationClient
 import com.quran.shared.syncengine.SynchronizationClientBuilder
@@ -37,6 +41,7 @@ import com.quran.shared.syncengine.model.SyncBookmark
 import com.quran.shared.syncengine.model.SyncCollection
 import com.quran.shared.syncengine.model.SyncCollectionBookmark
 import com.quran.shared.syncengine.model.SyncNote
+import com.quran.shared.syncengine.model.SyncReadingSession
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 
@@ -51,7 +56,8 @@ class SyncEnginePipeline(
     val bookmarksRepository: BookmarksSynchronizationRepository,
     val collectionsRepository: CollectionsSynchronizationRepository,
     val collectionBookmarksRepository: CollectionBookmarksSynchronizationRepository,
-    val notesRepository: NotesSynchronizationRepository
+    val notesRepository: NotesSynchronizationRepository,
+    val readingSessionsRepository: ReadingSessionsSynchronizationRepository
 ) {
     private lateinit var syncClient: SynchronizationClient
 
@@ -82,13 +88,19 @@ class SyncEnginePipeline(
             resultNotifier = NotesResultReceiver(notesRepository, callback),
             localDataFetcher = NotesRepositoryDataFetcher(notesRepository)
         )
+        val readingSessionsConf = ReadingSessionsSynchronizationConfigurations(
+            localModificationDateFetcher = localModificationDateFetcher,
+            resultNotifier = ReadingSessionsResultReceiver(repository = readingSessionsRepository, callback = callback),
+            localDataFetcher = ReadingSessionsRepositoryDataFetcher(readingSessionsRepository)
+        )
         val syncClient = SynchronizationClientBuilder.build(
             environment = environment,
             authFetcher = authenticationDataFetcher,
             bookmarksConfigurations = bookmarksConf,
             collectionsConfigurations = collectionsConf,
             collectionBookmarksConfigurations = collectionBookmarksConf,
-            notesConfigurations = notesConf
+            notesConfigurations = notesConf,
+            readingSessionsConfigurations = readingSessionsConf
         )
 
         this.syncClient = syncClient
@@ -215,6 +227,30 @@ private class NotesRepositoryDataFetcher(
 
     override suspend fun fetchLocalModel(remoteId: String): SyncNote? {
         return null
+    }
+}
+
+private class ReadingSessionsRepositoryDataFetcher(
+    val readingSessionsRepository: ReadingSessionsSynchronizationRepository
+) : LocalDataFetcher<SyncReadingSession> {
+
+    override suspend fun fetchLocalMutations(lastModified: Long): List<LocalModelMutation<SyncReadingSession>> {
+        return readingSessionsRepository.fetchMutatedReadingSessions().map { repoMutation ->
+            LocalModelMutation(
+                model = repoMutation.model.toSyncEngine(),
+                remoteID = repoMutation.remoteID,
+                localID = repoMutation.localID,
+                mutation = repoMutation.mutation
+            )
+        }
+    }
+
+    override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> {
+        return readingSessionsRepository.remoteResourcesExist(remoteIDs)
+    }
+
+    override suspend fun fetchLocalModel(remoteId: String): SyncReadingSession? {
+        return readingSessionsRepository.fetchReadingSessionByRemoteId(remoteId)?.toSyncEngine()
     }
 }
 
@@ -397,13 +433,46 @@ private class NotesResultReceiver(
     }
 }
 
+private class ReadingSessionsResultReceiver(
+    val repository: ReadingSessionsSynchronizationRepository,
+    val callback: SyncEngineCallback
+) : ResultNotifier<SyncReadingSession> {
+
+    override suspend fun didFail(message: String) {
+        callback.encounteredError(message)
+    }
+
+    override suspend fun didSucceed(
+        newToken: Long,
+        newRemoteMutations: List<RemoteModelMutation<SyncReadingSession>>,
+        processedLocalMutations: List<LocalModelMutation<SyncReadingSession>>
+    ) {
+        val mappedRemotes = newRemoteMutations.map { remoteMutation ->
+            RemoteModelMutation(
+                model = remoteMutation.model.toRemoteInput(),
+                remoteID = remoteMutation.remoteID,
+                mutation = remoteMutation.mutation
+            )
+        }
+
+        Logger.i {
+            "Persisting ${mappedRemotes.count()} reading session remote updates, " +
+                "and clearing ${processedLocalMutations.count()} local updates."
+        }
+
+        repository.applyRemoteChanges(mappedRemotes, processedLocalMutations.map { it.localID })
+        callback.synchronizationDone(newToken)
+    }
+}
+
 private fun Bookmark.toSyncEngine(): SyncBookmark {
     return when (this) {
         is Bookmark.PageBookmark -> {
             SyncBookmark.PageBookmark(
                 page = this.page,
                 id = this.localId,
-                lastModified = this.lastUpdated.fromPlatform()
+                lastModified = this.lastUpdated.fromPlatform(),
+                isReading = this.isReading
             )
         }
         is Bookmark.AyahBookmark -> {
@@ -411,7 +480,8 @@ private fun Bookmark.toSyncEngine(): SyncBookmark {
                 id = this.localId,
                 sura = this.sura,
                 ayah = this.ayah,
-                lastModified = this.lastUpdated.fromPlatform()
+                lastModified = this.lastUpdated.fromPlatform(),
+                isReading = this.isReading
             )
         }
     }
@@ -456,13 +526,15 @@ private fun SyncBookmark.toRemoteInput(): RemoteBookmark {
         is SyncBookmark.PageBookmark ->
             RemoteBookmark.Page(
                 page = this.page,
-                lastUpdated = this.lastModified.toPlatform()
+                lastUpdated = this.lastModified.toPlatform(),
+                isReading = this.isReading
             )
         is SyncBookmark.AyahBookmark ->
             RemoteBookmark.Ayah(
                 sura = this.sura,
                 ayah = this.ayah,
-                lastUpdated = this.lastModified.toPlatform()
+                lastUpdated = this.lastModified.toPlatform(),
+                isReading = this.isReading
             )
     }
 }
@@ -613,4 +685,21 @@ private fun ayahIdToSuraAyah(ayahId: Long): NoteAyah? {
         remaining -= count
     }
     return null
+}
+
+private fun ReadingSession.toSyncEngine(): SyncReadingSession {
+    return SyncReadingSession(
+        id = localId,
+        chapterNumber = chapterNumber,
+        verseNumber = verseNumber,
+        lastModified = lastUpdated.fromPlatform()
+    )
+}
+
+private fun SyncReadingSession.toRemoteInput(): RemoteReadingSession {
+    return RemoteReadingSession(
+        chapterNumber = chapterNumber,
+        verseNumber = verseNumber,
+        lastUpdated = lastModified.toPlatform()
+    )
 }

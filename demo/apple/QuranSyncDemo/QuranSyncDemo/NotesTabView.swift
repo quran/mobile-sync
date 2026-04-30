@@ -25,7 +25,7 @@ struct NotesTabView: View {
                             Image(systemName: "note.text")
                                 .foregroundColor(.blue)
                             VStack(alignment: .leading) {
-                                Text(note.body ?? "")
+                                Text(note.body)
                                     .font(.body)
                                 Text("Ayah \(note.startAyahId) - \(note.endAyahId)")
                                     .font(.caption)

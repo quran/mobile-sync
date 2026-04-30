@@ -223,6 +223,7 @@ private suspend fun SyncMutation.toSyncBookmark(
                 SyncBookmark.PageBookmark(
                     id = id,
                     page = page,
+                    isReading = data?.booleanOrNull("isReading") ?: false,
                     lastModified = lastModified
                 )
             }
@@ -235,6 +236,7 @@ private suspend fun SyncMutation.toSyncBookmark(
                     id = id,
                     sura = sura,
                     ayah = ayah,
+                    isReading = data?.booleanOrNull("isReading") ?: false,
                     lastModified = lastModified
                 )
             } else {
@@ -263,6 +265,7 @@ private fun SyncBookmark.toResourceData(): JsonObject {
             buildJsonObject {
                 put("type", "page")
                 put("key", page)
+                put("isReading", isReading)
                 put("mushaf", 1)
             }
         is SyncBookmark.AyahBookmark ->
@@ -270,10 +273,14 @@ private fun SyncBookmark.toResourceData(): JsonObject {
                 put("type", "ayah")
                 put("key", sura)
                 put("verseNumber", ayah)
+                put("isReading", isReading)
                 put("mushaf", 1)
             }
     }
 }
+
+private fun JsonObject.booleanOrNull(key: String): Boolean? =
+    this[key]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull()
 
 private fun JsonObject.stringOrNull(key: String): String? =
     this[key]?.jsonPrimitive?.contentOrNull

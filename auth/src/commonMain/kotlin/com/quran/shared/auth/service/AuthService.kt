@@ -85,6 +85,22 @@ class AuthService @Inject constructor(
         }
     }
 
+    @NativeCoroutines
+    suspend fun loginWithReauthentication(): Unit {
+        try {
+            _authState.value = AuthState.Loading
+            authRepository.loginWithReauthentication()
+            val user = authRepository.getCurrentUser()
+            if (user != null) {
+                _authState.value = AuthState.Success(user)
+            } else {
+                throw Exception("Failed to retrieve user info after login")
+            }
+        } catch (e: Exception) {
+            handleError(e, "Login failed")
+            throw e
+        }
+    }
 
     @NativeCoroutines
     suspend fun logout(): Unit {

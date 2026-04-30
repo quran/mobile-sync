@@ -36,7 +36,7 @@ flowchart LR
 | Module | Purpose |
 |---|---|
 | `:auth` | OIDC login/logout, auth state, token handling |
-| `:persistence` | SQLDelight DB, repositories for bookmarks/collections/notes/recent pages |
+| `:persistence` | SQLDelight DB, repositories for bookmarks/collections/notes/reading sessions |
 | `:syncengine` | Core sync engine and scheduling |
 | `:sync-pipelines` | DI graph and `SyncService` orchestration API |
 | `:umbrella` | iOS XCFramework export (`Shared.xcframework`) |

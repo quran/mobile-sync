@@ -18,6 +18,14 @@ interface AuthRepository {
     suspend fun login()
 
     /**
+     * Performs a login flow while forcing re-authentication on the provider.
+     * Equivalent to passing `prompt=login` in the OIDC authorization request.
+     *
+     * @throws Exception if authentication fails or is cancelled
+     */
+    suspend fun loginWithReauthentication()
+
+    /**
      * Refreshes the access token if it's expired or near expiration.
      * @return true if token is valid (refreshed if needed), false if re-authentication is required.
      */

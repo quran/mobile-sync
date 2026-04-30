@@ -8,10 +8,13 @@ import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionBookmark
 import com.quran.shared.persistence.model.CollectionWithBookmarks
 import com.quran.shared.persistence.model.Note
+import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepository
+import com.quran.shared.persistence.repository.PersistenceResetRepository
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepository
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepository
 import com.quran.shared.persistence.repository.note.repository.NotesRepository
+import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepository
 import com.quran.shared.syncengine.AuthenticationDataFetcher
 import com.quran.shared.syncengine.LocalModificationDateFetcher
 import com.quran.shared.syncengine.SynchronizationClient
@@ -46,6 +49,7 @@ class SyncService(
     private val authService: AuthService,
     private val pipeline: SyncEnginePipeline,
     private val environment: SynchronizationEnvironment,
+    private val persistenceResetRepository: PersistenceResetRepository,
     private val settings: Settings
 ) {
 
@@ -67,6 +71,7 @@ class SyncService(
     private val collectionBookmarksRepository =
         pipeline.collectionBookmarksRepository as CollectionBookmarksRepository
     private val notesRepository = pipeline.notesRepository as NotesRepository
+    private val readingSessionsRepository = pipeline.readingSessionsRepository as ReadingSessionsRepository
 
     /**
      * Flow of all bookmarks for the UI to observe.
@@ -100,6 +105,12 @@ class SyncService(
      */
     @NativeCoroutines
     val notes: Flow<List<Note>> get() = notesRepository.getNotesFlow()
+
+    /**
+     * Flow of all reading sessions for the UI to observe.
+     */
+    @NativeCoroutines
+    val readingSessions: Flow<List<ReadingSession>> get() = readingSessionsRepository.getReadingSessionsFlow()
 
     init {
         val dateFetcher = SettingsLocalModificationDateFetcher(settings)
@@ -143,6 +154,21 @@ class SyncService(
         }
     }
 
+    @NativeCoroutines
+    suspend fun logout(clearLocalData: Boolean = false): Unit {
+        try {
+            authService.logout()
+            syncClient.cancelSyncing()
+            if (clearLocalData) {
+                persistenceResetRepository.deleteAllData()
+                SettingsLocalModificationDateFetcher(settings).updateLastModificationDate(0L)
+            }
+        } catch (e: Exception) {
+            Logger.e(e) { "Logout failed" }
+            throw e
+        }
+    }
+
     fun triggerSync() {
         syncClient.localDataUpdated()
     }
@@ -167,6 +193,56 @@ class SyncService(
             return bookmark
         } catch (e: Exception) {
             Logger.e(e) { "Failed to add ayah bookmark" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun addReadingBookmark(page: Int): Bookmark {
+        try {
+            val bookmark = bookmarksRepository.addReadingBookmark(page)
+            triggerSync()
+            return bookmark
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to add reading page bookmark" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun addReadingBookmark(sura: Int, ayah: Int): Bookmark {
+        try {
+            val bookmark = bookmarksRepository.addReadingBookmark(sura, ayah)
+            triggerSync()
+            return bookmark
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to add reading ayah bookmark" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun addReadingSession(chapterNumber: Int, verseNumber: Int): ReadingSession {
+        try {
+            val readingSession = readingSessionsRepository.addReadingSession(chapterNumber, verseNumber)
+            triggerSync()
+            return readingSession
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to add reading session" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun deleteReadingBookmark(): Boolean {
+        try {
+            val deleted = bookmarksRepository.deleteReadingBookmark()
+            if (deleted) {
+                triggerSync()
+            }
+            return deleted
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to delete current reading bookmark" }
             throw e
         }
     }

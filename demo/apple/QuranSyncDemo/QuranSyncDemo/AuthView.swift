@@ -36,9 +36,14 @@ struct AuthView: View {
                 Group {
                     let state = viewModel.authState
                     if state is Shared.AuthState.Idle {
-                        LoginButtonContent {
-                            try? await viewModel.login()
-                        }
+                        LoginButtonContent(
+                            onLogin: {
+                                try? await viewModel.login()
+                            },
+                            onReauthenticateLogin: {
+                                try? await viewModel.loginWithReauthentication()
+                            }
+                        )
                         .padding(.horizontal, 16)
                     } else if state is Shared.AuthState.Loading {
                         LoadingContent()
@@ -73,6 +78,7 @@ struct SuccessTabView: View {
     @ObservedObject var viewModel: SyncViewModel
     let userInfo: Shared.UserInfo
     @State private var selectedTab = 0
+    @State private var clearLocalData = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -88,13 +94,22 @@ struct SuccessTabView: View {
                     }
                 }
                 Spacer()
-                Button(action: {
-                    Task {
-                        try? await viewModel.logout()
-                    }
-                }) {
-                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                VStack(alignment: .trailing, spacing: 4) {
+                    Toggle("Clear local data", isOn: $clearLocalData)
+                        .font(.caption)
+                        .toggleStyle(SwitchToggleStyle(tint: .red))
+                    
+                    Button(action: {
+                        Task {
+                            try? await viewModel.logout(clearLocalData: clearLocalData)
+                        }
+                    }) {
+                        HStack {
+                            Text("Sign Out")
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                        }
                         .foregroundColor(.red)
+                    }
                 }
             }
             .padding()
@@ -118,6 +133,12 @@ struct SuccessTabView: View {
                         Label("Notes", systemImage: "note.text")
                     }
                     .tag(2)
+                    
+                ReadingSessionsTabView(viewModel: viewModel)
+                    .tabItem {
+                        Label("Reading", systemImage: "clock")
+                    }
+                    .tag(3)
             }
         }
     }

@@ -21,6 +21,7 @@ class BookmarksSyncAdapterTest {
             model = SyncBookmark.PageBookmark(
                 id = "local-1",
                 page = 12,
+                isReading = true,
                 lastModified = Instant.fromEpochMilliseconds(1000)
             ),
             remoteID = null,
