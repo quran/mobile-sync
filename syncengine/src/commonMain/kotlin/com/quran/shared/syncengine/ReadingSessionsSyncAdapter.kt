@@ -127,8 +127,8 @@ internal class ReadingSessionsSyncAdapter(
 
 private fun SyncMutation.toSyncReadingSession(logger: Logger): SyncReadingSession? {
     val id = resourceId ?: return null
-    val sura = data?.intOrNull("sura") ?: data?.intOrNull("sura_number")
-    val ayah = data?.intOrNull("ayah") ?: data?.intOrNull("verse_number")
+    val sura = data?.intOrNull("chapterNumber")
+    val ayah = data?.intOrNull("verseNumber")
     
     if (sura == null || ayah == null) {
         logger.w { "Skipping reading session mutation without sura/ayah: resourceId=$id" }
