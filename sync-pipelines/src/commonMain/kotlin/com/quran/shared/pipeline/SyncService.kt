@@ -8,11 +8,13 @@ import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionBookmark
 import com.quran.shared.persistence.model.CollectionWithBookmarks
 import com.quran.shared.persistence.model.Note
+import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepository
 import com.quran.shared.persistence.repository.PersistenceResetRepository
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepository
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepository
 import com.quran.shared.persistence.repository.note.repository.NotesRepository
+import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepository
 import com.quran.shared.syncengine.AuthenticationDataFetcher
 import com.quran.shared.syncengine.LocalModificationDateFetcher
 import com.quran.shared.syncengine.SynchronizationClient
@@ -69,6 +71,7 @@ class SyncService(
     private val collectionBookmarksRepository =
         pipeline.collectionBookmarksRepository as CollectionBookmarksRepository
     private val notesRepository = pipeline.notesRepository as NotesRepository
+    private val readingSessionsRepository = pipeline.readingSessionsRepository as ReadingSessionsRepository
 
     /**
      * Flow of all bookmarks for the UI to observe.
@@ -102,6 +105,12 @@ class SyncService(
      */
     @NativeCoroutines
     val notes: Flow<List<Note>> get() = notesRepository.getNotesFlow()
+
+    /**
+     * Flow of all reading sessions for the UI to observe.
+     */
+    @NativeCoroutines
+    val readingSessions: Flow<List<ReadingSession>> get() = readingSessionsRepository.getReadingSessionsFlow()
 
     init {
         val dateFetcher = SettingsLocalModificationDateFetcher(settings)
@@ -208,6 +217,18 @@ class SyncService(
             return bookmark
         } catch (e: Exception) {
             Logger.e(e) { "Failed to add reading ayah bookmark" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun addReadingSession(chapterNumber: Int, verseNumber: Int): ReadingSession {
+        try {
+            val readingSession = readingSessionsRepository.addReadingSession(chapterNumber, verseNumber)
+            triggerSync()
+            return readingSession
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to add reading session" }
             throw e
         }
     }

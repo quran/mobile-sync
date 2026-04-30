@@ -19,6 +19,8 @@ fun BookmarksTab(
     bookmarks: List<Bookmark>,
     onAddPageBookmark: () -> Unit,
     onAddAyahBookmark: () -> Unit,
+    onAddReadingPageBookmark: () -> Unit,
+    onAddReadingAyahBookmark: () -> Unit,
     onDeleteBookmark: (Bookmark) -> Unit
 ) {
     Column {
@@ -44,6 +46,21 @@ fun BookmarksTab(
                         imageVector = Icons.Default.Add,
                         contentDescription = "Add Ayah Bookmark",
                         tint = MaterialTheme.colorScheme.secondary
+                    )
+                }
+                IconButton(onClick = onAddReadingPageBookmark) {
+                    Icon(
+                        imageVector = Icons.Default.Bookmark,
+                        contentDescription = "Add Reading Bookmark",
+                        tint = MaterialTheme.colorScheme.tertiary
+                    )
+                }
+
+                IconButton(onClick = onAddReadingAyahBookmark) {
+                    Icon(
+                        imageVector = Icons.Default.Bookmark,
+                        contentDescription = "Add Reading Ayah Bookmark",
+                        tint = MaterialTheme.colorScheme.tertiaryContainer
                     )
                 }
             }
@@ -103,6 +120,21 @@ fun BookmarkItem(
                         Text(
                             text = "Surah ${bookmark.sura}, Ayah ${bookmark.ayah}",
                             style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+                }
+                
+                if (bookmark.isReading) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.tertiaryContainer,
+                        shape = MaterialTheme.shapes.extraSmall
+                    ) {
+                        Text(
+                            text = "READING",
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
                         )
                     }
                 }
