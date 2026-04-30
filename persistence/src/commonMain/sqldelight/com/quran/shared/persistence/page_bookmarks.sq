@@ -2,10 +2,14 @@ CREATE TABLE IF NOT EXISTS page_bookmark(
   local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   remote_id TEXT,
   page INTEGER NOT NULL UNIQUE,
+  is_reading INTEGER NOT NULL DEFAULT 0,
+  is_edited INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
   modified_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
   deleted INTEGER NOT NULL DEFAULT 0,
-  -- Ensure deleted is either 0 or 1
+  -- Ensure boolean fields are either 0 or 1
+  CHECK (is_reading IN (0, 1)),
+  CHECK (is_edited IN (0, 1)),
   CHECK (deleted IN (0, 1))
 );
 
@@ -23,15 +27,20 @@ getBookmarkByLocalId:
 getBookmarkByRemoteId:
   SELECT * FROM page_bookmark WHERE remote_id = ? LIMIT 1;
 
-createRemoteBookmark:
-  INSERT INTO page_bookmark (remote_id, page, deleted)
-  VALUES (?, ?, 0);
+clearReadingBookmarks:
+  UPDATE page_bookmark
+  SET is_reading = 0,
+    is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  WHERE is_reading = 1;
 
 persistRemoteBookmark {
-  INSERT OR IGNORE INTO page_bookmark (remote_id, page, created_at, deleted)
-  VALUES (:remote_id, :page, :created_at, 0);
+  INSERT OR IGNORE INTO page_bookmark (remote_id, page, is_reading, is_edited, created_at, deleted)
+  VALUES (:remote_id, :page, :is_reading, 0, :created_at, 0);
   UPDATE page_bookmark
   SET remote_id = :remote_id,
+    is_reading = :is_reading,
+    is_edited = 0,
     created_at = :created_at,
     modified_at = :modified_at,
     deleted = 0
@@ -39,36 +48,57 @@ persistRemoteBookmark {
 }
 
 addNewBookmark {
-  INSERT OR IGNORE INTO page_bookmark (remote_id, page, deleted)
-  VALUES (NULL, :page, 0);
+  INSERT OR IGNORE INTO page_bookmark (remote_id, page, is_reading, is_edited, deleted)
+  VALUES (NULL, :page, :is_reading, 0, 0);
   UPDATE page_bookmark
-  SET deleted = 0,
-    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
-  WHERE page = :page;
+    SET is_reading = :is_reading,
+      is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
+      deleted = 0,
+      modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+    WHERE page = :page;
+}
+
+addNewReadingBookmark {
+  UPDATE page_bookmark
+    SET is_reading = 0,
+      is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
+      modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+    WHERE is_reading = 1;
+  UPDATE ayah_bookmark
+    SET is_reading = 0,
+      is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
+      modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+    WHERE is_reading = 1;
+  INSERT OR IGNORE INTO page_bookmark (remote_id, page, is_reading, is_edited, deleted)
+    VALUES (NULL, :page, 1, 0, 0);
+  UPDATE page_bookmark
+    SET is_reading = 1,
+      is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
+      deleted = 0,
+      modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+    WHERE page = :page;
 }
 
 insertBookmarkIfMissing {
-  INSERT OR IGNORE INTO page_bookmark (remote_id, page, deleted)
-  VALUES (NULL, :page, 0);
-  UPDATE page_bookmark
-  SET deleted = 0,
-    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
-  WHERE page = :page AND deleted = 1;
+  INSERT OR IGNORE INTO page_bookmark (remote_id, page, is_reading, is_edited, deleted)
+  VALUES (NULL, :page, :is_reading, 0, 0);
 }
 
 -- TODO: Rename
 getUnsyncedBookmarks:
-  SELECT * FROM page_bookmark WHERE remote_id IS NULL OR deleted = 1 ORDER BY created_at DESC;
+  SELECT * FROM page_bookmark WHERE remote_id IS NULL OR is_edited = 1 OR deleted = 1 ORDER BY created_at DESC;
 
 setDeleted:
   UPDATE page_bookmark
   SET deleted = 1,
+    is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
     modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE local_id = ?;
 
 resetDeleted:
   UPDATE page_bookmark
   SET deleted = 0,
+    is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
     modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE local_id = ?;
 
@@ -77,6 +107,7 @@ deleteBookmark {
   DELETE FROM page_bookmark WHERE page=:page AND remote_id IS NULL;
   UPDATE page_bookmark
   SET deleted = 1,
+    is_edited = 1,
     modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE page=:page AND remote_id IS NOT NULL;
 }
@@ -92,6 +123,7 @@ clearLocalMutations {
   DELETE FROM page_bookmark WHERE remote_id IS NULL;
   UPDATE page_bookmark
   SET deleted = 0,
+    is_edited = 0,
     modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000;
 }
 
@@ -99,6 +131,7 @@ clearLocalMutationFor {
   DELETE FROM page_bookmark WHERE remote_id IS NULL AND local_id = :id;
   UPDATE page_bookmark
   SET deleted = 0,
+    is_edited = 0,
     modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE local_id = :id;
 }

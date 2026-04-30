@@ -3,13 +3,18 @@ package com.quran.shared.syncengine.model
 import kotlin.time.Instant
 
 sealed class SyncBookmark {
-    data class PageBookmark(val id: String, val page: Int, val lastModified: Instant) :
-        SyncBookmark()
+    data class PageBookmark(
+        val id: String,
+        val page: Int,
+        val isReading: Boolean,
+        val lastModified: Instant
+    ) : SyncBookmark()
 
     data class AyahBookmark(
         val id: String,
         val sura: Int,
         val ayah: Int,
+        val isReading: Boolean,
         val lastModified: Instant
     ) : SyncBookmark()
 }

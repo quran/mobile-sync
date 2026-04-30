@@ -46,9 +46,9 @@ class BookmarksRepositoryTest {
 
     @Test
     fun `getAllBookmarks returns bookmarks`() = runTest {
-        pageBookmarksQueries.addNewBookmark(11)
-        pageBookmarksQueries.createRemoteBookmark("rem_id_1", 50)
-        pageBookmarksQueries.addNewBookmark(60)
+        pageBookmarksQueries.addNewBookmark(11, is_reading = 1)
+        createRemoteBookmark("rem_id_1", 50)
+        pageBookmarksQueries.addNewBookmark(60, is_reading = 0)
 
         val bookmarks = repository.getAllBookmarks()
         assertEquals(3, bookmarks.size, "Expected 3 bookmarks")
@@ -57,8 +57,8 @@ class BookmarksRepositoryTest {
 
     @Test
     fun `getAllBookmarks excludes deleted bookmarks`() = runTest {
-        pageBookmarksQueries.createRemoteBookmark("rem_id_1", 11)
-        pageBookmarksQueries.createRemoteBookmark("rem_id_2", 50)
+        createRemoteBookmark("rem_id_1", 11)
+        createRemoteBookmark("rem_id_2", 50)
         // Mark one as deleted
         pageBookmarksQueries.setDeleted(1L)
 
@@ -101,12 +101,53 @@ class BookmarksRepositoryTest {
         assertEquals(12, bookmarks[0].requirePageBookmark().page, "Should only have page 12")
 
         // Test with remote bookmarks
-        pageBookmarksQueries.createRemoteBookmark("rem_id_1", 105)
+        createRemoteBookmark("rem_id_1", 105)
         repository.addBookmark(105)
 
         bookmarks = repository.getAllBookmarks()
         assertEquals(2, bookmarks.size, "Should only have one bookmark")
         assertEquals(setOf(12, 105), bookmarks.requirePageBookmarks().map { it.page }.toSet(), "Expected bookmarked pages")
+    }
+
+    @Test
+    fun `adding reading bookmark marks it as reading`() = runTest {
+        repository.addReadingBookmark(10)
+
+        val bookmarks = repository.getAllBookmarks()
+        assertEquals(1, bookmarks.size, "Expected single bookmark")
+        val page = bookmarks[0].requirePageBookmark()
+        assertEquals(10, page.page)
+        assertTrue(page.isReading)
+        assertTrue(repository.deleteReadingBookmark())
+    }
+
+    @Test
+    fun `adding reading bookmark clears previous reading bookmark`() = runTest {
+        repository.addReadingBookmark(10)
+        repository.addBookmark(20)
+        repository.addReadingBookmark(30)
+
+        val bookmarks = repository.getAllBookmarks().requirePageBookmarks()
+        assertEquals(3, bookmarks.size)
+        assertEquals(setOf(10, 20, 30), bookmarks.map { it.page }.toSet())
+        assertTrue(bookmarks.single { it.page == 30 }.isReading)
+        assertTrue(bookmarks.none { it.page != 30 && it.isReading })
+    }
+
+    @Test
+    fun `deleting reading bookmark removes currently reading bookmarks only`() = runTest {
+        repository.addReadingBookmark(10)
+        repository.addBookmark(20)
+
+        val deleted = repository.deleteReadingBookmark()
+        assertTrue(deleted)
+
+        val bookmarks = repository.getAllBookmarks()
+        assertEquals(1, bookmarks.size)
+        assertEquals(20, bookmarks[0].requirePageBookmark().page)
+
+        assertTrue(repository.getAllBookmarks().requirePageBookmarks().none { it.isReading })
+        assertTrue(!repository.deleteReadingBookmark())
     }
 
     @Test
@@ -143,9 +184,9 @@ class BookmarksRepositoryTest {
 
     @Test
     fun `deleting remote bookmarks`() = runTest {
-        pageBookmarksQueries.createRemoteBookmark("rem_id_1", 10)
-        pageBookmarksQueries.createRemoteBookmark("rem_id_2", 15)
-        pageBookmarksQueries.createRemoteBookmark("rem_id_3", 20)
+        createRemoteBookmark("rem_id_1", 10)
+        createRemoteBookmark("rem_id_2", 15)
+        createRemoteBookmark("rem_id_3", 20)
 
         repository.deleteBookmark(10)
         repository.deleteBookmark(20)
@@ -168,7 +209,7 @@ class BookmarksRepositoryTest {
     @Test
     fun `adding a bookmark after deleting a remote bookmark like it`() = runTest {
         // Add a remote bookmark and mark it as deleted
-        pageBookmarksQueries.createRemoteBookmark("rem_id_1", 15)
+        createRemoteBookmark("rem_id_1", 15)
         pageBookmarksQueries.setDeleted(1L)
 
         // Add another bookmark
@@ -189,7 +230,7 @@ class BookmarksRepositoryTest {
     @Test
     fun `fetchMutatedBookmarks returns all mutated bookmarks`() = runTest {
         val emptyResult = syncRepository.fetchMutatedBookmarks()
-        pageBookmarksQueries.createRemoteBookmark("rem-id-1", 10L)
+        createRemoteBookmark("rem-id-1", 10L)
         assertTrue(emptyResult.isEmpty(), "Expected to return nothing when no mutations have been added.")
 
         repository.addBookmark(1)
@@ -243,7 +284,7 @@ class BookmarksRepositoryTest {
             BookmarkMigration.Page(page = 1)
         )
 
-        pageBookmarksQueries.createRemoteBookmark("existing-1", 1L)
+        createRemoteBookmark("existing-1", 1L)
         assertFails("Should fail if table is not empty") {
             repository.migrateBookmarks(bookmarks)
         }
@@ -293,7 +334,7 @@ class BookmarksRepositoryTest {
         repository.addBookmark(20) // Local creation
 
         // Create remote bookmark first, then delete it to create a deletion mutation
-        pageBookmarksQueries.createRemoteBookmark("remote-30", 30L)
+        createRemoteBookmark("remote-30", 30L)
         repository.deleteBookmark(30) // Local deletion of remote bookmark
 
         // Get the local mutations to clear
@@ -305,6 +346,7 @@ class BookmarksRepositoryTest {
             RemoteModelMutation(
                 model = RemoteBookmark.Page(
                     page = 10,
+                    isReading = false,
                     lastUpdated = Instant.fromEpochMilliseconds(1000).toPlatform()
                 ),
                 remoteID = "remote-10",
@@ -313,6 +355,7 @@ class BookmarksRepositoryTest {
             RemoteModelMutation(
                 model = RemoteBookmark.Page(
                     page = 20,
+                    isReading = false,
                     lastUpdated = Instant.fromEpochMilliseconds(1001).toPlatform()
                 ),
                 remoteID = "remote-20",
@@ -321,6 +364,7 @@ class BookmarksRepositoryTest {
             RemoteModelMutation(
                 model = RemoteBookmark.Page(
                     page = 30,
+                    isReading = false,
                     lastUpdated = Instant.fromEpochMilliseconds(1002).toPlatform()
                 ),
                 remoteID = "remote-30",
@@ -351,8 +395,8 @@ class BookmarksRepositoryTest {
         repository.addBookmark(20) // Will be ignored
 
         // Create remote bookmarks first, then delete them to create deletion mutations
-        pageBookmarksQueries.createRemoteBookmark("remote-30", 30L)
-        pageBookmarksQueries.createRemoteBookmark("remote-40", 40L)
+        createRemoteBookmark("remote-30", 30L)
+        createRemoteBookmark("remote-40", 40L)
         repository.deleteBookmark(30) // Will be committed
         repository.deleteBookmark(40) // Will be ignored
 
@@ -366,6 +410,7 @@ class BookmarksRepositoryTest {
             RemoteModelMutation(
                 model = RemoteBookmark.Page(
                     page = 10,
+                    isReading = false,
                     lastUpdated = Instant.fromEpochMilliseconds(1000).toPlatform()
                 ),
                 remoteID = "remote-10",
@@ -374,6 +419,7 @@ class BookmarksRepositoryTest {
             RemoteModelMutation(
                 model = RemoteBookmark.Page(
                     page = 30,
+                    isReading = false,
                     lastUpdated = Instant.fromEpochMilliseconds(1001).toPlatform()
                 ),
                 remoteID = "remote-30",
@@ -403,11 +449,11 @@ class BookmarksRepositoryTest {
         repository.addBookmark(10)
 
         // Create remote bookmark first, then delete it to create a deletion mutation
-        pageBookmarksQueries.createRemoteBookmark("remote-20", 20L)
+        createRemoteBookmark("remote-20", 20L)
         repository.deleteBookmark(20)
 
         // Create the remote bookmark that will be deleted by the new remote mutation
-        pageBookmarksQueries.createRemoteBookmark("remote-40", 40L)
+        createRemoteBookmark("remote-40", 40L)
 
         val localMutations = syncRepository.fetchMutatedBookmarks()
         assertEquals(2, localMutations.size)
@@ -417,6 +463,7 @@ class BookmarksRepositoryTest {
             RemoteModelMutation(
                 model = RemoteBookmark.Page(
                     page = 10,
+                    isReading = false,
                     lastUpdated = Instant.fromEpochMilliseconds(1000).toPlatform()
                 ),
                 remoteID = "remote-10",
@@ -425,6 +472,7 @@ class BookmarksRepositoryTest {
             RemoteModelMutation(
                 model = RemoteBookmark.Page(
                     page = 20,
+                    isReading = false,
                     lastUpdated = Instant.fromEpochMilliseconds(1001).toPlatform()
                 ),
                 remoteID = "remote-20",
@@ -434,6 +482,7 @@ class BookmarksRepositoryTest {
             RemoteModelMutation(
                 model = RemoteBookmark.Page(
                     page = 30,
+                    isReading = false,
                     lastUpdated = Instant.fromEpochMilliseconds(1002).toPlatform()
                 ),
                 remoteID = "remote-30",
@@ -442,6 +491,7 @@ class BookmarksRepositoryTest {
             RemoteModelMutation(
                 model = RemoteBookmark.Page(
                     page = 40,
+                    isReading = false,
                     lastUpdated = Instant.fromEpochMilliseconds(1003).toPlatform()
                 ),
                 remoteID = "remote-40",
@@ -489,9 +539,9 @@ class BookmarksRepositoryTest {
     @Test
     fun `applyRemoteChanges preserves existing remote bookmarks not in updates`() = runTest {
         // Setup: Create existing remote bookmarks
-        pageBookmarksQueries.createRemoteBookmark("remote-10", 10L)
-        pageBookmarksQueries.createRemoteBookmark("remote-20", 20L)
-        pageBookmarksQueries.createRemoteBookmark("remote-30", 30L)
+        createRemoteBookmark("remote-10", 10L)
+        createRemoteBookmark("remote-20", 20L)
+        createRemoteBookmark("remote-30", 30L)
 
         // Create some local mutations
         repository.addBookmark(40)
@@ -507,6 +557,7 @@ class BookmarksRepositoryTest {
             RemoteModelMutation(
                 model = RemoteBookmark.Page(
                     page = 40,
+                    isReading = false,
                     lastUpdated = Instant.fromEpochMilliseconds(1000).toPlatform()
                 ),
                 remoteID = "remote-40",
@@ -515,6 +566,7 @@ class BookmarksRepositoryTest {
             RemoteModelMutation(
                 model = RemoteBookmark.Page(
                     page = 20,
+                    isReading = false,
                     lastUpdated = Instant.fromEpochMilliseconds(1001).toPlatform()
                 ),
                 remoteID = "remote-20",
@@ -564,19 +616,19 @@ class BookmarksRepositoryTest {
         repository.addBookmark(1) // This will be local
         repository.addBookmark(2) // This will be local
 
-        // Simulate remote bookmarks by directly persisting them
-        // Note: In a real scenario, these would come from applyRemoteChanges
-        val remoteBookmark1: RemoteModelMutation<RemoteBookmark> = RemoteModelMutation(
-            model = RemoteBookmark.Page(3, Instant.fromEpochMilliseconds(1000).toPlatform()),
-            remoteID = "remote-1",
-            mutation = Mutation.CREATED
-        )
-        val remoteBookmark2: RemoteModelMutation<RemoteBookmark> = RemoteModelMutation(
-            model = RemoteBookmark.Page(4, Instant.fromEpochMilliseconds(1000).toPlatform()),
-            remoteID = "remote-2",
-            mutation = Mutation.CREATED
-        )
-        
+         // Simulate remote bookmarks by directly persisting them
+         // Note: In a real scenario, these would come from applyRemoteChanges
+         val remoteBookmark1: RemoteModelMutation<RemoteBookmark> = RemoteModelMutation(
+             model = RemoteBookmark.Page(3, isReading = false, lastUpdated = Instant.fromEpochMilliseconds(1000).toPlatform()),
+             remoteID = "remote-1",
+             mutation = Mutation.CREATED
+         )
+         val remoteBookmark2: RemoteModelMutation<RemoteBookmark> = RemoteModelMutation(
+             model = RemoteBookmark.Page(4, isReading = false, lastUpdated = Instant.fromEpochMilliseconds(1000).toPlatform()),
+             remoteID = "remote-2",
+             mutation = Mutation.CREATED
+         )
+
         syncRepository.applyRemoteChanges(listOf(remoteBookmark1, remoteBookmark2), emptyList())
         
         // Act & Assert - Test with existing and non-existing remote IDs
@@ -605,6 +657,24 @@ class BookmarksRepositoryTest {
     private fun List<Bookmark>.requirePageBookmarks(): List<Bookmark.PageBookmark> {
         assertTrue(all { it is Bookmark.PageBookmark }, "Expected only page bookmarks")
         return map { it as Bookmark.PageBookmark }
+    }
+
+    private fun createRemoteBookmark(remoteID: String, page: Int, isReading: Boolean = false) {
+        createRemoteBookmark(
+            remoteID = remoteID,
+            page = page.toLong(),
+            isReading = isReading
+        )
+    }
+
+    private fun createRemoteBookmark(remoteID: String, page: Long, isReading: Boolean = false) {
+        pageBookmarksQueries.persistRemoteBookmark(
+            remote_id = remoteID,
+            page = page,
+            is_reading = if (isReading) 1L else 0L,
+            created_at = 1L,
+            modified_at = 1L
+        )
     }
     
     private fun createInMemoryDatabase(): QuranDatabase {

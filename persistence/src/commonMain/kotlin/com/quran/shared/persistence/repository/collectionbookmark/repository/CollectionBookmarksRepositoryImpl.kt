@@ -229,27 +229,32 @@ class CollectionBookmarksRepositoryImpl(
         return when (bookmark) {
             is RemoteCollectionBookmark.Page -> {
                 val page = bookmark.page.toLong()
-                if (createIfMissing) {
-                    pageBookmarkQueries.value.insertBookmarkIfMissing(page)
-                }
-                pageBookmarkQueries.value.getBookmarkForPage(page)
+                val existingBookmark = pageBookmarkQueries.value.getBookmarkForPage(page)
                     .executeAsOneOrNull()
+                if (createIfMissing && existingBookmark == null) {
+                    pageBookmarkQueries.value.insertBookmarkIfMissing(page, 0L)
+                }
+                (existingBookmark
+                    ?: pageBookmarkQueries.value.getBookmarkForPage(page).executeAsOneOrNull())
                     ?.local_id
             }
 
             is RemoteCollectionBookmark.Ayah -> {
                 val sura = bookmark.sura.toLong()
                 val ayah = bookmark.ayah.toLong()
-                if (createIfMissing) {
+                val existingBookmark = ayahBookmarkQueries.value.getBookmarkForAyah(sura, ayah)
+                    .executeAsOneOrNull()
+                if (createIfMissing && existingBookmark == null) {
                     val ayahId = getAyahId(bookmark.sura, bookmark.ayah)
                     ayahBookmarkQueries.value.insertBookmarkIfMissing(
                         ayah_id = ayahId.toLong(),
                         sura = sura,
-                        ayah = ayah
+                        ayah = ayah,
+                        is_reading = 0L
                     )
                 }
-                ayahBookmarkQueries.value.getBookmarkForAyah(sura, ayah)
-                    .executeAsOneOrNull()
+                (existingBookmark
+                    ?: ayahBookmarkQueries.value.getBookmarkForAyah(sura, ayah).executeAsOneOrNull())
                     ?.local_id
             }
         }
