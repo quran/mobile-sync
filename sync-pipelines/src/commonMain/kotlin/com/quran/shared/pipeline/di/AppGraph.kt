@@ -11,7 +11,7 @@ import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepo
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepository
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepository
 import com.quran.shared.persistence.repository.note.repository.NotesRepository
-import com.quran.shared.persistence.repository.recentpage.repository.RecentPagesRepository
+import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepository
 import com.quran.shared.pipeline.AppEnvironment
 import com.quran.shared.pipeline.SyncService
 import com.quran.shared.pipeline.defaultAppEnvironment
@@ -44,7 +44,7 @@ interface AppGraph {
     val collectionsRepository: CollectionsRepository
     val collectionBookmarksRepository: CollectionBookmarksRepository
     val notesRepository: NotesRepository
-    val recentPagesRepository: RecentPagesRepository
+    val readingSessionsRepository: ReadingSessionsRepository
 
     @DependencyGraph.Factory
     fun interface Factory {

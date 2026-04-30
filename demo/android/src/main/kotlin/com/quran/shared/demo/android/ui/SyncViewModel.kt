@@ -6,6 +6,7 @@ import com.quran.shared.pipeline.SyncService
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionWithBookmarks
 import com.quran.shared.persistence.model.Note
+import com.quran.shared.persistence.model.ReadingSession
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -22,13 +23,22 @@ class SyncViewModel(
         service.collectionsWithBookmarks
     
     val notes: Flow<List<Note>> = service.notes
+    val readingSessions: Flow<List<ReadingSession>> = service.readingSessions
 
     suspend fun login() {
         authService.login()
     }
 
-    suspend fun logout() {
-        authService.logout()
+    suspend fun loginWithReauthentication() {
+        authService.loginWithReauthentication()
+    }
+
+    suspend fun logout(clearLocalData: Boolean = false) {
+        service.logout(clearLocalData)
+    }
+
+    suspend fun addReadingSession(chapterNumber: Int, verseNumber: Int): ReadingSession {
+        return service.addReadingSession(chapterNumber, verseNumber)
     }
 
     fun clearError() {
@@ -43,8 +53,20 @@ class SyncViewModel(
         return service.addBookmark(page)
     }
 
+    suspend fun addReadingBookmark(page: Int): Bookmark {
+        return service.addReadingBookmark(page)
+    }
+
     suspend fun addBookmark(sura: Int, ayah: Int): Bookmark {
         return service.addBookmark(sura, ayah)
+    }
+
+    suspend fun addReadingBookmark(sura: Int, ayah: Int): Bookmark {
+        return service.addReadingBookmark(sura, ayah)
+    }
+
+    suspend fun deleteReadingBookmark() {
+        service.deleteReadingBookmark()
     }
 
     suspend fun deleteBookmark(bookmark: Bookmark) {

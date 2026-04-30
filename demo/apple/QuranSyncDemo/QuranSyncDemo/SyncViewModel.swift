@@ -17,6 +17,7 @@ class SyncViewModel: ObservableObject {
     @Published var bookmarks: [Shared.Bookmark] = []
     @Published var collectionsWithBookmarks: [Shared.CollectionWithBookmarks] = []
     @Published var notes: [Shared.Note_] = []
+    @Published var readingSessions: [Shared.ReadingSession] = []
 
     init(authService: AuthService, syncService: SyncService) {
         self.authService = authService
@@ -83,6 +84,21 @@ class SyncViewModel: ObservableObject {
                     }
                 } catch {
                     print("SyncViewModel: Error observing notes: \(error)")
+                }
+            }
+            group.addTask { @MainActor [weak self] in
+                guard let syncService = self?.syncService else {
+                    return
+                }
+                do {
+                    for try await list in asyncSequence(for: syncService.readingSessions) {
+                        guard let self = self else {
+                            break
+                        }
+                        self.readingSessions = list as [Shared.ReadingSession]
+                    }
+                } catch {
+                    print("SyncViewModel: Error observing reading sessions: \(error)")
                 }
             }
         }
@@ -183,8 +199,47 @@ class SyncViewModel: ObservableObject {
         try await asyncFunction(for: authService.login())
     }
 
-    func logout() async throws {
-        try await asyncFunction(for: authService.logout())
+    func loginWithReauthentication() async throws {
+        try await asyncFunction(for: authService.loginWithReauthentication())
+    }
+
+    func addReadingBookmark(page: Int32) async -> Shared.Bookmark? {
+        do {
+            return try await asyncFunction(for: syncService.addReadingBookmark(page: page))
+        } catch {
+            print("SyncViewModel: Failed to add current reading page bookmark: \(error)")
+            return nil
+        }
+    }
+
+    func addReadingBookmark(sura: Int32, ayah: Int32) async -> Shared.Bookmark? {
+        do {
+            return try await asyncFunction(for: syncService.addReadingBookmark(sura: sura, ayah: ayah))
+        } catch {
+            print("SyncViewModel: Failed to add current reading ayah bookmark: \(error)")
+            return nil
+        }
+    }
+
+    func addReadingSession(chapterNumber: Int32, verseNumber: Int32) async -> Shared.ReadingSession? {
+        do {
+            return try await asyncFunction(for: syncService.addReadingSession(chapterNumber: chapterNumber, verseNumber: verseNumber))
+        } catch {
+            print("SyncViewModel: Failed to add reading session: \(error)")
+            return nil
+        }
+    }
+
+    func deleteReadingBookmark() async {
+        do {
+            _ = try await asyncFunction(for: syncService.deleteReadingBookmark())
+        } catch {
+            print("SyncViewModel: Failed to delete current reading bookmark: \(error)")
+        }
+    }
+
+    func logout(clearLocalData: Bool = false) async throws {
+        try await asyncFunction(for: syncService.logout(clearLocalData: clearLocalData))
     }
 
     func clearError() {
