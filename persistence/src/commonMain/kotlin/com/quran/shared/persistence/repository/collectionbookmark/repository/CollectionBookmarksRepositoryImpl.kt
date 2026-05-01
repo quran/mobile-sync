@@ -265,6 +265,16 @@ class CollectionBookmarksRepositoryImpl(
                         )
                     }
                 }
+                if (
+                    existingBookmark != null &&
+                    !bookmark.bookmarkId.isNullOrEmpty() &&
+                    existingBookmark.remote_id.isNullOrEmpty()
+                ) {
+                    ayahBookmarkQueries.value.backfillRemoteBookmarkId(
+                        remote_id = bookmark.bookmarkId,
+                        local_id = existingBookmark.local_id
+                    )
+                }
                 (existingBookmark
                     ?: ayahBookmarkQueries.value.getBookmarkForAyah(sura, ayah).executeAsOneOrNull())
                     ?.local_id

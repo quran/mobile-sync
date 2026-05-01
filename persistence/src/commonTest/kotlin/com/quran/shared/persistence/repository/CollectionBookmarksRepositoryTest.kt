@@ -14,6 +14,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
@@ -94,6 +95,48 @@ class CollectionBookmarksRepositoryTest {
         assertEquals("remote-collection-bookmark-id", records.single().remote_id)
         assertEquals("AYAH", records.single().bookmark_type)
         assertEquals(bookmark.localId, records.single().bookmark_local_id)
+    }
+
+    @Test
+    fun `applyRemoteChanges backfills remote bookmark id for existing local ayah bookmark`() = runTest {
+        database.collectionsQueries.addNewCollection(name = "BackfillRemoteBookmarkId")
+        val collection = database.collectionsQueries.getCollectionByName("BackfillRemoteBookmarkId").executeAsOne()
+        database.collectionsQueries.updateRemoteCollectionByLocalId(
+            remote_id = "remote-collection-id-backfill",
+            name = collection.name,
+            modified_at = 1L,
+            local_id = collection.local_id
+        )
+
+        val localBookmark = bookmarksRepository.addBookmark(4, 4)
+
+        repository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                RemoteModelMutation(
+                    model = RemoteCollectionBookmark.Ayah(
+                        collectionId = "remote-collection-id-backfill",
+                        sura = 4,
+                        ayah = 4,
+                        lastUpdated = Instant.fromEpochMilliseconds(300L).toPlatform(),
+                        bookmarkId = "remote-bookmark-id-backfill"
+                    ),
+                    remoteID = "remote-collection-bookmark-id-backfill",
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        val bookmark = database.ayah_bookmarksQueries.getBookmarkForAyah(4L, 4L).executeAsOneOrNull()
+        assertNotNull(bookmark)
+        assertEquals("remote-bookmark-id-backfill", bookmark.remote_id)
+        assertEquals(localBookmark.localId.toLong(), bookmark.local_id)
+
+        val records = database.bookmark_collectionsQueries
+            .getCollectionBookmarksForCollectionWithDetails(collection_local_id = collection.local_id)
+            .executeAsList()
+        assertEquals(1, records.size)
+        assertEquals("remote-bookmark-id-backfill", records.single().bookmark_remote_id)
     }
 
     @Test

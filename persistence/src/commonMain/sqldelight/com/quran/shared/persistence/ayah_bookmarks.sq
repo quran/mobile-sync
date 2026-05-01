@@ -58,6 +58,13 @@ persistRemoteBookmark {
   WHERE sura = :sura AND ayah = :ayah;
 }
 
+backfillRemoteBookmarkId {
+  UPDATE ayah_bookmark
+  SET remote_id = :remote_id
+  WHERE local_id = :local_id
+    AND remote_id IS NULL;
+}
+
 hardDeleteBookmarkFor {
   DELETE FROM ayah_bookmark WHERE remote_id=:remoteID;
 }
