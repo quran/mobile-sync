@@ -280,9 +280,8 @@ class SyncService(
         ayah: Int
     ): CollectionBookmark {
         try {
-            val bookmark = bookmarksRepository.addBookmark(sura, ayah)
-            val collectionBookmark =
-                collectionBookmarksRepository.addBookmarkToCollection(collectionLocalId, bookmark)
+            val collectionBookmark = collectionBookmarksRepository
+                .addAyahBookmarkToCollection(collectionLocalId, sura, ayah)
             triggerSync()
             return collectionBookmark
         } catch (e: Exception) {

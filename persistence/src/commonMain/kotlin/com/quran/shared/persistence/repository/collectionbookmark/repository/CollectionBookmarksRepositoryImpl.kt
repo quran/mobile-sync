@@ -12,6 +12,7 @@ import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionBookmark
 import com.quran.shared.persistence.model.DatabaseBookmarkCollection
+import com.quran.shared.persistence.repository.bookmark.extension.toBookmark
 import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
@@ -110,6 +111,56 @@ class CollectionBookmarksRepositoryImpl(
                 bookmark = bookmark,
                 bookmarkRemoteId = bookmarkRemoteId
             )
+        }
+    }
+
+    override suspend fun addAyahBookmarkToCollection(
+        collectionLocalId: String,
+        sura: Int,
+        ayah: Int
+    ): CollectionBookmark {
+        return withContext(Dispatchers.IO) {
+            var created: CollectionBookmark? = null
+            database.transaction {
+                val collectionLocalIdLong = collectionLocalId.toLong()
+                val ayahId = getAyahId(sura, ayah)
+                ayahBookmarkQueries.value.addNewBookmark(
+                    ayah_id = ayahId.toLong(),
+                    sura = sura.toLong(),
+                    ayah = ayah.toLong()
+                )
+                val bookmarkRecord = ayahBookmarkQueries.value
+                    .getBookmarkForAyah(sura.toLong(), ayah.toLong())
+                    .executeAsOneOrNull()
+                requireNotNull(bookmarkRecord) {
+                    "Expected ayah bookmark for $sura:$ayah after insert."
+                }
+                val collection = collectionQueries.value
+                    .getCollectionByLocalId(collectionLocalIdLong)
+                    .executeAsOneOrNull()
+                requireNotNull(collection) {
+                    "Collection not found for localId=$collectionLocalId."
+                }
+
+                bookmarkCollectionQueries.value.addBookmarkToCollection(
+                    bookmark_local_id = bookmarkRecord.local_id.toString(),
+                    bookmark_type = "AYAH",
+                    collection_local_id = collectionLocalIdLong
+                )
+
+                val collectionRecord = bookmarkCollectionQueries.value
+                    .getCollectionBookmarkFor(bookmarkRecord.local_id.toString(), collectionLocalIdLong)
+                    .executeAsOneOrNull()
+                requireNotNull(collectionRecord) {
+                    "Expected collection bookmark for collection=$collectionLocalId and ayah=$sura:$ayah."
+                }
+                created = collectionRecord.toCollectionBookmark(
+                    collectionRemoteId = collection.remote_id,
+                    bookmark = bookmarkRecord.toBookmark(),
+                    bookmarkRemoteId = bookmarkRecord.remote_id
+                )
+            }
+            requireNotNull(created)
         }
     }
 

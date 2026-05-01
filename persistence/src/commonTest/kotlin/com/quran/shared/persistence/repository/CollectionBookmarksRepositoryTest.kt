@@ -14,6 +14,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -55,6 +56,53 @@ class CollectionBookmarksRepositoryTest {
         assertEquals(bookmark.localId, records.single().bookmark_local_id)
         assertEquals(2L, records.single().sura)
         assertEquals(255L, records.single().ayah)
+    }
+
+    @Test
+    fun `addAyahBookmarkToCollection atomically stores bookmark and link`() = runTest {
+        database.collectionsQueries.addNewCollection(name = "AtomicRecents")
+        val collection = database.collectionsQueries.getCollectionByName("AtomicRecents").executeAsOne()
+        val collectionRemoteId = "remote-atomic-collection-id"
+        database.collectionsQueries.updateRemoteCollectionByLocalId(
+            remote_id = collectionRemoteId,
+            name = collection.name,
+            modified_at = 1L,
+            local_id = collection.local_id
+        )
+
+        repository.addAyahBookmarkToCollection(
+            collectionLocalId = collection.local_id.toString(),
+            sura = 5,
+            ayah = 6
+        )
+
+        val bookmark = database.ayah_bookmarksQueries.getBookmarkForAyah(5L, 6L).executeAsOneOrNull()
+        assertNotNull(bookmark)
+
+        val records = database.bookmark_collectionsQueries
+            .getCollectionBookmarksForCollectionWithDetails(collection_local_id = collection.local_id)
+            .executeAsList()
+
+        assertEquals(1, records.size)
+        assertEquals(bookmark.local_id.toString(), records.single().bookmark_local_id)
+        assertEquals(5L, records.single().sura)
+        assertEquals(6L, records.single().ayah)
+    }
+
+    @Test
+    fun `addAyahBookmarkToCollection rolls back bookmark when collection is missing`() = runTest {
+        assertFailsWith<IllegalArgumentException> {
+            repository.addAyahBookmarkToCollection(
+                collectionLocalId = "999999",
+                sura = 7,
+                ayah = 8
+            )
+        }
+
+        assertNull(
+            database.ayah_bookmarksQueries.getBookmarkForAyah(7L, 8L).executeAsOneOrNull(),
+            "Bookmark insert should be rolled back when collection linking fails"
+        )
     }
 
     @Test
