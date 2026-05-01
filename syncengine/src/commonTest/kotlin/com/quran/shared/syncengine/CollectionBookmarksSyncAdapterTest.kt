@@ -174,4 +174,87 @@ class CollectionBookmarksSyncAdapterTest {
         assertEquals(1, remote.size)
         assertEquals("remote-collection-2-remote-bookmark-2", remote.single().remoteID)
     }
+
+    @Test
+    fun `remote collection bookmark can use same batch bookmark payload`() = runTest {
+        val localDataFetcher = object : LocalDataFetcher<SyncCollectionBookmark> {
+            override suspend fun fetchLocalMutations(lastModified: Long): List<LocalModelMutation<SyncCollectionBookmark>> =
+                emptyList()
+
+            override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> =
+                remoteIDs.associateWith { true }
+
+            override suspend fun fetchLocalModel(remoteId: String): SyncCollectionBookmark? = null
+        }
+
+        var capturedRemote: List<RemoteModelMutation<SyncCollectionBookmark>>? = null
+
+        val resultNotifier = object : ResultNotifier<SyncCollectionBookmark> {
+            override suspend fun didSucceed(
+                newToken: Long,
+                newRemoteMutations: List<RemoteModelMutation<SyncCollectionBookmark>>,
+                processedLocalMutations: List<LocalModelMutation<SyncCollectionBookmark>>
+            ) {
+                capturedRemote = newRemoteMutations
+            }
+
+            override suspend fun didFail(message: String) {
+                fail("didFail called: $message")
+            }
+        }
+
+        val localModificationDateFetcher = object : LocalModificationDateFetcher {
+            override suspend fun localLastModificationDate(): Long? = 0L
+        }
+
+        val adapter = CollectionBookmarksSyncAdapter(
+            CollectionBookmarksSynchronizationConfigurations(
+                localDataFetcher = localDataFetcher,
+                resultNotifier = resultNotifier,
+                localModificationDateFetcher = localModificationDateFetcher
+            )
+        )
+
+        val plan = adapter.buildPlan(
+            lastModificationDate = 0L,
+            remoteMutations = listOf(
+                SyncMutation(
+                    resource = "BOOKMARK",
+                    resourceId = "remote-bookmark-3",
+                    mutation = Mutation.CREATED,
+                    data = buildJsonObject {
+                        put("type", "ayah")
+                        put("key", 36)
+                        put("verseNumber", 58)
+                        put("mushaf", 4)
+                    },
+                    timestamp = 100L
+                ),
+                SyncMutation(
+                    resource = "COLLECTION_BOOKMARK",
+                    resourceId = null,
+                    mutation = Mutation.CREATED,
+                    data = buildJsonObject {
+                        put("collectionId", "remote-collection-3")
+                        put("bookmarkId", "remote-bookmark-3")
+                    },
+                    timestamp = 101L
+                )
+            )
+        )
+
+        plan.complete(newToken = 5L, pushedMutations = emptyList())
+
+        val remote = assertNotNull(capturedRemote)
+        assertEquals(1, remote.size)
+        val mutation = remote.single()
+        assertEquals(
+            collectionBookmarkRemoteId("remote-collection-3", "remote-bookmark-3"),
+            mutation.remoteID
+        )
+        val model = mutation.model as SyncCollectionBookmark.AyahBookmark
+        assertEquals(36, model.sura)
+        assertEquals(58, model.ayah)
+        assertEquals("remote-bookmark-3", model.bookmarkId)
+    }
 }
