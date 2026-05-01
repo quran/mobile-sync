@@ -274,6 +274,24 @@ class SyncService(
     }
 
     @NativeCoroutines
+    suspend fun addAyahBookmarkToCollection(
+        collectionLocalId: String,
+        sura: Int,
+        ayah: Int
+    ): CollectionBookmark {
+        try {
+            val bookmark = bookmarksRepository.addBookmark(sura, ayah)
+            val collectionBookmark =
+                collectionBookmarksRepository.addBookmarkToCollection(collectionLocalId, bookmark)
+            triggerSync()
+            return collectionBookmark
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to add ayah bookmark to collection" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
     suspend fun removeBookmarkFromCollection(collectionLocalId: String, bookmark: Bookmark): Unit {
         try {
             collectionBookmarksRepository.removeBookmarkFromCollection(collectionLocalId, bookmark)

@@ -86,14 +86,19 @@ internal class CollectionBookmarksSyncAdapter(
             val collectionId = mutation.data?.stringOrNull("collectionId")
             val bookmarkId = mutation.data?.stringOrNull("bookmarkId")
                 ?: mutation.data?.stringOrNull("bookmark_id")
-            if (collectionId.isNullOrEmpty() || bookmarkId.isNullOrEmpty()) {
-                logger.w { "Skipping collection bookmark mutation without collectionId/bookmarkId" }
+            val resourceId = mutation.resourceId ?: if (!collectionId.isNullOrEmpty() && !bookmarkId.isNullOrEmpty()) {
+                collectionBookmarkRemoteId(collectionId, bookmarkId)
+            } else {
+                null
+            }
+            if (resourceId == null) {
+                logger.w { "Skipping collection bookmark mutation without resourceId" }
                 return@mapNotNull null
             }
             val collectionBookmark = mutation.toSyncCollectionBookmark(logger, configurations.localDataFetcher) ?: return@mapNotNull null
             RemoteModelMutation(
                 model = collectionBookmark,
-                remoteID = collectionBookmarkRemoteId(collectionId, bookmarkId),
+                remoteID = resourceId,
                 mutation = mutation.mutation
             )
         }
@@ -102,7 +107,7 @@ internal class CollectionBookmarksSyncAdapter(
     private fun toSyncMutation(localMutation: LocalModelMutation<SyncCollectionBookmark>): SyncMutation {
         return SyncMutation(
             resource = resourceName,
-            resourceId = null,
+            resourceId = localMutation.remoteID,
             mutation = localMutation.mutation,
             data = localMutation.model.toResourceData(),
             timestamp = null
@@ -210,6 +215,7 @@ private suspend fun SyncMutation.toSyncCollectionBookmark(
     val lastModified = Instant.fromEpochMilliseconds(timestamp ?: 0)
     val bookmarkId = data.stringOrNull("bookmarkId")
         ?: data.stringOrNull("bookmark_id")
+        ?: parseBookmarkId(resourceId, collectionId)
     if (bookmarkId.isNullOrEmpty()) {
         logger.w { "Skipping collection bookmark mutation without bookmarkId: resourceId=$resourceId" }
         return null
@@ -259,8 +265,19 @@ private fun SyncCollectionBookmark.toResourceData(): JsonObject {
             put("key", sura)
             put("verseNumber", ayah)
             put("mushaf", 1)
-            bookmarkId?.let { put("bookmarkId", it) }
         }
+    }
+}
+
+private fun parseBookmarkId(resourceId: String?, collectionId: String): String? {
+    if (resourceId.isNullOrEmpty()) {
+        return null
+    }
+    val prefix = "$collectionId-"
+    return if (resourceId.startsWith(prefix)) {
+        resourceId.removePrefix(prefix)
+    } else {
+        null
     }
 }
 

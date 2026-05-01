@@ -16,7 +16,7 @@ sealed class SyncCollectionBookmark {
 }
 
 fun collectionBookmarkRemoteId(collectionId: String, bookmarkId: String): String {
-    return "$collectionId::$bookmarkId"
+    return "$collectionId-$bookmarkId"
 }
 
 fun SyncCollectionBookmark.remoteIdOrNull(): String? {

@@ -21,7 +21,7 @@ import kotlin.time.Instant
 class CollectionBookmarksSyncAdapterTest {
 
     @Test
-    fun `mutations to push omit resourceId and include bookmarkId`() = runTest {
+    fun `mutations to push omit bookmarkId payload field`() = runTest {
         val localMutation = LocalModelMutation<SyncCollectionBookmark>(
             model = SyncCollectionBookmark.AyahBookmark(
                 collectionId = "remote-collection-1",
@@ -85,7 +85,7 @@ class CollectionBookmarksSyncAdapterTest {
         assertEquals("COLLECTION_BOOKMARK", pushedMutations.single().resource)
         assertNull(pushedMutations.single().resourceId)
         assertEquals("remote-collection-1", pushedMutations.single().data?.get("collectionId")?.jsonPrimitive?.content)
-        assertEquals("remote-bookmark-1", pushedMutations.single().data?.get("bookmarkId")?.jsonPrimitive?.content)
+        assertNull(pushedMutations.single().data?.get("bookmarkId"))
 
         plan.complete(
             newToken = 5L,
@@ -110,7 +110,7 @@ class CollectionBookmarksSyncAdapterTest {
     }
 
     @Test
-    fun `remote collection bookmark uses composite remote id`() = runTest {
+    fun `remote collection bookmark uses response resource id when present`() = runTest {
         val localDataFetcher = object : LocalDataFetcher<SyncCollectionBookmark> {
             override suspend fun fetchLocalMutations(lastModified: Long): List<LocalModelMutation<SyncCollectionBookmark>> =
                 emptyList()
@@ -154,11 +154,10 @@ class CollectionBookmarksSyncAdapterTest {
             remoteMutations = listOf(
                 SyncMutation(
                     resource = "COLLECTION_BOOKMARK",
-                    resourceId = null,
+                    resourceId = "remote-collection-2-remote-bookmark-2",
                     mutation = Mutation.CREATED,
                     data = buildJsonObject {
                         put("collectionId", "remote-collection-2")
-                        put("bookmarkId", "remote-bookmark-2")
                         put("type", "ayah")
                         put("key", 2)
                         put("verseNumber", 255)
@@ -173,6 +172,6 @@ class CollectionBookmarksSyncAdapterTest {
 
         val remote = assertNotNull(capturedRemote)
         assertEquals(1, remote.size)
-        assertEquals(collectionBookmarkRemoteId("remote-collection-2", "remote-bookmark-2"), remote.single().remoteID)
+        assertEquals("remote-collection-2-remote-bookmark-2", remote.single().remoteID)
     }
 }
