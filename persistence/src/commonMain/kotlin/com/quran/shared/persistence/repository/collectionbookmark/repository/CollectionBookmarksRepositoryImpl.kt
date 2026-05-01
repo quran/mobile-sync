@@ -45,6 +45,7 @@ class CollectionBookmarksRepositoryImpl(
                     toCollectionBookmark(
                         bookmarkType = record.bookmark_type,
                         bookmarkLocalId = record.bookmark_local_id,
+                        bookmarkRemoteId = record.bookmark_remote_id,
                         sura = record.sura,
                         ayah = record.ayah,
                         collectionLocalId = record.collection_local_id,
@@ -67,6 +68,7 @@ class CollectionBookmarksRepositoryImpl(
                     toCollectionBookmark(
                         bookmarkType = record.bookmark_type,
                         bookmarkLocalId = record.bookmark_local_id,
+                        bookmarkRemoteId = record.bookmark_remote_id,
                         sura = record.sura,
                         ayah = record.ayah,
                         collectionLocalId = record.collection_local_id,
@@ -99,9 +101,14 @@ class CollectionBookmarksRepositoryImpl(
             val collection = collectionQueries.value
                 .getCollectionByLocalId(collectionLocalId.toLong())
                 .executeAsOneOrNull()
+            val bookmarkRemoteId = ayahBookmarkQueries.value
+                .getBookmarkByLocalId(bookmark.localId.toLong())
+                .executeAsOneOrNull()
+                ?.remote_id
             record.toCollectionBookmark(
                 collectionRemoteId = collection?.remote_id,
-                bookmark = bookmark
+                bookmark = bookmark,
+                bookmarkRemoteId = bookmarkRemoteId
             )
         }
     }
@@ -129,10 +136,16 @@ class CollectionBookmarksRepositoryImpl(
                         logger.w { "Skipping collection bookmark without remote collection ID: localId=${record.local_id}" }
                         return@mapNotNull null
                     }
+                    val bookmarkRemoteId = record.bookmark_remote_id
+                    if (bookmarkRemoteId.isNullOrEmpty()) {
+                        logger.w { "Skipping collection bookmark without remote bookmark ID: localId=${record.local_id}" }
+                        return@mapNotNull null
+                    }
                     val mutation = if (record.deleted == 1L) Mutation.DELETED else Mutation.CREATED
                     val collectionBookmark = toCollectionBookmark(
                         bookmarkType = record.bookmark_type,
                         bookmarkLocalId = record.bookmark_local_id,
+                        bookmarkRemoteId = bookmarkRemoteId,
                         sura = record.sura,
                         ayah = record.ayah,
                         collectionLocalId = record.collection_local_id,
@@ -231,12 +244,26 @@ class CollectionBookmarksRepositoryImpl(
                 val existingBookmark = ayahBookmarkQueries.value.getBookmarkForAyah(sura, ayah)
                     .executeAsOneOrNull()
                 if (createIfMissing && existingBookmark == null) {
-                    val ayahId = getAyahId(bookmark.sura, bookmark.ayah)
-                    ayahBookmarkQueries.value.insertBookmarkIfMissing(
-                        ayah_id = ayahId.toLong(),
-                        sura = sura,
-                        ayah = ayah,
-                    )
+                    val bookmarkRemoteId = bookmark.bookmarkId
+                    if (bookmarkRemoteId.isNullOrEmpty()) {
+                        val ayahId = getAyahId(bookmark.sura, bookmark.ayah)
+                        ayahBookmarkQueries.value.insertBookmarkIfMissing(
+                            ayah_id = ayahId.toLong(),
+                            sura = sura,
+                            ayah = ayah,
+                        )
+                    } else {
+                        val ayahId = getAyahId(bookmark.sura, bookmark.ayah)
+                        val updatedAt = bookmark.lastUpdated.fromPlatform().toEpochMilliseconds()
+                        ayahBookmarkQueries.value.persistRemoteBookmark(
+                            remote_id = bookmarkRemoteId,
+                            ayah_id = ayahId.toLong(),
+                            sura = sura,
+                            ayah = ayah,
+                            created_at = updatedAt,
+                            modified_at = updatedAt
+                        )
+                    }
                 }
                 (existingBookmark
                     ?: ayahBookmarkQueries.value.getBookmarkForAyah(sura, ayah).executeAsOneOrNull())
@@ -248,6 +275,7 @@ class CollectionBookmarksRepositoryImpl(
     private fun toCollectionBookmark(
         bookmarkType: String,
         bookmarkLocalId: String,
+        bookmarkRemoteId: String?,
         sura: Long?,
         ayah: Long?,
         collectionLocalId: Long,
@@ -275,6 +303,7 @@ class CollectionBookmarksRepositoryImpl(
                         collectionLocalId = collectionLocalId.toString(),
                         collectionRemoteId = collectionRemoteId,
                         bookmarkLocalId = bookmarkLocalId,
+                        bookmarkRemoteId = bookmarkRemoteId,
                         sura = suraValue,
                         ayah = ayahValue,
                         lastUpdated = updatedAt,
@@ -289,7 +318,8 @@ class CollectionBookmarksRepositoryImpl(
 
     private fun DatabaseBookmarkCollection.toCollectionBookmark(
         collectionRemoteId: String?,
-        bookmark: Bookmark
+        bookmark: Bookmark,
+        bookmarkRemoteId: String?
     ): CollectionBookmark {
         val updatedAt = Instant.fromEpochMilliseconds(modified_at).toPlatform()
         return when (bookmark) {
@@ -298,6 +328,7 @@ class CollectionBookmarksRepositoryImpl(
                     collectionLocalId = collection_local_id.toString(),
                     collectionRemoteId = collectionRemoteId,
                     bookmarkLocalId = bookmark.localId,
+                    bookmarkRemoteId = bookmarkRemoteId,
                     sura = bookmark.sura,
                     ayah = bookmark.ayah,
                     lastUpdated = updatedAt,

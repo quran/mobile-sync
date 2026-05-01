@@ -15,6 +15,17 @@ sealed class SyncCollectionBookmark {
     ) : SyncCollectionBookmark()
 }
 
+fun collectionBookmarkRemoteId(collectionId: String, bookmarkId: String): String {
+    return "$collectionId::$bookmarkId"
+}
+
+fun SyncCollectionBookmark.remoteIdOrNull(): String? {
+    return when (this) {
+        is SyncCollectionBookmark.AyahBookmark ->
+            bookmarkId?.let { collectionBookmarkRemoteId(collectionId, it) }
+    }
+}
+
 internal sealed class SyncCollectionBookmarkKey {
     data class Ayah(val collectionId: String, val sura: Int, val ayah: Int) : SyncCollectionBookmarkKey() {
         override fun toString(): String = "collection=$collectionId, sura=$sura, ayah=$ayah"

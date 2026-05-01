@@ -35,6 +35,7 @@ getCollectionBookmarksWithDetails:
     bc.deleted,
     c.remote_id AS collection_remote_id,
     c.name AS collection_name,
+    ab.remote_id AS bookmark_remote_id,
     ab.sura AS sura,
     ab.ayah AS ayah
   FROM bookmark_collection bc
@@ -57,6 +58,7 @@ getCollectionBookmarksForCollectionWithDetails:
     bc.deleted,
     c.remote_id AS collection_remote_id,
     c.name AS collection_name,
+    ab.remote_id AS bookmark_remote_id,
     ab.sura AS sura,
     ab.ayah AS ayah
   FROM bookmark_collection bc
@@ -80,6 +82,7 @@ getUnsyncedCollectionBookmarksWithDetails:
     bc.deleted,
     c.remote_id AS collection_remote_id,
     c.name AS collection_name,
+    ab.remote_id AS bookmark_remote_id,
     ab.sura AS sura,
     ab.ayah AS ayah
   FROM bookmark_collection bc

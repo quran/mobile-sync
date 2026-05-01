@@ -9,6 +9,8 @@ import com.quran.shared.syncengine.conflict.ConflictDetectionResult
 import com.quran.shared.syncengine.conflict.ConflictResolutionResult
 import com.quran.shared.syncengine.conflict.ResourceConflict
 import com.quran.shared.syncengine.model.SyncCollectionBookmark
+import com.quran.shared.syncengine.model.collectionBookmarkRemoteId
+import com.quran.shared.syncengine.model.remoteIdOrNull
 import com.quran.shared.syncengine.preprocessing.CollectionBookmarksRemoteMutationsPreprocessor
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -81,16 +83,17 @@ internal class CollectionBookmarksSyncAdapter(
             if (!mutation.resource.equals(resourceName, ignoreCase = true)) {
                 return@mapNotNull null
             }
+            val collectionId = mutation.data?.stringOrNull("collectionId")
             val bookmarkId = mutation.data?.stringOrNull("bookmarkId")
-            val resourceId = mutation.resourceId ?: bookmarkId
-            if (resourceId == null) {
-                logger.w { "Skipping collection bookmark mutation without resourceId" }
+                ?: mutation.data?.stringOrNull("bookmark_id")
+            if (collectionId.isNullOrEmpty() || bookmarkId.isNullOrEmpty()) {
+                logger.w { "Skipping collection bookmark mutation without collectionId/bookmarkId" }
                 return@mapNotNull null
             }
             val collectionBookmark = mutation.toSyncCollectionBookmark(logger, configurations.localDataFetcher) ?: return@mapNotNull null
             RemoteModelMutation(
                 model = collectionBookmark,
-                remoteID = resourceId,
+                remoteID = collectionBookmarkRemoteId(collectionId, bookmarkId),
                 mutation = mutation.mutation
             )
         }
@@ -99,7 +102,7 @@ internal class CollectionBookmarksSyncAdapter(
     private fun toSyncMutation(localMutation: LocalModelMutation<SyncCollectionBookmark>): SyncMutation {
         return SyncMutation(
             resource = resourceName,
-            resourceId = localMutation.remoteID,
+            resourceId = null,
             mutation = localMutation.mutation,
             data = localMutation.model.toResourceData(),
             timestamp = null
@@ -148,9 +151,9 @@ internal class CollectionBookmarksSyncAdapter(
                 logger.e { message }
                 throw IllegalStateException(message)
             }
-            val remoteId = pushedMutation.resourceId
+            val remoteId = localMutation.model.remoteIdOrNull() ?: pushedMutation.resourceId
             if (remoteId == null) {
-                val message = "Missing resourceId for pushed mutation at index=$index for $resourceName"
+                val message = "Missing composite remote ID for pushed mutation at index=$index for $resourceName"
                 logger.e { message }
                 throw IllegalStateException(message)
             }
@@ -207,18 +210,21 @@ private suspend fun SyncMutation.toSyncCollectionBookmark(
     val lastModified = Instant.fromEpochMilliseconds(timestamp ?: 0)
     val bookmarkId = data.stringOrNull("bookmarkId")
         ?: data.stringOrNull("bookmark_id")
-        ?: parseBookmarkId(resourceId, collectionId) ?: return null
+    if (bookmarkId.isNullOrEmpty()) {
+        logger.w { "Skipping collection bookmark mutation without bookmarkId: resourceId=$resourceId" }
+        return null
+    }
     return when (normalizedType?.lowercase()) {
         "ayah" -> {
             val sura = data.intOrNull("key")
             val ayah = data.intOrNull("verseNumber")
             if (sura != null && ayah != null) {
                 SyncCollectionBookmark.AyahBookmark(
-                    collectionId = collectionId,
-                    sura = sura,
-                    ayah = ayah,
-                    lastModified = lastModified,
-                    bookmarkId = bookmarkId
+                        collectionId = collectionId,
+                        sura = sura,
+                        ayah = ayah,
+                        lastModified = lastModified,
+                        bookmarkId = bookmarkId
                 )
             } else {
                 null
@@ -255,18 +261,6 @@ private fun SyncCollectionBookmark.toResourceData(): JsonObject {
             put("mushaf", 1)
             bookmarkId?.let { put("bookmarkId", it) }
         }
-    }
-}
-
-private fun parseBookmarkId(resourceId: String?, collectionId: String): String? {
-    if (resourceId.isNullOrEmpty()) {
-        return null
-    }
-    val prefix = "$collectionId-"
-    return if (resourceId.startsWith(prefix)) {
-        resourceId.removePrefix(prefix)
-    } else {
-        null
     }
 }
 

@@ -132,6 +132,28 @@ class CollectionBookmarksRepositoryTest {
     }
 
     @Test
+    fun `fetchMutatedCollectionBookmarks skips links without remote bookmark ids`() = runTest {
+        database.collectionsQueries.addNewCollection(name = "NeedsBookmarkRemoteId")
+        val collection = database.collectionsQueries.getCollectionByName("NeedsBookmarkRemoteId").executeAsOne()
+        database.collectionsQueries.updateRemoteCollectionByLocalId(
+            remote_id = "remote-collection-id-4",
+            name = collection.name,
+            modified_at = 1L,
+            local_id = collection.local_id
+        )
+
+        val bookmark = bookmarksRepository.addBookmark(1, 1)
+        repository.addBookmarkToCollection(collection.local_id.toString(), bookmark)
+
+        val mutations = repository.fetchMutatedCollectionBookmarks()
+
+        assertTrue(
+            mutations.isEmpty(),
+            "Collection bookmarks should not sync until the linked bookmark has a remote id"
+        )
+    }
+
+    @Test
     fun `applyRemoteChanges ignores remote page collection bookmarks`() = runTest {
         database.collectionsQueries.addNewCollection(name = "IgnorePages")
         val collection = database.collectionsQueries.getCollectionByName("IgnorePages").executeAsOne()
