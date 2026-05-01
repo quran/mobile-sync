@@ -222,7 +222,7 @@ class BookmarksSynchronizationExecutorTest {
             "Error message should include illogical scenario details"
         )
         assertEquals(
-            exception.message?.contains("Bookmark page=10 has 3 mutations"),
+            exception.message?.contains("Bookmark sura=10, ayah=1, isReading=false has 3 mutations"),
             true,
             "Error message should include page and mutation count details"
         )
