@@ -23,8 +23,13 @@ getNotes:
 getNoteByLocalId:
   SELECT * FROM note WHERE local_id = ? LIMIT 1;
 
-getLastInsertedNote:
-  SELECT * FROM note WHERE local_id = last_insert_rowid() LIMIT 1;
+getNoteByContent:
+  SELECT * FROM note
+  WHERE note = :note
+    AND start_ayah_id = :start_ayah_id
+    AND end_ayah_id = :end_ayah_id
+  ORDER BY local_id DESC
+  LIMIT 1;
 
 addNewNote:
   INSERT INTO note (remote_id, note, start_ayah_id, end_ayah_id, deleted)

@@ -56,7 +56,11 @@ class NotesRepositoryImpl(
                 start_ayah_id = startAyahId,
                 end_ayah_id = endAyahId
             )
-            val record = notesQueries.value.getLastInsertedNote()
+            val record = notesQueries.value.getNoteByContent(
+                note = body,
+                start_ayah_id = startAyahId,
+                end_ayah_id = endAyahId
+            )
                 .executeAsOneOrNull()
             requireNotNull(record) { "Expected note after insert." }
             record.toNote()
