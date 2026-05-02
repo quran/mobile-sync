@@ -4,11 +4,11 @@ import com.quran.shared.persistence.Ayah_bookmark
 import com.quran.shared.persistence.Bookmark_collection
 import com.quran.shared.persistence.Collection
 import com.quran.shared.persistence.Note
-import com.quran.shared.persistence.Page_bookmark
+import com.quran.shared.persistence.Reading_bookmark
 import com.quran.shared.persistence.Reading_session
 
-internal typealias DatabasePageBookmark = Page_bookmark
 internal typealias DatabaseAyahBookmark = Ayah_bookmark
+internal typealias DatabaseReadingBookmark = Reading_bookmark
 internal typealias DatabaseCollection = Collection
 internal typealias DatabaseBookmarkCollection = Bookmark_collection
 internal typealias DatabaseNote = Note

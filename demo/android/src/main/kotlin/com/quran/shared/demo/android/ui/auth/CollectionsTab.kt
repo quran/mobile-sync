@@ -171,7 +171,6 @@ fun CollectionItem(
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = when (cb) {
-                                    is CollectionBookmark.PageBookmark -> "Page ${cb.page}"
                                     is CollectionBookmark.AyahBookmark -> "Sura ${cb.sura}, Ayah ${cb.ayah}"
                                 },
                                 style = MaterialTheme.typography.bodyMedium,

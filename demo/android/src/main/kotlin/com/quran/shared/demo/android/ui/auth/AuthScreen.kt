@@ -14,9 +14,9 @@ import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionWithBookmarks
 import com.quran.shared.persistence.model.Note
+import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomAyah
-import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomPage
 import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomSura
 import com.quran.shared.demo.android.ui.SyncViewModel
 import kotlinx.coroutines.launch
@@ -31,6 +31,7 @@ fun AuthScreen(
 ) {
     val authState by viewModel.authState.collectAsState()
     val bookmarks by viewModel.bookmarks.collectAsState(initial = emptyList())
+    val readingBookmark by viewModel.readingBookmark.collectAsState(initial = null)
     val collectionsWithBookmarks by viewModel.collectionsWithBookmarks.collectAsState(initial = emptyList())
     val notes by viewModel.notes.collectAsState(initial = emptyList())
     val readingSessions by viewModel.readingSessions.collectAsState(initial = emptyList())
@@ -95,30 +96,15 @@ fun AuthScreen(
                     SuccessContent(
                         userInfo = state.userInfo,
                         bookmarks = bookmarks,
+                        readingBookmark = readingBookmark,
                         collectionsWithBookmarks = collectionsWithBookmarks,
                         notes = notes,
-                        onAddPageBookmark = {
-                            scope.launch {
-                                try {
-                                    viewModel.addBookmark(getRandomPage())
-                                } catch (e: Exception) {
-                                }
-                            }
-                        },
                         onAddAyahBookmark = {
                             val sura = getRandomSura()
                             val ayah = getRandomAyah(sura)
                             scope.launch {
                                 try {
                                     viewModel.addBookmark(sura, ayah)
-                                } catch (e: Exception) {
-                                }
-                            }
-                        },
-                        onAddReadingPageBookmark = {
-                            scope.launch {
-                                try {
-                                    viewModel.addReadingBookmark(getRandomPage())
                                 } catch (e: Exception) {
                                 }
                             }
@@ -137,6 +123,14 @@ fun AuthScreen(
                             scope.launch {
                                 try {
                                     viewModel.deleteBookmark(it)
+                                } catch (e: Exception) {
+                                }
+                            }
+                        },
+                        onDeleteReadingBookmark = {
+                            scope.launch {
+                                try {
+                                    viewModel.deleteReadingBookmark()
                                 } catch (e: Exception) {
                                 }
                             }
@@ -236,13 +230,13 @@ fun AuthScreen(
 private fun SuccessContent(
     userInfo: UserInfo,
     bookmarks: List<Bookmark>,
+    readingBookmark: ReadingBookmark?,
     collectionsWithBookmarks: List<CollectionWithBookmarks>,
     notes: List<Note>,
-    onAddPageBookmark: () -> Unit,
     onAddAyahBookmark: () -> Unit,
-    onAddReadingPageBookmark: () -> Unit,
     onAddReadingAyahBookmark: () -> Unit,
     onDeleteBookmark: (Bookmark) -> Unit,
+    onDeleteReadingBookmark: () -> Unit,
     onAddCollection: (String) -> Unit,
     onDeleteCollection: (String) -> Unit,
     onAddNote: (String) -> Unit,
@@ -311,10 +305,10 @@ private fun SuccessContent(
             when (selectedTab) {
                 0 -> BookmarksTab(
                     bookmarks = bookmarks,
-                    onAddPageBookmark = onAddPageBookmark,
+                    readingBookmark = readingBookmark,
                     onAddAyahBookmark = onAddAyahBookmark,
-                    onAddReadingPageBookmark = onAddReadingPageBookmark,
                     onAddReadingAyahBookmark = onAddReadingAyahBookmark,
+                    onDeleteReadingBookmark = onDeleteReadingBookmark,
                     onDeleteBookmark = onDeleteBookmark
                 )
 

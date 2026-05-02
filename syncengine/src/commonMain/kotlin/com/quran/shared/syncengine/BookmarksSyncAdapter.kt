@@ -214,20 +214,6 @@ private suspend fun SyncMutation.toSyncBookmark(
     val normalizedType = data?.stringOrNull("bookmarkType") ?: data?.stringOrNull("type")
     val lastModified = Instant.fromEpochMilliseconds(timestamp ?: 0)
     return when (normalizedType?.lowercase()) {
-        "page" -> {
-            val page = data?.intOrNull("key")
-            if (page == null) {
-                logger.w { "Skipping bookmark mutation without page key: resourceId=$resourceId" }
-                null
-            } else {
-                SyncBookmark.PageBookmark(
-                    id = id,
-                    page = page,
-                    isReading = data?.booleanOrNull("isReading") ?: false,
-                    lastModified = lastModified
-                )
-            }
-        }
         "ayah" -> {
             val sura = data?.intOrNull("key")
             val ayah = data?.intOrNull("verseNumber")
@@ -248,7 +234,6 @@ private suspend fun SyncMutation.toSyncBookmark(
             if (localModel != null) {
                 logger.d { "Mapped unknown bookmark type using local data: resourceId=$id" }
                 when (localModel) {
-                    is SyncBookmark.PageBookmark -> localModel.copy(lastModified = lastModified)
                     is SyncBookmark.AyahBookmark -> localModel.copy(lastModified = lastModified)
                 }
             } else {
@@ -261,21 +246,13 @@ private suspend fun SyncMutation.toSyncBookmark(
 
 private fun SyncBookmark.toResourceData(): JsonObject {
     return when (this) {
-        is SyncBookmark.PageBookmark ->
-            buildJsonObject {
-                put("type", "page")
-                put("key", page)
-                put("isReading", isReading)
-                put("mushaf", 1)
-            }
-        is SyncBookmark.AyahBookmark ->
-            buildJsonObject {
-                put("type", "ayah")
-                put("key", sura)
-                put("verseNumber", ayah)
-                put("isReading", isReading)
-                put("mushaf", 1)
-            }
+        is SyncBookmark.AyahBookmark -> buildJsonObject {
+            put("type", "ayah")
+            put("key", sura)
+            put("verseNumber", ayah)
+            put("isReading", isReading)
+            put("mushaf", 1)
+        }
     }
 }
 

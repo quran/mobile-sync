@@ -6,6 +6,7 @@ import com.quran.shared.pipeline.SyncService
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionWithBookmarks
 import com.quran.shared.persistence.model.Note
+import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingSession
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,6 +19,7 @@ class SyncViewModel(
     val authState: StateFlow<com.quran.shared.auth.model.AuthState> = service.authState
     
     val bookmarks: Flow<List<Bookmark>> = service.bookmarks
+    val readingBookmark: Flow<ReadingBookmark?> = service.readingBookmark
     
     val collectionsWithBookmarks: Flow<List<CollectionWithBookmarks>> =
         service.collectionsWithBookmarks
@@ -49,19 +51,11 @@ class SyncViewModel(
         service.triggerSync()
     }
 
-    suspend fun addBookmark(page: Int): Bookmark {
-        return service.addBookmark(page)
-    }
-
-    suspend fun addReadingBookmark(page: Int): Bookmark {
-        return service.addReadingBookmark(page)
-    }
-
     suspend fun addBookmark(sura: Int, ayah: Int): Bookmark {
         return service.addBookmark(sura, ayah)
     }
 
-    suspend fun addReadingBookmark(sura: Int, ayah: Int): Bookmark {
+    suspend fun addReadingBookmark(sura: Int, ayah: Int): ReadingBookmark {
         return service.addReadingBookmark(sura, ayah)
     }
 
@@ -82,8 +76,7 @@ class SyncViewModel(
     }
 
     suspend fun addAyahBookmarkToCollection(collectionId: String, sura: Int, ayah: Int) {
-        val bookmark = service.addBookmark(sura, ayah)
-        service.addBookmarkToCollection(collectionId, bookmark)
+        service.addAyahBookmarkToCollection(collectionId, sura, ayah)
     }
 
     suspend fun removeBookmarkFromCollection(collectionId: String, bookmark: Bookmark) {

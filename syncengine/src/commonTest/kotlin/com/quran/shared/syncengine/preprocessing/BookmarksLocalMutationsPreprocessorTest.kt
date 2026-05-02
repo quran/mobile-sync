@@ -4,7 +4,7 @@ package com.quran.shared.syncengine.preprocessing
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.syncengine.model.SyncBookmark
-import com.quran.shared.syncengine.model.SyncBookmark.PageBookmark
+import com.quran.shared.syncengine.PageBookmark
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -40,7 +40,7 @@ class BookmarksLocalMutationsPreprocessorTest {
             preprocessor.preprocess(listOf(mutation1, mutation2))
         }
         
-        assertTrue(exception.message?.contains("Bookmark page=1 has 2 creations") == true)
+        assertTrue(exception.message?.contains("Bookmark sura=1, ayah=1, isReading=false has 2 creations") == true)
         assertTrue(exception.message?.contains("which is not allowed") == true)
     }
     
@@ -55,7 +55,7 @@ class BookmarksLocalMutationsPreprocessorTest {
             preprocessor.preprocess(listOf(mutation1, mutation2, mutation3, mutation4))
         }
         
-        assertTrue(exception.message?.contains("Bookmark page=1 has 4 mutations") == true) // After conversion, there are 4 mutations
+        assertTrue(exception.message?.contains("Bookmark sura=1, ayah=1, isReading=false has 4 mutations") == true) // After conversion, there are 4 mutations
         assertTrue(exception.message?.contains("exceeds logical limit of 2") == true)
     }
     
@@ -83,8 +83,8 @@ class BookmarksLocalMutationsPreprocessorTest {
             preprocessor.preprocess(allMutations)
         }
         
-        assertTrue(exception.message?.contains("Bookmark page=1 has 2 creations") == true ||
-                  exception.message?.contains("Bookmark page=3 has 2 creations") == true)
+        assertTrue(exception.message?.contains("Bookmark sura=1, ayah=1, isReading=false has 2 creations") == true ||
+                  exception.message?.contains("Bookmark sura=3, ayah=1, isReading=false has 2 creations") == true)
     }
     
     @Test
@@ -106,7 +106,7 @@ class BookmarksLocalMutationsPreprocessorTest {
             preprocessor.preprocess(allMutations)
         }
         
-        assertTrue(exception.message?.contains("Bookmark page=1 has 4 mutations") == true)
+        assertTrue(exception.message?.contains("Bookmark sura=1, ayah=1, isReading=false has 4 mutations") == true)
         assertTrue(exception.message?.contains("exceeds logical limit of 2") == true)
     }
     
@@ -128,8 +128,8 @@ class BookmarksLocalMutationsPreprocessorTest {
             preprocessor.preprocess(allMutations)
         }
         
-        assertTrue(exception.message?.contains("Bookmark page=1 has 2 creations") == true ||
-                  exception.message?.contains("Bookmark page=2 has 2 creations") == true)
+        assertTrue(exception.message?.contains("Bookmark sura=1, ayah=1, isReading=false has 2 creations") == true ||
+                  exception.message?.contains("Bookmark sura=2, ayah=1, isReading=false has 2 creations") == true)
     }
     
     @Test
@@ -141,7 +141,7 @@ class BookmarksLocalMutationsPreprocessorTest {
             preprocessor.preprocess(listOf(deletion1, deletion2))
         }
         
-        assertTrue(exception.message?.contains("Bookmark page=1 has 2 deletions") == true)
+        assertTrue(exception.message?.contains("Bookmark sura=1, ayah=1, isReading=false has 2 deletions") == true)
         assertTrue(exception.message?.contains("which is not allowed") == true)
     }
     
@@ -154,7 +154,7 @@ class BookmarksLocalMutationsPreprocessorTest {
             preprocessor.preprocess(listOf(creation1, creation2))
         }
         
-        assertTrue(exception.message?.contains("Bookmark page=1 has 2 creations") == true)
+        assertTrue(exception.message?.contains("Bookmark sura=1, ayah=1, isReading=false has 2 creations") == true)
         assertTrue(exception.message?.contains("which is not allowed") == true)
     }
     
@@ -224,7 +224,7 @@ class BookmarksLocalMutationsPreprocessorTest {
             preprocessor.preprocess(listOf(creation, modification))
         }
         
-        assertTrue(exception.message?.contains("Bookmark page=1 has 2 creations") == true)
+        assertTrue(exception.message?.contains("Bookmark sura=1, ayah=1, isReading=false has 2 creations") == true)
         assertTrue(exception.message?.contains("which is not allowed") == true)
     }
     

@@ -8,7 +8,6 @@ import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
-import com.quran.shared.persistence.input.BookmarkMigration
 import com.quran.shared.persistence.input.RemoteBookmark
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.repository.bookmark.extension.toBookmark
@@ -21,7 +20,7 @@ import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
 @Inject
@@ -30,102 +29,37 @@ class BookmarksRepositoryImpl(
     private val database: QuranDatabase
 ) : BookmarksRepository, BookmarksSynchronizationRepository {
 
-    private val logger = Logger.withTag("PageBookmarksRepository")
-    private val pageBookmarkQueries = lazy { database.page_bookmarksQueries }
+    private val logger = Logger.withTag("BookmarksRepository")
     private val ayahBookmarkQueries = lazy { database.ayah_bookmarksQueries }
 
     override suspend fun getAllBookmarks(): List<Bookmark> {
         return withContext(Dispatchers.IO) {
-            val pageBookmarks = pageBookmarkQueries.value.getBookmarks()
+            ayahBookmarkQueries.value.getBookmarks()
                 .executeAsList()
                 .map { it.toBookmark() }
-            val ayahBookmarks = ayahBookmarkQueries.value.getBookmarks()
-                .executeAsList()
-                .map { it.toBookmark() }
-
-            // TODO - sort options - ex sort by location, by date added (default)
-            sortBookmarks(pageBookmarks + ayahBookmarks)
+                .sortedByDescending { it.lastUpdated.fromPlatform().toEpochMilliseconds() }
         }
     }
 
     override fun getBookmarksFlow(): Flow<List<Bookmark>> {
-        val pageBookmarksFlow = pageBookmarkQueries.value.getBookmarks()
+        return ayahBookmarkQueries.value.getBookmarks()
             .asFlow()
             .mapToList(Dispatchers.IO)
-
-        val ayahBookmarksFlow = ayahBookmarkQueries.value.getBookmarks()
-            .asFlow()
-            .mapToList(Dispatchers.IO)
-
-        return combine(pageBookmarksFlow, ayahBookmarksFlow) { pageList, ayahList ->
-            val pageBookmarks = pageList.map { it.toBookmark() }
-            val ayahBookmarks = ayahList.map { it.toBookmark() }
-            sortBookmarks(pageBookmarks + ayahBookmarks)
-        }
-    }
-
-    private fun sortBookmarks(bookmarks: List<Bookmark>): List<Bookmark> {
-        return bookmarks.sortedByDescending { bookmark ->
-            when (bookmark) {
-                is Bookmark.AyahBookmark -> bookmark.lastUpdated.fromPlatform()
-                    .toEpochMilliseconds()
-
-                is Bookmark.PageBookmark -> bookmark.lastUpdated.fromPlatform()
-                    .toEpochMilliseconds()
+            .map { list ->
+                list.map { it.toBookmark() }
+                    .sortedByDescending { it.lastUpdated.fromPlatform().toEpochMilliseconds() }
             }
-        }
     }
 
-    override suspend fun addBookmark(page: Int): Bookmark.PageBookmark =
-        addBookmark(page = page, isReading = false)
-
-    override suspend fun addReadingBookmark(page: Int): Bookmark.PageBookmark =
-        addBookmark(page = page, isReading = true)
-
-    override suspend fun addBookmark(sura: Int, ayah: Int): Bookmark =
-        addBookmark(sura = sura, ayah = ayah, isReading = false)
-
-    override suspend fun addReadingBookmark(sura: Int, ayah: Int): Bookmark =
-        addBookmark(sura = sura, ayah = ayah, isReading = true)
-
-    private suspend fun addBookmark(page: Int, isReading: Boolean): Bookmark.PageBookmark {
-        logger.i { "Adding page bookmark for page $page (isReading=$isReading)" }
-        return withContext(Dispatchers.IO) {
-            if (isReading) {
-                pageBookmarkQueries.value.addNewReadingBookmark(
-                    page = page.toLong()
-                )
-            } else {
-                pageBookmarkQueries.value.addNewBookmark(
-                    page = page.toLong(),
-                    is_reading = 0L
-                )
-            }
-            val record = pageBookmarkQueries.value.getBookmarkForPage(page.toLong())
-                .executeAsOneOrNull()
-            requireNotNull(record) { "Expected page bookmark for page $page after insert." }
-            record.toBookmark()
-        }
-    }
-
-    private suspend fun addBookmark(sura: Int, ayah: Int, isReading: Boolean): Bookmark.AyahBookmark {
-        logger.i { "Adding ayah bookmark for $sura:$ayah (isReading=$isReading)" }
+    override suspend fun addBookmark(sura: Int, ayah: Int): Bookmark.AyahBookmark {
+        logger.i { "Adding ayah bookmark for $sura:$ayah" }
         return withContext(Dispatchers.IO) {
             val ayahId = getAyahId(sura, ayah)
-            if (isReading) {
-                ayahBookmarkQueries.value.addNewReadingBookmark(
-                    ayah_id = ayahId.toLong(),
-                    sura = sura.toLong(),
-                    ayah = ayah.toLong()
-                )
-            } else {
-                ayahBookmarkQueries.value.addNewBookmark(
-                    ayah_id = ayahId.toLong(),
-                    sura = sura.toLong(),
-                    ayah = ayah.toLong(),
-                    is_reading = 0L
-                )
-            }
+            ayahBookmarkQueries.value.addNewBookmark(
+                ayah_id = ayahId.toLong(),
+                sura = sura.toLong(),
+                ayah = ayah.toLong()
+            )
             val record = ayahBookmarkQueries.value.getBookmarkForAyah(sura.toLong(), ayah.toLong())
                 .executeAsOneOrNull()
             requireNotNull(record) { "Expected ayah bookmark for $sura:$ayah after insert." }
@@ -133,101 +67,30 @@ class BookmarksRepositoryImpl(
         }
     }
 
-    override suspend fun deleteBookmark(page: Int): Boolean {
-        logger.i { "Deleting page bookmark for page $page" }
-        withContext(Dispatchers.IO) {
-            pageBookmarkQueries.value.deleteBookmark(page.toLong())
-        }
-        return true
-    }
-
     override suspend fun deleteBookmark(sura: Int, ayah: Int): Boolean {
-        logger.i { "Deleting page bookmark for $sura:$ayah" }
+        logger.i { "Deleting ayah bookmark for $sura:$ayah" }
         withContext(Dispatchers.IO) {
             ayahBookmarkQueries.value.deleteBookmark(sura.toLong(), ayah.toLong())
         }
         return true
     }
 
-    override suspend fun deleteReadingBookmark(): Boolean {
-        logger.i { "Deleting current reading bookmarks" }
+    override suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<Bookmark.AyahBookmark>> {
         return withContext(Dispatchers.IO) {
-            val pageReadingPages = pageBookmarkQueries.value.getBookmarks()
-                .executeAsList()
-                .filter { it.is_reading == 1L }
-                .map { it.page.toInt() }
-
-            val ayahReadingBookmarks = ayahBookmarkQueries.value.getBookmarks()
-                .executeAsList()
-                .filter { it.is_reading == 1L }
-                .map { it.sura.toInt() to it.ayah.toInt() }
-
-            if (pageReadingPages.isEmpty() && ayahReadingBookmarks.isEmpty()) {
-                return@withContext false
-            }
-
-            database.transaction {
-                pageReadingPages.forEach { page ->
-                    pageBookmarkQueries.value.deleteBookmark(page.toLong())
-                }
-                ayahReadingBookmarks.forEach { (sura, ayah) ->
-                    ayahBookmarkQueries.value.deleteBookmark(sura.toLong(), ayah.toLong())
-                }
-            }
-
-            true
-        }
-    }
-
-    override suspend fun migrateBookmarks(bookmarks: List<BookmarkMigration>) {
-        withContext(Dispatchers.IO) {
-            // Check if the bookmarks table is empty
-            val existingBookmarks = pageBookmarkQueries.value.getBookmarks().executeAsList()
-            if (existingBookmarks.isNotEmpty()) {
-                throw IllegalStateException("Cannot migrate bookmarks: bookmarks table is not empty. Found ${existingBookmarks.size} bookmarks.")
-            }
-
-            database.transaction {
-                bookmarks.forEach { bookmark ->
-                    when (bookmark) {
-                        is BookmarkMigration.Ayah -> {
-                            val ayahId = getAyahId(bookmark.sura, bookmark.ayah)
-                            ayahBookmarkQueries.value.addNewBookmark(
-                                ayah_id = ayahId.toLong(),
-                                sura = bookmark.sura.toLong(),
-                                ayah = bookmark.ayah.toLong(),
-                                is_reading = 0L
-                            )
-                        }
-
-                        is BookmarkMigration.Page ->
-                            pageBookmarkQueries.value.addNewBookmark(
-                                page = bookmark.page.toLong(),
-                                is_reading = 0L
-                            )
-                    }
-                }
-            }
-        }
-    }
-
-    override suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<Bookmark>> {
-        return withContext(Dispatchers.IO) {
-            val pageMutations = pageBookmarkQueries.value.getUnsyncedBookmarks()
+            ayahBookmarkQueries.value.getUnsyncedBookmarks()
                 .executeAsList()
                 .map { it.toBookmarkMutation() }
-            val ayahMutations = ayahBookmarkQueries.value.getUnsyncedBookmarks()
-                .executeAsList()
-                .map { it.toBookmarkMutation() }
-            pageMutations + ayahMutations
         }
     }
 
     override suspend fun applyRemoteChanges(
-        updatesToPersist: List<RemoteModelMutation<RemoteBookmark>>,
-        localMutationsToClear: List<LocalModelMutation<Bookmark>>
+        updatesToPersist: List<RemoteModelMutation<RemoteBookmark.Ayah>>,
+        localMutationsToClear: List<LocalModelMutation<Bookmark.AyahBookmark>>
     ) {
-        logger.i { "Applying remote changes with ${updatesToPersist.size} updates to persist and ${localMutationsToClear.size} local mutations to clear" }
+        logger.i {
+            "Applying remote changes with ${updatesToPersist.size} updates to persist and " +
+                "${localMutationsToClear.size} local mutations to clear"
+        }
         return withContext(Dispatchers.IO) {
             database.transaction {
                 val committedCreationKeys = updatesToPersist
@@ -235,8 +98,6 @@ class BookmarksRepositoryImpl(
                     .map { it.model.key() }
                     .toSet()
 
-                // Clear local mutations
-                // TODO: Should check that passed local IDs are valid
                 localMutationsToClear.forEach { local ->
                     when (local.mutation) {
                         Mutation.DELETED -> clearLocalMutation(local)
@@ -249,7 +110,6 @@ class BookmarksRepositoryImpl(
                     }
                 }
 
-                // Apply remote updates
                 updatesToPersist.forEach { remote ->
                     when (remote.mutation) {
                         Mutation.CREATED, Mutation.MODIFIED -> applyRemoteBookmarkAddition(remote)
@@ -258,57 +118,6 @@ class BookmarksRepositoryImpl(
                 }
             }
         }
-    }
-
-    private fun applyRemoteBookmarkAddition(remote: RemoteModelMutation<RemoteBookmark>) {
-        when (val model = remote.model) {
-            is RemoteBookmark.Ayah -> {
-                val ayahId = getAyahId(model.sura, model.ayah)
-                val updatedAt = model.lastUpdated.fromPlatform().toEpochMilliseconds()
-                ayahBookmarkQueries.value.persistRemoteBookmark(
-                    remote_id = remote.remoteID,
-                    ayah_id = ayahId.toLong(),
-                    sura = model.sura.toLong(),
-                    ayah = model.ayah.toLong(),
-                    is_reading = if (model.isReading) 1L else 0L,
-                    created_at = updatedAt,
-                    modified_at = updatedAt
-                )
-            }
-
-            is RemoteBookmark.Page ->
-                pageBookmarkQueries.value.persistRemoteBookmark(
-                    remote_id = remote.remoteID,
-                    page = model.page.toLong(),
-                    is_reading = if (model.isReading) 1L else 0L,
-                    created_at = model.lastUpdated.fromPlatform().toEpochMilliseconds(),
-                    modified_at = model.lastUpdated.fromPlatform().toEpochMilliseconds()
-                )
-        }
-    }
-
-    private fun clearLocalMutation(local: LocalModelMutation<Bookmark>) {
-        when (local.model) {
-            is Bookmark.AyahBookmark ->
-                ayahBookmarkQueries.value.clearLocalMutationFor(id = local.localID.toLong())
-
-            is Bookmark.PageBookmark ->
-                pageBookmarkQueries.value.clearLocalMutationFor(id = local.localID.toLong())
-        }
-    }
-
-    private fun applyRemoteBookmarkDeletion(remote: RemoteModelMutation<RemoteBookmark>) {
-        when (remote.model) {
-            is RemoteBookmark.Ayah ->
-                ayahBookmarkQueries.value.hardDeleteBookmarkFor(remoteID = remote.remoteID)
-
-            is RemoteBookmark.Page ->
-                pageBookmarkQueries.value.hardDeleteBookmarkFor(remoteID = remote.remoteID)
-        }
-    }
-
-    private fun getAyahId(sura: Int, ayah: Int): Int {
-        return QuranData.getAyahId(sura, ayah)
     }
 
     override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> {
@@ -320,11 +129,6 @@ class BookmarksRepositoryImpl(
             val existentIDs = mutableSetOf<String>()
             remoteIDs.chunked(SQLITE_MAX_BIND_PARAMETERS).forEach { chunk ->
                 existentIDs.addAll(
-                    pageBookmarkQueries.value.checkRemoteIDsExistence(chunk)
-                        .executeAsList()
-                        .mapNotNull { it.remote_id }
-                )
-                existentIDs.addAll(
                     ayahBookmarkQueries.value.checkRemoteIDsExistence(chunk)
                         .executeAsList()
                         .mapNotNull { it.remote_id }
@@ -335,33 +139,41 @@ class BookmarksRepositoryImpl(
         }
     }
 
-    override suspend fun fetchBookmarkByRemoteId(remoteId: String): Bookmark? {
+    override suspend fun fetchBookmarkByRemoteId(remoteId: String): Bookmark.AyahBookmark? {
         return withContext(Dispatchers.IO) {
-            val pageBookmark = pageBookmarkQueries.value.getBookmarkByRemoteId(remoteId)
+            ayahBookmarkQueries.value.getBookmarkByRemoteId(remoteId)
                 .executeAsOneOrNull()
-            if (pageBookmark != null) {
-                return@withContext pageBookmark.toBookmark()
-            }
-
-            val ayahBookmark = ayahBookmarkQueries.value.getBookmarkByRemoteId(remoteId)
-                .executeAsOneOrNull()
-            ayahBookmark?.toBookmark()
+                ?.toBookmark()
         }
     }
-}
 
-private data class BookmarkKey(val type: String, val first: Int, val second: Int?)
+    private fun clearLocalMutation(local: LocalModelMutation<Bookmark.AyahBookmark>) {
+        ayahBookmarkQueries.value.clearLocalMutationFor(id = local.localID.toLong())
+    }
 
-private fun Bookmark.key(): BookmarkKey {
-    return when (this) {
-        is Bookmark.PageBookmark -> BookmarkKey("PAGE", page, null)
-        is Bookmark.AyahBookmark -> BookmarkKey("AYAH", sura, ayah)
+    private fun applyRemoteBookmarkAddition(remote: RemoteModelMutation<RemoteBookmark.Ayah>) {
+        val model = remote.model
+        val ayahId = getAyahId(model.sura, model.ayah)
+        val updatedAt = model.lastUpdated.fromPlatform().toEpochMilliseconds()
+        ayahBookmarkQueries.value.persistRemoteBookmark(
+            remote_id = remote.remoteID,
+            ayah_id = ayahId.toLong(),
+            sura = model.sura.toLong(),
+            ayah = model.ayah.toLong(),
+            created_at = updatedAt,
+            modified_at = updatedAt
+        )
+    }
+
+    private fun applyRemoteBookmarkDeletion(remote: RemoteModelMutation<RemoteBookmark.Ayah>) {
+        ayahBookmarkQueries.value.hardDeleteBookmarkFor(remoteID = remote.remoteID)
+    }
+
+    private fun getAyahId(sura: Int, ayah: Int): Int {
+        return QuranData.getAyahId(sura, ayah)
     }
 }
 
-private fun RemoteBookmark.key(): BookmarkKey {
-    return when (this) {
-        is RemoteBookmark.Page -> BookmarkKey("PAGE", page, null)
-        is RemoteBookmark.Ayah -> BookmarkKey("AYAH", sura, ayah)
-    }
-}
+private fun Bookmark.AyahBookmark.key(): String = "$sura:$ayah"
+
+private fun RemoteBookmark.Ayah.key(): String = "$sura:$ayah"

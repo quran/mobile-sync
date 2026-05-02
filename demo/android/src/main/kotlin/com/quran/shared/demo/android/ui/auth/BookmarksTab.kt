@@ -13,14 +13,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.quran.shared.persistence.model.Bookmark
+import com.quran.shared.persistence.model.ReadingBookmark
 
 @Composable
 fun BookmarksTab(
     bookmarks: List<Bookmark>,
-    onAddPageBookmark: () -> Unit,
+    readingBookmark: ReadingBookmark?,
     onAddAyahBookmark: () -> Unit,
-    onAddReadingPageBookmark: () -> Unit,
     onAddReadingAyahBookmark: () -> Unit,
+    onDeleteReadingBookmark: () -> Unit,
     onDeleteBookmark: (Bookmark) -> Unit
 ) {
     Column {
@@ -35,12 +36,6 @@ fun BookmarksTab(
             )
             
             Row {
-                IconButton(onClick = onAddPageBookmark) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Add Page Bookmark"
-                    )
-                }
                 IconButton(onClick = onAddAyahBookmark) {
                     Icon(
                         imageVector = Icons.Default.Add,
@@ -48,14 +43,6 @@ fun BookmarksTab(
                         tint = MaterialTheme.colorScheme.secondary
                     )
                 }
-                IconButton(onClick = onAddReadingPageBookmark) {
-                    Icon(
-                        imageVector = Icons.Default.Bookmark,
-                        contentDescription = "Add Reading Bookmark",
-                        tint = MaterialTheme.colorScheme.tertiary
-                    )
-                }
-
                 IconButton(onClick = onAddReadingAyahBookmark) {
                     Icon(
                         imageVector = Icons.Default.Bookmark,
@@ -68,6 +55,13 @@ fun BookmarksTab(
 
         Spacer(modifier = Modifier.height(8.dp))
 
+        ReadingBookmarkCard(
+            readingBookmark = readingBookmark,
+            onDeleteReadingBookmark = onDeleteReadingBookmark
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
         if (bookmarks.isEmpty()) {
             EmptyListMessage("No bookmarks yet.")
         } else {
@@ -79,6 +73,53 @@ fun BookmarksTab(
                     BookmarkItem(
                         bookmark = bookmark,
                         onDelete = { onDeleteBookmark(bookmark) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReadingBookmarkCard(
+    readingBookmark: ReadingBookmark?,
+    onDeleteReadingBookmark: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.small,
+        tonalElevation = 2.dp,
+        color = MaterialTheme.colorScheme.secondaryContainer
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Current Reading Bookmark",
+                    style = MaterialTheme.typography.labelLarge
+                )
+                if (readingBookmark == null) {
+                    Text(
+                        text = "No reading bookmark set.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    Text(
+                        text = "Surah ${readingBookmark.sura}, Ayah ${readingBookmark.ayah}",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            }
+
+            if (readingBookmark != null) {
+                IconButton(onClick = onDeleteReadingBookmark) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Delete Reading Bookmark",
+                        tint = MaterialTheme.colorScheme.error
                     )
                 }
             }
@@ -109,35 +150,10 @@ fun BookmarkItem(
             Spacer(modifier = Modifier.width(16.dp))
             
             Column(modifier = Modifier.weight(1f)) {
-                when (bookmark) {
-                    is Bookmark.PageBookmark -> {
-                        Text(
-                            text = "Page ${bookmark.page}",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                    }
-                    is Bookmark.AyahBookmark -> {
-                        Text(
-                            text = "Surah ${bookmark.sura}, Ayah ${bookmark.ayah}",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                    }
-                }
-                
-                if (bookmark.isReading) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Surface(
-                        color = MaterialTheme.colorScheme.tertiaryContainer,
-                        shape = MaterialTheme.shapes.extraSmall
-                    ) {
-                        Text(
-                            text = "READING",
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer
-                        )
-                    }
-                }
+                Text(
+                    text = "Surah ${bookmark.sura}, Ayah ${bookmark.ayah}",
+                    style = MaterialTheme.typography.bodyLarge
+                )
             }
 
             IconButton(onClick = onDelete) {

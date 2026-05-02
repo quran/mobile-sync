@@ -5,7 +5,7 @@ import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.syncengine.model.SyncBookmark
-import com.quran.shared.syncengine.model.SyncBookmark.PageBookmark
+import com.quran.shared.syncengine.PageBookmark
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.time.Instant
@@ -326,10 +326,9 @@ class ConflictDetectorTest {
 }
 
 private fun SyncBookmark.pageOrThrow(): Int =
-    (this as SyncBookmark.PageBookmark).page
+    (this as SyncBookmark.AyahBookmark).sura
 
 private fun SyncBookmark.lastModifiedOrThrow(): Instant =
     when (this) {
-        is SyncBookmark.PageBookmark -> lastModified
         is SyncBookmark.AyahBookmark -> lastModified
     }

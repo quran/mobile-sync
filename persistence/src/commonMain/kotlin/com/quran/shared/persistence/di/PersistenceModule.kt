@@ -21,6 +21,9 @@ import com.quran.shared.persistence.repository.collectionbookmark.repository.Col
 import com.quran.shared.persistence.repository.note.repository.NotesRepository
 import com.quran.shared.persistence.repository.note.repository.NotesRepositoryImpl
 import com.quran.shared.persistence.repository.note.repository.NotesSynchronizationRepository
+import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksRepository
+import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksRepositoryImpl
+import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksSynchronizationRepository
 import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepository
 import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepositoryImpl
 import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsSynchronizationRepository
@@ -64,6 +67,12 @@ abstract class PersistenceModule {
 
     @Binds
     abstract fun bindNotesSynchronizationRepository(impl: NotesRepositoryImpl): NotesSynchronizationRepository
+
+    @Binds
+    abstract fun bindReadingBookmarksRepository(impl: ReadingBookmarksRepositoryImpl): ReadingBookmarksRepository
+
+    @Binds
+    abstract fun bindReadingBookmarksSynchronizationRepository(impl: ReadingBookmarksRepositoryImpl): ReadingBookmarksSynchronizationRepository
 
     @Binds
     abstract fun bindReadingSessionsRepository(impl: ReadingSessionsRepositoryImpl): ReadingSessionsRepository

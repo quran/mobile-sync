@@ -13,11 +13,13 @@ import com.quran.shared.persistence.input.RemoteReadingSession
 import com.quran.shared.persistence.model.Bookmark
 import com.quran.shared.persistence.model.CollectionBookmark
 import com.quran.shared.persistence.model.Note
+import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.Collection as PersistenceCollection
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksSynchronizationRepository
 import com.quran.shared.persistence.repository.collection.repository.CollectionsSynchronizationRepository
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksSynchronizationRepository
 import com.quran.shared.persistence.repository.note.repository.NotesSynchronizationRepository
+import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksSynchronizationRepository
 import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsSynchronizationRepository
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.util.QuranData
@@ -54,6 +56,7 @@ interface SyncEngineCallback {
 @SingleIn(AppScope::class)
 class SyncEnginePipeline(
     val bookmarksRepository: BookmarksSynchronizationRepository,
+    val readingBookmarksRepository: ReadingBookmarksSynchronizationRepository,
     val collectionsRepository: CollectionsSynchronizationRepository,
     val collectionBookmarksRepository: CollectionBookmarksSynchronizationRepository,
     val notesRepository: NotesSynchronizationRepository,
@@ -70,8 +73,8 @@ class SyncEnginePipeline(
 
         val bookmarksConf = BookmarksSynchronizationConfigurations(
             localModificationDateFetcher = localModificationDateFetcher,
-            resultNotifier = ResultReceiver(bookmarksRepository, callback),
-            localDataFetcher = RepositoryDataFetcher(bookmarksRepository)
+            resultNotifier = ResultReceiver(bookmarksRepository, readingBookmarksRepository, callback),
+            localDataFetcher = RepositoryDataFetcher(bookmarksRepository, readingBookmarksRepository)
         )
         val collectionsConf = CollectionsSynchronizationConfigurations(
             localModificationDateFetcher = localModificationDateFetcher,
@@ -113,25 +116,43 @@ class SyncEnginePipeline(
     }
 }
 
-private class RepositoryDataFetcher(val bookmarksRepository: BookmarksSynchronizationRepository): LocalDataFetcher<SyncBookmark> {
+private class RepositoryDataFetcher(
+    val bookmarksRepository: BookmarksSynchronizationRepository,
+    val readingBookmarksRepository: ReadingBookmarksSynchronizationRepository
+) : LocalDataFetcher<SyncBookmark> {
 
     override suspend fun fetchLocalMutations(lastModified: Long): List<LocalModelMutation<SyncBookmark>> {
-        return bookmarksRepository.fetchMutatedBookmarks().map { repoMutation ->
-            LocalModelMutation(
+        val bookmarkMutations = bookmarksRepository.fetchMutatedBookmarks().map { repoMutation ->
+            LocalModelMutation<SyncBookmark>(
                 model = repoMutation.model.toSyncEngine(),
                 remoteID = repoMutation.remoteID,
                 localID = repoMutation.localID,
                 mutation = repoMutation.mutation
             )
         }
+        val readingMutations = readingBookmarksRepository.fetchMutatedReadingBookmarks().map { repoMutation ->
+            LocalModelMutation<SyncBookmark>(
+                model = repoMutation.model.toSyncEngine(),
+                remoteID = repoMutation.remoteID,
+                localID = repoMutation.localID,
+                mutation = repoMutation.mutation
+            )
+        }
+        return (bookmarkMutations + readingMutations)
+            .sortedByDescending { it.model.lastModified.toEpochMilliseconds() }
     }
 
     override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> {
-        return bookmarksRepository.remoteResourcesExist(remoteIDs)
+        val bookmarkExistence = bookmarksRepository.remoteResourcesExist(remoteIDs)
+        val readingExistence = readingBookmarksRepository.remoteResourcesExist(remoteIDs)
+        return remoteIDs.associateWith { remoteId ->
+            bookmarkExistence[remoteId] == true || readingExistence[remoteId] == true
+        }
     }
 
     override suspend fun fetchLocalModel(remoteId: String): SyncBookmark? {
         return bookmarksRepository.fetchBookmarkByRemoteId(remoteId)?.toSyncEngine()
+            ?: readingBookmarksRepository.fetchReadingBookmarkByRemoteId(remoteId)?.toSyncEngine()
     }
 }
 
@@ -182,12 +203,6 @@ private class CollectionBookmarksRepositoryDataFetcher(
     override suspend fun fetchLocalModel(remoteId: String): SyncCollectionBookmark? {
         val bookmark = bookmarksRepository.fetchBookmarkByRemoteId(remoteId) ?: return null
         return when (bookmark) {
-            is Bookmark.PageBookmark -> SyncCollectionBookmark.PageBookmark(
-                collectionId = "", // Not used for this fetch
-                page = bookmark.page,
-                lastModified = bookmark.lastUpdated.fromPlatform(),
-                bookmarkId = remoteId
-            )
             is Bookmark.AyahBookmark -> SyncCollectionBookmark.AyahBookmark(
                 collectionId = "", // Not used for this fetch
                 sura = bookmark.sura,
@@ -255,8 +270,10 @@ private class ReadingSessionsRepositoryDataFetcher(
 }
 
 private class ResultReceiver(
-    val repository: BookmarksSynchronizationRepository,
-    val callback: SyncEngineCallback): ResultNotifier<SyncBookmark> {
+    val bookmarksRepository: BookmarksSynchronizationRepository,
+    val readingBookmarksRepository: ReadingBookmarksSynchronizationRepository,
+    val callback: SyncEngineCallback
+) : ResultNotifier<SyncBookmark> {
 
     override suspend fun didFail(message: String) {
         callback.encounteredError(message)
@@ -267,25 +284,49 @@ private class ResultReceiver(
         newRemoteMutations: List<RemoteModelMutation<SyncBookmark>>,
         processedLocalMutations: List<LocalModelMutation<SyncBookmark>>
     ) {
-        val mappedRemotes = newRemoteMutations.map { remoteMutation ->
-            RemoteModelMutation(
+        val bookmarkRemoteMutations = newRemoteMutations.filter { !it.model.isReading }
+        val readingRemoteMutations = newRemoteMutations.filter { it.model.isReading }
+        val bookmarkLocalMutations = processedLocalMutations.filter { !it.model.isReading }
+        val readingLocalMutations = processedLocalMutations.filter { it.model.isReading }
+
+        val mappedBookmarkRemotes = bookmarkRemoteMutations.map { remoteMutation ->
+            RemoteModelMutation<RemoteBookmark.Ayah>(
                 model = remoteMutation.model.toRemoteInput(),
                 remoteID = remoteMutation.remoteID,
                 mutation = remoteMutation.mutation
             )
         }
-        val mappedLocals = processedLocalMutations.map { localMutation ->
+        val mappedBookmarkLocals = bookmarkLocalMutations.map { localMutation ->
             LocalModelMutation(
-                model = localMutation.model.toPersistence(),
+                model = localMutation.model.toBookmarkPersistence(),
+                localID = localMutation.localID,
+                remoteID = localMutation.remoteID,
+                mutation = localMutation.mutation
+            )
+        }
+        val mappedReadingRemotes = readingRemoteMutations.map { remoteMutation ->
+            RemoteModelMutation<RemoteBookmark.Ayah>(
+                model = remoteMutation.model.toRemoteInput(),
+                remoteID = remoteMutation.remoteID,
+                mutation = remoteMutation.mutation
+            )
+        }
+        val mappedReadingLocals = readingLocalMutations.map { localMutation ->
+            LocalModelMutation(
+                model = localMutation.model.toReadingBookmarkPersistence(),
                 localID = localMutation.localID,
                 remoteID = localMutation.remoteID,
                 mutation = localMutation.mutation
             )
         }
 
-        Logger.i { "Persisting ${mappedRemotes.count()} remote updates, and clearing ${mappedLocals.count()} local updates." }
-        
-        repository.applyRemoteChanges(mappedRemotes, mappedLocals)
+        Logger.i {
+            "Persisting ${mappedBookmarkRemotes.count() + mappedReadingRemotes.count()} remote updates, " +
+                "and clearing ${mappedBookmarkLocals.count() + mappedReadingLocals.count()} local updates."
+        }
+
+        bookmarksRepository.applyRemoteChanges(mappedBookmarkRemotes, mappedBookmarkLocals)
+        readingBookmarksRepository.applyRemoteChanges(mappedReadingRemotes, mappedReadingLocals)
         callback.synchronizationDone(newToken)
     }
 }
@@ -465,43 +506,45 @@ private class ReadingSessionsResultReceiver(
     }
 }
 
-private fun Bookmark.toSyncEngine(): SyncBookmark {
+private fun Bookmark.AyahBookmark.toSyncEngine(): SyncBookmark.AyahBookmark {
+    return SyncBookmark.AyahBookmark(
+        id = this.localId,
+        sura = this.sura,
+        ayah = this.ayah,
+        lastModified = this.lastUpdated.fromPlatform(),
+        isReading = false
+    )
+}
+
+private fun ReadingBookmark.toSyncEngine(): SyncBookmark.AyahBookmark {
+    return SyncBookmark.AyahBookmark(
+        id = this.localId,
+        sura = this.sura,
+        ayah = this.ayah,
+        lastModified = this.lastUpdated.fromPlatform(),
+        isReading = true
+    )
+}
+
+private fun SyncBookmark.toBookmarkPersistence(): Bookmark.AyahBookmark {
     return when (this) {
-        is Bookmark.PageBookmark -> {
-            SyncBookmark.PageBookmark(
-                page = this.page,
-                id = this.localId,
-                lastModified = this.lastUpdated.fromPlatform(),
-                isReading = this.isReading
-            )
-        }
-        is Bookmark.AyahBookmark -> {
-            SyncBookmark.AyahBookmark(
-                id = this.localId,
-                sura = this.sura,
-                ayah = this.ayah,
-                lastModified = this.lastUpdated.fromPlatform(),
-                isReading = this.isReading
-            )
-        }
+        is SyncBookmark.AyahBookmark -> Bookmark.AyahBookmark(
+            sura = this.sura,
+            ayah = this.ayah,
+            lastUpdated = this.lastModified.toPlatform(),
+            localId = this.id
+        )
     }
 }
 
-private fun SyncBookmark.toPersistence(): Bookmark {
+private fun SyncBookmark.toReadingBookmarkPersistence(): ReadingBookmark {
     return when (this) {
-        is SyncBookmark.PageBookmark ->
-            Bookmark.PageBookmark(
-                page = this.page,
-                lastUpdated = this.lastModified.toPlatform(),
-                localId = this.id
-            )
-        is SyncBookmark.AyahBookmark ->
-            Bookmark.AyahBookmark(
-                sura = this.sura,
-                ayah = this.ayah,
-                lastUpdated = this.lastModified.toPlatform(),
-                localId = this.id
-            )
+        is SyncBookmark.AyahBookmark -> ReadingBookmark(
+            sura = this.sura,
+            ayah = this.ayah,
+            lastUpdated = this.lastModified.toPlatform(),
+            localId = this.id
+        )
     }
 }
 
@@ -521,14 +564,8 @@ private fun SyncCollection.toPersistence(): PersistenceCollection {
     )
 }
 
-private fun SyncBookmark.toRemoteInput(): RemoteBookmark {
+private fun SyncBookmark.toRemoteInput(): RemoteBookmark.Ayah {
     return when (this) {
-        is SyncBookmark.PageBookmark ->
-            RemoteBookmark.Page(
-                page = this.page,
-                lastUpdated = this.lastModified.toPlatform(),
-                isReading = this.isReading
-            )
         is SyncBookmark.AyahBookmark ->
             RemoteBookmark.Ayah(
                 sura = this.sura,
@@ -549,18 +586,13 @@ private fun SyncCollection.toRemoteInput(): RemoteCollection {
 private fun CollectionBookmark.toSyncEngine(): SyncCollectionBookmark {
     val collectionId = requireNotNull(collectionRemoteId) { "Collection remote ID is required for sync." }
     return when (this) {
-        is CollectionBookmark.PageBookmark ->
-            SyncCollectionBookmark.PageBookmark(
-                collectionId = collectionId,
-                page = this.page,
-                lastModified = this.lastUpdated.fromPlatform()
-            )
         is CollectionBookmark.AyahBookmark ->
             SyncCollectionBookmark.AyahBookmark(
                 collectionId = collectionId,
                 sura = this.sura,
                 ayah = this.ayah,
-                lastModified = this.lastUpdated.fromPlatform()
+                lastModified = this.lastUpdated.fromPlatform(),
+                bookmarkId = this.bookmarkRemoteId
             )
     }
 }
@@ -568,20 +600,12 @@ private fun CollectionBookmark.toSyncEngine(): SyncCollectionBookmark {
 private fun SyncCollectionBookmark.toPersistence(localId: String): CollectionBookmark {
     val updatedAt = lastModified.toPlatform()
     return when (this) {
-        is SyncCollectionBookmark.PageBookmark ->
-            CollectionBookmark.PageBookmark(
-                collectionLocalId = "",
-                collectionRemoteId = collectionId,
-                bookmarkLocalId = "",
-                page = page,
-                lastUpdated = updatedAt,
-                localId = localId
-            )
         is SyncCollectionBookmark.AyahBookmark ->
             CollectionBookmark.AyahBookmark(
                 collectionLocalId = "",
                 collectionRemoteId = collectionId,
                 bookmarkLocalId = "",
+                bookmarkRemoteId = bookmarkId,
                 sura = sura,
                 ayah = ayah,
                 lastUpdated = updatedAt,
@@ -593,13 +617,6 @@ private fun SyncCollectionBookmark.toPersistence(localId: String): CollectionBoo
 private fun SyncCollectionBookmark.toRemoteInput(): RemoteCollectionBookmark {
     val updatedAt = lastModified.toPlatform()
     return when (this) {
-        is SyncCollectionBookmark.PageBookmark ->
-            RemoteCollectionBookmark.Page(
-                collectionId = collectionId,
-                page = page,
-                lastUpdated = updatedAt,
-                bookmarkId = bookmarkId
-            )
         is SyncCollectionBookmark.AyahBookmark ->
             RemoteCollectionBookmark.Ayah(
                 collectionId = collectionId,

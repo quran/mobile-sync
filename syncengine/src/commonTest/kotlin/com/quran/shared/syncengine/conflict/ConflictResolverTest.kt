@@ -5,7 +5,7 @@ import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.syncengine.model.SyncBookmark
-import com.quran.shared.syncengine.model.SyncBookmark.PageBookmark
+import com.quran.shared.syncengine.PageBookmark
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith

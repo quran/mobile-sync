@@ -15,6 +15,7 @@ class SyncViewModel: ObservableObject {
 
     @Published var authState: AuthState = AuthState.Idle()
     @Published var bookmarks: [Shared.Bookmark] = []
+    @Published var readingBookmark: Shared.ReadingBookmark? = nil
     @Published var collectionsWithBookmarks: [Shared.CollectionWithBookmarks] = []
     @Published var notes: [Shared.Note_] = []
     @Published var readingSessions: [Shared.ReadingSession] = []
@@ -54,6 +55,21 @@ class SyncViewModel: ObservableObject {
                     }
                 } catch {
                     print("SyncViewModel: Error observing bookmarks: \(error)")
+                }
+            }
+            group.addTask { @MainActor [weak self] in
+                guard let syncService = self?.syncService else {
+                    return
+                }
+                do {
+                    for try await bookmark in asyncSequence(for: syncService.readingBookmark) {
+                        guard let self = self else {
+                            break
+                        }
+                        self.readingBookmark = bookmark
+                    }
+                } catch {
+                    print("SyncViewModel: Error observing reading bookmark: \(error)")
                 }
             }
             group.addTask { @MainActor [weak self] in
@@ -106,15 +122,6 @@ class SyncViewModel: ObservableObject {
 
     func triggerSync() {
         syncService.triggerSync()
-    }
-
-    func addBookmark(page: Int32) async -> Shared.Bookmark? {
-        do {
-            return try await asyncFunction(for: syncService.addBookmark(page: page))
-        } catch {
-            print("SyncViewModel: Failed to add page bookmark: \(error)")
-            return nil
-        }
     }
 
     func addBookmark(sura: Int32, ayah: Int32) async -> Shared.Bookmark? {
@@ -184,8 +191,7 @@ class SyncViewModel: ObservableObject {
 
     func addAyahBookmarkToCollection(collectionId: String, sura: Int32, ayah: Int32) async {
         do {
-            let bookmark = try await asyncFunction(for: syncService.addBookmark(sura: sura, ayah: ayah))
-            try await asyncFunction(for: syncService.addBookmarkToCollection(collectionLocalId: collectionId, bookmark: bookmark))
+            try await asyncFunction(for: syncService.addAyahBookmarkToCollection(collectionLocalId: collectionId, sura: sura, ayah: ayah))
         } catch {
             print("SyncViewModel: Failed to add random bookmark to collection: \(error)")
         }
@@ -203,16 +209,7 @@ class SyncViewModel: ObservableObject {
         try await asyncFunction(for: authService.loginWithReauthentication())
     }
 
-    func addReadingBookmark(page: Int32) async -> Shared.Bookmark? {
-        do {
-            return try await asyncFunction(for: syncService.addReadingBookmark(page: page))
-        } catch {
-            print("SyncViewModel: Failed to add current reading page bookmark: \(error)")
-            return nil
-        }
-    }
-
-    func addReadingBookmark(sura: Int32, ayah: Int32) async -> Shared.Bookmark? {
+    func addReadingBookmark(sura: Int32, ayah: Int32) async -> Shared.ReadingBookmark? {
         do {
             return try await asyncFunction(for: syncService.addReadingBookmark(sura: sura, ayah: ayah))
         } catch {
