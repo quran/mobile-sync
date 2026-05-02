@@ -2,7 +2,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    alias(libs.plugins.android.library)
+    alias(libs.plugins.android.kotlin.multiplatform.library)
 }
 
 kotlin {
@@ -11,8 +11,11 @@ kotlin {
     iosSimulatorArm64()
 
     jvm()
-    androidTarget {
-        publishLibraryVariants("release")
+    android {
+        namespace = "com.quran.shared.demo.common"
+        compileSdk = 36
+        minSdk = 23
+
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_17)
         }
@@ -27,18 +30,3 @@ kotlin {
         languageSettings.optIn("kotlin.experimental.ExperimentalObjCName")
     }
 }
-
-android {
-    namespace = "com.quran.shared.demo.common"
-    compileSdk = 36
-
-    defaultConfig {
-        minSdk = 23
-    }
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-}
-

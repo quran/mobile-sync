@@ -3,7 +3,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.metro)
-    alias(libs.plugins.android.library)
+    alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.vanniktech.maven.publish)
     alias(libs.plugins.native.coroutines)
 }
@@ -15,11 +15,16 @@ kotlin {
 
 
     jvm()
-    androidTarget {
-        publishLibraryVariants("release")
+    android {
+        namespace = "com.quran.shared.sync.pipelines"
+        compileSdk = libs.versions.android.compile.sdk.get().toInt()
+        minSdk = libs.versions.android.min.sdk.get().toInt()
+
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_17)
         }
+
+        withHostTest {}
     }
 
     sourceSets {
@@ -52,21 +57,6 @@ kotlin {
                 freeCompilerArgs.add("-Xexpect-actual-classes")
             }
         }
-    }
-}
-
-android {
-    namespace = "com.quran.shared.sync.pipelines"
-    compileSdk = libs.versions.android.compile.sdk.get().toInt()
-
-    defaultConfig {
-        minSdk = libs.versions.android.min.sdk.get().toInt()
-        manifestPlaceholders["oidcRedirectScheme"] = "com.quran.oauth"
-    }
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.valueOf("VERSION_${libs.versions.android.java.version.get()}")
-        targetCompatibility = JavaVersion.valueOf("VERSION_${libs.versions.android.java.version.get()}")
     }
 }
 

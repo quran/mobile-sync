@@ -40,7 +40,7 @@ buildkonfig {
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.metro)
-    alias(libs.plugins.android.library)
+    alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.vanniktech.maven.publish)
     alias(libs.plugins.buildkonfig)
     alias(libs.plugins.kotlin.serialization)
@@ -55,11 +55,16 @@ kotlin {
     iosSimulatorArm64()
 
     jvm()
-    androidTarget {
-        publishLibraryVariants("release")
+    android {
+        namespace = "com.quran.shared.auth"
+        compileSdk = libs.versions.android.compile.sdk.get().toInt()
+        minSdk = libs.versions.android.min.sdk.get().toInt()
+
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_17)
         }
+
+        withHostTest {}
     }
 
     sourceSets {
@@ -97,21 +102,6 @@ kotlin {
                 implementation(libs.ktor.client.darwin)
             }
         }
-    }
-}
-
-android {
-    namespace = "com.quran.shared.auth"
-    compileSdk = libs.versions.android.compile.sdk.get().toInt()
-
-    defaultConfig {
-        minSdk = libs.versions.android.min.sdk.get().toInt()
-        manifestPlaceholders["oidcRedirectScheme"] = "com.quran.oauth"
-    }
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.valueOf("VERSION_${libs.versions.android.java.version.get()}")
-        targetCompatibility = JavaVersion.valueOf("VERSION_${libs.versions.android.java.version.get()}")
     }
 }
 
