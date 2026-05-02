@@ -591,7 +591,8 @@ private fun CollectionBookmark.toSyncEngine(): SyncCollectionBookmark {
                 collectionId = collectionId,
                 sura = this.sura,
                 ayah = this.ayah,
-                lastModified = this.lastUpdated.fromPlatform()
+                lastModified = this.lastUpdated.fromPlatform(),
+                bookmarkId = this.bookmarkRemoteId
             )
     }
 }
@@ -604,6 +605,7 @@ private fun SyncCollectionBookmark.toPersistence(localId: String): CollectionBoo
                 collectionLocalId = "",
                 collectionRemoteId = collectionId,
                 bookmarkLocalId = "",
+                bookmarkRemoteId = bookmarkId,
                 sura = sura,
                 ayah = ayah,
                 lastUpdated = updatedAt,

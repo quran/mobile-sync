@@ -76,8 +76,7 @@ class SyncViewModel(
     }
 
     suspend fun addAyahBookmarkToCollection(collectionId: String, sura: Int, ayah: Int) {
-        val bookmark = service.addBookmark(sura, ayah)
-        service.addBookmarkToCollection(collectionId, bookmark)
+        service.addAyahBookmarkToCollection(collectionId, sura, ayah)
     }
 
     suspend fun removeBookmarkFromCollection(collectionId: String, bookmark: Bookmark) {
