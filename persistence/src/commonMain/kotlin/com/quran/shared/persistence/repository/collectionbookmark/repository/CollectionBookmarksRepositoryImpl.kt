@@ -189,10 +189,6 @@ class CollectionBookmarksRepositoryImpl(
                     }
                     val mutation = if (record.deleted == 1L) Mutation.DELETED else Mutation.CREATED
                     val bookmarkRemoteId = record.bookmark_remote_id
-                    if (mutation == Mutation.DELETED && bookmarkRemoteId.isNullOrEmpty()) {
-                        logger.w { "Skipping deleted collection bookmark without remote bookmark ID: localId=${record.local_id}" }
-                        return@mapNotNull null
-                    }
                     val collectionBookmark = toCollectionBookmark(
                         bookmarkType = record.bookmark_type,
                         bookmarkLocalId = record.bookmark_local_id,

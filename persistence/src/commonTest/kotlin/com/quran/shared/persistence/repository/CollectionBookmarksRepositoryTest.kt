@@ -246,6 +246,39 @@ class CollectionBookmarksRepositoryTest {
     }
 
     @Test
+    fun `fetchMutatedCollectionBookmarks includes deletion when link has remote id but bookmark remote id is null`() = runTest {
+        database.collectionsQueries.addNewCollection(name = "DeleteWithoutBookmarkRemoteId")
+        val collection = database.collectionsQueries.getCollectionByName("DeleteWithoutBookmarkRemoteId").executeAsOne()
+        database.collectionsQueries.updateRemoteCollectionByLocalId(
+            remote_id = "remote-collection-id-delete",
+            name = collection.name,
+            modified_at = 1L,
+            local_id = collection.local_id
+        )
+
+        val bookmark = bookmarksRepository.addBookmark(2, 2)
+        repository.addBookmarkToCollection(collection.local_id.toString(), bookmark)
+
+        // Simulate server-created collection bookmark ID while the bookmark itself is still local-only.
+        database.bookmark_collectionsQueries.persistRemoteBookmarkCollection(
+            remote_id = "remote-collection-bookmark-id-delete",
+            bookmark_local_id = bookmark.localId,
+            bookmark_type = "AYAH",
+            collection_local_id = collection.local_id,
+            created_at = 10L,
+            modified_at = 10L
+        )
+
+        repository.removeBookmarkFromCollection(collection.local_id.toString(), bookmark)
+        val mutations = repository.fetchMutatedCollectionBookmarks()
+
+        assertEquals(1, mutations.size)
+        assertEquals(Mutation.DELETED, mutations.single().mutation)
+        assertEquals("remote-collection-bookmark-id-delete", mutations.single().remoteID)
+        assertNull(mutations.single().model.bookmarkRemoteId)
+    }
+
+    @Test
     fun `applyRemoteChanges ignores remote page collection bookmarks`() = runTest {
         database.collectionsQueries.addNewCollection(name = "IgnorePages")
         val collection = database.collectionsQueries.getCollectionByName("IgnorePages").executeAsOne()
