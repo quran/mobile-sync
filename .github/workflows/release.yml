@@ -37,7 +37,7 @@ jobs:
           cache: gradle
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v5
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Build XCFramework
         run: ./gradlew $XCF_GRADLE_TASK --stacktrace -Dorg.gradle.jvmargs="-Xmx6144m -Dfile.encoding=UTF-8 -Dkotlin.daemon.jvm.options=-Xmx6144m"
