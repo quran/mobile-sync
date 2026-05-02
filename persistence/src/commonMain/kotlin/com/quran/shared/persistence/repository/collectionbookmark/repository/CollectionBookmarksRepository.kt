@@ -17,6 +17,16 @@ interface CollectionBookmarksRepository {
     suspend fun addBookmarkToCollection(collectionLocalId: String, bookmark: Bookmark): CollectionBookmark
 
     /**
+     * Atomically creates an ayah bookmark (if missing) and links it to a collection.
+     * This operation must not leave partial state if linking fails.
+     */
+    suspend fun addAyahBookmarkToCollection(
+        collectionLocalId: String,
+        sura: Int,
+        ayah: Int
+    ): CollectionBookmark
+
+    /**
      * Removes a bookmark from a collection locally.
      */
     suspend fun removeBookmarkFromCollection(collectionLocalId: String, bookmark: Bookmark): Boolean

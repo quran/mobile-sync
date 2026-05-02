@@ -191,8 +191,7 @@ class SyncViewModel: ObservableObject {
 
     func addAyahBookmarkToCollection(collectionId: String, sura: Int32, ayah: Int32) async {
         do {
-            let bookmark = try await asyncFunction(for: syncService.addBookmark(sura: sura, ayah: ayah))
-            try await asyncFunction(for: syncService.addBookmarkToCollection(collectionLocalId: collectionId, bookmark: bookmark))
+            try await asyncFunction(for: syncService.addAyahBookmarkToCollection(collectionLocalId: collectionId, sura: sura, ayah: ayah))
         } catch {
             print("SyncViewModel: Failed to add random bookmark to collection: \(error)")
         }

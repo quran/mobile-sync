@@ -5,13 +5,14 @@ import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logging
+import kotlinx.serialization.json.Json
 import io.ktor.serialization.kotlinx.json.json
 
 actual object HttpClientFactory {
     actual fun createHttpClient(): HttpClient {
         return HttpClient(OkHttp) {
             install(ContentNegotiation) {
-                json()
+                json(Json { explicitNulls = false })
             }
             install(Logging) {
                 level = LogLevel.INFO
