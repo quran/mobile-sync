@@ -51,19 +51,18 @@ class NotesRepositoryImpl(
     override suspend fun addNote(body: String, startAyahId: Long, endAyahId: Long): Note {
         logger.i { "Adding note for range=$startAyahId-$endAyahId" }
         return withContext(Dispatchers.IO) {
-            var insertedNote: Note? = null
+            var inserted: Note? = null
             database.transaction {
                 notesQueries.value.addNewNote(
                     note = body,
                     start_ayah_id = startAyahId,
                     end_ayah_id = endAyahId
                 )
-                val insertedId = notesQueries.value.lastInsertedRowId().executeAsOne()
-                val record = notesQueries.value.getNoteByLocalId(insertedId).executeAsOneOrNull()
-                requireNotNull(record) { "Expected note localId=$insertedId after insert." }
-                insertedNote = record.toNote()
+                val record = notesQueries.value.getLastInsertedNote().executeAsOneOrNull()
+                requireNotNull(record) { "Expected note after insert." }
+                inserted = record.toNote()
             }
-            requireNotNull(insertedNote)
+            requireNotNull(inserted)
         }
     }
 
