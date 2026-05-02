@@ -29,10 +29,10 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || github.ref }}
 
-      - name: Set up JDK 17
+      - name: Set up JDK 
         uses: actions/setup-java@v5
         with:
-          java-version: "17"
+          java-version: "21"
           distribution: "temurin"
           cache: gradle
 

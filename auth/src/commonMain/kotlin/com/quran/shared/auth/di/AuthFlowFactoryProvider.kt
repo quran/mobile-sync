@@ -1,6 +1,6 @@
 package com.quran.shared.auth.di
 
-import org.publicvalue.multiplatform.oidc.appsupport.CodeAuthFlowFactory
+import org.publicvalue.multiplatform.oidc.flows.CodeAuthFlowFactory
 
 /**
  * Platform-specific provider for CodeAuthFlowFactory.
