@@ -66,14 +66,51 @@ class ReadingBookmarksRepositoryTest {
     }
 
     @Test
-    fun `fetchMutatedReadingBookmarks returns created and deleted bookmarks`() = runTest {
+    fun `fetchMutatedReadingBookmarks keeps only created mutation when replacing unsynced reading bookmark`() = runTest {
         repository.addReadingBookmark(2, 255)
         repository.addReadingBookmark(3, 2)
 
         val mutations = syncRepository.fetchMutatedReadingBookmarks()
 
-        assertTrue(mutations.any { it.model.sura == 2 && it.model.ayah == 255 && it.mutation == Mutation.DELETED })
+        assertEquals(1, mutations.size)
         assertTrue(mutations.any { it.model.sura == 3 && it.model.ayah == 2 && it.mutation == Mutation.CREATED })
+    }
+
+    @Test
+    fun `fetchMutatedReadingBookmarks includes deletion for synced bookmark when replaced`() = runTest {
+        syncRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                RemoteModelMutation(
+                    model = RemoteBookmark.Ayah(
+                        sura = 2,
+                        ayah = 255,
+                        isReading = false,
+                        lastUpdated = Instant.fromEpochMilliseconds(1000L).toPlatform()
+                    ),
+                    remoteID = "remote-reading-id",
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        repository.addReadingBookmark(3, 2)
+        val mutations = syncRepository.fetchMutatedReadingBookmarks()
+
+        assertTrue(
+            mutations.any {
+                it.model.sura == 2 && it.model.ayah == 255 &&
+                    it.mutation == Mutation.DELETED &&
+                    it.remoteID == "remote-reading-id"
+            }
+        )
+        assertTrue(
+            mutations.any {
+                it.model.sura == 3 && it.model.ayah == 2 &&
+                    it.mutation == Mutation.CREATED &&
+                    it.remoteID == null
+            }
+        )
     }
 
     @Test
