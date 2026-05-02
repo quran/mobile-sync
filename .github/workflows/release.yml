@@ -89,7 +89,7 @@ jobs:
           echo "tag-name=$tag_name" >> "$GITHUB_OUTPUT"
 
       - name: Publish Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.package.outputs.tag-name }}
           name: Shared XCFramework ${{ steps.package.outputs.version }}
