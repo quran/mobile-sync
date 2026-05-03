@@ -204,9 +204,9 @@ class SyncService(
     }
 
     @NativeCoroutines
-    suspend fun addReadingSession(chapterNumber: Int, verseNumber: Int): ReadingSession {
+    suspend fun addReadingSession(sura: Int, ayah: Int): ReadingSession {
         try {
-            val readingSession = readingSessionsRepository.addReadingSession(chapterNumber, verseNumber)
+            val readingSession = readingSessionsRepository.addReadingSession(sura, ayah)
             triggerSync()
             return readingSession
         } catch (e: Exception) {

@@ -218,9 +218,9 @@ class SyncViewModel: ObservableObject {
         }
     }
 
-    func addReadingSession(chapterNumber: Int32, verseNumber: Int32) async -> Shared.ReadingSession? {
+    func addReadingSession(sura: Int32, ayah: Int32) async -> Shared.ReadingSession? {
         do {
-            return try await asyncFunction(for: syncService.addReadingSession(chapterNumber: chapterNumber, verseNumber: verseNumber))
+            return try await asyncFunction(for: syncService.addReadingSession(sura: sura, ayah: ayah))
         } catch {
             print("SyncViewModel: Failed to add reading session: \(error)")
             return nil

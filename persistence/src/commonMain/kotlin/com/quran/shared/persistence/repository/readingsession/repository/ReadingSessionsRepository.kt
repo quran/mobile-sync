@@ -16,12 +16,12 @@ interface ReadingSessionsRepository {
     /**
      * Add a reading session to the list.
      *
-     * @param chapterNumber the sura number of the session
-     * @param verseNumber the verse number of the session
+     * @param sura the sura number of the session
+     * @param ayah the ayah number of the session
      * @return the [ReadingSession]
      */
     @NativeCoroutines
-    suspend fun addReadingSession(chapterNumber: Int, verseNumber: Int): ReadingSession
+    suspend fun addReadingSession(sura: Int, ayah: Int): ReadingSession
 
     /**
      * Returns a flow of all reading sessions for observation.
@@ -35,5 +35,5 @@ interface ReadingSessionsRepository {
      * @return a boolean denoting success
      */
     @NativeCoroutines
-    suspend fun deleteReadingSession(chapterNumber: Int, verseNumber: Int): Boolean
+    suspend fun deleteReadingSession(sura: Int, ayah: Int): Boolean
 }

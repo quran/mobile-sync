@@ -46,29 +46,29 @@ class ReadingSessionsRepositoryImpl(
             .map { list -> list.map { it.toReadingSession() } }
     }
 
-    override suspend fun addReadingSession(chapterNumber: Int, verseNumber: Int): ReadingSession {
-        logger.i { "Adding reading session ($chapterNumber:$verseNumber)" }
+    override suspend fun addReadingSession(sura: Int, ayah: Int): ReadingSession {
+        logger.i { "Adding reading session ($sura:$ayah)" }
         return withContext(Dispatchers.IO) {
             readingSessionsQueries.value.addReadingSession(
-                chapter_number = chapterNumber.toLong(),
-                verse_number = verseNumber.toLong()
+                chapter_number = sura.toLong(),
+                verse_number = ayah.toLong()
             )
             val record = readingSessionsQueries.value.getReadingSessionForChapterVerse(
-                chapterNumber.toLong(),
-                verseNumber.toLong()
+                sura.toLong(),
+                ayah.toLong()
             )
                 .executeAsOneOrNull()
-            requireNotNull(record) { "Expected reading session for $chapterNumber:$verseNumber after insert." }
+            requireNotNull(record) { "Expected reading session for $sura:$ayah after insert." }
             record.toReadingSession()
         }
     }
 
-    override suspend fun deleteReadingSession(chapterNumber: Int, verseNumber: Int): Boolean {
-        logger.i { "Deleting reading session for $chapterNumber:$verseNumber" }
+    override suspend fun deleteReadingSession(sura: Int, ayah: Int): Boolean {
+        logger.i { "Deleting reading session for $sura:$ayah" }
         withContext(Dispatchers.IO) {
             readingSessionsQueries.value.deleteReadingSession(
-                chapter_number = chapterNumber.toLong(),
-                verse_number = verseNumber.toLong()
+                chapter_number = sura.toLong(),
+                verse_number = ayah.toLong()
             )
         }
         return true

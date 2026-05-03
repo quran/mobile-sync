@@ -22,7 +22,7 @@ struct ReadingSessionsTabView: View {
                                 Image(systemName: "clock")
                                     .foregroundColor(.blue)
                                 VStack(alignment: .leading) {
-                                    Text("Surah \(readingSession.chapterNumber), Ayah \(readingSession.verseNumber)")
+                                    Text("Surah \(readingSession.sura), Ayah \(readingSession.ayah)")
                                         .font(.body)
                                 }
                             }
@@ -39,7 +39,7 @@ struct ReadingSessionsTabView: View {
                         Task {
                             let sura = Int32.random(in: 1...114)
                             let ayah = Int32.random(in: 1...7)
-                            _ = await viewModel.addReadingSession(chapterNumber: sura, verseNumber: ayah)
+                            _ = await viewModel.addReadingSession(sura: sura, ayah: ayah)
                         }
                     }) {
                         Image(systemName: "plus")
