@@ -10,7 +10,7 @@ import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.input.RemoteNote
 import com.quran.shared.persistence.input.RemoteReadingSession
-import com.quran.shared.persistence.model.Bookmark
+import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.CollectionBookmark
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.ReadingBookmark
@@ -202,15 +202,13 @@ private class CollectionBookmarksRepositoryDataFetcher(
 
     override suspend fun fetchLocalModel(remoteId: String): SyncCollectionBookmark? {
         val bookmark = bookmarksRepository.fetchBookmarkByRemoteId(remoteId) ?: return null
-        return when (bookmark) {
-            is Bookmark.AyahBookmark -> SyncCollectionBookmark.AyahBookmark(
-                collectionId = "", // Not used for this fetch
-                sura = bookmark.sura,
-                ayah = bookmark.ayah,
-                lastModified = bookmark.lastUpdated.fromPlatform(),
-                bookmarkId = remoteId
-            )
-        }
+        return SyncCollectionBookmark.AyahBookmark(
+            collectionId = "", // Not used for this fetch
+            sura = bookmark.sura,
+            ayah = bookmark.ayah,
+            lastModified = bookmark.lastUpdated.fromPlatform(),
+            bookmarkId = remoteId
+        )
     }
 }
 
@@ -506,7 +504,7 @@ private class ReadingSessionsResultReceiver(
     }
 }
 
-private fun Bookmark.AyahBookmark.toSyncEngine(): SyncBookmark.AyahBookmark {
+private fun AyahBookmark.toSyncEngine(): SyncBookmark.AyahBookmark {
     return SyncBookmark.AyahBookmark(
         id = this.localId,
         sura = this.sura,
@@ -526,9 +524,9 @@ private fun ReadingBookmark.toSyncEngine(): SyncBookmark.AyahBookmark {
     )
 }
 
-private fun SyncBookmark.toBookmarkPersistence(): Bookmark.AyahBookmark {
+private fun SyncBookmark.toBookmarkPersistence(): AyahBookmark {
     return when (this) {
-        is SyncBookmark.AyahBookmark -> Bookmark.AyahBookmark(
+        is SyncBookmark.AyahBookmark -> AyahBookmark(
             sura = this.sura,
             ayah = this.ayah,
             lastUpdated = this.lastModified.toPlatform(),

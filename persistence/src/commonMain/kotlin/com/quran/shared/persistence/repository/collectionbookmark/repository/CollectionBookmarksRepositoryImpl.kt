@@ -9,10 +9,10 @@ import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.input.RemoteCollectionBookmark
-import com.quran.shared.persistence.model.Bookmark
+import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.CollectionBookmark
 import com.quran.shared.persistence.model.DatabaseBookmarkCollection
-import com.quran.shared.persistence.repository.bookmark.extension.toBookmark
+import com.quran.shared.persistence.repository.bookmark.extension.toAyahBookmark
 import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
@@ -84,7 +84,7 @@ class CollectionBookmarksRepositoryImpl(
 
     override suspend fun addBookmarkToCollection(
         collectionLocalId: String,
-        bookmark: Bookmark
+        bookmark: AyahBookmark
     ): CollectionBookmark {
         return withContext(Dispatchers.IO) {
             val bookmarkType = bookmark.toCollectionBookmarkType()
@@ -156,7 +156,7 @@ class CollectionBookmarksRepositoryImpl(
                 }
                 created = collectionRecord.toCollectionBookmark(
                     collectionRemoteId = collection.remote_id,
-                    bookmark = bookmarkRecord.toBookmark(),
+                    bookmark = bookmarkRecord.toAyahBookmark(),
                     bookmarkRemoteId = bookmarkRecord.remote_id
                 )
             }
@@ -166,7 +166,7 @@ class CollectionBookmarksRepositoryImpl(
 
     override suspend fun removeBookmarkFromCollection(
         collectionLocalId: String,
-        bookmark: Bookmark
+        bookmark: AyahBookmark
     ): Boolean {
         return withContext(Dispatchers.IO) {
             bookmarkCollectionQueries.value.deleteBookmarkFromCollection(
@@ -375,23 +375,20 @@ class CollectionBookmarksRepositoryImpl(
 
     private fun DatabaseBookmarkCollection.toCollectionBookmark(
         collectionRemoteId: String?,
-        bookmark: Bookmark,
+        bookmark: AyahBookmark,
         bookmarkRemoteId: String?
     ): CollectionBookmark {
         val updatedAt = Instant.fromEpochMilliseconds(modified_at).toPlatform()
-        return when (bookmark) {
-            is Bookmark.AyahBookmark ->
-                CollectionBookmark.AyahBookmark(
-                    collectionLocalId = collection_local_id.toString(),
-                    collectionRemoteId = collectionRemoteId,
-                    bookmarkLocalId = bookmark.localId,
-                    bookmarkRemoteId = bookmarkRemoteId,
-                    sura = bookmark.sura,
-                    ayah = bookmark.ayah,
-                    lastUpdated = updatedAt,
-                    localId = local_id.toString()
-                )
-        }
+        return CollectionBookmark.AyahBookmark(
+            collectionLocalId = collection_local_id.toString(),
+            collectionRemoteId = collectionRemoteId,
+            bookmarkLocalId = bookmark.localId,
+            bookmarkRemoteId = bookmarkRemoteId,
+            sura = bookmark.sura,
+            ayah = bookmark.ayah,
+            lastUpdated = updatedAt,
+            localId = local_id.toString()
+        )
     }
 
     private fun RemoteCollectionBookmark.toBookmarkTypeWithTimestamp(): Pair<String, Long> {
@@ -402,7 +399,7 @@ class CollectionBookmarksRepositoryImpl(
         }
     }
 
-    private fun Bookmark.toCollectionBookmarkType(): String {
+    private fun AyahBookmark.toCollectionBookmarkType(): String {
         return "AYAH"
     }
 

@@ -77,17 +77,12 @@ struct BookmarksTabView: View {
                                 .foregroundColor(.accentColor)
                             
                             VStack(alignment: .leading) {
-                                if let ayahBookmark = bookmark as? Shared.Bookmark.AyahBookmark {
-                                    Text("Surah \(ayahBookmark.sura), Ayah \(ayahBookmark.ayah)")
-                                        .font(.body)
-                                }
+                                Text("Surah \(bookmark.sura), Ayah \(bookmark.ayah)")
+                                    .font(.body)
 
-                                let date = (bookmark as? Shared.Bookmark.AyahBookmark)?.lastUpdated
-                                if let date = date {
-                                    Text("\(dateFormatter.string(from: date))")
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
-                                }
+                                Text("\(dateFormatter.string(from: bookmark.lastUpdated))")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
                             }
                             
                             Spacer()

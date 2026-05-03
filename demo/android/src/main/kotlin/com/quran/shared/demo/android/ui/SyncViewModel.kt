@@ -3,7 +3,7 @@ package com.quran.shared.demo.android.ui
 import androidx.lifecycle.ViewModel
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.pipeline.SyncService
-import com.quran.shared.persistence.model.Bookmark
+import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.CollectionWithBookmarks
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.ReadingBookmark
@@ -18,7 +18,7 @@ class SyncViewModel(
 
     val authState: StateFlow<com.quran.shared.auth.model.AuthState> = service.authState
     
-    val bookmarks: Flow<List<Bookmark>> = service.bookmarks
+    val bookmarks: Flow<List<AyahBookmark>> = service.bookmarks
     val readingBookmark: Flow<ReadingBookmark?> = service.readingBookmark
     
     val collectionsWithBookmarks: Flow<List<CollectionWithBookmarks>> =
@@ -51,7 +51,7 @@ class SyncViewModel(
         service.triggerSync()
     }
 
-    suspend fun addBookmark(sura: Int, ayah: Int): Bookmark {
+    suspend fun addBookmark(sura: Int, ayah: Int): AyahBookmark {
         return service.addBookmark(sura, ayah)
     }
 
@@ -63,7 +63,7 @@ class SyncViewModel(
         service.deleteReadingBookmark()
     }
 
-    suspend fun deleteBookmark(bookmark: Bookmark) {
+    suspend fun deleteBookmark(bookmark: AyahBookmark) {
         service.deleteBookmark(bookmark)
     }
 
@@ -79,7 +79,7 @@ class SyncViewModel(
         service.addAyahBookmarkToCollection(collectionId, sura, ayah)
     }
 
-    suspend fun removeBookmarkFromCollection(collectionId: String, bookmark: Bookmark) {
+    suspend fun removeBookmarkFromCollection(collectionId: String, bookmark: AyahBookmark) {
         service.removeBookmarkFromCollection(collectionId, bookmark)
     }
 
