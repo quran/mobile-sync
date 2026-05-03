@@ -12,7 +12,7 @@ import androidx.compose.ui.unit.dp
 import com.quran.shared.auth.model.AuthState
 import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.persistence.model.AyahBookmark
-import com.quran.shared.persistence.model.CollectionWithBookmarks
+import com.quran.shared.persistence.model.CollectionWithAyahBookmarks
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingSession
@@ -231,7 +231,7 @@ private fun SuccessContent(
     userInfo: UserInfo,
     bookmarks: List<AyahBookmark>,
     readingBookmark: ReadingBookmark?,
-    collectionsWithBookmarks: List<CollectionWithBookmarks>,
+    collectionsWithBookmarks: List<CollectionWithAyahBookmarks>,
     notes: List<Note>,
     onAddAyahBookmark: () -> Unit,
     onAddReadingAyahBookmark: () -> Unit,

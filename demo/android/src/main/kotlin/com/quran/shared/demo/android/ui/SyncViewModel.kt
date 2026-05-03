@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.pipeline.SyncService
 import com.quran.shared.persistence.model.AyahBookmark
-import com.quran.shared.persistence.model.CollectionWithBookmarks
+import com.quran.shared.persistence.model.CollectionWithAyahBookmarks
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingSession
@@ -21,7 +21,7 @@ class SyncViewModel(
     val bookmarks: Flow<List<AyahBookmark>> = service.bookmarks
     val readingBookmark: Flow<ReadingBookmark?> = service.readingBookmark
     
-    val collectionsWithBookmarks: Flow<List<CollectionWithBookmarks>> =
+    val collectionsWithBookmarks: Flow<List<CollectionWithAyahBookmarks>> =
         service.collectionsWithBookmarks
     
     val notes: Flow<List<Note>> = service.notes
@@ -91,7 +91,7 @@ class SyncViewModel(
         service.deleteNote(noteId)
     }
 
-    fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<com.quran.shared.persistence.model.CollectionBookmark>> =
+    fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<com.quran.shared.persistence.model.CollectionAyahBookmark>> =
         service.getBookmarksForCollectionFlow(collectionLocalId)
 
 }

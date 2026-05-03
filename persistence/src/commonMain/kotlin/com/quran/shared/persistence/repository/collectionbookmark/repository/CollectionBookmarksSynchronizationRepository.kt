@@ -3,14 +3,14 @@ package com.quran.shared.persistence.repository.collectionbookmark.repository
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.input.RemoteCollectionBookmark
-import com.quran.shared.persistence.model.CollectionBookmark
+import com.quran.shared.persistence.model.CollectionAyahBookmark
 
 interface CollectionBookmarksSynchronizationRepository {
     /**
      * Returns a list of collection bookmarks that have been mutated locally
      * and need to be synchronized with the remote server.
      */
-    suspend fun fetchMutatedCollectionBookmarks(): List<LocalModelMutation<CollectionBookmark>>
+    suspend fun fetchMutatedCollectionBookmarks(): List<LocalModelMutation<CollectionAyahBookmark>>
 
     /**
      * Persists the remote state of collection bookmarks after a successful synchronization operation.
@@ -22,7 +22,7 @@ interface CollectionBookmarksSynchronizationRepository {
      */
     suspend fun applyRemoteChanges(
         updatesToPersist: List<RemoteModelMutation<RemoteCollectionBookmark>>,
-        localMutationsToClear: List<LocalModelMutation<CollectionBookmark>>
+        localMutationsToClear: List<LocalModelMutation<CollectionAyahBookmark>>
     )
 
     suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean>

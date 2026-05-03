@@ -1,7 +1,7 @@
 package com.quran.shared.persistence.repository.collectionbookmark.repository
 
 import com.quran.shared.persistence.model.AyahBookmark
-import com.quran.shared.persistence.model.CollectionBookmark
+import com.quran.shared.persistence.model.CollectionAyahBookmark
 
 import kotlinx.coroutines.flow.Flow
 
@@ -9,12 +9,12 @@ interface CollectionBookmarksRepository {
     /**
      * Returns all bookmarks linked to a collection.
      */
-    suspend fun getBookmarksForCollection(collectionLocalId: String): List<CollectionBookmark>
+    suspend fun getBookmarksForCollection(collectionLocalId: String): List<CollectionAyahBookmark>
 
     /**
      * Adds a bookmark to a collection locally.
      */
-    suspend fun addBookmarkToCollection(collectionLocalId: String, bookmark: AyahBookmark): CollectionBookmark
+    suspend fun addBookmarkToCollection(collectionLocalId: String, bookmark: AyahBookmark): CollectionAyahBookmark
 
     /**
      * Atomically creates an ayah bookmark (if missing) and links it to a collection.
@@ -24,7 +24,7 @@ interface CollectionBookmarksRepository {
         collectionLocalId: String,
         sura: Int,
         ayah: Int
-    ): CollectionBookmark
+    ): CollectionAyahBookmark
 
     /**
      * Removes a bookmark from a collection locally.
@@ -34,5 +34,5 @@ interface CollectionBookmarksRepository {
     /**
      * Observe the bookmarks for a collection as a Flow.
      */
-    fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<CollectionBookmark>>
+    fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<CollectionAyahBookmark>>
 }
