@@ -702,8 +702,8 @@ private fun ayahIdToSuraAyah(ayahId: Long): NoteAyah? {
 private fun ReadingSession.toSyncEngine(): SyncReadingSession {
     return SyncReadingSession(
         id = localId,
-        chapterNumber = chapterNumber,
-        verseNumber = verseNumber,
+        chapterNumber = sura,
+        verseNumber = ayah,
         lastModified = lastUpdated.fromPlatform()
     )
 }

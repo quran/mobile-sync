@@ -71,7 +71,7 @@ fun ReadingSessionItem(readingSession: ReadingSession) {
             
             Column {
                 Text(
-                    text = "Surah ${readingSession.chapterNumber}, Ayah ${readingSession.verseNumber}",
+                    text = "Surah ${readingSession.sura}, Ayah ${readingSession.ayah}",
                     style = MaterialTheme.typography.bodyLarge
                 )
             }

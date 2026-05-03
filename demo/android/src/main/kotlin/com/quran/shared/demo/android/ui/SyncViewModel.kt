@@ -39,8 +39,8 @@ class SyncViewModel(
         service.logout(clearLocalData)
     }
 
-    suspend fun addReadingSession(chapterNumber: Int, verseNumber: Int): ReadingSession {
-        return service.addReadingSession(chapterNumber, verseNumber)
+    suspend fun addReadingSession(sura: Int, ayah: Int): ReadingSession {
+        return service.addReadingSession(sura, ayah)
     }
 
     fun clearError() {

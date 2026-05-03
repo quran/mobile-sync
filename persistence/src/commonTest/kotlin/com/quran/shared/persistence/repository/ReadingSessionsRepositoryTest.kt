@@ -83,8 +83,8 @@ class ReadingSessionsRepositoryTest {
 
         val readingSessions = repository.getReadingSessions()
         assertEquals(1, readingSessions.size)
-        assertEquals(2, readingSessions.single().chapterNumber)
-        assertEquals(255, readingSessions.single().verseNumber)
+        assertEquals(2, readingSessions.single().sura)
+        assertEquals(255, readingSessions.single().ayah)
     }
 
     @Test
@@ -106,8 +106,8 @@ class ReadingSessionsRepositoryTest {
 
         val readingSessions = repository.getReadingSessions()
         assertEquals(1, readingSessions.size)
-        assertEquals(2, readingSessions.single().chapterNumber)
-        assertEquals(255, readingSessions.single().verseNumber)
+        assertEquals(2, readingSessions.single().sura)
+        assertEquals(255, readingSessions.single().ayah)
         assertEquals(
             "remote-reading-session-id",
             database.reading_sessionsQueries.getReadingSessionForChapterVerse(2L, 255L)
