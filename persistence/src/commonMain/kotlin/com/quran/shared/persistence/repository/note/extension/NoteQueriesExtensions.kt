@@ -6,16 +6,25 @@ import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.persistence.model.DatabaseNote
 import com.quran.shared.persistence.model.Note
+import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.toPlatform
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 
 internal fun DatabaseNote.toNote(): Note {
     val normalizedModifiedAt = normalizeEpochMillis(modified_at)
+    val start = requireNotNull(QuranData.getSuraAyahOrNull(start_ayah_id)) {
+        "Invalid start ayah id for note local_id=$local_id: $start_ayah_id"
+    }
+    val end = requireNotNull(QuranData.getSuraAyahOrNull(end_ayah_id)) {
+        "Invalid end ayah id for note local_id=$local_id: $end_ayah_id"
+    }
     return Note(
         body = note,
-        startAyahId = start_ayah_id,
-        endAyahId = end_ayah_id,
+        startSura = start.first,
+        startAyah = start.second,
+        endSura = end.first,
+        endAyah = end.second,
         lastUpdated = Instant.fromEpochMilliseconds(normalizedModifiedAt).toPlatform(),
         localId = local_id.toString()
     )

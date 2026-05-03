@@ -27,7 +27,7 @@ struct NotesTabView: View {
                             VStack(alignment: .leading) {
                                 Text(note.body)
                                     .font(.body)
-                                Text("Ayah \(note.startAyahId) - \(note.endAyahId)")
+                                Text("Sura \(note.startSura), Ayah \(note.startAyah) - Sura \(note.endSura), Ayah \(note.endAyah)")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -54,7 +54,7 @@ struct NotesTabView: View {
                     Task {
                         let sura = Shared.QuranActionsUtils().getRandomSura()
                         let ayah = Shared.QuranActionsUtils().getRandomAyah(sura: sura)
-                        await viewModel.addNote(body: body, startAyahId: Int64(ayah), endAyahId: Int64(ayah))
+                        await viewModel.addNote(body: body, startSura: sura, startAyah: ayah, endSura: sura, endAyah: ayah)
                     }
                 }
                 newNoteBody = ""

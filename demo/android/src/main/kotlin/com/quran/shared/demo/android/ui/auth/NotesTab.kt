@@ -114,11 +114,11 @@ fun NoteItem(
             
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = note.body ?: "",
+                    text = note.body,
                     style = MaterialTheme.typography.bodyLarge
                 )
                 Text(
-                    text = "Ayah ${note.startAyahId} - ${note.endAyahId}",
+                    text = "Sura ${note.startSura}, Ayah ${note.startAyah} - Sura ${note.endSura}, Ayah ${note.endAyah}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

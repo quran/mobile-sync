@@ -158,8 +158,10 @@ fun AuthScreen(
                                 try {
                                     viewModel.addNote(
                                         body,
-                                        ayah.toLong(),
-                                        ayah.toLong()
+                                        sura,
+                                        ayah,
+                                        sura,
+                                        ayah
                                     )
                                 } catch (e: Exception) {
                                 }

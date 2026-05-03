@@ -624,25 +624,30 @@ private fun SyncCollectionBookmark.toRemoteInput(): RemoteCollectionBookmark {
 }
 
 private fun Note.toSyncEngine(): SyncNote? {
-    val start = ayahIdToSuraAyah(startAyahId) ?: return null
-    val end = ayahIdToSuraAyah(endAyahId) ?: return null
     return SyncNote(
         id = localId,
         body = body,
-        ranges = listOf(NoteRange(start = start, end = end)),
+        ranges = listOf(
+            NoteRange(
+                start = NoteAyah(sura = startSura, ayah = startAyah),
+                end = NoteAyah(sura = endSura, ayah = endAyah)
+            )
+        ),
         lastModified = lastUpdated.fromPlatform()
     )
 }
 
 private fun SyncNote.toPersistence(localId: String): Note? {
     val range = primaryRangeOrNull() ?: return null
-    val startId = suraAyahToAyahId(range.start.sura, range.start.ayah) ?: return null
-    val endId = suraAyahToAyahId(range.end.sura, range.end.ayah) ?: return null
+    suraAyahToAyahId(range.start.sura, range.start.ayah) ?: return null
+    suraAyahToAyahId(range.end.sura, range.end.ayah) ?: return null
     val noteBody = requireNotNull(body) { "Transforming a note without a body." }
     return Note(
         body = noteBody,
-        startAyahId = startId,
-        endAyahId = endId,
+        startSura = range.start.sura,
+        startAyah = range.start.ayah,
+        endSura = range.end.sura,
+        endAyah = range.end.ayah,
         lastUpdated = lastModified.toPlatform(),
         localId = localId
     )
