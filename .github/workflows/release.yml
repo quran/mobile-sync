@@ -1,15 +1,15 @@
-name: Publish Shared XCFramework
+name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
   workflow_dispatch:
     inputs:
-      ref:
-        description: "Git ref (branch or tag) to build from"
+      release_number:
+        description: "Release number, e.g. 0.0.8"
         required: true
-        default: main
+      target_branch:
+        description: "Branch to release from"
+        required: true
+        default: "main"
 
 permissions:
   contents: write
@@ -27,7 +27,64 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || github.ref }}
+          ref: ${{ inputs.target_branch }}
+          fetch-depth: 0
+
+      - name: Prepare Release
+        id: release
+        shell: bash
+        env:
+          RELEASE_NUMBER: ${{ inputs.release_number }}
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$RELEASE_NUMBER" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release number must be semver-like, e.g. 0.0.8 or 0.0.8-beta.1" >&2
+            exit 1
+          fi
+
+          if ! git check-ref-format --branch "$TARGET_BRANCH" >/dev/null; then
+            echo "Invalid target branch: $TARGET_BRANCH" >&2
+            exit 1
+          fi
+
+          tag_name="v${RELEASE_NUMBER}"
+          if git rev-parse -q --verify "refs/tags/${tag_name}" >/dev/null; then
+            echo "Tag ${tag_name} already exists locally" >&2
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag_name}" >/dev/null 2>&1; then
+            echo "Tag ${tag_name} already exists on origin" >&2
+            exit 1
+          fi
+
+          if [[ ! -f gradle.properties ]]; then
+            echo "gradle.properties not found" >&2
+            exit 1
+          fi
+          if ! grep -qE '^version[[:space:]]*=' gradle.properties; then
+            echo "version property missing in gradle.properties" >&2
+            exit 1
+          fi
+
+          awk -v version="$RELEASE_NUMBER" '
+            /^version[[:space:]]*=/ {
+              print "version=" version
+              next
+            }
+            { print }
+          ' gradle.properties > gradle.properties.tmp
+          mv gradle.properties.tmp gradle.properties
+
+          if git diff --quiet -- gradle.properties; then
+            echo "gradle.properties already has version ${RELEASE_NUMBER}" >&2
+            exit 1
+          fi
+
+          echo "version=$RELEASE_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "tag-name=$tag_name" >> "$GITHUB_OUTPUT"
+          echo "target-branch=$TARGET_BRANCH" >> "$GITHUB_OUTPUT"
 
       - name: Set up JDK 
         uses: actions/setup-java@v5
@@ -45,39 +102,11 @@ jobs:
       - name: Package XCFramework
         id: package
         shell: bash
-        env:
-          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
 
-          read_property_version() {
-            local prop
-            if [[ ! -f gradle.properties ]]; then
-              echo "gradle.properties not found" >&2
-              return 1
-            fi
-            prop=$(awk -F'=' '/^version[[:space:]]*=/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); gsub(/^"|"$/, "", $2); print $2; exit}' gradle.properties)
-            if [[ -z "$prop" ]]; then
-              echo "version property missing in gradle.properties" >&2
-              return 1
-            fi
-            printf '%s' "$prop"
-          }
-
-          property_version=$(read_property_version)
-
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            version="$property_version"
-            tag_name="v${version}"
-          else
-            tag_name="${GITHUB_REF_NAME}"
-            version="$property_version"
-            if [[ "$tag_name" != "v${version}" ]]; then
-              echo "Tag ${tag_name} does not match gradle.properties version ${version}" >&2
-              exit 1
-            fi
-          fi
-
+          version="${{ steps.release.outputs.version }}"
+          tag_name="${{ steps.release.outputs.tag-name }}"
           archive_name="${XCF_NAME}-${version}.xcframework.zip"
           output_dir="$XCF_OUTPUT_DIR"
           cd "$output_dir"
@@ -87,6 +116,23 @@ jobs:
           echo "archive-path=$output_dir/$archive_name" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag-name=$tag_name" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and Tag Release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${{ steps.release.outputs.version }}"
+          tag_name="${{ steps.release.outputs.tag-name }}"
+          target_branch="${{ steps.release.outputs.target-branch }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add gradle.properties
+          git commit -m "chore: bump version to ${version}"
+          git tag -a "$tag_name" -m "$tag_name"
+          git push origin "HEAD:${target_branch}"
+          git push origin "$tag_name"
 
       - name: Publish Release
         uses: softprops/action-gh-release@v3
