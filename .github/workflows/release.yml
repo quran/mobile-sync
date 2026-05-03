@@ -82,16 +82,9 @@ jobs:
             exit 1
           fi
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add gradle.properties
-          git commit -m "chore: bump version to ${RELEASE_NUMBER}"
-          git push origin "HEAD:${TARGET_BRANCH}"
-          git tag -a "$tag_name" -m "$tag_name"
-          git push origin "$tag_name"
-
           echo "version=$RELEASE_NUMBER" >> "$GITHUB_OUTPUT"
           echo "tag-name=$tag_name" >> "$GITHUB_OUTPUT"
+          echo "target-branch=$TARGET_BRANCH" >> "$GITHUB_OUTPUT"
 
       - name: Set up JDK 
         uses: actions/setup-java@v5
@@ -123,6 +116,23 @@ jobs:
           echo "archive-path=$output_dir/$archive_name" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag-name=$tag_name" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and Tag Release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${{ steps.release.outputs.version }}"
+          tag_name="${{ steps.release.outputs.tag-name }}"
+          target_branch="${{ steps.release.outputs.target-branch }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add gradle.properties
+          git commit -m "chore: bump version to ${version}"
+          git tag -a "$tag_name" -m "$tag_name"
+          git push origin "HEAD:${target_branch}"
+          git push origin "$tag_name"
 
       - name: Publish Release
         uses: softprops/action-gh-release@v3
