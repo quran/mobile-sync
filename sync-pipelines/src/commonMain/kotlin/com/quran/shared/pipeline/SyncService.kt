@@ -5,8 +5,8 @@ import com.quran.shared.auth.model.AuthState
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.model.AyahBookmark
-import com.quran.shared.persistence.model.CollectionBookmark
-import com.quran.shared.persistence.model.CollectionWithBookmarks
+import com.quran.shared.persistence.model.CollectionAyahBookmark
+import com.quran.shared.persistence.model.CollectionWithAyahBookmarks
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingSession
@@ -90,7 +90,7 @@ class SyncService(
      */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     @NativeCoroutines
-    val collectionsWithBookmarks: Flow<List<CollectionWithBookmarks>>
+    val collectionsWithBookmarks: Flow<List<CollectionWithAyahBookmarks>>
         get() =
             collectionsRepository.getCollectionsFlow().flatMapLatest { collections ->
                 if (collections.isEmpty()) {
@@ -98,8 +98,8 @@ class SyncService(
                 } else {
                     val flows = collections.map { collection ->
                         collectionBookmarksRepository.getBookmarksForCollectionFlow(collection.localId)
-                            .map { bookmarks: List<CollectionBookmark> ->
-                                CollectionWithBookmarks(collection, bookmarks)
+                            .map { bookmarks: List<CollectionAyahBookmark> ->
+                                CollectionWithAyahBookmarks(collection, bookmarks)
                             }
                     }
                     combine(flows) { it.toList() }
@@ -278,7 +278,7 @@ class SyncService(
         collectionLocalId: String,
         sura: Int,
         ayah: Int
-    ): CollectionBookmark {
+    ): CollectionAyahBookmark {
         try {
             val collectionBookmark = collectionBookmarksRepository
                 .addAyahBookmarkToCollection(collectionLocalId, sura, ayah)
@@ -324,7 +324,7 @@ class SyncService(
     }
 
     @NativeCoroutines
-    fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<CollectionBookmark>> =
+    fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<CollectionAyahBookmark>> =
         collectionBookmarksRepository.getBookmarksForCollectionFlow(collectionLocalId)
 
     val pipelineForIos: SyncEnginePipeline get() = pipeline

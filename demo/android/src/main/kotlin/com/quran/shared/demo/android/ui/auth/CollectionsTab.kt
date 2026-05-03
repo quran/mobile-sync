@@ -15,12 +15,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.quran.shared.persistence.model.CollectionBookmark
-import com.quran.shared.persistence.model.CollectionWithBookmarks
+import com.quran.shared.persistence.model.CollectionWithAyahBookmarks
 
 @Composable
 fun CollectionsTab(
-    collectionsWithBookmarks: List<CollectionWithBookmarks>,
+    collectionsWithBookmarks: List<CollectionWithAyahBookmarks>,
     onAddCollection: (String) -> Unit,
     onDeleteCollection: (String) -> Unit,
     onAddRandomBookmarkToCollection: (String) -> Unit
@@ -128,7 +127,7 @@ fun CollectionsTab(
 
 @Composable
 fun CollectionItem(
-    collectionWithBookmarks: CollectionWithBookmarks,
+    collectionWithBookmarks: CollectionWithAyahBookmarks,
     onDelete: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -170,9 +169,7 @@ fun CollectionItem(
                             Icon(Icons.Default.Bookmark, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = when (cb) {
-                                    is CollectionBookmark.AyahBookmark -> "Sura ${cb.sura}, Ayah ${cb.ayah}"
-                                },
+                                text = "Sura ${cb.sura}, Ayah ${cb.ayah}",
                                 style = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier.weight(1f)
                             )

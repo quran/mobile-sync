@@ -10,7 +10,7 @@ import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.model.AyahBookmark
-import com.quran.shared.persistence.model.CollectionBookmark
+import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.model.DatabaseBookmarkCollection
 import com.quran.shared.persistence.repository.bookmark.extension.toAyahBookmark
 import com.quran.shared.persistence.util.QuranData
@@ -37,7 +37,7 @@ class CollectionBookmarksRepositoryImpl(
     private val ayahBookmarkQueries = lazy { database.ayah_bookmarksQueries }
     private val collectionQueries = lazy { database.collectionsQueries }
 
-    override suspend fun getBookmarksForCollection(collectionLocalId: String): List<CollectionBookmark> {
+    override suspend fun getBookmarksForCollection(collectionLocalId: String): List<CollectionAyahBookmark> {
         return withContext(Dispatchers.IO) {
             bookmarkCollectionQueries.value
                 .getCollectionBookmarksForCollectionWithDetails(collection_local_id = collectionLocalId.toLong())
@@ -59,7 +59,7 @@ class CollectionBookmarksRepositoryImpl(
         }
     }
 
-    override fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<CollectionBookmark>> {
+    override fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<CollectionAyahBookmark>> {
         return bookmarkCollectionQueries.value
             .getCollectionBookmarksForCollectionWithDetails(collection_local_id = collectionLocalId.toLong())
             .asFlow()
@@ -85,7 +85,7 @@ class CollectionBookmarksRepositoryImpl(
     override suspend fun addBookmarkToCollection(
         collectionLocalId: String,
         bookmark: AyahBookmark
-    ): CollectionBookmark {
+    ): CollectionAyahBookmark {
         return withContext(Dispatchers.IO) {
             val bookmarkType = bookmark.toCollectionBookmarkType()
             bookmarkCollectionQueries.value.addBookmarkToCollection(
@@ -118,9 +118,9 @@ class CollectionBookmarksRepositoryImpl(
         collectionLocalId: String,
         sura: Int,
         ayah: Int
-    ): CollectionBookmark {
+    ): CollectionAyahBookmark {
         return withContext(Dispatchers.IO) {
-            var created: CollectionBookmark? = null
+            var created: CollectionAyahBookmark? = null
             database.transaction {
                 val collectionLocalIdLong = collectionLocalId.toLong()
                 val ayahId = getAyahId(sura, ayah)
@@ -177,7 +177,7 @@ class CollectionBookmarksRepositoryImpl(
         }
     }
 
-    override suspend fun fetchMutatedCollectionBookmarks(): List<LocalModelMutation<CollectionBookmark>> {
+    override suspend fun fetchMutatedCollectionBookmarks(): List<LocalModelMutation<CollectionAyahBookmark>> {
         return withContext(Dispatchers.IO) {
             bookmarkCollectionQueries.value.getUnsyncedCollectionBookmarksWithDetails()
                 .executeAsList()
@@ -213,7 +213,7 @@ class CollectionBookmarksRepositoryImpl(
 
     override suspend fun applyRemoteChanges(
         updatesToPersist: List<RemoteModelMutation<RemoteCollectionBookmark>>,
-        localMutationsToClear: List<LocalModelMutation<CollectionBookmark>>
+        localMutationsToClear: List<LocalModelMutation<CollectionAyahBookmark>>
     ) {
         logger.i {
             "Applying remote collection bookmark changes with " +
@@ -340,7 +340,7 @@ class CollectionBookmarksRepositoryImpl(
         modifiedAt: Long,
         localId: Long,
         logMissingBookmark: Boolean
-    ): CollectionBookmark? {
+    ): CollectionAyahBookmark? {
         if (bookmarkLocalId.toLongOrNull() == null) {
             logger.w { "Skipping collection bookmark with non-numeric bookmark id: $bookmarkLocalId" }
             return null
@@ -356,7 +356,7 @@ class CollectionBookmarksRepositoryImpl(
                     }
                     null
                 } else {
-                    CollectionBookmark.AyahBookmark(
+                    CollectionAyahBookmark(
                         collectionLocalId = collectionLocalId.toString(),
                         collectionRemoteId = collectionRemoteId,
                         bookmarkLocalId = bookmarkLocalId,
@@ -377,9 +377,9 @@ class CollectionBookmarksRepositoryImpl(
         collectionRemoteId: String?,
         bookmark: AyahBookmark,
         bookmarkRemoteId: String?
-    ): CollectionBookmark {
+    ): CollectionAyahBookmark {
         val updatedAt = Instant.fromEpochMilliseconds(modified_at).toPlatform()
-        return CollectionBookmark.AyahBookmark(
+        return CollectionAyahBookmark(
             collectionLocalId = collection_local_id.toString(),
             collectionRemoteId = collectionRemoteId,
             bookmarkLocalId = bookmark.localId,

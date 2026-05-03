@@ -76,7 +76,7 @@ struct CollectionsTabView: View {
 
 struct CollectionRowView: View {
     @ObservedObject var viewModel: SyncViewModel
-    let collectionWithBookmarks: Shared.CollectionWithBookmarks
+    let collectionWithBookmarks: Shared.CollectionWithAyahBookmarks
     @State private var isExpanded = false
 
     var body: some View {
@@ -131,10 +131,7 @@ struct CollectionRowView: View {
         }
     }
 
-    private func displayText(for cb: Shared.CollectionBookmark) -> String {
-        if let ab = cb as? Shared.CollectionBookmark.AyahBookmark {
-            return "Sura \(ab.sura), Ayah \(ab.ayah)"
-        }
-        return ""
+    private func displayText(for cb: Shared.CollectionAyahBookmark) -> String {
+        return "Sura \(cb.sura), Ayah \(cb.ayah)"
     }
 }

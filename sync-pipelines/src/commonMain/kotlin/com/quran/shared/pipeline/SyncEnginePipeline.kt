@@ -11,7 +11,7 @@ import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.input.RemoteNote
 import com.quran.shared.persistence.input.RemoteReadingSession
 import com.quran.shared.persistence.model.AyahBookmark
-import com.quran.shared.persistence.model.CollectionBookmark
+import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.Collection as PersistenceCollection
@@ -581,25 +581,22 @@ private fun SyncCollection.toRemoteInput(): RemoteCollection {
     )
 }
 
-private fun CollectionBookmark.toSyncEngine(): SyncCollectionBookmark {
+private fun CollectionAyahBookmark.toSyncEngine(): SyncCollectionBookmark {
     val collectionId = requireNotNull(collectionRemoteId) { "Collection remote ID is required for sync." }
-    return when (this) {
-        is CollectionBookmark.AyahBookmark ->
-            SyncCollectionBookmark.AyahBookmark(
-                collectionId = collectionId,
-                sura = this.sura,
-                ayah = this.ayah,
-                lastModified = this.lastUpdated.fromPlatform(),
-                bookmarkId = this.bookmarkRemoteId
-            )
-    }
+    return SyncCollectionBookmark.AyahBookmark(
+        collectionId = collectionId,
+        sura = sura,
+        ayah = ayah,
+        lastModified = lastUpdated.fromPlatform(),
+        bookmarkId = bookmarkRemoteId
+    )
 }
 
-private fun SyncCollectionBookmark.toPersistence(localId: String): CollectionBookmark {
+private fun SyncCollectionBookmark.toPersistence(localId: String): CollectionAyahBookmark {
     val updatedAt = lastModified.toPlatform()
     return when (this) {
         is SyncCollectionBookmark.AyahBookmark ->
-            CollectionBookmark.AyahBookmark(
+            CollectionAyahBookmark(
                 collectionLocalId = "",
                 collectionRemoteId = collectionId,
                 bookmarkLocalId = "",
