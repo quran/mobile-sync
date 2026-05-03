@@ -4,6 +4,9 @@
 # Ignore Gradle build output directory
 build
 
+# Ignore local Gradle daemon JVM criteria
+gradle/gradle-daemon-jvm.properties
+
 # Kotlin
 .kotlin
 

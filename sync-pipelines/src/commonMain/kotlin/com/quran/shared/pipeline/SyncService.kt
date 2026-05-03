@@ -4,7 +4,7 @@ import co.touchlab.kermit.Logger
 import com.quran.shared.auth.model.AuthState
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.di.AppScope
-import com.quran.shared.persistence.model.Bookmark
+import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.CollectionBookmark
 import com.quran.shared.persistence.model.CollectionWithBookmarks
 import com.quran.shared.persistence.model.Note
@@ -80,7 +80,7 @@ class SyncService(
      * Flow of all bookmarks for the UI to observe.
      */
     @NativeCoroutines
-    val bookmarks: Flow<List<Bookmark>> get() = bookmarksRepository.getBookmarksFlow()
+    val bookmarks: Flow<List<AyahBookmark>> get() = bookmarksRepository.getBookmarksFlow()
 
     @NativeCoroutines
     val readingBookmark: Flow<ReadingBookmark?> get() = readingBookmarksRepository.getReadingBookmarkFlow()
@@ -180,7 +180,7 @@ class SyncService(
     }
 
     @NativeCoroutines
-    suspend fun addBookmark(sura: Int, ayah: Int): Bookmark {
+    suspend fun addBookmark(sura: Int, ayah: Int): AyahBookmark {
         try {
             val bookmark = bookmarksRepository.addBookmark(sura, ayah)
             triggerSync()
@@ -230,7 +230,7 @@ class SyncService(
     }
 
     @NativeCoroutines
-    suspend fun deleteBookmark(bookmark: Bookmark): Unit {
+    suspend fun deleteBookmark(bookmark: AyahBookmark): Unit {
         try {
             bookmarksRepository.deleteBookmark(bookmark.sura, bookmark.ayah)
             triggerSync()
@@ -263,7 +263,7 @@ class SyncService(
     }
 
     @NativeCoroutines
-    suspend fun addBookmarkToCollection(collectionLocalId: String, bookmark: Bookmark): Unit {
+    suspend fun addBookmarkToCollection(collectionLocalId: String, bookmark: AyahBookmark): Unit {
         try {
             collectionBookmarksRepository.addBookmarkToCollection(collectionLocalId, bookmark)
             triggerSync()
@@ -291,7 +291,7 @@ class SyncService(
     }
 
     @NativeCoroutines
-    suspend fun removeBookmarkFromCollection(collectionLocalId: String, bookmark: Bookmark): Unit {
+    suspend fun removeBookmarkFromCollection(collectionLocalId: String, bookmark: AyahBookmark): Unit {
         try {
             collectionBookmarksRepository.removeBookmarkFromCollection(collectionLocalId, bookmark)
             triggerSync()

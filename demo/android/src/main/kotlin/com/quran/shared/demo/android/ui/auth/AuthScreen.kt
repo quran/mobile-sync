@@ -11,7 +11,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.quran.shared.auth.model.AuthState
 import com.quran.shared.auth.model.UserInfo
-import com.quran.shared.persistence.model.Bookmark
+import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.CollectionWithBookmarks
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.ReadingBookmark
@@ -229,13 +229,13 @@ fun AuthScreen(
 @Composable
 private fun SuccessContent(
     userInfo: UserInfo,
-    bookmarks: List<Bookmark>,
+    bookmarks: List<AyahBookmark>,
     readingBookmark: ReadingBookmark?,
     collectionsWithBookmarks: List<CollectionWithBookmarks>,
     notes: List<Note>,
     onAddAyahBookmark: () -> Unit,
     onAddReadingAyahBookmark: () -> Unit,
-    onDeleteBookmark: (Bookmark) -> Unit,
+    onDeleteBookmark: (AyahBookmark) -> Unit,
     onDeleteReadingBookmark: () -> Unit,
     onAddCollection: (String) -> Unit,
     onDeleteCollection: (String) -> Unit,

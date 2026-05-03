@@ -12,17 +12,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.quran.shared.persistence.model.Bookmark
+import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
 
 @Composable
 fun BookmarksTab(
-    bookmarks: List<Bookmark>,
+    bookmarks: List<AyahBookmark>,
     readingBookmark: ReadingBookmark?,
     onAddAyahBookmark: () -> Unit,
     onAddReadingAyahBookmark: () -> Unit,
     onDeleteReadingBookmark: () -> Unit,
-    onDeleteBookmark: (Bookmark) -> Unit
+    onDeleteBookmark: (AyahBookmark) -> Unit
 ) {
     Column {
         Row(
@@ -129,7 +129,7 @@ private fun ReadingBookmarkCard(
 
 @Composable
 fun BookmarkItem(
-    bookmark: Bookmark,
+    bookmark: AyahBookmark,
     onDelete: () -> Unit
 ) {
     Surface(

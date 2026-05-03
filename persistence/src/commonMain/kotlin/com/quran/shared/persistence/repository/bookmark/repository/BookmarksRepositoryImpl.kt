@@ -9,8 +9,8 @@ import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.input.RemoteBookmark
-import com.quran.shared.persistence.model.Bookmark
-import com.quran.shared.persistence.repository.bookmark.extension.toBookmark
+import com.quran.shared.persistence.model.AyahBookmark
+import com.quran.shared.persistence.repository.bookmark.extension.toAyahBookmark
 import com.quran.shared.persistence.repository.bookmark.extension.toBookmarkMutation
 import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
@@ -32,26 +32,26 @@ class BookmarksRepositoryImpl(
     private val logger = Logger.withTag("BookmarksRepository")
     private val ayahBookmarkQueries = lazy { database.ayah_bookmarksQueries }
 
-    override suspend fun getAllBookmarks(): List<Bookmark> {
+    override suspend fun getAllBookmarks(): List<AyahBookmark> {
         return withContext(Dispatchers.IO) {
             ayahBookmarkQueries.value.getBookmarks()
                 .executeAsList()
-                .map { it.toBookmark() }
+                .map { it.toAyahBookmark() }
                 .sortedByDescending { it.lastUpdated.fromPlatform().toEpochMilliseconds() }
         }
     }
 
-    override fun getBookmarksFlow(): Flow<List<Bookmark>> {
+    override fun getBookmarksFlow(): Flow<List<AyahBookmark>> {
         return ayahBookmarkQueries.value.getBookmarks()
             .asFlow()
             .mapToList(Dispatchers.IO)
             .map { list ->
-                list.map { it.toBookmark() }
+                list.map { it.toAyahBookmark() }
                     .sortedByDescending { it.lastUpdated.fromPlatform().toEpochMilliseconds() }
             }
     }
 
-    override suspend fun addBookmark(sura: Int, ayah: Int): Bookmark.AyahBookmark {
+    override suspend fun addBookmark(sura: Int, ayah: Int): AyahBookmark {
         logger.i { "Adding ayah bookmark for $sura:$ayah" }
         return withContext(Dispatchers.IO) {
             val ayahId = getAyahId(sura, ayah)
@@ -63,7 +63,7 @@ class BookmarksRepositoryImpl(
             val record = ayahBookmarkQueries.value.getBookmarkForAyah(sura.toLong(), ayah.toLong())
                 .executeAsOneOrNull()
             requireNotNull(record) { "Expected ayah bookmark for $sura:$ayah after insert." }
-            record.toBookmark()
+            record.toAyahBookmark()
         }
     }
 
@@ -75,7 +75,7 @@ class BookmarksRepositoryImpl(
         return true
     }
 
-    override suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<Bookmark.AyahBookmark>> {
+    override suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<AyahBookmark>> {
         return withContext(Dispatchers.IO) {
             ayahBookmarkQueries.value.getUnsyncedBookmarks()
                 .executeAsList()
@@ -85,7 +85,7 @@ class BookmarksRepositoryImpl(
 
     override suspend fun applyRemoteChanges(
         updatesToPersist: List<RemoteModelMutation<RemoteBookmark.Ayah>>,
-        localMutationsToClear: List<LocalModelMutation<Bookmark.AyahBookmark>>
+        localMutationsToClear: List<LocalModelMutation<AyahBookmark>>
     ) {
         logger.i {
             "Applying remote changes with ${updatesToPersist.size} updates to persist and " +
@@ -139,15 +139,15 @@ class BookmarksRepositoryImpl(
         }
     }
 
-    override suspend fun fetchBookmarkByRemoteId(remoteId: String): Bookmark.AyahBookmark? {
+    override suspend fun fetchBookmarkByRemoteId(remoteId: String): AyahBookmark? {
         return withContext(Dispatchers.IO) {
             ayahBookmarkQueries.value.getBookmarkByRemoteId(remoteId)
                 .executeAsOneOrNull()
-                ?.toBookmark()
+                ?.toAyahBookmark()
         }
     }
 
-    private fun clearLocalMutation(local: LocalModelMutation<Bookmark.AyahBookmark>) {
+    private fun clearLocalMutation(local: LocalModelMutation<AyahBookmark>) {
         ayahBookmarkQueries.value.clearLocalMutationFor(id = local.localID.toLong())
     }
 
@@ -174,6 +174,6 @@ class BookmarksRepositoryImpl(
     }
 }
 
-private fun Bookmark.AyahBookmark.key(): String = "$sura:$ayah"
+private fun AyahBookmark.key(): String = "$sura:$ayah"
 
 private fun RemoteBookmark.Ayah.key(): String = "$sura:$ayah"

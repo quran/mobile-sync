@@ -24,7 +24,7 @@ class AuthViewModel: ObservableObject {
         self.bookmarksRepository = bookmarksRepository
     }
 
-    func bookmarksSequence() -> any AsyncSequence<[Bookmark], Error> {
+    func bookmarksSequence() -> any AsyncSequence<[AyahBookmark], Error> {
         return asyncSequence(for: bookmarksRepository.getBookmarksFlow())
     }
 
