@@ -83,8 +83,8 @@ class SyncViewModel(
         service.removeBookmarkFromCollection(collectionId, bookmark)
     }
 
-    suspend fun addNote(body: String, startAyahId: Long, endAyahId: Long) {
-        service.addNote(body, startAyahId, endAyahId)
+    suspend fun addNote(body: String, startSura: Int, startAyah: Int, endSura: Int, endAyah: Int) {
+        service.addNote(body, startSura, startAyah, endSura, endAyah)
     }
 
     suspend fun deleteNote(noteId: String) {

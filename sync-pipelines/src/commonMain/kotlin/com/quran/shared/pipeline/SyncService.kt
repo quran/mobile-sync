@@ -302,9 +302,9 @@ class SyncService(
     }
 
     @NativeCoroutines
-    suspend fun addNote(body: String, startAyahId: Long, endAyahId: Long): Unit {
+    suspend fun addNote(body: String, startSura: Int, startAyah: Int, endSura: Int, endAyah: Int): Unit {
         try {
-            notesRepository.addNote(body, startAyahId, endAyahId)
+            notesRepository.addNote(body, startSura, startAyah, endSura, endAyah)
             triggerSync()
         } catch (e: Exception) {
             Logger.e(e) { "Failed to add note" }

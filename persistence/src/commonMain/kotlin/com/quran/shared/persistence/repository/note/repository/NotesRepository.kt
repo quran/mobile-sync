@@ -13,12 +13,12 @@ interface NotesRepository {
     /**
      * Add a note locally.
      */
-    suspend fun addNote(body: String, startAyahId: Long, endAyahId: Long): Note
+    suspend fun addNote(body: String, startSura: Int, startAyah: Int, endSura: Int, endAyah: Int): Note
 
     /**
      * Update a note by its local ID.
      */
-    suspend fun updateNote(localId: String, body: String, startAyahId: Long, endAyahId: Long): Note
+    suspend fun updateNote(localId: String, body: String, startSura: Int, startAyah: Int, endSura: Int, endAyah: Int): Note
 
     /**
      * Delete a note by its local ID.

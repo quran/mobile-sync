@@ -25,4 +25,25 @@ object QuranData {
         val offset = suraAyahOffsets[sura - 1]
         return offset + ayah
     }
+
+    fun getAyahIdOrNull(sura: Int, ayah: Int): Int? {
+        if (sura !in 1..suraAyahCounts.size) return null
+        if (ayah !in 1..suraAyahCounts[sura - 1]) return null
+        val offset = suraAyahOffsets[sura - 1]
+        return offset + ayah
+    }
+
+    fun getSuraAyahOrNull(ayahId: Long): Pair<Int, Int>? {
+        if (ayahId <= 0) return null
+        if (ayahId > Int.MAX_VALUE) return null
+        var remaining = ayahId.toInt()
+        for (index in suraAyahCounts.indices) {
+            val count = suraAyahCounts[index]
+            if (remaining <= count) {
+                return Pair(index + 1, remaining)
+            }
+            remaining -= count
+        }
+        return null
+    }
 }

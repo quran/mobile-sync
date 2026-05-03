@@ -22,12 +22,16 @@ class NotesRepositoryTest {
     fun `addNote returns inserted note`() = runTest {
         val note = repository.addNote(
             body = "test note",
-            startAyahId = 20L,
-            endAyahId = 20L
+            startSura = 2,
+            startAyah = 13,
+            endSura = 2,
+            endAyah = 13
         )
 
         assertEquals("test note", note.body)
-        assertEquals(20L, note.startAyahId)
-        assertEquals(20L, note.endAyahId)
+        assertEquals(2, note.startSura)
+        assertEquals(13, note.startAyah)
+        assertEquals(2, note.endSura)
+        assertEquals(13, note.endAyah)
     }
 }

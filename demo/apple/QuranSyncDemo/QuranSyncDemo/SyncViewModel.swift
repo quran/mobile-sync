@@ -157,9 +157,17 @@ class SyncViewModel: ObservableObject {
         }
     }
 
-    func addNote(body: String, startAyahId: Int64, endAyahId: Int64) async {
+    func addNote(body: String, startSura: Int32, startAyah: Int32, endSura: Int32, endAyah: Int32) async {
         do {
-            try await asyncFunction(for: syncService.addNote(body: body, startAyahId: startAyahId, endAyahId: endAyahId))
+            try await asyncFunction(
+                for: syncService.addNote(
+                    body: body,
+                    startSura: startSura,
+                    startAyah: startAyah,
+                    endSura: endSura,
+                    endAyah: endAyah
+                )
+            )
         } catch {
             print("SyncViewModel: Failed to add note: \(error)")
         }

@@ -12,6 +12,7 @@ import com.quran.shared.persistence.input.RemoteNote
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.repository.note.extension.toNote
 import com.quran.shared.persistence.repository.note.extension.toNoteMutation
+import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
 import dev.zacsweers.metro.Inject
@@ -48,15 +49,17 @@ class NotesRepositoryImpl(
             }
     }
 
-    override suspend fun addNote(body: String, startAyahId: Long, endAyahId: Long): Note {
-        logger.i { "Adding note for range=$startAyahId-$endAyahId" }
+    override suspend fun addNote(body: String, startSura: Int, startAyah: Int, endSura: Int, endAyah: Int): Note {
+        logger.i { "Adding note for range=$startSura:$startAyah-$endSura:$endAyah" }
         return withContext(Dispatchers.IO) {
+            val startAyahId = requireAyahId(startSura, startAyah)
+            val endAyahId = requireAyahId(endSura, endAyah)
             var inserted: Note? = null
             database.transaction {
                 notesQueries.value.addNewNote(
                     note = body,
-                    start_ayah_id = startAyahId,
-                    end_ayah_id = endAyahId
+                    start_ayah_id = startAyahId.toLong(),
+                    end_ayah_id = endAyahId.toLong()
                 )
                 val record = notesQueries.value.getLastInsertedNote().executeAsOneOrNull()
                 requireNotNull(record) { "Expected note after insert." }
@@ -66,13 +69,22 @@ class NotesRepositoryImpl(
         }
     }
 
-    override suspend fun updateNote(localId: String, body: String, startAyahId: Long, endAyahId: Long): Note {
+    override suspend fun updateNote(
+        localId: String,
+        body: String,
+        startSura: Int,
+        startAyah: Int,
+        endSura: Int,
+        endAyah: Int
+    ): Note {
         logger.i { "Updating note localId=$localId" }
         return withContext(Dispatchers.IO) {
+            val startAyahId = requireAyahId(startSura, startAyah)
+            val endAyahId = requireAyahId(endSura, endAyah)
             notesQueries.value.updateNote(
                 note = body,
-                start_ayah_id = startAyahId,
-                end_ayah_id = endAyahId,
+                start_ayah_id = startAyahId.toLong(),
+                end_ayah_id = endAyahId.toLong(),
                 id = localId.toLong()
             )
             val record = notesQueries.value.getNoteByLocalId(localId.toLong())
@@ -145,6 +157,12 @@ class NotesRepositoryImpl(
 
     private fun applyRemoteNoteDeletion(remote: RemoteModelMutation<RemoteNote>) {
         notesQueries.value.deleteRemoteNote(remote_id = remote.remoteID)
+    }
+
+    private fun requireAyahId(sura: Int, ayah: Int): Int {
+        return requireNotNull(QuranData.getAyahIdOrNull(sura, ayah)) {
+            "Invalid note ayah: $sura:$ayah"
+        }
     }
 
     override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> {
