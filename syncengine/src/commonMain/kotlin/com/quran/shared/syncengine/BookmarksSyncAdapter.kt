@@ -81,6 +81,10 @@ internal class BookmarksSyncAdapter(
         configurations.resultNotifier.didFail(message)
     }
 
+    override suspend fun didCompleteSync(newToken: Long) {
+        configurations.resultNotifier.didCompleteSync(newToken)
+    }
+
     private suspend fun parseRemoteMutations(
         mutations: List<SyncMutation>
     ): List<RemoteModelMutation<SyncBookmark>> {

@@ -34,11 +34,22 @@ interface LocalDataFetcher<Model> {
 }
 
 interface ResultNotifier<Model> {
+    /**
+     * Applies completed resource changes. For multi-resource sync runs, store the shared sync token from
+     * [didCompleteSync] instead of this callback.
+     */
     suspend fun didSucceed(
         newToken: Long,
         newRemoteMutations: List<RemoteModelMutation<Model>>,
         processedLocalMutations: List<LocalModelMutation<Model>>
     )
+
+    /**
+     * Called after every configured resource phase completes successfully. In multi-resource sync runs,
+     * this token is capped at the initial remote fetch token so later syncs can still observe remote
+     * changes created while local phase POSTs were in progress.
+     */
+    suspend fun didCompleteSync(newToken: Long) = Unit
 
     suspend fun didFail(message: String)
 }

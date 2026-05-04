@@ -80,6 +80,10 @@ internal class CollectionsSyncAdapter(
         configurations.resultNotifier.didFail(message)
     }
 
+    override suspend fun didCompleteSync(newToken: Long) {
+        configurations.resultNotifier.didCompleteSync(newToken)
+    }
+
     private fun parseRemoteMutations(
         mutations: List<SyncMutation>
     ): List<RemoteModelMutation<SyncCollection>> {
