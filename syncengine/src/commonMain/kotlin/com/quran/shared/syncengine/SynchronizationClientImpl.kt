@@ -78,17 +78,12 @@ internal class SynchronizationClientImpl(
         val resources = resourceAdapters.map { it.resourceName }.distinct()
         val remoteResponse = fetchRemoteMutations(lastModificationDate, authHeaders, resources)
 
-        val plans = resourceAdapters.map { adapter ->
-            adapter.buildPlan(lastModificationDate, remoteResponse.mutations)
-        }
-
-        val mutationsToPush = plans.flatMap { it.mutationsToPush() }
-        val pushResponse = pushMutations(mutationsToPush, remoteResponse.lastModificationDate, authHeaders)
-
-        val pushedMutationsByResource = pushResponse.mutations.groupBy { it.resource.uppercase() }
-        plans.forEach { plan ->
-            val pushedForResource = pushedMutationsByResource[plan.resourceName.uppercase()].orEmpty()
-            plan.complete(pushResponse.lastModificationDate, pushedForResource)
+        executeDependencyAwareSync(
+            resourceAdapters = resourceAdapters,
+            initialLastModificationDate = lastModificationDate,
+            remoteResponse = remoteResponse
+        ) { mutations, mutationToken ->
+            pushMutations(mutations, mutationToken, authHeaders)
         }
     }
 
@@ -129,5 +124,67 @@ internal class SynchronizationClientImpl(
         val url = environment.endPointURL
         val request = GetMutationsRequest(httpClient, url)
         return request.getMutations(lastModificationDate, authHeaders, resources)
+    }
+}
+
+private val PRIMARY_SYNC_RESOURCES = setOf("BOOKMARK", "COLLECTION")
+private const val COLLECTION_BOOKMARK_SYNC_RESOURCE = "COLLECTION_BOOKMARK"
+
+internal fun List<SyncResourceAdapter>.dependencyAwareSyncPhases(): List<List<SyncResourceAdapter>> {
+    val remainingAdapters = toMutableList()
+    val phases = mutableListOf<List<SyncResourceAdapter>>()
+
+    fun addPhase(resourceNames: Set<String>) {
+        val phase = remainingAdapters.filter { adapter ->
+            adapter.resourceName.uppercase() in resourceNames
+        }
+        if (phase.isNotEmpty()) {
+            phases += phase
+            remainingAdapters.removeAll(phase)
+        }
+    }
+
+    addPhase(PRIMARY_SYNC_RESOURCES)
+    addPhase(setOf(COLLECTION_BOOKMARK_SYNC_RESOURCE))
+
+    if (remainingAdapters.isNotEmpty()) {
+        phases += remainingAdapters
+    }
+
+    return phases
+}
+
+internal suspend fun executeDependencyAwareSync(
+    resourceAdapters: List<SyncResourceAdapter>,
+    initialLastModificationDate: Long,
+    remoteResponse: MutationsResponse,
+    pushMutations: suspend (List<SyncMutation>, Long) -> MutationsResponse
+) {
+    var mutationToken = remoteResponse.lastModificationDate
+    val safeCompletionToken = remoteResponse.lastModificationDate
+    val phases = resourceAdapters.dependencyAwareSyncPhases()
+    val totalPlans = phases.sumOf { it.size }
+
+    phases.forEach { phaseAdapters ->
+        val plans = phaseAdapters.map { adapter ->
+            adapter.buildPlan(initialLastModificationDate, remoteResponse.mutations)
+        }
+
+        val mutationsToPush = plans.flatMap { it.mutationsToPush() }
+        val pushResponse = pushMutations(mutationsToPush, mutationToken)
+        mutationToken = pushResponse.lastModificationDate
+
+        val pushedMutationsByResource = pushResponse.mutations.groupBy { it.resource.uppercase() }
+        plans.forEach { plan ->
+            val pushedForResource = pushedMutationsByResource[plan.resourceName.uppercase()].orEmpty()
+            val completionToken = if (totalPlans == 1) mutationToken else initialLastModificationDate
+            plan.complete(completionToken, pushedForResource)
+        }
+    }
+
+    if (totalPlans > 1) {
+        resourceAdapters.forEach { adapter ->
+            adapter.didCompleteSync(safeCompletionToken)
+        }
     }
 }

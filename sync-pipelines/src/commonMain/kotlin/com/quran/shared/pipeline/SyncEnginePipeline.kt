@@ -267,7 +267,7 @@ private class ReadingSessionsRepositoryDataFetcher(
     }
 }
 
-private class ResultReceiver(
+internal class ResultReceiver(
     val bookmarksRepository: BookmarksSynchronizationRepository,
     val readingBookmarksRepository: ReadingBookmarksSynchronizationRepository,
     val callback: SyncEngineCallback
@@ -275,6 +275,10 @@ private class ResultReceiver(
 
     override suspend fun didFail(message: String) {
         callback.encounteredError(message)
+    }
+
+    override suspend fun didCompleteSync(newToken: Long) {
+        callback.synchronizationDone(newToken)
     }
 
     override suspend fun didSucceed(
@@ -325,7 +329,6 @@ private class ResultReceiver(
 
         bookmarksRepository.applyRemoteChanges(mappedBookmarkRemotes, mappedBookmarkLocals)
         readingBookmarksRepository.applyRemoteChanges(mappedReadingRemotes, mappedReadingLocals)
-        callback.synchronizationDone(newToken)
     }
 }
 
@@ -365,7 +368,6 @@ private class CollectionsResultReceiver(
         }
 
         repository.applyRemoteChanges(mappedRemotes, mappedLocals)
-        callback.synchronizationDone(newToken)
     }
 }
 
@@ -405,7 +407,6 @@ private class CollectionBookmarksResultReceiver(
         }
 
         repository.applyRemoteChanges(mappedRemotes, mappedLocals)
-        callback.synchronizationDone(newToken)
     }
 }
 
@@ -468,7 +469,6 @@ private class NotesResultReceiver(
         }
 
         repository.applyRemoteChanges(mappedRemotes, mappedLocals)
-        callback.synchronizationDone(newToken)
     }
 }
 
@@ -500,7 +500,6 @@ private class ReadingSessionsResultReceiver(
         }
 
         repository.applyRemoteChanges(mappedRemotes, processedLocalMutations.map { it.localID })
-        callback.synchronizationDone(newToken)
     }
 }
 

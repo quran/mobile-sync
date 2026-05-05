@@ -9,6 +9,8 @@ interface SyncResourceAdapter {
         remoteMutations: List<SyncMutation>
     ): ResourceSyncPlan
 
+    suspend fun didCompleteSync(newToken: Long) = Unit
+
     suspend fun didFail(message: String)
 }
 
