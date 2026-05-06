@@ -9,7 +9,7 @@ interface ReadingBookmarksSynchronizationRepository {
     suspend fun fetchMutatedReadingBookmarks(): List<LocalModelMutation<ReadingBookmark>>
 
     suspend fun applyRemoteChanges(
-        updatesToPersist: List<RemoteModelMutation<RemoteBookmark.Ayah>>,
+        updatesToPersist: List<RemoteModelMutation<RemoteBookmark>>,
         localMutationsToClear: List<LocalModelMutation<ReadingBookmark>>
     )
 

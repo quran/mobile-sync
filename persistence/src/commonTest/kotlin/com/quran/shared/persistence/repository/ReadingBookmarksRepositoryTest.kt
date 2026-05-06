@@ -8,6 +8,9 @@ import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.TestDatabaseDriver
 import com.quran.shared.persistence.input.RemoteBookmark
+import com.quran.shared.persistence.model.AyahReadingBookmark
+import com.quran.shared.persistence.model.PageReadingBookmark
+import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksRepositoryImpl
 import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksSynchronizationRepository
 import com.quran.shared.persistence.util.toPlatform
@@ -38,8 +41,8 @@ class ReadingBookmarksRepositoryTest {
     }
 
     @Test
-    fun `addReadingBookmark stores a single reading bookmark`() = runTest {
-        val bookmark = repository.addReadingBookmark(2, 255)
+    fun `addAyahReadingBookmark stores a single reading bookmark`() = runTest {
+        val bookmark = repository.addAyahReadingBookmark(2, 255)
 
         assertEquals(2, bookmark.sura)
         assertEquals(255, bookmark.ayah)
@@ -47,19 +50,40 @@ class ReadingBookmarksRepositoryTest {
     }
 
     @Test
-    fun `addReadingBookmark replaces the previous reading bookmark`() = runTest {
-        repository.addReadingBookmark(2, 255)
-        repository.addReadingBookmark(3, 2)
+    fun `addAyahReadingBookmark replaces the previous reading bookmark`() = runTest {
+        repository.addAyahReadingBookmark(2, 255)
+        repository.addAyahReadingBookmark(3, 2)
 
-        val bookmark = repository.getReadingBookmark()
-        assertEquals(3, bookmark?.sura)
-        assertEquals(2, bookmark?.ayah)
+        val bookmark = repository.getReadingBookmark() as AyahReadingBookmark
+        assertEquals(3, bookmark.sura)
+        assertEquals(2, bookmark.ayah)
+        assertEquals(1, database.reading_bookmarksQueries.getReadingBookmarks().executeAsList().size)
+    }
+
+    @Test
+    fun `addPageReadingBookmark replaces an ayah reading bookmark`() = runTest {
+        repository.addAyahReadingBookmark(2, 255)
+        repository.addPageReadingBookmark(42)
+
+        val bookmark = repository.getReadingBookmark() as PageReadingBookmark
+        assertEquals(42, bookmark.page)
+        assertEquals(1, database.reading_bookmarksQueries.getReadingBookmarks().executeAsList().size)
+    }
+
+    @Test
+    fun `addAyahReadingBookmark replaces a page reading bookmark`() = runTest {
+        repository.addPageReadingBookmark(42)
+        repository.addAyahReadingBookmark(3, 2)
+
+        val bookmark = repository.getReadingBookmark() as AyahReadingBookmark
+        assertEquals(3, bookmark.sura)
+        assertEquals(2, bookmark.ayah)
         assertEquals(1, database.reading_bookmarksQueries.getReadingBookmarks().executeAsList().size)
     }
 
     @Test
     fun `deleteReadingBookmark removes the current reading bookmark`() = runTest {
-        repository.addReadingBookmark(2, 255)
+        repository.addAyahReadingBookmark(2, 255)
 
         assertTrue(repository.deleteReadingBookmark())
         assertNull(repository.getReadingBookmark())
@@ -67,13 +91,21 @@ class ReadingBookmarksRepositoryTest {
 
     @Test
     fun `fetchMutatedReadingBookmarks keeps only created mutation when replacing unsynced reading bookmark`() = runTest {
-        repository.addReadingBookmark(2, 255)
-        repository.addReadingBookmark(3, 2)
+        repository.addAyahReadingBookmark(2, 255)
+        repository.addAyahReadingBookmark(3, 2)
 
         val mutations = syncRepository.fetchMutatedReadingBookmarks()
 
         assertEquals(1, mutations.size)
-        assertTrue(mutations.any { it.model.sura == 3 && it.model.ayah == 2 && it.mutation == Mutation.CREATED })
+        assertTrue(
+            mutations.any {
+                val model = it.model as? AyahReadingBookmark
+                model != null &&
+                    model.sura == 3 &&
+                    model.ayah == 2 &&
+                    it.mutation == Mutation.CREATED
+            }
+        )
     }
 
     @Test
@@ -94,19 +126,23 @@ class ReadingBookmarksRepositoryTest {
             localMutationsToClear = emptyList()
         )
 
-        repository.addReadingBookmark(3, 2)
+        repository.addAyahReadingBookmark(3, 2)
         val mutations = syncRepository.fetchMutatedReadingBookmarks()
 
         assertTrue(
             mutations.any {
-                it.model.sura == 2 && it.model.ayah == 255 &&
+                val model = it.model as? AyahReadingBookmark
+                model != null &&
+                    model.sura == 2 && model.ayah == 255 &&
                     it.mutation == Mutation.DELETED &&
                     it.remoteID == "remote-reading-id"
             }
         )
         assertTrue(
             mutations.any {
-                it.model.sura == 3 && it.model.ayah == 2 &&
+                val model = it.model as? AyahReadingBookmark
+                model != null &&
+                    model.sura == 3 && model.ayah == 2 &&
                     it.mutation == Mutation.CREATED &&
                     it.remoteID == null
             }
@@ -128,13 +164,75 @@ class ReadingBookmarksRepositoryTest {
                     mutation = Mutation.CREATED
                 )
             ),
-            localMutationsToClear = emptyList<LocalModelMutation<com.quran.shared.persistence.model.ReadingBookmark>>()
+            localMutationsToClear = emptyList<LocalModelMutation<ReadingBookmark>>()
         )
 
-        val bookmark = repository.getReadingBookmark()
+        val bookmark = repository.getReadingBookmark() as AyahReadingBookmark
         assertNotNull(bookmark)
         assertEquals(2, bookmark.sura)
         assertEquals(255, bookmark.ayah)
         assertEquals("remote-reading-id", database.reading_bookmarksQueries.getReadingBookmarkByRemoteId("remote-reading-id").executeAsOne().remote_id)
+    }
+
+    @Test
+    fun `applyRemoteChanges persists remote page reading bookmark without local row`() = runTest {
+        syncRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                RemoteModelMutation(
+                    model = RemoteBookmark.Page(
+                        page = 42,
+                        isReading = true,
+                        lastUpdated = Instant.fromEpochMilliseconds(1000L).toPlatform()
+                    ),
+                    remoteID = "remote-page-reading-id",
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        val bookmark = repository.getReadingBookmark() as PageReadingBookmark
+        assertNotNull(bookmark)
+        assertEquals(42, bookmark.page)
+        assertEquals("remote-page-reading-id", database.reading_bookmarksQueries.getReadingBookmarkByRemoteId("remote-page-reading-id").executeAsOne().remote_id)
+    }
+
+    @Test
+    fun `applyRemoteChanges updates existing remote reading bookmark without duplicating rows`() = runTest {
+        syncRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                RemoteModelMutation(
+                    model = RemoteBookmark.Ayah(
+                        sura = 2,
+                        ayah = 255,
+                        isReading = true,
+                        lastUpdated = Instant.fromEpochMilliseconds(1000L).toPlatform()
+                    ),
+                    remoteID = "remote-reading-id",
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        syncRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                RemoteModelMutation(
+                    model = RemoteBookmark.Page(
+                        page = 42,
+                        isReading = true,
+                        lastUpdated = Instant.fromEpochMilliseconds(2000L).toPlatform()
+                    ),
+                    remoteID = "remote-reading-id",
+                    mutation = Mutation.MODIFIED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        val bookmark = repository.getReadingBookmark() as PageReadingBookmark
+        assertNotNull(bookmark)
+        assertEquals(42, bookmark.page)
+        assertEquals(1, database.reading_bookmarksQueries.getReadingBookmarks().executeAsList().size)
     }
 }

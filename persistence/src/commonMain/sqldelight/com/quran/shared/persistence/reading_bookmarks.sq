@@ -1,15 +1,24 @@
 CREATE TABLE IF NOT EXISTS reading_bookmark(
   local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   remote_id TEXT,
-  sura INTEGER NOT NULL,
-  ayah INTEGER NOT NULL,
+  bookmark_type TEXT NOT NULL,
+  sura INTEGER,
+  ayah INTEGER,
+  page INTEGER,
   is_edited INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
   modified_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
   deleted INTEGER NOT NULL DEFAULT 0,
+  CHECK (bookmark_type IN ('AYAH', 'PAGE')),
+  CHECK (
+    (bookmark_type = 'AYAH' AND sura IS NOT NULL AND ayah IS NOT NULL AND page IS NULL)
+    OR
+    (bookmark_type = 'PAGE' AND page IS NOT NULL AND sura IS NULL AND ayah IS NULL)
+  ),
   CHECK (is_edited IN (0, 1)),
   CHECK (deleted IN (0, 1)),
-  UNIQUE(sura, ayah)
+  UNIQUE(bookmark_type, sura, ayah),
+  UNIQUE(bookmark_type, page)
 );
 
 CREATE INDEX IF NOT EXISTS reading_bookmark_remote_id_idx ON reading_bookmark(remote_id);
@@ -18,7 +27,10 @@ getReadingBookmarks:
   SELECT * FROM reading_bookmark WHERE deleted = 0 ORDER BY modified_at DESC;
 
 getReadingBookmarkForAyah:
-  SELECT * FROM reading_bookmark WHERE sura = ? AND ayah = ? LIMIT 1;
+  SELECT * FROM reading_bookmark WHERE bookmark_type = 'AYAH' AND sura = ? AND ayah = ? LIMIT 1;
+
+getReadingBookmarkForPage:
+  SELECT * FROM reading_bookmark WHERE bookmark_type = 'PAGE' AND page = ? LIMIT 1;
 
 getReadingBookmarkByLocalId:
   SELECT * FROM reading_bookmark WHERE local_id = ? LIMIT 1;
@@ -26,7 +38,7 @@ getReadingBookmarkByLocalId:
 getReadingBookmarkByRemoteId:
   SELECT * FROM reading_bookmark WHERE remote_id = ? LIMIT 1;
 
-addReadingBookmark {
+addAyahReadingBookmark {
   DELETE FROM reading_bookmark
   WHERE deleted = 0 AND remote_id IS NULL;
   UPDATE reading_bookmark
@@ -34,39 +46,98 @@ addReadingBookmark {
     is_edited = 1,
     modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE deleted = 0 AND remote_id IS NOT NULL;
-  INSERT OR IGNORE INTO reading_bookmark (remote_id, sura, ayah, is_edited, deleted)
-  VALUES (NULL, :sura, :ayah, 0, 0);
+  INSERT OR IGNORE INTO reading_bookmark (remote_id, bookmark_type, sura, ayah, page, is_edited, deleted)
+  VALUES (NULL, 'AYAH', :sura, :ayah, NULL, 0, 0);
   UPDATE reading_bookmark
     SET deleted = 0,
       is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
       modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
-    WHERE sura = :sura AND ayah = :ayah;
+    WHERE bookmark_type = 'AYAH' AND sura = :sura AND ayah = :ayah;
 }
 
-deleteReadingBookmark {
-  DELETE FROM reading_bookmark WHERE sura=:sura AND ayah=:ayah AND remote_id IS NULL;
+addPageReadingBookmark {
+  DELETE FROM reading_bookmark
+  WHERE deleted = 0 AND remote_id IS NULL;
   UPDATE reading_bookmark
   SET deleted = 1,
     is_edited = 1,
     modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
-  WHERE sura=:sura AND ayah=:ayah AND remote_id IS NOT NULL;
+  WHERE deleted = 0 AND remote_id IS NOT NULL;
+  INSERT OR IGNORE INTO reading_bookmark (remote_id, bookmark_type, sura, ayah, page, is_edited, deleted)
+  VALUES (NULL, 'PAGE', NULL, NULL, :page, 0, 0);
+  UPDATE reading_bookmark
+    SET deleted = 0,
+      is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
+      modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+    WHERE bookmark_type = 'PAGE' AND page = :page;
+}
+
+deleteReadingBookmark {
+  DELETE FROM reading_bookmark WHERE local_id = :id AND remote_id IS NULL;
+  UPDATE reading_bookmark
+  SET deleted = 1,
+    is_edited = 1,
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  WHERE local_id = :id AND remote_id IS NOT NULL;
 }
 
 getUnsyncedReadingBookmarks:
   SELECT * FROM reading_bookmark WHERE remote_id IS NULL OR is_edited = 1 OR deleted = 1 ORDER BY modified_at DESC;
 
-persistRemoteReadingBookmark {
-  INSERT OR IGNORE INTO reading_bookmark (remote_id, sura, ayah, is_edited, created_at, modified_at, deleted)
-  VALUES (:remote_id, :sura, :ayah, 0, :created_at, :modified_at, 0);
+persistRemoteAyahReadingBookmark {
+  DELETE FROM reading_bookmark
+  WHERE deleted = 0 AND remote_id IS NULL AND bookmark_type = 'AYAH' AND sura = :sura AND ayah = :ayah;
   UPDATE reading_bookmark
-  SET remote_id = :remote_id,
+  SET bookmark_type = 'AYAH',
     sura = :sura,
     ayah = :ayah,
+    page = NULL,
     is_edited = 0,
     created_at = :created_at,
     modified_at = :modified_at,
     deleted = 0
-  WHERE remote_id = :remote_id OR (sura = :sura AND ayah = :ayah);
+  WHERE remote_id = :remote_id;
+  INSERT OR IGNORE INTO reading_bookmark (remote_id, bookmark_type, sura, ayah, page, is_edited, created_at, modified_at, deleted)
+  VALUES (:remote_id, 'AYAH', :sura, :ayah, NULL, 0, :created_at, :modified_at, 0);
+  UPDATE reading_bookmark
+  SET remote_id = :remote_id,
+    bookmark_type = 'AYAH',
+    sura = :sura,
+    ayah = :ayah,
+    page = NULL,
+    is_edited = 0,
+    created_at = :created_at,
+    modified_at = :modified_at,
+    deleted = 0
+  WHERE remote_id = :remote_id OR (bookmark_type = 'AYAH' AND sura = :sura AND ayah = :ayah);
+}
+
+persistRemotePageReadingBookmark {
+  DELETE FROM reading_bookmark
+  WHERE deleted = 0 AND remote_id IS NULL AND bookmark_type = 'PAGE' AND page = :page;
+  UPDATE reading_bookmark
+  SET bookmark_type = 'PAGE',
+    sura = NULL,
+    ayah = NULL,
+    page = :page,
+    is_edited = 0,
+    created_at = :created_at,
+    modified_at = :modified_at,
+    deleted = 0
+  WHERE remote_id = :remote_id;
+  INSERT OR IGNORE INTO reading_bookmark (remote_id, bookmark_type, sura, ayah, page, is_edited, created_at, modified_at, deleted)
+  VALUES (:remote_id, 'PAGE', NULL, NULL, :page, 0, :created_at, :modified_at, 0);
+  UPDATE reading_bookmark
+  SET remote_id = :remote_id,
+    bookmark_type = 'PAGE',
+    sura = NULL,
+    ayah = NULL,
+    page = :page,
+    is_edited = 0,
+    created_at = :created_at,
+    modified_at = :modified_at,
+    deleted = 0
+  WHERE remote_id = :remote_id OR (bookmark_type = 'PAGE' AND page = :page);
 }
 
 hardDeleteReadingBookmarkFor {

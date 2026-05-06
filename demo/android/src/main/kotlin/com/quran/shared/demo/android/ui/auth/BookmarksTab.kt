@@ -13,6 +13,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.quran.shared.persistence.model.AyahBookmark
+import com.quran.shared.persistence.model.AyahReadingBookmark
+import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
 
 @Composable
@@ -21,6 +23,7 @@ fun BookmarksTab(
     readingBookmark: ReadingBookmark?,
     onAddAyahBookmark: () -> Unit,
     onAddReadingAyahBookmark: () -> Unit,
+    onAddReadingPageBookmark: () -> Unit,
     onDeleteReadingBookmark: () -> Unit,
     onDeleteBookmark: (AyahBookmark) -> Unit
 ) {
@@ -48,6 +51,13 @@ fun BookmarksTab(
                         imageVector = Icons.Default.Bookmark,
                         contentDescription = "Add Reading Ayah Bookmark",
                         tint = MaterialTheme.colorScheme.tertiaryContainer
+                    )
+                }
+                IconButton(onClick = onAddReadingPageBookmark) {
+                    Icon(
+                        imageVector = Icons.Default.Bookmark,
+                        contentDescription = "Add Reading Page Bookmark",
+                        tint = MaterialTheme.colorScheme.primary
                     )
                 }
             }
@@ -108,7 +118,7 @@ private fun ReadingBookmarkCard(
                     )
                 } else {
                     Text(
-                        text = "Surah ${readingBookmark.sura}, Ayah ${readingBookmark.ayah}",
+                        text = readingBookmark.displayText(),
                         style = MaterialTheme.typography.bodyLarge
                     )
                 }
@@ -124,6 +134,13 @@ private fun ReadingBookmarkCard(
                 }
             }
         }
+    }
+}
+
+private fun ReadingBookmark.displayText(): String {
+    return when (this) {
+        is AyahReadingBookmark -> "Surah $sura, Ayah $ayah"
+        is PageReadingBookmark -> "Page $page"
     }
 }
 

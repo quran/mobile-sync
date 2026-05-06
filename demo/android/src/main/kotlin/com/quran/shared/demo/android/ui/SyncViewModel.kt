@@ -4,8 +4,10 @@ import androidx.lifecycle.ViewModel
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.pipeline.SyncService
 import com.quran.shared.persistence.model.AyahBookmark
+import com.quran.shared.persistence.model.AyahReadingBookmark
 import com.quran.shared.persistence.model.CollectionWithAyahBookmarks
 import com.quran.shared.persistence.model.Note
+import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingSession
 import kotlinx.coroutines.flow.Flow
@@ -55,8 +57,12 @@ class SyncViewModel(
         return service.addBookmark(sura, ayah)
     }
 
-    suspend fun addReadingBookmark(sura: Int, ayah: Int): ReadingBookmark {
-        return service.addReadingBookmark(sura, ayah)
+    suspend fun addAyahReadingBookmark(sura: Int, ayah: Int): AyahReadingBookmark {
+        return service.addAyahReadingBookmark(sura, ayah)
+    }
+
+    suspend fun addPageReadingBookmark(page: Int): PageReadingBookmark {
+        return service.addPageReadingBookmark(page)
     }
 
     suspend fun deleteReadingBookmark() {

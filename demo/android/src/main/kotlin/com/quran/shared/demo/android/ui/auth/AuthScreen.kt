@@ -17,6 +17,7 @@ import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomAyah
+import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomPage
 import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomSura
 import com.quran.shared.demo.android.ui.SyncViewModel
 import kotlinx.coroutines.launch
@@ -114,7 +115,16 @@ fun AuthScreen(
                             val ayah = getRandomAyah(sura)
                             scope.launch {
                                 try {
-                                    viewModel.addReadingBookmark(sura, ayah)
+                                    viewModel.addAyahReadingBookmark(sura, ayah)
+                                } catch (e: Exception) {
+                                }
+                            }
+                        },
+                        onAddReadingPageBookmark = {
+                            val page = getRandomPage()
+                            scope.launch {
+                                try {
+                                    viewModel.addPageReadingBookmark(page)
                                 } catch (e: Exception) {
                                 }
                             }
@@ -237,6 +247,7 @@ private fun SuccessContent(
     notes: List<Note>,
     onAddAyahBookmark: () -> Unit,
     onAddReadingAyahBookmark: () -> Unit,
+    onAddReadingPageBookmark: () -> Unit,
     onDeleteBookmark: (AyahBookmark) -> Unit,
     onDeleteReadingBookmark: () -> Unit,
     onAddCollection: (String) -> Unit,
@@ -310,6 +321,7 @@ private fun SuccessContent(
                     readingBookmark = readingBookmark,
                     onAddAyahBookmark = onAddAyahBookmark,
                     onAddReadingAyahBookmark = onAddReadingAyahBookmark,
+                    onAddReadingPageBookmark = onAddReadingPageBookmark,
                     onDeleteReadingBookmark = onDeleteReadingBookmark,
                     onDeleteBookmark = onDeleteBookmark
                 )

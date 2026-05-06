@@ -20,7 +20,7 @@ struct BookmarksTabView: View {
                         Image(systemName: "bookmark.fill")
                             .foregroundColor(.orange)
                         VStack(alignment: .leading) {
-                            Text("Surah \(readingBookmark.sura), Ayah \(readingBookmark.ayah)")
+                            Text(readingBookmarkText(readingBookmark))
                                 .font(.body)
                         }
                         Spacer()
@@ -64,6 +64,15 @@ struct BookmarksTabView: View {
                         Image(systemName: "bookmark")
                             .foregroundColor(.orange)
                     }
+                    Button(action: {
+                        let page = Shared.QuranActionsUtils().getRandomPage()
+                        Task {
+                            _ = await viewModel.addPageReadingBookmark(page: page)
+                        }
+                    }) {
+                        Image(systemName: "bookmark.fill")
+                            .foregroundColor(.orange)
+                    }
                 }
             }) {
                 if viewModel.bookmarks.isEmpty {
@@ -101,5 +110,17 @@ struct BookmarksTabView: View {
                 }
             }
         }
+    }
+
+    private func readingBookmarkText(_ readingBookmark: Shared.ReadingBookmark) -> String {
+        if let bookmark = readingBookmark as? Shared.AyahReadingBookmark {
+            return "Surah \(bookmark.sura), Ayah \(bookmark.ayah)"
+        }
+
+        if let bookmark = readingBookmark as? Shared.PageReadingBookmark {
+            return "Page \(bookmark.page)"
+        }
+
+        return "Reading bookmark"
     }
 }

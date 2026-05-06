@@ -5,9 +5,11 @@ import com.quran.shared.auth.model.AuthState
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.model.AyahBookmark
+import com.quran.shared.persistence.model.AyahReadingBookmark
 import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.model.CollectionWithAyahBookmarks
 import com.quran.shared.persistence.model.Note
+import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepository
@@ -192,13 +194,30 @@ class SyncService(
     }
 
     @NativeCoroutines
-    suspend fun addReadingBookmark(sura: Int, ayah: Int): ReadingBookmark {
+    suspend fun addReadingBookmark(sura: Int, ayah: Int): AyahReadingBookmark {
+        return addAyahReadingBookmark(sura, ayah)
+    }
+
+    @NativeCoroutines
+    suspend fun addAyahReadingBookmark(sura: Int, ayah: Int): AyahReadingBookmark {
         try {
-            val bookmark = readingBookmarksRepository.addReadingBookmark(sura, ayah)
+            val bookmark = readingBookmarksRepository.addAyahReadingBookmark(sura, ayah)
             triggerSync()
             return bookmark
         } catch (e: Exception) {
             Logger.e(e) { "Failed to add reading ayah bookmark" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun addPageReadingBookmark(page: Int): PageReadingBookmark {
+        try {
+            val bookmark = readingBookmarksRepository.addPageReadingBookmark(page)
+            triggerSync()
+            return bookmark
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to add reading page bookmark" }
             throw e
         }
     }

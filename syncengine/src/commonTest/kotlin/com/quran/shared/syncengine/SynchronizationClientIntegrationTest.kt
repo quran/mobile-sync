@@ -394,9 +394,13 @@ class SynchronizationClientIntegrationTest {
 }
 
 private fun SyncBookmark.pageOrThrow(): Int =
-    (this as SyncBookmark.AyahBookmark).sura
+    when (this) {
+        is SyncBookmark.AyahBookmark -> sura
+        is SyncBookmark.PageBookmark -> page
+    }
 
 private fun SyncBookmark.idOrThrow(): String =
     when (this) {
         is SyncBookmark.AyahBookmark -> id
+        is SyncBookmark.PageBookmark -> id
     }
