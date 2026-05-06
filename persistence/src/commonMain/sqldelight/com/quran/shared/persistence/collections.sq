@@ -15,6 +15,9 @@ CREATE INDEX IF NOT EXISTS collection_remote_id_idx ON collection(remote_id);
 getCollections:
   SELECT * FROM collection WHERE deleted = 0 ORDER BY created_at DESC;
 
+countAll:
+  SELECT COUNT(*) FROM collection;
+
 getCollectionByName:
   SELECT * FROM collection WHERE name = ? LIMIT 1;
 
@@ -33,6 +36,24 @@ addNewCollection {
     modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE name = :name;
 }
+
+insertImportedCollection:
+  INSERT INTO collection (
+    remote_id,
+    name,
+    created_at,
+    modified_at,
+    deleted,
+    is_edited
+  )
+  VALUES (
+    NULL,
+    :name,
+    :created_at,
+    :modified_at,
+    0,
+    0
+  );
 
 updateCollectionName:
   UPDATE collection

@@ -18,6 +18,9 @@ CREATE INDEX IF NOT EXISTS ayah_bookmark_remote_id_idx ON ayah_bookmark(remote_i
 getBookmarks:
   SELECT * FROM ayah_bookmark WHERE deleted = 0 ORDER BY created_at DESC;
 
+countAll:
+  SELECT COUNT(*) FROM ayah_bookmark;
+
 getBookmarkForAyah:
   SELECT * FROM ayah_bookmark WHERE sura = ? AND ayah = ? LIMIT 1;
 
@@ -41,6 +44,28 @@ insertBookmarkIfMissing {
   INSERT OR IGNORE INTO ayah_bookmark (remote_id, ayah_id, sura, ayah, is_edited, deleted)
   VALUES (NULL, :ayah_id, :sura, :ayah, 0, 0);
 }
+
+insertImportedBookmark:
+  INSERT INTO ayah_bookmark (
+    remote_id,
+    ayah_id,
+    sura,
+    ayah,
+    is_edited,
+    created_at,
+    modified_at,
+    deleted
+  )
+  VALUES (
+    NULL,
+    :ayah_id,
+    :sura,
+    :ayah,
+    0,
+    :created_at,
+    :modified_at,
+    0
+  );
 
 getUnsyncedBookmarks:
   SELECT * FROM ayah_bookmark WHERE remote_id IS NULL OR is_edited = 1 OR deleted = 1 ORDER BY created_at DESC;

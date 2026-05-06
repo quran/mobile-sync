@@ -26,6 +26,9 @@ CREATE INDEX IF NOT EXISTS reading_bookmark_remote_id_idx ON reading_bookmark(re
 getReadingBookmarks:
   SELECT * FROM reading_bookmark WHERE deleted = 0 ORDER BY modified_at DESC;
 
+countAll:
+  SELECT COUNT(*) FROM reading_bookmark;
+
 getReadingBookmarkForAyah:
   SELECT * FROM reading_bookmark WHERE bookmark_type = 'AYAH' AND sura = ? AND ayah = ? LIMIT 1;
 
@@ -71,6 +74,54 @@ addPageReadingBookmark {
       modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
     WHERE bookmark_type = 'PAGE' AND page = :page;
 }
+
+insertImportedAyahReadingBookmark:
+  INSERT INTO reading_bookmark (
+    remote_id,
+    bookmark_type,
+    sura,
+    ayah,
+    page,
+    is_edited,
+    created_at,
+    modified_at,
+    deleted
+  )
+  VALUES (
+    NULL,
+    'AYAH',
+    :sura,
+    :ayah,
+    NULL,
+    0,
+    :created_at,
+    :modified_at,
+    0
+  );
+
+insertImportedPageReadingBookmark:
+  INSERT INTO reading_bookmark (
+    remote_id,
+    bookmark_type,
+    sura,
+    ayah,
+    page,
+    is_edited,
+    created_at,
+    modified_at,
+    deleted
+  )
+  VALUES (
+    NULL,
+    'PAGE',
+    NULL,
+    NULL,
+    :page,
+    0,
+    :created_at,
+    :modified_at,
+    0
+  );
 
 deleteReadingBookmark {
   DELETE FROM reading_bookmark WHERE local_id = :id AND remote_id IS NULL;
