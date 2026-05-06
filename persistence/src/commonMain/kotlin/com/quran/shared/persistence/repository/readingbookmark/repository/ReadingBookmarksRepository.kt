@@ -12,7 +12,10 @@ interface ReadingBookmarksRepository {
     fun getReadingBookmarkFlow(): Flow<ReadingBookmark?>
 
     @NativeCoroutines
-    suspend fun addReadingBookmark(sura: Int, ayah: Int): ReadingBookmark
+    suspend fun addAyahReadingBookmark(sura: Int, ayah: Int): ReadingBookmark
+
+    @NativeCoroutines
+    suspend fun addPageReadingBookmark(page: Int): ReadingBookmark
 
     @NativeCoroutines
     suspend fun deleteReadingBookmark(): Boolean

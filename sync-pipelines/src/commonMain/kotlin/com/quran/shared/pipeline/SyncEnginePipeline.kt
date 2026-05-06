@@ -11,8 +11,10 @@ import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.input.RemoteNote
 import com.quran.shared.persistence.input.RemoteReadingSession
 import com.quran.shared.persistence.model.AyahBookmark
+import com.quran.shared.persistence.model.AyahReadingBookmark
 import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.model.Note
+import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.Collection as PersistenceCollection
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksSynchronizationRepository
@@ -291,23 +293,25 @@ internal class ResultReceiver(
         val bookmarkLocalMutations = processedLocalMutations.filter { !it.model.isReading }
         val readingLocalMutations = processedLocalMutations.filter { it.model.isReading }
 
-        val mappedBookmarkRemotes = bookmarkRemoteMutations.map { remoteMutation ->
+        val mappedBookmarkRemotes = bookmarkRemoteMutations.mapNotNull { remoteMutation ->
+            val model = remoteMutation.model.toBookmarkRemoteInput() ?: return@mapNotNull null
             RemoteModelMutation<RemoteBookmark.Ayah>(
-                model = remoteMutation.model.toRemoteInput(),
+                model = model,
                 remoteID = remoteMutation.remoteID,
                 mutation = remoteMutation.mutation
             )
         }
-        val mappedBookmarkLocals = bookmarkLocalMutations.map { localMutation ->
+        val mappedBookmarkLocals = bookmarkLocalMutations.mapNotNull { localMutation ->
+            val model = localMutation.model.toBookmarkPersistence() ?: return@mapNotNull null
             LocalModelMutation(
-                model = localMutation.model.toBookmarkPersistence(),
+                model = model,
                 localID = localMutation.localID,
                 remoteID = localMutation.remoteID,
                 mutation = localMutation.mutation
             )
         }
         val mappedReadingRemotes = readingRemoteMutations.map { remoteMutation ->
-            RemoteModelMutation<RemoteBookmark.Ayah>(
+            RemoteModelMutation<RemoteBookmark>(
                 model = remoteMutation.model.toRemoteInput(),
                 remoteID = remoteMutation.remoteID,
                 mutation = remoteMutation.mutation
@@ -513,17 +517,25 @@ private fun AyahBookmark.toSyncEngine(): SyncBookmark.AyahBookmark {
     )
 }
 
-private fun ReadingBookmark.toSyncEngine(): SyncBookmark.AyahBookmark {
-    return SyncBookmark.AyahBookmark(
-        id = this.localId,
-        sura = this.sura,
-        ayah = this.ayah,
-        lastModified = this.lastUpdated.fromPlatform(),
-        isReading = true
-    )
+private fun ReadingBookmark.toSyncEngine(): SyncBookmark {
+    return when (this) {
+        is AyahReadingBookmark -> SyncBookmark.AyahBookmark(
+            id = this.localId,
+            sura = this.sura,
+            ayah = this.ayah,
+            lastModified = this.lastUpdated.fromPlatform(),
+            isReading = true
+        )
+        is PageReadingBookmark -> SyncBookmark.PageBookmark(
+            id = this.localId,
+            page = this.page,
+            lastModified = this.lastUpdated.fromPlatform(),
+            isReading = true
+        )
+    }
 }
 
-private fun SyncBookmark.toBookmarkPersistence(): AyahBookmark {
+private fun SyncBookmark.toBookmarkPersistence(): AyahBookmark? {
     return when (this) {
         is SyncBookmark.AyahBookmark -> AyahBookmark(
             sura = this.sura,
@@ -531,14 +543,20 @@ private fun SyncBookmark.toBookmarkPersistence(): AyahBookmark {
             lastUpdated = this.lastModified.toPlatform(),
             localId = this.id
         )
+        is SyncBookmark.PageBookmark -> null
     }
 }
 
 private fun SyncBookmark.toReadingBookmarkPersistence(): ReadingBookmark {
     return when (this) {
-        is SyncBookmark.AyahBookmark -> ReadingBookmark(
+        is SyncBookmark.AyahBookmark -> AyahReadingBookmark(
             sura = this.sura,
             ayah = this.ayah,
+            lastUpdated = this.lastModified.toPlatform(),
+            localId = this.id
+        )
+        is SyncBookmark.PageBookmark -> PageReadingBookmark(
+            page = this.page,
             lastUpdated = this.lastModified.toPlatform(),
             localId = this.id
         )
@@ -561,12 +579,31 @@ private fun SyncCollection.toPersistence(): PersistenceCollection {
     )
 }
 
-private fun SyncBookmark.toRemoteInput(): RemoteBookmark.Ayah {
+private fun SyncBookmark.toBookmarkRemoteInput(): RemoteBookmark.Ayah? {
     return when (this) {
         is SyncBookmark.AyahBookmark ->
             RemoteBookmark.Ayah(
                 sura = this.sura,
                 ayah = this.ayah,
+                lastUpdated = this.lastModified.toPlatform(),
+                isReading = this.isReading
+            )
+        is SyncBookmark.PageBookmark -> null
+    }
+}
+
+private fun SyncBookmark.toRemoteInput(): RemoteBookmark {
+    return when (this) {
+        is SyncBookmark.AyahBookmark ->
+            RemoteBookmark.Ayah(
+                sura = this.sura,
+                ayah = this.ayah,
+                lastUpdated = this.lastModified.toPlatform(),
+                isReading = this.isReading
+            )
+        is SyncBookmark.PageBookmark ->
+            RemoteBookmark.Page(
+                page = this.page,
                 lastUpdated = this.lastModified.toPlatform(),
                 isReading = this.isReading
             )

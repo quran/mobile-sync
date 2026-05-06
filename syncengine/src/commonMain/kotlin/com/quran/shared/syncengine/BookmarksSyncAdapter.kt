@@ -233,12 +233,26 @@ private suspend fun SyncMutation.toSyncBookmark(
                 null
             }
         }
+        "page" -> {
+            val page = data?.intOrNull("key")
+            if (page != null) {
+                SyncBookmark.PageBookmark(
+                    id = id,
+                    page = page,
+                    isReading = data?.booleanOrNull("isReading") ?: false,
+                    lastModified = lastModified
+                )
+            } else {
+                null
+            }
+        }
         else -> {
             val localModel = localDataFetcher.fetchLocalModel(id)
             if (localModel != null) {
                 logger.d { "Mapped unknown bookmark type using local data: resourceId=$id" }
                 when (localModel) {
                     is SyncBookmark.AyahBookmark -> localModel.copy(lastModified = lastModified)
+                    is SyncBookmark.PageBookmark -> localModel.copy(lastModified = lastModified)
                 }
             } else {
                 logger.w { "Skipping bookmark mutation with unsupported type=$normalizedType: resourceId=$resourceId" }
@@ -254,6 +268,12 @@ private fun SyncBookmark.toResourceData(): JsonObject {
             put("type", "ayah")
             put("key", sura)
             put("verseNumber", ayah)
+            put("isReading", isReading)
+            put("mushaf", 1)
+        }
+        is SyncBookmark.PageBookmark -> buildJsonObject {
+            put("type", "page")
+            put("key", page)
             put("isReading", isReading)
             put("mushaf", 1)
         }

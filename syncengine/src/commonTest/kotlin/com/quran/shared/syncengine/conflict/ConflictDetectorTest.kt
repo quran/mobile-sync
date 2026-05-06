@@ -326,9 +326,13 @@ class ConflictDetectorTest {
 }
 
 private fun SyncBookmark.pageOrThrow(): Int =
-    (this as SyncBookmark.AyahBookmark).sura
+    when (this) {
+        is SyncBookmark.AyahBookmark -> sura
+        is SyncBookmark.PageBookmark -> page
+    }
 
 private fun SyncBookmark.lastModifiedOrThrow(): Instant =
     when (this) {
         is SyncBookmark.AyahBookmark -> lastModified
+        is SyncBookmark.PageBookmark -> lastModified
     }

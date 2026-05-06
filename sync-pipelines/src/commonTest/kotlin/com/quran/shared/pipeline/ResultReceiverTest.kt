@@ -13,6 +13,7 @@ import com.quran.shared.syncengine.model.SyncBookmark
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.time.Instant
 
 class ResultReceiverTest {
 
@@ -51,6 +52,43 @@ class ResultReceiverTest {
             events
         )
     }
+
+    @Test
+    fun `page reading bookmark mutations are routed to reading bookmarks repository`() = runTest {
+        val readingUpdates = mutableListOf<RemoteModelMutation<RemoteBookmark>>()
+        val receiver = ResultReceiver(
+            bookmarksRepository = RecordingBookmarksRepository(mutableListOf()),
+            readingBookmarksRepository = RecordingReadingBookmarksRepository(
+                events = mutableListOf(),
+                remoteUpdates = readingUpdates
+            ),
+            callback = object : SyncEngineCallback {
+                override fun synchronizationDone(newLastModificationDate: Long) = Unit
+                override fun encounteredError(errorMsg: String) = Unit
+            }
+        )
+
+        receiver.didSucceed(
+            newToken = 11L,
+            newRemoteMutations = listOf(
+                RemoteModelMutation(
+                    model = SyncBookmark.PageBookmark(
+                        id = "remote-page-reading",
+                        page = 42,
+                        isReading = true,
+                        lastModified = Instant.fromEpochMilliseconds(1000)
+                    ),
+                    remoteID = "remote-page-reading",
+                    mutation = com.quran.shared.mutations.Mutation.CREATED
+                )
+            ),
+            processedLocalMutations = emptyList()
+        )
+
+        val model = readingUpdates.single().model as RemoteBookmark.Page
+        assertEquals(42, model.page)
+        assertEquals(true, model.isReading)
+    }
 }
 
 private class RecordingBookmarksRepository(
@@ -72,14 +110,16 @@ private class RecordingBookmarksRepository(
 }
 
 private class RecordingReadingBookmarksRepository(
-    private val events: MutableList<String>
+    private val events: MutableList<String>,
+    private val remoteUpdates: MutableList<RemoteModelMutation<RemoteBookmark>> = mutableListOf()
 ) : ReadingBookmarksSynchronizationRepository {
     override suspend fun fetchMutatedReadingBookmarks(): List<LocalModelMutation<ReadingBookmark>> = emptyList()
 
     override suspend fun applyRemoteChanges(
-        updatesToPersist: List<RemoteModelMutation<RemoteBookmark.Ayah>>,
+        updatesToPersist: List<RemoteModelMutation<RemoteBookmark>>,
         localMutationsToClear: List<LocalModelMutation<ReadingBookmark>>
     ) {
+        remoteUpdates += updatesToPersist
         events += "reading-bookmarks-applied"
     }
 

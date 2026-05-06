@@ -9,6 +9,8 @@ import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.input.RemoteBookmark
+import com.quran.shared.persistence.model.AyahReadingBookmark
+import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.repository.readingbookmark.extension.toReadingBookmark
 import com.quran.shared.persistence.repository.readingbookmark.extension.toReadingBookmarkMutation
@@ -47,16 +49,27 @@ class ReadingBookmarksRepositoryImpl(
             .map { list -> list.firstOrNull()?.toReadingBookmark() }
     }
 
-    override suspend fun addReadingBookmark(sura: Int, ayah: Int): ReadingBookmark {
-        logger.i { "Adding reading bookmark for $sura:$ayah" }
+    override suspend fun addAyahReadingBookmark(sura: Int, ayah: Int): ReadingBookmark {
+        logger.i { "Adding ayah reading bookmark for $sura:$ayah" }
         return withContext(Dispatchers.IO) {
-            readingBookmarkQueries.value.addReadingBookmark(
+            readingBookmarkQueries.value.addAyahReadingBookmark(
                 sura = sura.toLong(),
                 ayah = ayah.toLong()
             )
             val record = readingBookmarkQueries.value.getReadingBookmarkForAyah(sura.toLong(), ayah.toLong())
                 .executeAsOneOrNull()
             requireNotNull(record) { "Expected reading bookmark for $sura:$ayah after insert." }
+            record.toReadingBookmark()
+        }
+    }
+
+    override suspend fun addPageReadingBookmark(page: Int): ReadingBookmark {
+        logger.i { "Adding page reading bookmark for page=$page" }
+        return withContext(Dispatchers.IO) {
+            readingBookmarkQueries.value.addPageReadingBookmark(page = page.toLong())
+            val record = readingBookmarkQueries.value.getReadingBookmarkForPage(page.toLong())
+                .executeAsOneOrNull()
+            requireNotNull(record) { "Expected reading bookmark for page=$page after insert." }
             record.toReadingBookmark()
         }
     }
@@ -74,8 +87,7 @@ class ReadingBookmarksRepositoryImpl(
 
             currentReadingBookmarks.forEach { bookmark ->
                 readingBookmarkQueries.value.deleteReadingBookmark(
-                    sura = bookmark.sura.toLong(),
-                    ayah = bookmark.ayah.toLong()
+                    id = bookmark.localId.toLong()
                 )
             }
             true
@@ -91,7 +103,7 @@ class ReadingBookmarksRepositoryImpl(
     }
 
     override suspend fun applyRemoteChanges(
-        updatesToPersist: List<RemoteModelMutation<RemoteBookmark.Ayah>>,
+        updatesToPersist: List<RemoteModelMutation<RemoteBookmark>>,
         localMutationsToClear: List<LocalModelMutation<ReadingBookmark>>
     ) {
         logger.i {
@@ -158,23 +170,41 @@ class ReadingBookmarksRepositoryImpl(
         readingBookmarkQueries.value.clearLocalMutationFor(id = local.localID.toLong())
     }
 
-    private fun applyRemoteReadingBookmarkAddition(remote: RemoteModelMutation<RemoteBookmark.Ayah>) {
+    private fun applyRemoteReadingBookmarkAddition(remote: RemoteModelMutation<RemoteBookmark>) {
         val model = remote.model
         val updatedAt = model.lastUpdated.fromPlatform().toEpochMilliseconds()
-        readingBookmarkQueries.value.persistRemoteReadingBookmark(
-            remote_id = remote.remoteID,
-            sura = model.sura.toLong(),
-            ayah = model.ayah.toLong(),
-            created_at = updatedAt,
-            modified_at = updatedAt
-        )
+        when (model) {
+            is RemoteBookmark.Ayah -> readingBookmarkQueries.value.persistRemoteAyahReadingBookmark(
+                remote_id = remote.remoteID,
+                sura = model.sura.toLong(),
+                ayah = model.ayah.toLong(),
+                created_at = updatedAt,
+                modified_at = updatedAt
+            )
+            is RemoteBookmark.Page -> readingBookmarkQueries.value.persistRemotePageReadingBookmark(
+                remote_id = remote.remoteID,
+                page = model.page.toLong(),
+                created_at = updatedAt,
+                modified_at = updatedAt
+            )
+        }
     }
 
-    private fun applyRemoteReadingBookmarkDeletion(remote: RemoteModelMutation<RemoteBookmark.Ayah>) {
+    private fun applyRemoteReadingBookmarkDeletion(remote: RemoteModelMutation<RemoteBookmark>) {
         readingBookmarkQueries.value.hardDeleteReadingBookmarkFor(remoteID = remote.remoteID)
     }
 }
 
-private fun ReadingBookmark.key(): String = "$sura:$ayah"
+private fun ReadingBookmark.key(): String {
+    return when (this) {
+        is AyahReadingBookmark -> "ayah:$sura:$ayah"
+        is PageReadingBookmark -> "page:$page"
+    }
+}
 
-private fun RemoteBookmark.Ayah.key(): String = "$sura:$ayah"
+private fun RemoteBookmark.key(): String {
+    return when (this) {
+        is RemoteBookmark.Ayah -> "ayah:$sura:$ayah"
+        is RemoteBookmark.Page -> "page:$page"
+    }
+}

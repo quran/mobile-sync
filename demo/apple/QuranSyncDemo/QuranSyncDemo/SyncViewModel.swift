@@ -219,9 +219,18 @@ class SyncViewModel: ObservableObject {
 
     func addReadingBookmark(sura: Int32, ayah: Int32) async -> Shared.ReadingBookmark? {
         do {
-            return try await asyncFunction(for: syncService.addReadingBookmark(sura: sura, ayah: ayah))
+            return try await asyncFunction(for: syncService.addAyahReadingBookmark(sura: sura, ayah: ayah))
         } catch {
             print("SyncViewModel: Failed to add current reading ayah bookmark: \(error)")
+            return nil
+        }
+    }
+
+    func addPageReadingBookmark(page: Int32) async -> Shared.ReadingBookmark? {
+        do {
+            return try await asyncFunction(for: syncService.addPageReadingBookmark(page: page))
+        } catch {
+            print("SyncViewModel: Failed to add current reading page bookmark: \(error)")
             return nil
         }
     }

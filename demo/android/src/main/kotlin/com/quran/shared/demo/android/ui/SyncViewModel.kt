@@ -56,7 +56,11 @@ class SyncViewModel(
     }
 
     suspend fun addReadingBookmark(sura: Int, ayah: Int): ReadingBookmark {
-        return service.addReadingBookmark(sura, ayah)
+        return service.addAyahReadingBookmark(sura, ayah)
+    }
+
+    suspend fun addPageReadingBookmark(page: Int): ReadingBookmark {
+        return service.addPageReadingBookmark(page)
     }
 
     suspend fun deleteReadingBookmark() {

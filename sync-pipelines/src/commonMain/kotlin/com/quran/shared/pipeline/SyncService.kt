@@ -193,12 +193,29 @@ class SyncService(
 
     @NativeCoroutines
     suspend fun addReadingBookmark(sura: Int, ayah: Int): ReadingBookmark {
+        return addAyahReadingBookmark(sura, ayah)
+    }
+
+    @NativeCoroutines
+    suspend fun addAyahReadingBookmark(sura: Int, ayah: Int): ReadingBookmark {
         try {
-            val bookmark = readingBookmarksRepository.addReadingBookmark(sura, ayah)
+            val bookmark = readingBookmarksRepository.addAyahReadingBookmark(sura, ayah)
             triggerSync()
             return bookmark
         } catch (e: Exception) {
             Logger.e(e) { "Failed to add reading ayah bookmark" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun addPageReadingBookmark(page: Int): ReadingBookmark {
+        try {
+            val bookmark = readingBookmarksRepository.addPageReadingBookmark(page)
+            triggerSync()
+            return bookmark
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to add reading page bookmark" }
             throw e
         }
     }
