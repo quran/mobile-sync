@@ -42,7 +42,7 @@ class ReadingBookmarksRepositoryTest {
 
     @Test
     fun `addAyahReadingBookmark stores a single reading bookmark`() = runTest {
-        val bookmark = repository.addAyahReadingBookmark(2, 255) as AyahReadingBookmark
+        val bookmark = repository.addAyahReadingBookmark(2, 255)
 
         assertEquals(2, bookmark.sura)
         assertEquals(255, bookmark.ayah)
@@ -167,7 +167,7 @@ class ReadingBookmarksRepositoryTest {
             localMutationsToClear = emptyList<LocalModelMutation<ReadingBookmark>>()
         )
 
-        val bookmark = repository.getReadingBookmark() as? AyahReadingBookmark
+        val bookmark = repository.getReadingBookmark() as AyahReadingBookmark
         assertNotNull(bookmark)
         assertEquals(2, bookmark.sura)
         assertEquals(255, bookmark.ayah)
@@ -191,7 +191,7 @@ class ReadingBookmarksRepositoryTest {
             localMutationsToClear = emptyList()
         )
 
-        val bookmark = repository.getReadingBookmark() as? PageReadingBookmark
+        val bookmark = repository.getReadingBookmark() as PageReadingBookmark
         assertNotNull(bookmark)
         assertEquals(42, bookmark.page)
         assertEquals("remote-page-reading-id", database.reading_bookmarksQueries.getReadingBookmarkByRemoteId("remote-page-reading-id").executeAsOne().remote_id)
@@ -230,7 +230,7 @@ class ReadingBookmarksRepositoryTest {
             localMutationsToClear = emptyList()
         )
 
-        val bookmark = repository.getReadingBookmark() as? PageReadingBookmark
+        val bookmark = repository.getReadingBookmark() as PageReadingBookmark
         assertNotNull(bookmark)
         assertEquals(42, bookmark.page)
         assertEquals(1, database.reading_bookmarksQueries.getReadingBookmarks().executeAsList().size)

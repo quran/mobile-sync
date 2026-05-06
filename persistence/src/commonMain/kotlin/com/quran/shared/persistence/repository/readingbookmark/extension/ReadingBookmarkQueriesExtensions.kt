@@ -31,6 +31,33 @@ internal fun DatabaseReadingBookmark.toReadingBookmark(): ReadingBookmark {
     }
 }
 
+internal fun DatabaseReadingBookmark.toAyahReadingBookmark(): AyahReadingBookmark {
+    val lastUpdated = Instant.fromEpochMilliseconds(modified_at).toPlatform()
+    val localId = local_id.toString()
+    return when (bookmark_type) {
+        "AYAH" -> AyahReadingBookmark(
+            sura = requireNotNull(sura).toInt(),
+            ayah = requireNotNull(ayah).toInt(),
+            lastUpdated = lastUpdated,
+            localId = localId
+        )
+        else -> error("Unsupported reading bookmark type: $bookmark_type")
+    }
+}
+
+internal fun DatabaseReadingBookmark.toPageReadingBookmark(): PageReadingBookmark {
+    val lastUpdated = Instant.fromEpochMilliseconds(modified_at).toPlatform()
+    val localId = local_id.toString()
+    return when (bookmark_type) {
+        "PAGE" -> PageReadingBookmark(
+            page = requireNotNull(page).toInt(),
+            lastUpdated = lastUpdated,
+            localId = localId
+        )
+        else -> error("Unsupported reading bookmark type: $bookmark_type")
+    }
+}
+
 internal fun DatabaseReadingBookmark.toReadingBookmarkMutation(): LocalModelMutation<ReadingBookmark> {
     val mutation = when {
         deleted == 1L -> Mutation.DELETED

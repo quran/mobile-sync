@@ -12,6 +12,8 @@ import com.quran.shared.persistence.input.RemoteBookmark
 import com.quran.shared.persistence.model.AyahReadingBookmark
 import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
+import com.quran.shared.persistence.repository.readingbookmark.extension.toAyahReadingBookmark
+import com.quran.shared.persistence.repository.readingbookmark.extension.toPageReadingBookmark
 import com.quran.shared.persistence.repository.readingbookmark.extension.toReadingBookmark
 import com.quran.shared.persistence.repository.readingbookmark.extension.toReadingBookmarkMutation
 import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
@@ -49,7 +51,7 @@ class ReadingBookmarksRepositoryImpl(
             .map { list -> list.firstOrNull()?.toReadingBookmark() }
     }
 
-    override suspend fun addAyahReadingBookmark(sura: Int, ayah: Int): ReadingBookmark {
+    override suspend fun addAyahReadingBookmark(sura: Int, ayah: Int): AyahReadingBookmark {
         logger.i { "Adding ayah reading bookmark for $sura:$ayah" }
         return withContext(Dispatchers.IO) {
             readingBookmarkQueries.value.addAyahReadingBookmark(
@@ -59,18 +61,18 @@ class ReadingBookmarksRepositoryImpl(
             val record = readingBookmarkQueries.value.getReadingBookmarkForAyah(sura.toLong(), ayah.toLong())
                 .executeAsOneOrNull()
             requireNotNull(record) { "Expected reading bookmark for $sura:$ayah after insert." }
-            record.toReadingBookmark()
+            record.toAyahReadingBookmark()
         }
     }
 
-    override suspend fun addPageReadingBookmark(page: Int): ReadingBookmark {
+    override suspend fun addPageReadingBookmark(page: Int): PageReadingBookmark {
         logger.i { "Adding page reading bookmark for page=$page" }
         return withContext(Dispatchers.IO) {
             readingBookmarkQueries.value.addPageReadingBookmark(page = page.toLong())
             val record = readingBookmarkQueries.value.getReadingBookmarkForPage(page.toLong())
                 .executeAsOneOrNull()
             requireNotNull(record) { "Expected reading bookmark for page=$page after insert." }
-            record.toReadingBookmark()
+            record.toPageReadingBookmark()
         }
     }
 

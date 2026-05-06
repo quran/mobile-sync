@@ -115,7 +115,7 @@ fun AuthScreen(
                             val ayah = getRandomAyah(sura)
                             scope.launch {
                                 try {
-                                    viewModel.addReadingBookmark(sura, ayah)
+                                    viewModel.addAyahReadingBookmark(sura, ayah)
                                 } catch (e: Exception) {
                                 }
                             }
