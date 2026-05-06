@@ -86,7 +86,7 @@ getUnsyncedReadingBookmarks:
 
 persistRemoteAyahReadingBookmark {
   DELETE FROM reading_bookmark
-  WHERE deleted = 0 AND (remote_id IS NULL OR remote_id != :remote_id);
+  WHERE deleted = 0 AND remote_id IS NULL AND bookmark_type = 'AYAH' AND sura = :sura AND ayah = :ayah;
   UPDATE reading_bookmark
   SET bookmark_type = 'AYAH',
     sura = :sura,
@@ -114,7 +114,7 @@ persistRemoteAyahReadingBookmark {
 
 persistRemotePageReadingBookmark {
   DELETE FROM reading_bookmark
-  WHERE deleted = 0 AND (remote_id IS NULL OR remote_id != :remote_id);
+  WHERE deleted = 0 AND remote_id IS NULL AND bookmark_type = 'PAGE' AND page = :page;
   UPDATE reading_bookmark
   SET bookmark_type = 'PAGE',
     sura = NULL,
