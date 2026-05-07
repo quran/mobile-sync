@@ -1,5 +1,7 @@
 package com.quran.shared.persistence.repository.readingsession.repository
 
+import app.cash.sqldelight.coroutines.asFlow
+import app.cash.sqldelight.coroutines.mapToList
 import co.touchlab.kermit.Logger
 import com.quran.shared.di.AppScope
 import com.quran.shared.mutations.LocalModelMutation
@@ -19,8 +21,8 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-import app.cash.sqldelight.coroutines.asFlow
-import app.cash.sqldelight.coroutines.mapToList
+import kotlin.time.Clock
+import kotlin.time.ExperimentalTime
 
 @Inject
 @SingleIn(AppScope::class)
@@ -30,6 +32,14 @@ class ReadingSessionsRepositoryImpl(
 
     private val logger = Logger.withTag("ReadingSessionsRepository")
     private val readingSessionsQueries = lazy { database.reading_sessionsQueries }
+    private var currentTimeMillis: () -> Long = ::currentEpochMilliseconds
+
+    internal constructor(
+        database: QuranDatabase,
+        currentTimeMillis: () -> Long
+    ) : this(database) {
+        this.currentTimeMillis = currentTimeMillis
+    }
 
     override suspend fun getReadingSessions(): List<ReadingSession> {
         return withContext(Dispatchers.IO) {
@@ -49,9 +59,11 @@ class ReadingSessionsRepositoryImpl(
     override suspend fun addReadingSession(sura: Int, ayah: Int): ReadingSession {
         logger.i { "Adding reading session ($sura:$ayah)" }
         return withContext(Dispatchers.IO) {
+            val updatedAt = currentTimeMillis()
             readingSessionsQueries.value.addReadingSession(
                 chapter_number = sura.toLong(),
-                verse_number = ayah.toLong()
+                verse_number = ayah.toLong(),
+                modified_at = updatedAt
             )
             val record = readingSessionsQueries.value.getReadingSessionForChapterVerse(
                 sura.toLong(),
@@ -68,7 +80,8 @@ class ReadingSessionsRepositoryImpl(
         withContext(Dispatchers.IO) {
             readingSessionsQueries.value.deleteReadingSession(
                 chapter_number = sura.toLong(),
-                verse_number = ayah.toLong()
+                verse_number = ayah.toLong(),
+                modified_at = currentTimeMillis()
             )
         }
         return true
@@ -118,7 +131,10 @@ class ReadingSessionsRepositoryImpl(
 
                 // Clear local mutations after remote upserts so newly-synced rows keep their remote IDs.
                 localMutationIdsToClear.forEach { localId ->
-                    readingSessionsQueries.value.clearLocalMutationFor(id = localId.toLong())
+                    readingSessionsQueries.value.clearLocalMutationFor(
+                        id = localId.toLong(),
+                        modified_at = currentTimeMillis()
+                    )
                 }
             }
         }
@@ -147,3 +163,6 @@ class ReadingSessionsRepositoryImpl(
         }
     }
 }
+
+@OptIn(ExperimentalTime::class)
+private fun currentEpochMilliseconds(): Long = Clock.System.now().toEpochMilliseconds()
