@@ -18,6 +18,9 @@ CREATE INDEX IF NOT EXISTS bookmark_collection_remote_id_idx ON bookmark_collect
 getCollectionBookmarks:
   SELECT * FROM bookmark_collection WHERE deleted = 0 ORDER BY created_at DESC;
 
+countAll:
+  SELECT COUNT(*) FROM bookmark_collection;
+
 getCollectionBookmarksForCollection:
   SELECT * FROM bookmark_collection
   WHERE collection_local_id = ? AND deleted = 0
@@ -111,6 +114,26 @@ addBookmarkToCollection {
     modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE bookmark_local_id = :bookmark_local_id AND collection_local_id = :collection_local_id;
 }
+
+insertImportedBookmarkCollection:
+  INSERT INTO bookmark_collection (
+    remote_id,
+    bookmark_local_id,
+    bookmark_type,
+    collection_local_id,
+    created_at,
+    modified_at,
+    deleted
+  )
+  VALUES (
+    NULL,
+    :bookmark_local_id,
+    :bookmark_type,
+    :collection_local_id,
+    :created_at,
+    :modified_at,
+    0
+  );
 
 deleteBookmarkFromCollection {
   DELETE FROM bookmark_collection

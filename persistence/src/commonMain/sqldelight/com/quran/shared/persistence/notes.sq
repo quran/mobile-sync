@@ -20,6 +20,9 @@ CREATE INDEX IF NOT EXISTS note_remote_id_idx ON note(remote_id);
 getNotes:
   SELECT * FROM note WHERE deleted = 0 ORDER BY created_at DESC;
 
+countAll:
+  SELECT COUNT(*) FROM note;
+
 getNoteByLocalId:
   SELECT * FROM note WHERE local_id = ? LIMIT 1;
 
@@ -29,6 +32,28 @@ getLastInsertedNote:
 addNewNote:
   INSERT INTO note (remote_id, note, start_ayah_id, end_ayah_id, deleted)
   VALUES (NULL, :note, :start_ayah_id, :end_ayah_id, 0);
+
+insertImportedNote:
+  INSERT INTO note (
+    remote_id,
+    note,
+    start_ayah_id,
+    end_ayah_id,
+    created_at,
+    modified_at,
+    deleted,
+    is_edited
+  )
+  VALUES (
+    NULL,
+    :note,
+    :start_ayah_id,
+    :end_ayah_id,
+    :created_at,
+    :modified_at,
+    0,
+    0
+  );
 
 updateNote:
   UPDATE note

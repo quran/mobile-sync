@@ -17,6 +17,9 @@ CREATE INDEX IF NOT EXISTS reading_session_remote_id_idx ON reading_session(remo
 getReadingSessions:
   SELECT * FROM reading_session WHERE deleted = 0 ORDER BY modified_at DESC;
 
+countAll:
+  SELECT COUNT(*) FROM reading_session;
+
 getReadingSessionForChapterVerse:
   SELECT * FROM reading_session WHERE chapter_number = ? AND verse_number = ? LIMIT 1;
 
@@ -37,6 +40,26 @@ addReadingSession {
     modified_at = :modified_at
   WHERE chapter_number = :chapter_number AND verse_number = :verse_number;
 }
+
+insertImportedReadingSession:
+  INSERT INTO reading_session (
+    remote_id,
+    chapter_number,
+    verse_number,
+    is_edited,
+    created_at,
+    modified_at,
+    deleted
+  )
+  VALUES (
+    NULL,
+    :chapter_number,
+    :verse_number,
+    0,
+    :created_at,
+    :modified_at,
+    0
+  );
 
 deleteReadingSession {
   DELETE FROM reading_session WHERE chapter_number = :chapter_number AND verse_number = :verse_number AND remote_id IS NULL;

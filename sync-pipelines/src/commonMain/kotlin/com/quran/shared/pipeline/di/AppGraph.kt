@@ -10,6 +10,7 @@ import com.quran.shared.persistence.di.PersistenceModule
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepository
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepository
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepository
+import com.quran.shared.persistence.repository.importdata.PersistenceImportRepository
 import com.quran.shared.persistence.repository.note.repository.NotesRepository
 import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepository
 import com.quran.shared.pipeline.AppEnvironment
@@ -43,6 +44,7 @@ interface AppGraph {
     val bookmarksRepository: BookmarksRepository
     val collectionsRepository: CollectionsRepository
     val collectionBookmarksRepository: CollectionBookmarksRepository
+    val persistenceImportRepository: PersistenceImportRepository
     val notesRepository: NotesRepository
     val readingSessionsRepository: ReadingSessionsRepository
 

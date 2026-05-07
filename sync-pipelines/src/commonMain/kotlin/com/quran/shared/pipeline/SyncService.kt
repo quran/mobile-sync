@@ -12,10 +12,13 @@ import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingSession
+import com.quran.shared.persistence.input.PersistenceImportData
+import com.quran.shared.persistence.input.PersistenceImportResult
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepository
 import com.quran.shared.persistence.repository.PersistenceResetRepository
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepository
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepository
+import com.quran.shared.persistence.repository.importdata.PersistenceImportRepository
 import com.quran.shared.persistence.repository.note.repository.NotesRepository
 import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksRepository
 import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepository
@@ -54,6 +57,7 @@ class SyncService(
     private val pipeline: SyncEnginePipeline,
     private val environment: SynchronizationEnvironment,
     private val persistenceResetRepository: PersistenceResetRepository,
+    private val persistenceImportRepository: PersistenceImportRepository,
     private val settings: Settings
 ) {
 
@@ -179,6 +183,18 @@ class SyncService(
 
     fun triggerSync() {
         syncClient.localDataUpdated()
+    }
+
+    @NativeCoroutines
+    suspend fun importData(data: PersistenceImportData): PersistenceImportResult {
+        try {
+            val result = persistenceImportRepository.importData(data)
+            triggerSync()
+            return result
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to import persistence data" }
+            throw e
+        }
     }
 
     @NativeCoroutines

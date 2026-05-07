@@ -29,6 +29,8 @@ import com.quran.shared.persistence.repository.readingsession.repository.Reading
 import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsSynchronizationRepository
 import com.quran.shared.persistence.repository.PersistenceResetRepository
 import com.quran.shared.persistence.repository.PersistenceResetRepositoryImpl
+import com.quran.shared.persistence.repository.importdata.PersistenceImportRepository
+import com.quran.shared.persistence.repository.importdata.PersistenceImportRepositoryImpl
 
 import dev.zacsweers.metro.Binds
 
@@ -82,4 +84,7 @@ abstract class PersistenceModule {
 
     @Binds
     abstract fun bindPersistenceResetRepository(impl: PersistenceResetRepositoryImpl): PersistenceResetRepository
+
+    @Binds
+    abstract fun bindPersistenceImportRepository(impl: PersistenceImportRepositoryImpl): PersistenceImportRepository
 }
