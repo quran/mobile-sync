@@ -14,7 +14,8 @@ interface ReadingSessionsRepository {
     suspend fun getReadingSessions(): List<ReadingSession>
 
     /**
-     * Add a reading session to the list.
+     * Add a reading session to the list. Mobile-sync keeps the active reading-session list
+     * bounded to its supported recent-session count.
      *
      * @param sura the sura number of the session
      * @param ayah the ayah number of the session
@@ -22,6 +23,17 @@ interface ReadingSessionsRepository {
      */
     @NativeCoroutines
     suspend fun addReadingSession(sura: Int, ayah: Int): ReadingSession
+
+    /**
+     * Update an existing reading session by local ID.
+     *
+     * @param localId the local ID of the session to update
+     * @param sura the new sura number of the session
+     * @param ayah the new ayah number of the session
+     * @return the updated [ReadingSession]
+     */
+    @NativeCoroutines
+    suspend fun updateReadingSession(localId: String, sura: Int, ayah: Int): ReadingSession
 
     /**
      * Returns a flow of all reading sessions for observation.

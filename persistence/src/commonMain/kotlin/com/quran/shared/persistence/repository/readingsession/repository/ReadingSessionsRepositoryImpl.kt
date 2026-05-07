@@ -30,6 +30,10 @@ class ReadingSessionsRepositoryImpl(
     private val database: QuranDatabase
 ) : ReadingSessionsRepository, ReadingSessionsSynchronizationRepository {
 
+    private companion object {
+        const val MAX_ACTIVE_READING_SESSIONS = 20L
+    }
+
     private val logger = Logger.withTag("ReadingSessionsRepository")
     private val readingSessionsQueries = lazy { database.reading_sessionsQueries }
     private var currentTimeMillis: () -> Long = ::currentEpochMilliseconds
@@ -60,18 +64,64 @@ class ReadingSessionsRepositoryImpl(
         logger.i { "Adding reading session ($sura:$ayah)" }
         return withContext(Dispatchers.IO) {
             val updatedAt = currentTimeMillis()
-            readingSessionsQueries.value.addReadingSession(
-                chapter_number = sura.toLong(),
-                verse_number = ayah.toLong(),
-                modified_at = updatedAt
-            )
-            val record = readingSessionsQueries.value.getReadingSessionForChapterVerse(
-                sura.toLong(),
-                ayah.toLong()
-            )
-                .executeAsOneOrNull()
-            requireNotNull(record) { "Expected reading session for $sura:$ayah after insert." }
-            record.toReadingSession()
+            var readingSession: ReadingSession? = null
+
+            database.transaction {
+                readingSessionsQueries.value.addReadingSession(
+                    chapter_number = sura.toLong(),
+                    verse_number = ayah.toLong(),
+                    modified_at = updatedAt
+                )
+                pruneOldReadingSessions(updatedAt)
+
+                val record = readingSessionsQueries.value.getReadingSessionForChapterVerse(
+                    sura.toLong(),
+                    ayah.toLong()
+                )
+                    .executeAsOneOrNull()
+                requireNotNull(record) { "Expected reading session for $sura:$ayah after insert." }
+                readingSession = record.toReadingSession()
+            }
+
+            requireNotNull(readingSession)
+        }
+    }
+
+    override suspend fun updateReadingSession(localId: String, sura: Int, ayah: Int): ReadingSession {
+        logger.i { "Updating reading session localId=$localId to $sura:$ayah" }
+        return withContext(Dispatchers.IO) {
+            val id = localId.toLong()
+            val updatedAt = currentTimeMillis()
+            var updatedSession: ReadingSession? = null
+
+            database.transaction {
+                val existing = readingSessionsQueries.value.getReadingSessionByLocalId(id)
+                    .executeAsOneOrNull()
+                requireNotNull(existing) { "Expected reading session localId=$localId before update." }
+
+                val conflicting = readingSessionsQueries.value.getReadingSessionForChapterVerse(
+                    sura.toLong(),
+                    ayah.toLong()
+                ).executeAsOneOrNull()
+                require(conflicting == null || conflicting.local_id == id) {
+                    "Reading session already exists for $sura:$ayah."
+                }
+
+                readingSessionsQueries.value.updateReadingSession(
+                    local_id = id,
+                    chapter_number = sura.toLong(),
+                    verse_number = ayah.toLong(),
+                    modified_at = updatedAt
+                )
+                pruneOldReadingSessions(updatedAt)
+
+                val record = readingSessionsQueries.value.getReadingSessionByLocalId(id)
+                    .executeAsOneOrNull()
+                requireNotNull(record) { "Expected reading session localId=$localId after update." }
+                updatedSession = record.toReadingSession()
+            }
+
+            requireNotNull(updatedSession)
         }
     }
 
@@ -136,6 +186,8 @@ class ReadingSessionsRepositoryImpl(
                         modified_at = currentTimeMillis()
                     )
                 }
+
+                pruneOldReadingSessions(currentTimeMillis())
             }
         }
     }
@@ -161,6 +213,17 @@ class ReadingSessionsRepositoryImpl(
                 .executeAsOneOrNull()
                 ?.toReadingSession()
         }
+    }
+
+    private fun pruneOldReadingSessions(modifiedAt: Long) {
+        readingSessionsQueries.value.getReadingSessionsToPrune(MAX_ACTIVE_READING_SESSIONS)
+            .executeAsList()
+            .forEach { session ->
+                readingSessionsQueries.value.pruneReadingSessionByLocalId(
+                    local_id = session.local_id,
+                    modified_at = modifiedAt
+                )
+            }
     }
 }
 
