@@ -12,7 +12,7 @@ maven-publish = "0.36.0"
 
 metro = "1.0.0"
 compose = "2026.05.00"
-coroutines = "1.10.2"
+coroutines = "1.11.0"
 sha2 = "0.8.0"
 sqldelight = "2.3.2"
 ktor = "3.4.3"
