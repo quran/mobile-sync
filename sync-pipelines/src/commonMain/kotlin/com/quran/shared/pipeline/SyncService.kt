@@ -337,6 +337,17 @@ class SyncService(
     }
 
     @NativeCoroutines
+    suspend fun removeAyahBookmarkFromCollection(bookmark: CollectionAyahBookmark): Unit {
+        try {
+            collectionBookmarksRepository.removeAyahBookmarkFromCollection(bookmark)
+            triggerSync()
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to remove bookmark from collection" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
     suspend fun addNote(body: String, startSura: Int, startAyah: Int, endSura: Int, endAyah: Int): Unit {
         try {
             notesRepository.addNote(body, startSura, startAyah, endSura, endAyah)

@@ -31,6 +31,8 @@ interface CollectionBookmarksRepository {
      */
     suspend fun removeBookmarkFromCollection(collectionLocalId: String, bookmark: AyahBookmark): Boolean
 
+    suspend fun removeAyahBookmarkFromCollection(collectionAyahBookmark: CollectionAyahBookmark): Boolean
+
     /**
      * Observe the bookmarks for a collection as a Flow.
      */

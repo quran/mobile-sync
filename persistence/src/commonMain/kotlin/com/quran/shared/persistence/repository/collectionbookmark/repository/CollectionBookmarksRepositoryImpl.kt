@@ -177,6 +177,16 @@ class CollectionBookmarksRepositoryImpl(
         }
     }
 
+    override suspend fun removeAyahBookmarkFromCollection(collectionAyahBookmark: CollectionAyahBookmark): Boolean {
+        return withContext(Dispatchers.IO) {
+            bookmarkCollectionQueries.value.deleteBookmarkFromCollection(
+                bookmark_local_id = collectionAyahBookmark.localId,
+                collection_local_id = collectionAyahBookmark.collectionLocalId.toLong()
+            )
+            true
+        }
+    }
+
     override suspend fun fetchMutatedCollectionBookmarks(): List<LocalModelMutation<CollectionAyahBookmark>> {
         return withContext(Dispatchers.IO) {
             bookmarkCollectionQueries.value.getUnsyncedCollectionBookmarksWithDetails()

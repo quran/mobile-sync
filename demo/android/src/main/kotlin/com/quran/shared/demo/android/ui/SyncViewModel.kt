@@ -5,6 +5,7 @@ import com.quran.shared.auth.service.AuthService
 import com.quran.shared.pipeline.SyncService
 import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.AyahReadingBookmark
+import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.model.CollectionWithAyahBookmarks
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.PageReadingBookmark
@@ -87,6 +88,10 @@ class SyncViewModel(
 
     suspend fun removeBookmarkFromCollection(collectionId: String, bookmark: AyahBookmark) {
         service.removeBookmarkFromCollection(collectionId, bookmark)
+    }
+
+    suspend fun removeAyahBookmarkFromCollection(collectionId: String, bookmark: CollectionAyahBookmark) {
+        service.removeAyahBookmarkFromCollection(bookmark)
     }
 
     suspend fun addNote(body: String, startSura: Int, startAyah: Int, endSura: Int, endAyah: Int) {

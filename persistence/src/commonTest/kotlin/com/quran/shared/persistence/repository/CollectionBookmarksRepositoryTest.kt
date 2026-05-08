@@ -10,6 +10,7 @@ import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepositoryImpl
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepositoryImpl
 import com.quran.shared.persistence.util.toPlatform
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -103,6 +104,56 @@ class CollectionBookmarksRepositoryTest {
             database.ayah_bookmarksQueries.getBookmarkForAyah(7L, 8L).executeAsOneOrNull(),
             "Bookmark insert should be rolled back when collection linking fails"
         )
+    }
+
+    @Test
+    fun `getBookmarksForCollection returns all bookmarks for a collection`() = runTest {
+        database.collectionsQueries.addNewCollection(name = "TestList")
+        val collection = database.collectionsQueries.getCollectionByName("TestList").executeAsOne()
+        val bookmark1 = bookmarksRepository.addBookmark(2, 1)
+        val bookmark2 = bookmarksRepository.addBookmark(2, 2)
+        repository.addBookmarkToCollection(collection.local_id.toString(), bookmark1)
+        repository.addBookmarkToCollection(collection.local_id.toString(), bookmark2)
+
+        val bookmarks = repository.getBookmarksForCollection(collection.local_id.toString())
+        assertEquals(2, bookmarks.size)
+        assertTrue(bookmarks.any { it.sura == 2 && it.ayah == 1 })
+        assertTrue(bookmarks.any { it.sura == 2 && it.ayah == 2 })
+    }
+
+    @Test
+    fun `removeBookmarkFromCollection removes the link`() = runTest {
+        database.collectionsQueries.addNewCollection(name = "TestRemove")
+        val collection = database.collectionsQueries.getCollectionByName("TestRemove").executeAsOne()
+        val bookmark = bookmarksRepository.addBookmark(2, 1)
+        repository.addBookmarkToCollection(collection.local_id.toString(), bookmark)
+
+        val removed = repository.removeBookmarkFromCollection(collection.local_id.toString(), bookmark)
+        assertTrue(removed)
+        assertTrue(repository.getBookmarksForCollection(collection.local_id.toString()).isEmpty())
+    }
+
+    @Test
+    fun `removeAyahBookmarkFromCollection removes the link using model`() = runTest {
+        database.collectionsQueries.addNewCollection(name = "TestRemoveModel")
+        val collection = database.collectionsQueries.getCollectionByName("TestRemoveModel").executeAsOne()
+        val cb = repository.addAyahBookmarkToCollection(collection.local_id.toString(), 2, 1)
+
+        val removed = repository.removeAyahBookmarkFromCollection(cb)
+        assertTrue(removed)
+        assertTrue(repository.getBookmarksForCollection(collection.local_id.toString()).isEmpty())
+    }
+
+    @Test
+    fun `getBookmarksForCollectionFlow emits bookmarks list`() = runTest {
+        database.collectionsQueries.addNewCollection(name = "TestFlow")
+        val collection = database.collectionsQueries.getCollectionByName("TestFlow").executeAsOne()
+        repository.addAyahBookmarkToCollection(collection.local_id.toString(), 2, 1)
+
+        val bookmarks = repository.getBookmarksForCollectionFlow(collection.local_id.toString()).first()
+        assertEquals(1, bookmarks.size)
+        assertEquals(2, bookmarks[0].sura)
+        assertEquals(1, bookmarks[0].ayah)
     }
 
     @Test
