@@ -63,8 +63,8 @@ insertBookmarkIfMissing {
   VALUES (NULL, :ayah_id, :sura, :ayah, 0, 0);
 }
 
-insertImportedBookmark:
-  INSERT INTO ayah_bookmark (
+insertImportedBookmark {
+  INSERT OR IGNORE INTO ayah_bookmark (
     remote_id,
     ayah_id,
     sura,
@@ -84,6 +84,21 @@ insertImportedBookmark:
     :modified_at,
     0
   );
+  UPDATE ayah_bookmark
+  SET ayah_id = :ayah_id,
+    deleted = 0,
+    is_edited = CASE
+      WHEN remote_id IS NULL THEN 0
+      WHEN deleted = 1 THEN 0
+      ELSE is_edited
+    END,
+    modified_at = CASE
+      WHEN remote_id IS NULL THEN :modified_at
+      WHEN deleted = 1 THEN :modified_at
+      ELSE modified_at
+    END
+  WHERE sura = :sura AND ayah = :ayah;
+}
 
 getUnsyncedBookmarks:
   SELECT * FROM ayah_bookmark WHERE remote_id IS NULL OR is_edited = 1 OR deleted = 1 ORDER BY created_at DESC;
@@ -134,3 +149,13 @@ deleteBookmark {
 
 deleteAll:
   DELETE FROM ayah_bookmark;
+
+deleteUnsyncedBookmarks:
+  DELETE FROM ayah_bookmark WHERE remote_id IS NULL;
+
+markRemoteBookmarksDeleted:
+  UPDATE ayah_bookmark
+  SET deleted = 1,
+    is_edited = 1,
+    modified_at = :modified_at
+  WHERE remote_id IS NOT NULL;

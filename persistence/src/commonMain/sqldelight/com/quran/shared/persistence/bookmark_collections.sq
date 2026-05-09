@@ -125,8 +125,8 @@ addBookmarkToCollection {
   WHERE bookmark_local_id = :bookmark_local_id AND collection_local_id = :collection_local_id;
 }
 
-insertImportedBookmarkCollection:
-  INSERT INTO bookmark_collection (
+insertImportedBookmarkCollection {
+  INSERT OR IGNORE INTO bookmark_collection (
     remote_id,
     bookmark_local_id,
     bookmark_type,
@@ -144,6 +144,17 @@ insertImportedBookmarkCollection:
     :modified_at,
     0
   );
+  UPDATE bookmark_collection
+  SET bookmark_type = :bookmark_type,
+    deleted = 0,
+    modified_at = CASE
+      WHEN remote_id IS NULL THEN :modified_at
+      WHEN deleted = 1 THEN :modified_at
+      ELSE modified_at
+    END
+  WHERE bookmark_local_id = :bookmark_local_id
+    AND collection_local_id = :collection_local_id;
+}
 
 deleteBookmarkFromCollection {
   DELETE FROM bookmark_collection
@@ -210,3 +221,12 @@ checkRemoteIDsExistence:
 
 deleteAll:
   DELETE FROM bookmark_collection;
+
+deleteUnsyncedBookmarkCollections:
+  DELETE FROM bookmark_collection WHERE remote_id IS NULL;
+
+markRemoteBookmarkCollectionsDeleted:
+  UPDATE bookmark_collection
+  SET deleted = 1,
+    modified_at = :modified_at
+  WHERE remote_id IS NOT NULL;

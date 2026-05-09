@@ -20,6 +20,7 @@ import com.quran.shared.persistence.repository.importdata.PersistenceImportRepos
 import com.quran.shared.persistence.repository.note.repository.NotesRepositoryImpl
 import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksRepositoryImpl
 import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepositoryImpl
+import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.toPlatform
 import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
@@ -169,19 +170,114 @@ class PersistenceImportRepositoryTest {
     }
 
     @Test
-    fun `importData fails when the database is not empty`() = runTest {
+    fun `importData merges into a non-empty database`() = runTest {
         BookmarksRepositoryImpl(database).addBookmark(2, 255)
+        CollectionsRepositoryImpl(database).addCollection("Favorites")
 
-        assertFailsWith<IllegalStateException> {
-            repository.importData(
-                PersistenceImportData(
-                    collections = listOf(ImportCollection("collection-1", "Favorites", timestamp(1_000)))
+        val data = PersistenceImportData(
+            bookmarks = listOf(
+                ImportAyahBookmark("bookmark-1", 2, 255, timestamp(1_000)),
+                ImportAyahBookmark("bookmark-2", 3, 2, timestamp(2_000))
+            ),
+            collections = listOf(
+                ImportCollection("collection-1", "Favorites", timestamp(3_000))
+            ),
+            collectionBookmarks = listOf(
+                ImportCollectionAyahBookmark("collection-1", "bookmark-1", timestamp(4_000))
+            )
+        )
+
+        repository.importData(data)
+        repository.importData(data)
+
+        val bookmarks = BookmarksRepositoryImpl(database).getAllBookmarks()
+        assertEquals(2, bookmarks.size)
+        assertTrue(bookmarks.any { it.sura == 2 && it.ayah == 255 })
+        assertTrue(bookmarks.any { it.sura == 3 && it.ayah == 2 })
+
+        val collections = CollectionsRepositoryImpl(database).getAllCollections()
+        assertEquals(1, collections.size)
+        assertEquals("Favorites", collections.single().name)
+
+        val collectionBookmarks = CollectionBookmarksRepositoryImpl(database)
+            .getBookmarksForCollection(collections.single().localId)
+        assertEquals(1, collectionBookmarks.size)
+        assertEquals(2, collectionBookmarks.single().sura)
+        assertEquals(255, collectionBookmarks.single().ayah)
+    }
+
+    @Test
+    fun `importData deduplicates notes by normalized text and ayah range`() = runTest {
+        repository.importData(
+            PersistenceImportData(
+                notes = listOf(
+                    ImportNote("Important note", 2, 1, 2, 2, timestamp(1_000))
                 )
             )
-        }
+        )
 
-        assertEquals(1L, database.ayah_bookmarksQueries.countAll().executeAsOne())
-        assertEquals(0L, database.collectionsQueries.countAll().executeAsOne())
+        repository.importData(
+            PersistenceImportData(
+                notes = listOf(
+                    ImportNote("  Important\n\t note  ", 2, 1, 2, 2, timestamp(2_000)),
+                    ImportNote("Important note", 2, 1, 2, 3, timestamp(3_000))
+                )
+            )
+        )
+
+        val notes = NotesRepositoryImpl(database).getAllNotes()
+        assertEquals(2, notes.size)
+        assertEquals(1, notes.count { it.startSura == 2 && it.startAyah == 1 && it.endAyah == 2 })
+        assertTrue(notes.any { it.startSura == 2 && it.startAyah == 1 && it.endAyah == 3 })
+    }
+
+    @Test
+    fun `importData can delete existing data before merging`() = runTest {
+        database.ayah_bookmarksQueries.persistRemoteBookmark(
+            remote_id = "remote-bookmark",
+            ayah_id = QuranData.getAyahId(2, 255).toLong(),
+            sura = 2,
+            ayah = 255,
+            created_at = 1_000,
+            modified_at = 1_000
+        )
+        BookmarksRepositoryImpl(database).addBookmark(3, 2)
+
+        val result = repository.importData(
+            data = PersistenceImportData(
+                bookmarks = listOf(
+                    ImportAyahBookmark("bookmark-1", 4, 1, timestamp(2_000))
+                )
+            ),
+            deleteExisting = true
+        )
+
+        assertEquals(1, result.bookmarksImported)
+
+        val bookmarks = BookmarksRepositoryImpl(database).getAllBookmarks()
+        assertEquals(1, bookmarks.size)
+        assertEquals(4, bookmarks.single().sura)
+        assertEquals(1, bookmarks.single().ayah)
+        assertEquals(2L, database.ayah_bookmarksQueries.countAll().executeAsOne())
+
+        val mutations = BookmarksRepositoryImpl(database).fetchMutatedBookmarks()
+        assertTrue(
+            mutations.any {
+                it.remoteID == "remote-bookmark" &&
+                    it.mutation == Mutation.DELETED &&
+                    it.model.sura == 2 &&
+                    it.model.ayah == 255
+            }
+        )
+        assertTrue(
+            mutations.any {
+                it.remoteID == null &&
+                    it.mutation == Mutation.CREATED &&
+                    it.model.sura == 4 &&
+                    it.model.ayah == 1
+            }
+        )
+        assertTrue(mutations.none { it.model.sura == 3 && it.model.ayah == 2 })
     }
 
     @Test

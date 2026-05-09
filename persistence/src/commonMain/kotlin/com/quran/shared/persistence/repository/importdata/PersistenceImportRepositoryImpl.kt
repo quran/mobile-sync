@@ -10,6 +10,7 @@ import com.quran.shared.persistence.input.ImportReadingBookmark
 import com.quran.shared.persistence.input.ImportReadingSession
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.PersistenceImportResult
+import com.quran.shared.persistence.model.DatabaseNote
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.fromPlatform
@@ -25,50 +26,59 @@ class PersistenceImportRepositoryImpl(
     private val database: QuranDatabase
 ) : PersistenceImportRepository {
 
-    override suspend fun importData(data: PersistenceImportData): PersistenceImportResult {
+    override suspend fun importData(
+        data: PersistenceImportData,
+        deleteExisting: Boolean
+    ): PersistenceImportResult {
         return withContext(Dispatchers.IO) {
             validate(data)
             var result: PersistenceImportResult? = null
             database.transaction {
-                requireDatabaseEmpty()
-
-                val bookmarkLocalIds = importBookmarks(data.bookmarks)
-                val collectionLocalIds = importCollections(data.collections)
-                importReadingSessions(data.readingSessions)
-                importReadingBookmark(data.readingBookmark)
-                importNotes(data.notes)
-                importCollectionBookmarks(
-                    links = data.collectionBookmarks,
-                    bookmarkLocalIds = bookmarkLocalIds,
-                    collectionLocalIds = collectionLocalIds
-                )
-
-                result = PersistenceImportResult(
-                    bookmarksImported = data.bookmarks.size,
-                    collectionsImported = data.collections.size,
-                    collectionBookmarksImported = data.collectionBookmarks.size,
-                    readingSessionsImported = data.readingSessions.size,
-                    readingBookmarkImported = data.readingBookmark != null,
-                    notesImported = data.notes.size
-                )
+                if (deleteExisting) {
+                    deleteExistingData()
+                }
+                result = mergeData(data)
             }
             requireNotNull(result)
         }
     }
 
-    private fun requireDatabaseEmpty() {
-        val nonEmptyTables = buildList {
-            if (database.ayah_bookmarksQueries.countAll().executeAsOne() > 0) add("ayah_bookmark")
-            if (database.reading_bookmarksQueries.countAll().executeAsOne() > 0) add("reading_bookmark")
-            if (database.collectionsQueries.countAll().executeAsOne() > 0) add("collection")
-            if (database.bookmark_collectionsQueries.countAll().executeAsOne() > 0) add("bookmark_collection")
-            if (database.notesQueries.countAll().executeAsOne() > 0) add("note")
-            if (database.reading_sessionsQueries.countAll().executeAsOne() > 0) add("reading_session")
-        }
-        check(nonEmptyTables.isEmpty()) {
-            "Cannot import into a non-empty persistence database. Non-empty tables: " +
-                nonEmptyTables.joinToString()
-        }
+    private fun mergeData(data: PersistenceImportData): PersistenceImportResult {
+        val bookmarkLocalIds = importBookmarks(data.bookmarks)
+        val collectionLocalIds = importCollections(data.collections)
+        importReadingSessions(data.readingSessions)
+        importReadingBookmark(data.readingBookmark)
+        importNotes(data.notes)
+        importCollectionBookmarks(
+            links = data.collectionBookmarks,
+            bookmarkLocalIds = bookmarkLocalIds,
+            collectionLocalIds = collectionLocalIds
+        )
+
+        return PersistenceImportResult(
+            bookmarksImported = data.bookmarks.size,
+            collectionsImported = data.collections.size,
+            collectionBookmarksImported = data.collectionBookmarks.size,
+            readingSessionsImported = data.readingSessions.size,
+            readingBookmarkImported = data.readingBookmark != null,
+            notesImported = data.notes.size
+        )
+    }
+
+    private fun deleteExistingData() {
+        val timestamp = currentImportTimestampMillis()
+        database.bookmark_collectionsQueries.deleteUnsyncedBookmarkCollections()
+        database.bookmark_collectionsQueries.markRemoteBookmarkCollectionsDeleted(modified_at = timestamp)
+        database.ayah_bookmarksQueries.deleteUnsyncedBookmarks()
+        database.ayah_bookmarksQueries.markRemoteBookmarksDeleted(modified_at = timestamp)
+        database.reading_bookmarksQueries.deleteUnsyncedReadingBookmarks()
+        database.reading_bookmarksQueries.markRemoteReadingBookmarksDeleted(modified_at = timestamp)
+        database.collectionsQueries.deleteUnsyncedCollections()
+        database.collectionsQueries.markRemoteCollectionsDeleted(modified_at = timestamp)
+        database.notesQueries.deleteUnsyncedNotes()
+        database.notesQueries.markRemoteNotesDeleted(modified_at = timestamp)
+        database.reading_sessionsQueries.deleteUnsyncedReadingSessions()
+        database.reading_sessionsQueries.markRemoteReadingSessionsDeleted(modified_at = timestamp)
     }
 
     private fun validate(data: PersistenceImportData) {
@@ -201,12 +211,21 @@ class PersistenceImportRepositoryImpl(
     }
 
     private fun importNotes(notes: List<ImportNote>) {
+        val noteKeys = database.notesQueries.getNotes()
+            .executeAsList()
+            .mapTo(mutableSetOf()) { it.importKey() }
+
         notes.forEach { note ->
             val timestamp = note.lastUpdated.toImportTimestampMillis()
+            val startAyahId = requireAyahId(note.startSura, note.startAyah, "note start").toLong()
+            val endAyahId = requireAyahId(note.endSura, note.endAyah, "note end").toLong()
+            if (!noteKeys.add(note.importKey(startAyahId, endAyahId))) {
+                return@forEach
+            }
             database.notesQueries.insertImportedNote(
                 note = note.body,
-                start_ayah_id = requireAyahId(note.startSura, note.startAyah, "note start").toLong(),
-                end_ayah_id = requireAyahId(note.endSura, note.endAyah, "note end").toLong(),
+                start_ayah_id = startAyahId,
+                end_ayah_id = endAyahId,
                 created_at = timestamp,
                 modified_at = timestamp
             )
@@ -250,6 +269,30 @@ class PersistenceImportRepositoryImpl(
         return fromPlatform().toEpochMilliseconds()
     }
 
+    private fun currentImportTimestampMillis(): Long {
+        return kotlin.time.Clock.System.now().toEpochMilliseconds()
+    }
+
+    private fun ImportNote.importKey(startAyahId: Long, endAyahId: Long): NoteImportKey {
+        return NoteImportKey(
+            normalizedBody = body.toNormalizedNoteText(),
+            startAyahId = startAyahId,
+            endAyahId = endAyahId
+        )
+    }
+
+    private fun DatabaseNote.importKey(): NoteImportKey {
+        return NoteImportKey(
+            normalizedBody = note.toNormalizedNoteText(),
+            startAyahId = start_ayah_id,
+            endAyahId = end_ayah_id
+        )
+    }
+
+    private fun String.toNormalizedNoteText(): String {
+        return trim().replace(NOTE_WHITESPACE_REGEX, " ")
+    }
+
     private fun <T> requireUnique(label: String, values: List<T>) {
         val duplicates = values.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
         require(duplicates.isEmpty()) { "Duplicate $label values: ${duplicates.joinToString()}." }
@@ -264,3 +307,10 @@ class PersistenceImportRepositoryImpl(
 }
 
 private const val MUSHAF_PAGE_COUNT = 604
+private val NOTE_WHITESPACE_REGEX = Regex("\\s+")
+
+private data class NoteImportKey(
+    val normalizedBody: String,
+    val startAyahId: Long,
+    val endAyahId: Long
+)

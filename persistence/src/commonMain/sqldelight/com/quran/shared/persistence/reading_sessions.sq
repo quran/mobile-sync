@@ -52,8 +52,8 @@ addReadingSession {
   WHERE chapter_number = :chapter_number AND verse_number = :verse_number;
 }
 
-insertImportedReadingSession:
-  INSERT INTO reading_session (
+insertImportedReadingSession {
+  INSERT OR IGNORE INTO reading_session (
     remote_id,
     chapter_number,
     verse_number,
@@ -71,6 +71,20 @@ insertImportedReadingSession:
     :modified_at,
     0
   );
+  UPDATE reading_session
+  SET deleted = 0,
+    is_edited = CASE
+      WHEN remote_id IS NULL THEN 0
+      WHEN deleted = 1 THEN 0
+      ELSE is_edited
+    END,
+    modified_at = CASE
+      WHEN remote_id IS NULL THEN :modified_at
+      WHEN deleted = 1 THEN :modified_at
+      ELSE modified_at
+    END
+  WHERE chapter_number = :chapter_number AND verse_number = :verse_number;
+}
 
 updateReadingSession:
   UPDATE reading_session
@@ -132,3 +146,13 @@ checkRemoteIDsExistence:
 
 deleteAll:
   DELETE FROM reading_session;
+
+deleteUnsyncedReadingSessions:
+  DELETE FROM reading_session WHERE remote_id IS NULL;
+
+markRemoteReadingSessionsDeleted:
+  UPDATE reading_session
+  SET deleted = 1,
+    is_edited = 1,
+    modified_at = :modified_at
+  WHERE remote_id IS NOT NULL;
