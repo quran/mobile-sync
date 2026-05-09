@@ -39,15 +39,14 @@ class ReadingBookmarksRepositoryImpl(
 
     override suspend fun getReadingBookmark(): ReadingBookmark? {
         return withContext(Dispatchers.IO) {
-            readingBookmarkQueries.value.getReadingBookmarks()
-                .executeAsList()
-                .firstOrNull()
+            readingBookmarkQueries.value.getCurrentReadingBookmark()
+                .executeAsOneOrNull()
                 ?.toReadingBookmark()
         }
     }
 
     override fun getReadingBookmarkFlow(): Flow<ReadingBookmark?> {
-        return readingBookmarkQueries.value.getReadingBookmarks()
+        return readingBookmarkQueries.value.getCurrentReadingBookmark()
             .asFlow()
             .mapToList(Dispatchers.IO)
             .map { list -> list.firstOrNull()?.toReadingBookmark() }
@@ -112,19 +111,11 @@ class ReadingBookmarksRepositoryImpl(
     override suspend fun deleteReadingBookmark(): Boolean {
         logger.i { "Deleting current reading bookmark" }
         return withContext(Dispatchers.IO) {
-            val currentReadingBookmarks = readingBookmarkQueries.value.getReadingBookmarks()
-                .executeAsList()
-                .map { it.toReadingBookmark() }
-
-            if (currentReadingBookmarks.isEmpty()) {
+            if (readingBookmarkQueries.value.countActive().executeAsOne() == 0L) {
                 return@withContext false
             }
 
-            currentReadingBookmarks.forEach { bookmark ->
-                readingBookmarkQueries.value.deleteReadingBookmark(
-                    id = bookmark.localId.toLong()
-                )
-            }
+            readingBookmarkQueries.value.deleteCurrentReadingBookmarks()
             true
         }
     }

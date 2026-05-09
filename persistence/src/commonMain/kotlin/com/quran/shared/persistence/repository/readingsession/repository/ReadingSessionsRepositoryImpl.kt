@@ -247,13 +247,8 @@ class ReadingSessionsRepositoryImpl(
     }
 
     private fun pruneOldReadingSessions() {
-        readingSessionsQueries.value.getReadingSessionsToPrune(MAX_ACTIVE_READING_SESSIONS)
-            .executeAsList()
-            .forEach { session ->
-                readingSessionsQueries.value.pruneReadingSessionByLocalId(
-                    local_id = session.local_id
-                )
-            }
+        readingSessionsQueries.value.pruneLocalReadingSessions(MAX_ACTIVE_READING_SESSIONS)
+        readingSessionsQueries.value.pruneRemoteReadingSessions(MAX_ACTIVE_READING_SESSIONS)
     }
 }
 

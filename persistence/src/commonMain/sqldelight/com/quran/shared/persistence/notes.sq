@@ -15,7 +15,12 @@ CREATE TABLE IF NOT EXISTS note(
 
 CREATE INDEX IF NOT EXISTS note_start_ayah_idx ON note(start_ayah_id);
 CREATE INDEX IF NOT EXISTS note_end_ayah_idx ON note(end_ayah_id);
-CREATE INDEX IF NOT EXISTS note_remote_id_idx ON note(remote_id);
+CREATE UNIQUE INDEX IF NOT EXISTS note_remote_id_idx ON note(remote_id);
+CREATE INDEX IF NOT EXISTS note_active_created_idx
+ON note(deleted, created_at DESC);
+CREATE INDEX IF NOT EXISTS note_unsynced_created_idx
+ON note(created_at DESC)
+WHERE remote_id IS NULL OR deleted = 1 OR is_edited = 1;
 
 getNotes:
   SELECT * FROM note WHERE deleted = 0 ORDER BY created_at DESC;
@@ -96,8 +101,11 @@ getUnsyncedNotes:
   ORDER BY created_at DESC;
 
 persistRemoteNote {
-  INSERT OR IGNORE INTO note (remote_id, note, start_ayah_id, end_ayah_id, created_at, modified_at, deleted, is_edited)
-  VALUES (:remote_id, :note, :start_ayah_id, :end_ayah_id, :created_at, :modified_at, 0, 0);
+  INSERT INTO note (remote_id, note, start_ayah_id, end_ayah_id, created_at, modified_at, deleted, is_edited)
+  SELECT :remote_id, :note, :start_ayah_id, :end_ayah_id, :created_at, :modified_at, 0, 0
+  WHERE NOT EXISTS (
+    SELECT 1 FROM note WHERE remote_id = :remote_id
+  );
   UPDATE note
   SET note = :note,
     start_ayah_id = :start_ayah_id,

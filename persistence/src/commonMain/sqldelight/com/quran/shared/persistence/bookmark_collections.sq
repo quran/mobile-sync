@@ -13,7 +13,14 @@ CREATE TABLE IF NOT EXISTS bookmark_collection(
   FOREIGN KEY(collection_local_id) REFERENCES collection(local_id)
 );
 
-CREATE INDEX IF NOT EXISTS bookmark_collection_remote_id_idx ON bookmark_collection(remote_id);
+CREATE UNIQUE INDEX IF NOT EXISTS bookmark_collection_remote_id_idx ON bookmark_collection(remote_id);
+CREATE INDEX IF NOT EXISTS bookmark_collection_active_created_idx
+ON bookmark_collection(deleted, created_at DESC);
+CREATE INDEX IF NOT EXISTS bookmark_collection_collection_active_created_idx
+ON bookmark_collection(collection_local_id, deleted, created_at DESC);
+CREATE INDEX IF NOT EXISTS bookmark_collection_unsynced_created_idx
+ON bookmark_collection(created_at DESC)
+WHERE remote_id IS NULL OR deleted = 1;
 
 getCollectionBookmarks:
   SELECT * FROM bookmark_collection WHERE deleted = 0 ORDER BY created_at DESC;
@@ -90,10 +97,12 @@ getUnsyncedCollectionBookmarksWithDetails:
     ab.ayah AS ayah
   FROM bookmark_collection bc
   JOIN collection c ON c.local_id = bc.collection_local_id
-  LEFT JOIN ayah_bookmark ab
+  JOIN ayah_bookmark ab
     ON ab.local_id = CAST(bc.bookmark_local_id AS INTEGER)
     AND bc.bookmark_type = 'AYAH'
-  WHERE bc.remote_id IS NULL OR bc.deleted = 1
+  WHERE (bc.remote_id IS NULL OR bc.deleted = 1)
+    AND c.remote_id IS NOT NULL
+    AND c.remote_id != ''
   ORDER BY bc.created_at DESC;
 
 getCollectionBookmarkFor:

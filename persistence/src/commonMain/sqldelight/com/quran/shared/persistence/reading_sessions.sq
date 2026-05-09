@@ -12,7 +12,12 @@ CREATE TABLE IF NOT EXISTS reading_session(
   UNIQUE (chapter_number, verse_number)
 );
 
-CREATE INDEX IF NOT EXISTS reading_session_remote_id_idx ON reading_session(remote_id);
+CREATE UNIQUE INDEX IF NOT EXISTS reading_session_remote_id_idx ON reading_session(remote_id);
+CREATE INDEX IF NOT EXISTS reading_session_active_modified_idx
+ON reading_session(deleted, modified_at DESC, local_id DESC);
+CREATE INDEX IF NOT EXISTS reading_session_unsynced_modified_idx
+ON reading_session(modified_at DESC)
+WHERE remote_id IS NULL OR is_edited = 1 OR deleted = 1;
 
 getReadingSessions:
   SELECT * FROM reading_session WHERE deleted = 0 ORDER BY modified_at DESC, local_id DESC;
@@ -39,6 +44,32 @@ getReadingSessionsToPrune:
       LIMIT :max_sessions
     )
   ORDER BY modified_at DESC, local_id DESC;
+
+pruneLocalReadingSessions {
+  DELETE FROM reading_session
+  WHERE deleted = 0
+    AND remote_id IS NULL
+    AND local_id NOT IN (
+      SELECT local_id FROM reading_session
+      WHERE deleted = 0
+      ORDER BY modified_at DESC, local_id DESC
+      LIMIT :max_sessions
+    );
+}
+
+pruneRemoteReadingSessions {
+  UPDATE reading_session
+  SET deleted = 1,
+    is_edited = 1
+  WHERE deleted = 0
+    AND remote_id IS NOT NULL
+    AND local_id NOT IN (
+      SELECT local_id FROM reading_session
+      WHERE deleted = 0
+      ORDER BY modified_at DESC, local_id DESC
+      LIMIT :max_sessions
+    );
+}
 
 addReadingSession {
   INSERT OR IGNORE INTO reading_session (remote_id, chapter_number, verse_number, is_edited, created_at, modified_at, deleted)
