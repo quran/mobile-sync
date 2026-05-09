@@ -1,5 +1,10 @@
 import Shared
 
+private enum AuthCredentials {
+    static let clientId = "replace-with-client-id"
+    static let clientSecret: String? = nil
+}
+
 /**
  * App-level container around the shared dependency graph.
  *
@@ -22,7 +27,9 @@ final class AppContainer {
 
         self.graph = SharedDependencyGraph.shared.doInit(
             driverFactory: driverFactory,
-            appEnvironment: AppEnvironment.prelive
+            appEnvironment: AppEnvironment.prelive,
+            clientId: AuthCredentials.clientId,
+            clientSecret: AuthCredentials.clientSecret
         )
     }
 }

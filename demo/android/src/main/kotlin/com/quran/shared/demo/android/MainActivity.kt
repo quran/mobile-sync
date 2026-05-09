@@ -31,7 +31,9 @@ class MainActivity : ComponentActivity() {
         val driverFactory = DriverFactory(context = this.applicationContext)
         val graph = SharedDependencyGraph.init(
             driverFactory = driverFactory,
-            appEnvironment = AppEnvironment.PRELIVE
+            appEnvironment = AppEnvironment.PRELIVE,
+            clientId = BuildConfig.OAUTH_CLIENT_ID,
+            clientSecret = BuildConfig.OAUTH_CLIENT_SECRET.takeIf { it.isNotBlank() }
         )
         
         SyncViewModel(graph.authService, graph.syncService)

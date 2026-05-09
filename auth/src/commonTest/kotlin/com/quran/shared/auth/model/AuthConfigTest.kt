@@ -2,6 +2,7 @@ package com.quran.shared.auth.model
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class AuthConfigTest {
 
@@ -25,5 +26,15 @@ class AuthConfigTest {
 
         assertEquals("https://oauth2.quran.foundation", config.baseUrl)
         assertEquals("https://oauth2.quran.foundation/oauth2/token", config.tokenEndpoint)
+    }
+
+    @Test
+    fun `blank client id fails fast`() {
+        assertFailsWith<IllegalArgumentException> {
+            AuthConfig(
+                environment = AuthEnvironment.PRELIVE,
+                clientId = ""
+            )
+        }
     }
 }
