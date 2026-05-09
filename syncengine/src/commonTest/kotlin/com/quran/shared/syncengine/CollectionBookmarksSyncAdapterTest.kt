@@ -84,6 +84,7 @@ class CollectionBookmarksSyncAdapterTest {
         assertEquals(1, pushedMutations.size)
         assertEquals("COLLECTION_BOOKMARK", pushedMutations.single().resource)
         assertNull(pushedMutations.single().resourceId)
+        assertEquals(1000L, pushedMutations.single().timestamp)
         assertEquals("remote-collection-1", pushedMutations.single().data?.get("collectionId")?.jsonPrimitive?.content)
         assertNull(pushedMutations.single().data?.get("bookmarkId"))
 

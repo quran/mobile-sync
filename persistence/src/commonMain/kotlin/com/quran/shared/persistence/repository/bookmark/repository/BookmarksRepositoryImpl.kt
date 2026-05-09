@@ -12,9 +12,11 @@ import com.quran.shared.persistence.input.RemoteBookmark
 import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.repository.bookmark.extension.toAyahBookmark
 import com.quran.shared.persistence.repository.bookmark.extension.toBookmarkMutation
+import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
+import com.quran.shared.persistence.util.toEpochMillisecondsOrNull
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.Dispatchers
@@ -52,13 +54,26 @@ class BookmarksRepositoryImpl(
     }
 
     override suspend fun addBookmark(sura: Int, ayah: Int): AyahBookmark {
+        return addBookmarkWithTimestampMillis(sura, ayah, timestampMillis = null)
+    }
+
+    override suspend fun addBookmark(sura: Int, ayah: Int, timestamp: PlatformDateTime): AyahBookmark {
+        return addBookmarkWithTimestampMillis(sura, ayah, timestamp.toEpochMillisecondsOrNull())
+    }
+
+    private suspend fun addBookmarkWithTimestampMillis(
+        sura: Int,
+        ayah: Int,
+        timestampMillis: Long?
+    ): AyahBookmark {
         logger.i { "Adding ayah bookmark for $sura:$ayah" }
         return withContext(Dispatchers.IO) {
             val ayahId = getAyahId(sura, ayah)
             ayahBookmarkQueries.value.addNewBookmark(
                 ayah_id = ayahId.toLong(),
                 sura = sura.toLong(),
-                ayah = ayah.toLong()
+                ayah = ayah.toLong(),
+                timestamp = timestampMillis
             )
             val record = ayahBookmarkQueries.value.getBookmarkForAyah(sura.toLong(), ayah.toLong())
                 .executeAsOneOrNull()
@@ -70,7 +85,10 @@ class BookmarksRepositoryImpl(
     override suspend fun deleteBookmark(sura: Int, ayah: Int): Boolean {
         logger.i { "Deleting ayah bookmark for $sura:$ayah" }
         withContext(Dispatchers.IO) {
-            ayahBookmarkQueries.value.deleteBookmark(sura.toLong(), ayah.toLong())
+            ayahBookmarkQueries.value.deleteBookmark(
+                sura = sura.toLong(),
+                ayah = ayah.toLong()
+            )
         }
         return true
     }

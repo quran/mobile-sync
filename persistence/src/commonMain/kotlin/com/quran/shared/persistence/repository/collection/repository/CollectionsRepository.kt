@@ -1,6 +1,7 @@
 package com.quran.shared.persistence.repository.collection.repository
 
 import com.quran.shared.persistence.model.Collection
+import com.quran.shared.persistence.util.PlatformDateTime
 import kotlinx.coroutines.flow.Flow
 
 interface CollectionsRepository {
@@ -16,10 +17,14 @@ interface CollectionsRepository {
      */
     suspend fun addCollection(name: String): Collection
 
+    suspend fun addCollection(name: String, timestamp: PlatformDateTime): Collection
+
     /**
      * Update the name of a collection identified by its local ID.
      */
     suspend fun updateCollection(localId: String, name: String): Collection
+
+    suspend fun updateCollection(localId: String, name: String, timestamp: PlatformDateTime): Collection
 
     /**
      * Delete a collection identified by its local ID.

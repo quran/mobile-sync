@@ -46,15 +46,34 @@ addAyahReadingBookmark {
   WHERE deleted = 0 AND remote_id IS NULL;
   UPDATE reading_bookmark
   SET deleted = 1,
-    is_edited = 1,
-    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+    is_edited = 1
   WHERE deleted = 0 AND remote_id IS NOT NULL;
-  INSERT OR IGNORE INTO reading_bookmark (remote_id, bookmark_type, sura, ayah, page, is_edited, deleted)
-  VALUES (NULL, 'AYAH', :sura, :ayah, NULL, 0, 0);
+  INSERT OR IGNORE INTO reading_bookmark (
+    remote_id,
+    bookmark_type,
+    sura,
+    ayah,
+    page,
+    is_edited,
+    created_at,
+    modified_at,
+    deleted
+  )
+  VALUES (
+    NULL,
+    'AYAH',
+    :sura,
+    :ayah,
+    NULL,
+    0,
+    COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    0
+  );
   UPDATE reading_bookmark
     SET deleted = 0,
       is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
-      modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+      modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
     WHERE bookmark_type = 'AYAH' AND sura = :sura AND ayah = :ayah;
 }
 
@@ -63,15 +82,34 @@ addPageReadingBookmark {
   WHERE deleted = 0 AND remote_id IS NULL;
   UPDATE reading_bookmark
   SET deleted = 1,
-    is_edited = 1,
-    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+    is_edited = 1
   WHERE deleted = 0 AND remote_id IS NOT NULL;
-  INSERT OR IGNORE INTO reading_bookmark (remote_id, bookmark_type, sura, ayah, page, is_edited, deleted)
-  VALUES (NULL, 'PAGE', NULL, NULL, :page, 0, 0);
+  INSERT OR IGNORE INTO reading_bookmark (
+    remote_id,
+    bookmark_type,
+    sura,
+    ayah,
+    page,
+    is_edited,
+    created_at,
+    modified_at,
+    deleted
+  )
+  VALUES (
+    NULL,
+    'PAGE',
+    NULL,
+    NULL,
+    :page,
+    0,
+    COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    0
+  );
   UPDATE reading_bookmark
     SET deleted = 0,
       is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
-      modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+      modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
     WHERE bookmark_type = 'PAGE' AND page = :page;
 }
 
@@ -127,8 +165,7 @@ deleteReadingBookmark {
   DELETE FROM reading_bookmark WHERE local_id = :id AND remote_id IS NULL;
   UPDATE reading_bookmark
   SET deleted = 1,
-    is_edited = 1,
-    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+    is_edited = 1
   WHERE local_id = :id AND remote_id IS NOT NULL;
 }
 

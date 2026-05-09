@@ -12,8 +12,10 @@ import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.repository.collection.extension.toCollection
 import com.quran.shared.persistence.repository.collection.extension.toCollectionMutation
+import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
+import com.quran.shared.persistence.util.toEpochMillisecondsOrNull
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.Dispatchers
@@ -49,9 +51,20 @@ class CollectionsRepositoryImpl(
     }
 
     override suspend fun addCollection(name: String): Collection {
+        return addCollectionWithTimestampMillis(name, timestampMillis = null)
+    }
+
+    override suspend fun addCollection(name: String, timestamp: PlatformDateTime): Collection {
+        return addCollectionWithTimestampMillis(name, timestamp.toEpochMillisecondsOrNull())
+    }
+
+    private suspend fun addCollectionWithTimestampMillis(name: String, timestampMillis: Long?): Collection {
         logger.i { "Adding collection with name=$name" }
         return withContext(Dispatchers.IO) {
-            collectionQueries.value.addNewCollection(name)
+            collectionQueries.value.addNewCollection(
+                name = name,
+                timestamp = timestampMillis
+            )
             val record = collectionQueries.value.getCollectionByName(name)
                 .executeAsOneOrNull()
             requireNotNull(record) { "Expected collection for name=$name after insert." }
@@ -60,9 +73,25 @@ class CollectionsRepositoryImpl(
     }
 
     override suspend fun updateCollection(localId: String, name: String): Collection {
+        return updateCollectionWithTimestampMillis(localId, name, timestampMillis = null)
+    }
+
+    override suspend fun updateCollection(localId: String, name: String, timestamp: PlatformDateTime): Collection {
+        return updateCollectionWithTimestampMillis(localId, name, timestamp.toEpochMillisecondsOrNull())
+    }
+
+    private suspend fun updateCollectionWithTimestampMillis(
+        localId: String,
+        name: String,
+        timestampMillis: Long?
+    ): Collection {
         logger.i { "Updating collection localId=$localId with name=$name" }
         return withContext(Dispatchers.IO) {
-            collectionQueries.value.updateCollectionName(name = name, id = localId.toLong())
+            collectionQueries.value.updateCollectionName(
+                name = name,
+                id = localId.toLong(),
+                timestamp = timestampMillis
+            )
             val record = collectionQueries.value.getCollectionByLocalId(localId.toLong())
                 .executeAsOneOrNull()
             requireNotNull(record) { "Expected collection localId=$localId after update." }
@@ -73,7 +102,9 @@ class CollectionsRepositoryImpl(
     override suspend fun deleteCollection(localId: String): Boolean {
         logger.i { "Deleting collection localId=$localId" }
         withContext(Dispatchers.IO) {
-            collectionQueries.value.deleteCollection(id = localId.toLong())
+            collectionQueries.value.deleteCollection(
+                id = localId.toLong()
+            )
         }
         return true
     }

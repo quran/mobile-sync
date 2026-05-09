@@ -12,9 +12,11 @@ import com.quran.shared.persistence.input.RemoteNote
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.repository.note.extension.toNote
 import com.quran.shared.persistence.repository.note.extension.toNoteMutation
+import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
+import com.quran.shared.persistence.util.toEpochMillisecondsOrNull
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.Dispatchers
@@ -50,6 +52,35 @@ class NotesRepositoryImpl(
     }
 
     override suspend fun addNote(body: String, startSura: Int, startAyah: Int, endSura: Int, endAyah: Int): Note {
+        return addNoteWithTimestampMillis(body, startSura, startAyah, endSura, endAyah, timestampMillis = null)
+    }
+
+    override suspend fun addNote(
+        body: String,
+        startSura: Int,
+        startAyah: Int,
+        endSura: Int,
+        endAyah: Int,
+        timestamp: PlatformDateTime
+    ): Note {
+        return addNoteWithTimestampMillis(
+            body,
+            startSura,
+            startAyah,
+            endSura,
+            endAyah,
+            timestamp.toEpochMillisecondsOrNull()
+        )
+    }
+
+    private suspend fun addNoteWithTimestampMillis(
+        body: String,
+        startSura: Int,
+        startAyah: Int,
+        endSura: Int,
+        endAyah: Int,
+        timestampMillis: Long?
+    ): Note {
         logger.i { "Adding note for range=$startSura:$startAyah-$endSura:$endAyah" }
         return withContext(Dispatchers.IO) {
             val startAyahId = requireAyahId(startSura, startAyah)
@@ -59,7 +90,8 @@ class NotesRepositoryImpl(
                 notesQueries.value.addNewNote(
                     note = body,
                     start_ayah_id = startAyahId.toLong(),
-                    end_ayah_id = endAyahId.toLong()
+                    end_ayah_id = endAyahId.toLong(),
+                    timestamp = timestampMillis
                 )
                 val record = notesQueries.value.getLastInsertedNote().executeAsOneOrNull()
                 requireNotNull(record) { "Expected note after insert." }
@@ -77,6 +109,46 @@ class NotesRepositoryImpl(
         endSura: Int,
         endAyah: Int
     ): Note {
+        return updateNoteWithTimestampMillis(
+            localId,
+            body,
+            startSura,
+            startAyah,
+            endSura,
+            endAyah,
+            timestampMillis = null
+        )
+    }
+
+    override suspend fun updateNote(
+        localId: String,
+        body: String,
+        startSura: Int,
+        startAyah: Int,
+        endSura: Int,
+        endAyah: Int,
+        timestamp: PlatformDateTime
+    ): Note {
+        return updateNoteWithTimestampMillis(
+            localId,
+            body,
+            startSura,
+            startAyah,
+            endSura,
+            endAyah,
+            timestamp.toEpochMillisecondsOrNull()
+        )
+    }
+
+    private suspend fun updateNoteWithTimestampMillis(
+        localId: String,
+        body: String,
+        startSura: Int,
+        startAyah: Int,
+        endSura: Int,
+        endAyah: Int,
+        timestampMillis: Long?
+    ): Note {
         logger.i { "Updating note localId=$localId" }
         return withContext(Dispatchers.IO) {
             val startAyahId = requireAyahId(startSura, startAyah)
@@ -85,7 +157,8 @@ class NotesRepositoryImpl(
                 note = body,
                 start_ayah_id = startAyahId.toLong(),
                 end_ayah_id = endAyahId.toLong(),
-                id = localId.toLong()
+                id = localId.toLong(),
+                timestamp = timestampMillis
             )
             val record = notesQueries.value.getNoteByLocalId(localId.toLong())
                 .executeAsOneOrNull()
@@ -97,7 +170,9 @@ class NotesRepositoryImpl(
     override suspend fun deleteNote(localId: String): Boolean {
         logger.i { "Deleting note localId=$localId" }
         withContext(Dispatchers.IO) {
-            notesQueries.value.deleteNote(id = localId.toLong())
+            notesQueries.value.deleteNote(
+                id = localId.toLong()
+            )
         }
         return true
     }

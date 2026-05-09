@@ -3,6 +3,7 @@ package com.quran.shared.persistence.repository.readingbookmark.repository
 import com.quran.shared.persistence.model.AyahReadingBookmark
 import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
+import com.quran.shared.persistence.util.PlatformDateTime
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
 import kotlinx.coroutines.flow.Flow
 
@@ -17,7 +18,13 @@ interface ReadingBookmarksRepository {
     suspend fun addAyahReadingBookmark(sura: Int, ayah: Int): AyahReadingBookmark
 
     @NativeCoroutines
+    suspend fun addAyahReadingBookmark(sura: Int, ayah: Int, timestamp: PlatformDateTime): AyahReadingBookmark
+
+    @NativeCoroutines
     suspend fun addPageReadingBookmark(page: Int): PageReadingBookmark
+
+    @NativeCoroutines
+    suspend fun addPageReadingBookmark(page: Int, timestamp: PlatformDateTime): PageReadingBookmark
 
     @NativeCoroutines
     suspend fun deleteReadingBookmark(): Boolean

@@ -14,6 +14,7 @@ import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.PersistenceImportResult
+import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepository
 import com.quran.shared.persistence.repository.PersistenceResetRepository
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepository
@@ -167,7 +168,7 @@ class SyncService(
     }
 
     @NativeCoroutines
-    suspend fun logout(clearLocalData: Boolean = false): Unit {
+    suspend fun logout(clearLocalData: Boolean = false) {
         try {
             authService.logout()
             syncClient.cancelSyncing()
@@ -210,14 +211,43 @@ class SyncService(
     }
 
     @NativeCoroutines
+    suspend fun addBookmark(sura: Int, ayah: Int, timestamp: PlatformDateTime): AyahBookmark {
+        try {
+            val bookmark = bookmarksRepository.addBookmark(sura, ayah, timestamp)
+            triggerSync()
+            return bookmark
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to add ayah bookmark" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
     suspend fun addReadingBookmark(sura: Int, ayah: Int): AyahReadingBookmark {
         return addAyahReadingBookmark(sura, ayah)
+    }
+
+    @NativeCoroutines
+    suspend fun addReadingBookmark(sura: Int, ayah: Int, timestamp: PlatformDateTime): AyahReadingBookmark {
+        return addAyahReadingBookmark(sura, ayah, timestamp)
     }
 
     @NativeCoroutines
     suspend fun addAyahReadingBookmark(sura: Int, ayah: Int): AyahReadingBookmark {
         try {
             val bookmark = readingBookmarksRepository.addAyahReadingBookmark(sura, ayah)
+            triggerSync()
+            return bookmark
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to add reading ayah bookmark" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun addAyahReadingBookmark(sura: Int, ayah: Int, timestamp: PlatformDateTime): AyahReadingBookmark {
+        try {
+            val bookmark = readingBookmarksRepository.addAyahReadingBookmark(sura, ayah, timestamp)
             triggerSync()
             return bookmark
         } catch (e: Exception) {
@@ -239,9 +269,33 @@ class SyncService(
     }
 
     @NativeCoroutines
+    suspend fun addPageReadingBookmark(page: Int, timestamp: PlatformDateTime): PageReadingBookmark {
+        try {
+            val bookmark = readingBookmarksRepository.addPageReadingBookmark(page, timestamp)
+            triggerSync()
+            return bookmark
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to add reading page bookmark" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
     suspend fun addReadingSession(sura: Int, ayah: Int): ReadingSession {
         try {
             val readingSession = readingSessionsRepository.addReadingSession(sura, ayah)
+            triggerSync()
+            return readingSession
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to add reading session" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun addReadingSession(sura: Int, ayah: Int, timestamp: PlatformDateTime): ReadingSession {
+        try {
+            val readingSession = readingSessionsRepository.addReadingSession(sura, ayah, timestamp)
             triggerSync()
             return readingSession
         } catch (e: Exception) {
@@ -265,7 +319,7 @@ class SyncService(
     }
 
     @NativeCoroutines
-    suspend fun deleteBookmark(bookmark: AyahBookmark): Unit {
+    suspend fun deleteBookmark(bookmark: AyahBookmark) {
         try {
             bookmarksRepository.deleteBookmark(bookmark.sura, bookmark.ayah)
             triggerSync()
@@ -276,7 +330,7 @@ class SyncService(
     }
 
     @NativeCoroutines
-    suspend fun addCollection(name: String): Unit {
+    suspend fun addCollection(name: String) {
         try {
             collectionsRepository.addCollection(name)
             triggerSync()
@@ -287,7 +341,18 @@ class SyncService(
     }
 
     @NativeCoroutines
-    suspend fun deleteCollection(localId: String): Unit {
+    suspend fun addCollection(name: String, timestamp: PlatformDateTime) {
+        try {
+            collectionsRepository.addCollection(name, timestamp)
+            triggerSync()
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to add collection" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun deleteCollection(localId: String) {
         try {
             collectionsRepository.deleteCollection(localId)
             triggerSync()
@@ -298,9 +363,24 @@ class SyncService(
     }
 
     @NativeCoroutines
-    suspend fun addBookmarkToCollection(collectionLocalId: String, bookmark: AyahBookmark): Unit {
+    suspend fun addBookmarkToCollection(collectionLocalId: String, bookmark: AyahBookmark) {
         try {
             collectionBookmarksRepository.addBookmarkToCollection(collectionLocalId, bookmark)
+            triggerSync()
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to add bookmark to collection" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun addBookmarkToCollection(
+        collectionLocalId: String,
+        bookmark: AyahBookmark,
+        timestamp: PlatformDateTime
+    ) {
+        try {
+            collectionBookmarksRepository.addBookmarkToCollection(collectionLocalId, bookmark, timestamp)
             triggerSync()
         } catch (e: Exception) {
             Logger.e(e) { "Failed to add bookmark to collection" }
@@ -326,7 +406,25 @@ class SyncService(
     }
 
     @NativeCoroutines
-    suspend fun removeBookmarkFromCollection(collectionLocalId: String, bookmark: AyahBookmark): Unit {
+    suspend fun addAyahBookmarkToCollection(
+        collectionLocalId: String,
+        sura: Int,
+        ayah: Int,
+        timestamp: PlatformDateTime
+    ): CollectionAyahBookmark {
+        try {
+            val collectionBookmark = collectionBookmarksRepository
+                .addAyahBookmarkToCollection(collectionLocalId, sura, ayah, timestamp)
+            triggerSync()
+            return collectionBookmark
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to add ayah bookmark to collection" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun removeBookmarkFromCollection(collectionLocalId: String, bookmark: AyahBookmark) {
         try {
             collectionBookmarksRepository.removeBookmarkFromCollection(collectionLocalId, bookmark)
             triggerSync()
@@ -337,7 +435,7 @@ class SyncService(
     }
 
     @NativeCoroutines
-    suspend fun removeAyahBookmarkFromCollection(bookmark: CollectionAyahBookmark): Unit {
+    suspend fun removeAyahBookmarkFromCollection(bookmark: CollectionAyahBookmark) {
         try {
             collectionBookmarksRepository.removeAyahBookmarkFromCollection(bookmark)
             triggerSync()
@@ -348,7 +446,7 @@ class SyncService(
     }
 
     @NativeCoroutines
-    suspend fun addNote(body: String, startSura: Int, startAyah: Int, endSura: Int, endAyah: Int): Unit {
+    suspend fun addNote(body: String, startSura: Int, startAyah: Int, endSura: Int, endAyah: Int) {
         try {
             notesRepository.addNote(body, startSura, startAyah, endSura, endAyah)
             triggerSync()
@@ -359,7 +457,25 @@ class SyncService(
     }
 
     @NativeCoroutines
-    suspend fun deleteNote(localId: String): Unit {
+    suspend fun addNote(
+        body: String,
+        startSura: Int,
+        startAyah: Int,
+        endSura: Int,
+        endAyah: Int,
+        timestamp: PlatformDateTime
+    ) {
+        try {
+            notesRepository.addNote(body, startSura, startAyah, endSura, endAyah, timestamp)
+            triggerSync()
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to add note" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun deleteNote(localId: String) {
         try {
             notesRepository.deleteNote(localId)
             triggerSync()

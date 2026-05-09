@@ -9,6 +9,7 @@ import com.quran.shared.persistence.TestDatabaseDriver
 import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepositoryImpl
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepositoryImpl
+import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toPlatform
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -35,7 +36,7 @@ class CollectionBookmarksRepositoryTest {
 
     @Test
     fun `addBookmarkToCollection stores an ayah bookmark`() = runTest {
-        database.collectionsQueries.addNewCollection(name = "Recents")
+        database.collectionsQueries.addNewCollection(name = "Recents", timestamp = null)
         val collection = database.collectionsQueries.getCollectionByName("Recents").executeAsOne()
         val collectionRemoteId = "remote-collection-id"
         database.collectionsQueries.updateRemoteCollectionByLocalId(
@@ -61,7 +62,7 @@ class CollectionBookmarksRepositoryTest {
 
     @Test
     fun `addAyahBookmarkToCollection atomically stores bookmark and link`() = runTest {
-        database.collectionsQueries.addNewCollection(name = "AtomicRecents")
+        database.collectionsQueries.addNewCollection(name = "AtomicRecents", timestamp = null)
         val collection = database.collectionsQueries.getCollectionByName("AtomicRecents").executeAsOne()
         val collectionRemoteId = "remote-atomic-collection-id"
         database.collectionsQueries.updateRemoteCollectionByLocalId(
@@ -91,6 +92,29 @@ class CollectionBookmarksRepositoryTest {
     }
 
     @Test
+    fun `addAyahBookmarkToCollection respects explicit timestamp for bookmark and link`() = runTest {
+        database.collectionsQueries.addNewCollection(name = "TimestampedLink", timestamp = null)
+        val collection = database.collectionsQueries.getCollectionByName("TimestampedLink").executeAsOne()
+
+        val collectionBookmark = repository.addAyahBookmarkToCollection(
+            collectionLocalId = collection.local_id.toString(),
+            sura = 2,
+            ayah = 255,
+            timestamp = Instant.fromEpochMilliseconds(1234L).toPlatform()
+        )
+        val bookmark = database.ayah_bookmarksQueries.getBookmarkForAyah(2L, 255L).executeAsOne()
+        val link = database.bookmark_collectionsQueries
+            .getCollectionBookmarkFor(bookmark.local_id.toString(), collection.local_id)
+            .executeAsOne()
+
+        assertEquals(1234L, collectionBookmark.lastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(1234L, bookmark.created_at)
+        assertEquals(1234L, bookmark.modified_at)
+        assertEquals(1234L, link.created_at)
+        assertEquals(1234L, link.modified_at)
+    }
+
+    @Test
     fun `addAyahBookmarkToCollection rolls back bookmark when collection is missing`() = runTest {
         assertFailsWith<IllegalArgumentException> {
             repository.addAyahBookmarkToCollection(
@@ -108,7 +132,7 @@ class CollectionBookmarksRepositoryTest {
 
     @Test
     fun `getBookmarksForCollection returns all bookmarks for a collection`() = runTest {
-        database.collectionsQueries.addNewCollection(name = "TestList")
+        database.collectionsQueries.addNewCollection(name = "TestList", timestamp = null)
         val collection = database.collectionsQueries.getCollectionByName("TestList").executeAsOne()
         val bookmark1 = bookmarksRepository.addBookmark(2, 1)
         val bookmark2 = bookmarksRepository.addBookmark(2, 2)
@@ -123,7 +147,7 @@ class CollectionBookmarksRepositoryTest {
 
     @Test
     fun `removeBookmarkFromCollection removes the link`() = runTest {
-        database.collectionsQueries.addNewCollection(name = "TestRemove")
+        database.collectionsQueries.addNewCollection(name = "TestRemove", timestamp = null)
         val collection = database.collectionsQueries.getCollectionByName("TestRemove").executeAsOne()
         val bookmark = bookmarksRepository.addBookmark(2, 1)
         repository.addBookmarkToCollection(collection.local_id.toString(), bookmark)
@@ -134,8 +158,41 @@ class CollectionBookmarksRepositoryTest {
     }
 
     @Test
+    fun `removeBookmarkFromCollection preserves timestamp for remote rows`() = runTest {
+        database.collectionsQueries.addNewCollection(name = "TimestampedRemove", timestamp = null)
+        val collection = database.collectionsQueries.getCollectionByName("TimestampedRemove").executeAsOne()
+        database.collectionsQueries.updateRemoteCollectionByLocalId(
+            remote_id = "remote-collection-id",
+            name = collection.name,
+            modified_at = 1L,
+            local_id = collection.local_id
+        )
+        val bookmark = bookmarksRepository.addBookmark(2, 1)
+        repository.addBookmarkToCollection(collection.local_id.toString(), bookmark)
+        database.bookmark_collectionsQueries.persistRemoteBookmarkCollection(
+            remote_id = "remote-collection-bookmark-id",
+            bookmark_local_id = bookmark.localId,
+            bookmark_type = "AYAH",
+            collection_local_id = collection.local_id,
+            created_at = 1000L,
+            modified_at = 1000L
+        )
+
+        val removed = repository.removeBookmarkFromCollection(collection.local_id.toString(), bookmark)
+        val mutation = repository.fetchMutatedCollectionBookmarks().single()
+        val record = database.bookmark_collectionsQueries
+            .getCollectionBookmarkFor(bookmark.localId, collection.local_id)
+            .executeAsOne()
+
+        assertTrue(removed)
+        assertEquals(Mutation.DELETED, mutation.mutation)
+        assertEquals(1000L, mutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(1000L, record.modified_at)
+    }
+
+    @Test
     fun `removeAyahBookmarkFromCollection removes the link using model`() = runTest {
-        database.collectionsQueries.addNewCollection(name = "TestRemoveModel")
+        database.collectionsQueries.addNewCollection(name = "TestRemoveModel", timestamp = null)
         val collection = database.collectionsQueries.getCollectionByName("TestRemoveModel").executeAsOne()
         val cb = repository.addAyahBookmarkToCollection(collection.local_id.toString(), 2, 1)
 
@@ -146,7 +203,7 @@ class CollectionBookmarksRepositoryTest {
 
     @Test
     fun `getBookmarksForCollectionFlow emits bookmarks list`() = runTest {
-        database.collectionsQueries.addNewCollection(name = "TestFlow")
+        database.collectionsQueries.addNewCollection(name = "TestFlow", timestamp = null)
         val collection = database.collectionsQueries.getCollectionByName("TestFlow").executeAsOne()
         repository.addAyahBookmarkToCollection(collection.local_id.toString(), 2, 1)
 
@@ -158,7 +215,7 @@ class CollectionBookmarksRepositoryTest {
 
     @Test
     fun `applyRemoteChanges persists remote ayah collection bookmark`() = runTest {
-        database.collectionsQueries.addNewCollection(name = "Recents")
+        database.collectionsQueries.addNewCollection(name = "Recents", timestamp = null)
         val collection = database.collectionsQueries.getCollectionByName("Recents").executeAsOne()
         database.collectionsQueries.updateRemoteCollectionByLocalId(
             remote_id = "remote-collection-id",
@@ -198,7 +255,7 @@ class CollectionBookmarksRepositoryTest {
 
     @Test
     fun `applyRemoteChanges backfills remote bookmark id for existing local ayah bookmark`() = runTest {
-        database.collectionsQueries.addNewCollection(name = "BackfillRemoteBookmarkId")
+        database.collectionsQueries.addNewCollection(name = "BackfillRemoteBookmarkId", timestamp = null)
         val collection = database.collectionsQueries.getCollectionByName("BackfillRemoteBookmarkId").executeAsOne()
         database.collectionsQueries.updateRemoteCollectionByLocalId(
             remote_id = "remote-collection-id-backfill",
@@ -240,7 +297,7 @@ class CollectionBookmarksRepositoryTest {
 
     @Test
     fun `applyRemoteChanges creates missing local ayah bookmark for collection link`() = runTest {
-        database.collectionsQueries.addNewCollection(name = "NeedBookmark")
+        database.collectionsQueries.addNewCollection(name = "NeedBookmark", timestamp = null)
         val collection = database.collectionsQueries.getCollectionByName("NeedBookmark").executeAsOne()
         database.collectionsQueries.updateRemoteCollectionByLocalId(
             remote_id = "remote-collection-id-2",
@@ -275,7 +332,7 @@ class CollectionBookmarksRepositoryTest {
 
     @Test
     fun `fetchMutatedCollectionBookmarks includes created links without remote bookmark ids`() = runTest {
-        database.collectionsQueries.addNewCollection(name = "NeedsBookmarkRemoteId")
+        database.collectionsQueries.addNewCollection(name = "NeedsBookmarkRemoteId", timestamp = null)
         val collection = database.collectionsQueries.getCollectionByName("NeedsBookmarkRemoteId").executeAsOne()
         database.collectionsQueries.updateRemoteCollectionByLocalId(
             remote_id = "remote-collection-id-4",
@@ -298,7 +355,7 @@ class CollectionBookmarksRepositoryTest {
 
     @Test
     fun `fetchMutatedCollectionBookmarks includes deletion when link has remote id but bookmark remote id is null`() = runTest {
-        database.collectionsQueries.addNewCollection(name = "DeleteWithoutBookmarkRemoteId")
+        database.collectionsQueries.addNewCollection(name = "DeleteWithoutBookmarkRemoteId", timestamp = null)
         val collection = database.collectionsQueries.getCollectionByName("DeleteWithoutBookmarkRemoteId").executeAsOne()
         database.collectionsQueries.updateRemoteCollectionByLocalId(
             remote_id = "remote-collection-id-delete",
@@ -331,7 +388,7 @@ class CollectionBookmarksRepositoryTest {
 
     @Test
     fun `applyRemoteChanges ignores remote page collection bookmarks`() = runTest {
-        database.collectionsQueries.addNewCollection(name = "IgnorePages")
+        database.collectionsQueries.addNewCollection(name = "IgnorePages", timestamp = null)
         val collection = database.collectionsQueries.getCollectionByName("IgnorePages").executeAsOne()
         database.collectionsQueries.updateRemoteCollectionByLocalId(
             remote_id = "remote-collection-id-3",

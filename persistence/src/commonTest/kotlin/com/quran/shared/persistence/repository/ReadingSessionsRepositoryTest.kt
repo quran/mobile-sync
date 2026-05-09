@@ -52,6 +52,19 @@ class ReadingSessionsRepositoryTest {
     }
 
     @Test
+    fun `addReadingSession respects explicit timestamp`() = runTest {
+        repository = ReadingSessionsRepositoryImpl(database) { 9999L }
+
+        val readingSession = repository.addReadingSession(2, 255, timestamp(1234L))
+        val record = database.reading_sessionsQueries.getReadingSessionForChapterVerse(2L, 255L)
+            .executeAsOne()
+
+        assertEquals(1234L, readingSession.lastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(1234L, record.created_at)
+        assertEquals(1234L, record.modified_at)
+    }
+
+    @Test
     fun `addReadingSession updates existing session with latest millisecond timestamp`() = runTest {
         var now = 1000L
         repository = ReadingSessionsRepositoryImpl(database) { now }
@@ -64,7 +77,7 @@ class ReadingSessionsRepositoryTest {
     }
 
     @Test
-    fun `deleteReadingSession persists millisecond timestamp for remote rows`() = runTest {
+    fun `deleteReadingSession does not update remote row timestamp`() = runTest {
         repository = ReadingSessionsRepositoryImpl(database) { 1234567890123L }
         database.reading_sessionsQueries.persistRemoteReadingSession(
             remote_id = "remote-reading-session-id",
@@ -77,8 +90,32 @@ class ReadingSessionsRepositoryTest {
         repository.deleteReadingSession(2, 255)
 
         val localMutation = repository.fetchMutatedReadingSessions().single()
+        val record = database.reading_sessionsQueries.getReadingSessionByRemoteId("remote-reading-session-id")
+            .executeAsOne()
         assertEquals(Mutation.DELETED, localMutation.mutation)
-        assertEquals(1234567890123L, localMutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(1L, localMutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(1L, record.modified_at)
+    }
+
+    @Test
+    fun `deleteReadingSession preserves timestamp for remote rows`() = runTest {
+        repository = ReadingSessionsRepositoryImpl(database) { 9999L }
+        database.reading_sessionsQueries.persistRemoteReadingSession(
+            remote_id = "remote-reading-session-id",
+            chapter_number = 2L,
+            verse_number = 255L,
+            created_at = 1L,
+            modified_at = 1L
+        )
+
+        repository.deleteReadingSession(2, 255)
+
+        val localMutation = repository.fetchMutatedReadingSessions().single()
+        val record = database.reading_sessionsQueries.getReadingSessionByRemoteId("remote-reading-session-id")
+            .executeAsOne()
+        assertEquals(Mutation.DELETED, localMutation.mutation)
+        assertEquals(1L, localMutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(1L, record.modified_at)
     }
 
     @Test
@@ -119,6 +156,20 @@ class ReadingSessionsRepositoryTest {
 
         assertEquals(1234567890123L, updated.lastUpdated.fromPlatform().toEpochMilliseconds())
         assertEquals(1234567890123L, record.modified_at)
+    }
+
+    @Test
+    fun `updateReadingSession respects explicit timestamp`() = runTest {
+        repository = ReadingSessionsRepositoryImpl(database) { 9999L }
+        val readingSession = repository.addReadingSession(2, 255, timestamp(1000L))
+
+        val updated = repository.updateReadingSession(readingSession.localId, 3, 10, timestamp(3456L))
+        val record = database.reading_sessionsQueries.getReadingSessionByLocalId(readingSession.localId.toLong())
+            .executeAsOne()
+
+        assertEquals(3456L, updated.lastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(1000L, record.created_at)
+        assertEquals(3456L, record.modified_at)
     }
 
     @Test
@@ -229,7 +280,7 @@ class ReadingSessionsRepositoryTest {
         assertEquals((21 downTo 2).toList(), remaining.map { it.ayah })
         assertEquals(1L, pruned.deleted)
         assertEquals(1L, pruned.is_edited)
-        assertEquals(21000L, pruned.modified_at)
+        assertEquals(1000L, pruned.modified_at)
     }
 
     @Test
@@ -391,6 +442,8 @@ class ReadingSessionsRepositoryTest {
         assertEquals((21 downTo 2).toList(), repository.getReadingSessions().map { it.ayah })
         assertEquals(1L, pruned.deleted)
         assertEquals(1L, pruned.is_edited)
-        assertEquals(22000L, pruned.modified_at)
+        assertEquals(1000L, pruned.modified_at)
     }
+
+    private fun timestamp(milliseconds: Long) = Instant.fromEpochMilliseconds(milliseconds).toPlatform()
 }

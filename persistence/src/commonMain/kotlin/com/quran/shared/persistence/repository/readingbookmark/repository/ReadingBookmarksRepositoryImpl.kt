@@ -16,8 +16,10 @@ import com.quran.shared.persistence.repository.readingbookmark.extension.toAyahR
 import com.quran.shared.persistence.repository.readingbookmark.extension.toPageReadingBookmark
 import com.quran.shared.persistence.repository.readingbookmark.extension.toReadingBookmark
 import com.quran.shared.persistence.repository.readingbookmark.extension.toReadingBookmarkMutation
+import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
+import com.quran.shared.persistence.util.toEpochMillisecondsOrNull
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.Dispatchers
@@ -52,11 +54,28 @@ class ReadingBookmarksRepositoryImpl(
     }
 
     override suspend fun addAyahReadingBookmark(sura: Int, ayah: Int): AyahReadingBookmark {
+        return addAyahReadingBookmarkWithTimestampMillis(sura, ayah, timestampMillis = null)
+    }
+
+    override suspend fun addAyahReadingBookmark(
+        sura: Int,
+        ayah: Int,
+        timestamp: PlatformDateTime
+    ): AyahReadingBookmark {
+        return addAyahReadingBookmarkWithTimestampMillis(sura, ayah, timestamp.toEpochMillisecondsOrNull())
+    }
+
+    private suspend fun addAyahReadingBookmarkWithTimestampMillis(
+        sura: Int,
+        ayah: Int,
+        timestampMillis: Long?
+    ): AyahReadingBookmark {
         logger.i { "Adding ayah reading bookmark for $sura:$ayah" }
         return withContext(Dispatchers.IO) {
             readingBookmarkQueries.value.addAyahReadingBookmark(
                 sura = sura.toLong(),
-                ayah = ayah.toLong()
+                ayah = ayah.toLong(),
+                timestamp = timestampMillis
             )
             val record = readingBookmarkQueries.value.getReadingBookmarkForAyah(sura.toLong(), ayah.toLong())
                 .executeAsOneOrNull()
@@ -66,9 +85,23 @@ class ReadingBookmarksRepositoryImpl(
     }
 
     override suspend fun addPageReadingBookmark(page: Int): PageReadingBookmark {
+        return addPageReadingBookmarkWithTimestampMillis(page, timestampMillis = null)
+    }
+
+    override suspend fun addPageReadingBookmark(page: Int, timestamp: PlatformDateTime): PageReadingBookmark {
+        return addPageReadingBookmarkWithTimestampMillis(page, timestamp.toEpochMillisecondsOrNull())
+    }
+
+    private suspend fun addPageReadingBookmarkWithTimestampMillis(
+        page: Int,
+        timestampMillis: Long?
+    ): PageReadingBookmark {
         logger.i { "Adding page reading bookmark for page=$page" }
         return withContext(Dispatchers.IO) {
-            readingBookmarkQueries.value.addPageReadingBookmark(page = page.toLong())
+            readingBookmarkQueries.value.addPageReadingBookmark(
+                page = page.toLong(),
+                timestamp = timestampMillis
+            )
             val record = readingBookmarkQueries.value.getReadingBookmarkForPage(page.toLong())
                 .executeAsOneOrNull()
             requireNotNull(record) { "Expected reading bookmark for page=$page after insert." }

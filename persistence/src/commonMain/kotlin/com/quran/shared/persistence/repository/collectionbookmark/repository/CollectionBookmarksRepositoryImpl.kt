@@ -13,9 +13,11 @@ import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.model.DatabaseBookmarkCollection
 import com.quran.shared.persistence.repository.bookmark.extension.toAyahBookmark
+import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
+import com.quran.shared.persistence.util.toEpochMillisecondsOrNull
 import com.quran.shared.persistence.util.toPlatform
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -86,12 +88,33 @@ class CollectionBookmarksRepositoryImpl(
         collectionLocalId: String,
         bookmark: AyahBookmark
     ): CollectionAyahBookmark {
+        return addBookmarkToCollectionWithTimestampMillis(collectionLocalId, bookmark, timestampMillis = null)
+    }
+
+    override suspend fun addBookmarkToCollection(
+        collectionLocalId: String,
+        bookmark: AyahBookmark,
+        timestamp: PlatformDateTime
+    ): CollectionAyahBookmark {
+        return addBookmarkToCollectionWithTimestampMillis(
+            collectionLocalId,
+            bookmark,
+            timestamp.toEpochMillisecondsOrNull()
+        )
+    }
+
+    private suspend fun addBookmarkToCollectionWithTimestampMillis(
+        collectionLocalId: String,
+        bookmark: AyahBookmark,
+        timestampMillis: Long?
+    ): CollectionAyahBookmark {
         return withContext(Dispatchers.IO) {
             val bookmarkType = bookmark.toCollectionBookmarkType()
             bookmarkCollectionQueries.value.addBookmarkToCollection(
                 bookmark_local_id = bookmark.localId,
                 bookmark_type = bookmarkType,
-                collection_local_id = collectionLocalId.toLong()
+                collection_local_id = collectionLocalId.toLong(),
+                timestamp = timestampMillis
             )
             val record = bookmarkCollectionQueries.value
                 .getCollectionBookmarkFor(bookmark.localId, collectionLocalId.toLong())
@@ -119,6 +142,29 @@ class CollectionBookmarksRepositoryImpl(
         sura: Int,
         ayah: Int
     ): CollectionAyahBookmark {
+        return addAyahBookmarkToCollectionWithTimestampMillis(collectionLocalId, sura, ayah, timestampMillis = null)
+    }
+
+    override suspend fun addAyahBookmarkToCollection(
+        collectionLocalId: String,
+        sura: Int,
+        ayah: Int,
+        timestamp: PlatformDateTime
+    ): CollectionAyahBookmark {
+        return addAyahBookmarkToCollectionWithTimestampMillis(
+            collectionLocalId,
+            sura,
+            ayah,
+            timestamp.toEpochMillisecondsOrNull()
+        )
+    }
+
+    private suspend fun addAyahBookmarkToCollectionWithTimestampMillis(
+        collectionLocalId: String,
+        sura: Int,
+        ayah: Int,
+        timestampMillis: Long?
+    ): CollectionAyahBookmark {
         return withContext(Dispatchers.IO) {
             var created: CollectionAyahBookmark? = null
             database.transaction {
@@ -127,7 +173,8 @@ class CollectionBookmarksRepositoryImpl(
                 ayahBookmarkQueries.value.addNewBookmark(
                     ayah_id = ayahId.toLong(),
                     sura = sura.toLong(),
-                    ayah = ayah.toLong()
+                    ayah = ayah.toLong(),
+                    timestamp = timestampMillis
                 )
                 val bookmarkRecord = ayahBookmarkQueries.value
                     .getBookmarkForAyah(sura.toLong(), ayah.toLong())
@@ -145,7 +192,8 @@ class CollectionBookmarksRepositoryImpl(
                 bookmarkCollectionQueries.value.addBookmarkToCollection(
                     bookmark_local_id = bookmarkRecord.local_id.toString(),
                     bookmark_type = "AYAH",
-                    collection_local_id = collectionLocalIdLong
+                    collection_local_id = collectionLocalIdLong,
+                    timestamp = timestampMillis
                 )
 
                 val collectionRecord = bookmarkCollectionQueries.value

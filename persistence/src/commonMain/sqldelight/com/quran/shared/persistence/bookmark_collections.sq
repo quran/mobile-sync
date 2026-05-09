@@ -106,12 +106,22 @@ addBookmarkToCollection {
     bookmark_local_id,
     bookmark_type,
     collection_local_id,
+    created_at,
+    modified_at,
     deleted
   )
-  VALUES (NULL, :bookmark_local_id, :bookmark_type, :collection_local_id, 0);
+  VALUES (
+    NULL,
+    :bookmark_local_id,
+    :bookmark_type,
+    :collection_local_id,
+    COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    0
+  );
   UPDATE bookmark_collection
   SET deleted = 0,
-    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+    modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
   WHERE bookmark_local_id = :bookmark_local_id AND collection_local_id = :collection_local_id;
 }
 
@@ -141,8 +151,7 @@ deleteBookmarkFromCollection {
     AND collection_local_id = :collection_local_id
     AND remote_id IS NULL;
   UPDATE bookmark_collection
-  SET deleted = 1,
-    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  SET deleted = 1
   WHERE bookmark_local_id = :bookmark_local_id
     AND collection_local_id = :collection_local_id
     AND remote_id IS NOT NULL;

@@ -66,6 +66,8 @@ class ReadingSessionsSyncAdapterTest {
         )
 
         val plan = adapter.buildPlan(0L, emptyList())
+        assertEquals(1000L, plan.mutationsToPush().single().timestamp)
+
         val pushedMutations = listOf(
             SyncMutation(
                 resource = "READING_SESSION",

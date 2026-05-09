@@ -1,6 +1,7 @@
 package com.quran.shared.persistence.repository.readingsession.repository
 
 import com.quran.shared.persistence.model.ReadingSession
+import com.quran.shared.persistence.util.PlatformDateTime
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
 import kotlinx.coroutines.flow.Flow
 
@@ -24,6 +25,9 @@ interface ReadingSessionsRepository {
     @NativeCoroutines
     suspend fun addReadingSession(sura: Int, ayah: Int): ReadingSession
 
+    @NativeCoroutines
+    suspend fun addReadingSession(sura: Int, ayah: Int, timestamp: PlatformDateTime): ReadingSession
+
     /**
      * Update an existing reading session by local ID.
      *
@@ -34,6 +38,14 @@ interface ReadingSessionsRepository {
      */
     @NativeCoroutines
     suspend fun updateReadingSession(localId: String, sura: Int, ayah: Int): ReadingSession
+
+    @NativeCoroutines
+    suspend fun updateReadingSession(
+        localId: String,
+        sura: Int,
+        ayah: Int,
+        timestamp: PlatformDateTime
+    ): ReadingSession
 
     /**
      * Returns a flow of all reading sessions for observation.
