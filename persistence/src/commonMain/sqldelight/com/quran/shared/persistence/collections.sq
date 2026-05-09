@@ -28,12 +28,19 @@ getCollectionByRemoteId:
   SELECT * FROM collection WHERE remote_id = ? LIMIT 1;
 
 addNewCollection {
-  INSERT OR IGNORE INTO collection (remote_id, name, deleted, is_edited)
-  VALUES (NULL, :name, 0, 0);
+  INSERT OR IGNORE INTO collection (remote_id, name, created_at, modified_at, deleted, is_edited)
+  VALUES (
+    NULL,
+    :name,
+    COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    0,
+    0
+  );
   UPDATE collection
   SET deleted = 0,
     is_edited = 0,
-    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+    modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
   WHERE name = :name;
 }
 
@@ -59,7 +66,7 @@ updateCollectionName:
   UPDATE collection
   SET name = :name,
     is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
-    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+    modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
   WHERE local_id = :id;
 
 deleteCollection {
@@ -67,8 +74,7 @@ deleteCollection {
   DELETE FROM collection WHERE local_id = :id AND remote_id IS NULL;
   UPDATE collection
   SET deleted = 1,
-    is_edited = 1,
-    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+    is_edited = 1
   WHERE local_id = :id AND remote_id IS NOT NULL;
 }
 

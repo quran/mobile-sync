@@ -13,6 +13,7 @@ import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksRepositoryImpl
 import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksSynchronizationRepository
+import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toPlatform
 import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
@@ -50,6 +51,18 @@ class ReadingBookmarksRepositoryTest {
     }
 
     @Test
+    fun `addAyahReadingBookmark respects explicit timestamp`() = runTest {
+        val timestamp = Instant.fromEpochMilliseconds(1234L).toPlatform()
+
+        val bookmark = repository.addAyahReadingBookmark(2, 255, timestamp)
+        val record = database.reading_bookmarksQueries.getReadingBookmarkForAyah(2L, 255L).executeAsOne()
+
+        assertEquals(1234L, bookmark.lastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(1234L, record.created_at)
+        assertEquals(1234L, record.modified_at)
+    }
+
+    @Test
     fun `addAyahReadingBookmark replaces the previous reading bookmark`() = runTest {
         repository.addAyahReadingBookmark(2, 255)
         repository.addAyahReadingBookmark(3, 2)
@@ -71,6 +84,40 @@ class ReadingBookmarksRepositoryTest {
     }
 
     @Test
+    fun `addPageReadingBookmark respects explicit timestamp when replacing remote row`() = runTest {
+        syncRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                RemoteModelMutation(
+                    model = RemoteBookmark.Ayah(
+                        sura = 2,
+                        ayah = 255,
+                        isReading = true,
+                        lastUpdated = Instant.fromEpochMilliseconds(1000L).toPlatform()
+                    ),
+                    remoteID = "remote-reading-id",
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        val bookmark = repository.addPageReadingBookmark(
+            page = 42,
+            timestamp = Instant.fromEpochMilliseconds(2345L).toPlatform()
+        )
+        val remoteRecord = database.reading_bookmarksQueries
+            .getReadingBookmarkByRemoteId("remote-reading-id")
+            .executeAsOne()
+        val pageRecord = database.reading_bookmarksQueries.getReadingBookmarkForPage(42L).executeAsOne()
+
+        assertEquals(2345L, bookmark.lastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(1L, remoteRecord.deleted)
+        assertEquals(1000L, remoteRecord.modified_at)
+        assertEquals(2345L, pageRecord.created_at)
+        assertEquals(2345L, pageRecord.modified_at)
+    }
+
+    @Test
     fun `addAyahReadingBookmark replaces a page reading bookmark`() = runTest {
         repository.addPageReadingBookmark(42)
         repository.addAyahReadingBookmark(3, 2)
@@ -87,6 +134,33 @@ class ReadingBookmarksRepositoryTest {
 
         assertTrue(repository.deleteReadingBookmark())
         assertNull(repository.getReadingBookmark())
+    }
+
+    @Test
+    fun `deleteReadingBookmark preserves timestamp for remote rows`() = runTest {
+        syncRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                RemoteModelMutation(
+                    model = RemoteBookmark.Ayah(
+                        sura = 2,
+                        ayah = 255,
+                        isReading = true,
+                        lastUpdated = Instant.fromEpochMilliseconds(1000L).toPlatform()
+                    ),
+                    remoteID = "remote-reading-id",
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        assertTrue(repository.deleteReadingBookmark())
+
+        val mutation = syncRepository.fetchMutatedReadingBookmarks().single()
+        val record = database.reading_bookmarksQueries.getReadingBookmarkByRemoteId("remote-reading-id").executeAsOne()
+        assertEquals(Mutation.DELETED, mutation.mutation)
+        assertEquals(1000L, mutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(1000L, record.modified_at)
     }
 
     @Test

@@ -85,8 +85,7 @@ deleteReadingSession {
   DELETE FROM reading_session WHERE chapter_number = :chapter_number AND verse_number = :verse_number AND remote_id IS NULL;
   UPDATE reading_session
   SET deleted = 1,
-    is_edited = 1,
-    modified_at = :modified_at
+    is_edited = 1
   WHERE chapter_number = :chapter_number AND verse_number = :verse_number AND remote_id IS NOT NULL;
 }
 
@@ -94,8 +93,7 @@ pruneReadingSessionByLocalId {
   DELETE FROM reading_session WHERE local_id = :local_id AND remote_id IS NULL;
   UPDATE reading_session
   SET deleted = 1,
-    is_edited = 1,
-    modified_at = :modified_at
+    is_edited = 1
   WHERE local_id = :local_id AND remote_id IS NOT NULL;
 }
 

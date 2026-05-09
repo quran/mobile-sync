@@ -67,6 +67,7 @@ class BookmarksSyncAdapterTest {
 
         val data = assertNotNull(mutation.data)
         assertEquals("BOOKMARK", mutation.resource)
+        assertEquals(1000L, mutation.timestamp)
         assertEquals("page", data["type"]?.jsonPrimitive?.content)
         assertEquals(42, data["key"]?.jsonPrimitive?.int)
         assertEquals(true, data["isReading"]?.jsonPrimitive?.boolean)

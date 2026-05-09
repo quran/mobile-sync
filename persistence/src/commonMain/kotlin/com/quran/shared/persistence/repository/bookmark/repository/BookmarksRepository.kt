@@ -1,6 +1,7 @@
 package com.quran.shared.persistence.repository.bookmark.repository
 
 import com.quran.shared.persistence.model.AyahBookmark
+import com.quran.shared.persistence.util.PlatformDateTime
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
 import kotlinx.coroutines.flow.Flow
 
@@ -28,6 +29,9 @@ interface BookmarksRepository {
      */
     @NativeCoroutines
     suspend fun addBookmark(sura: Int, ayah: Int): AyahBookmark
+
+    @NativeCoroutines
+    suspend fun addBookmark(sura: Int, ayah: Int, timestamp: PlatformDateTime): AyahBookmark
 
     /**
      * Delete a bookmark for a specific sura and ayah.

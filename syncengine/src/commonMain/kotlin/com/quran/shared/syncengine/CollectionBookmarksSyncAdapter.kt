@@ -123,7 +123,7 @@ internal class CollectionBookmarksSyncAdapter(
             resourceId = localMutation.remoteID,
             mutation = localMutation.mutation,
             data = localMutation.model.toResourceData(),
-            timestamp = null
+            timestamp = localMutation.model.lastModified.toEpochMilliseconds()
         )
     }
 

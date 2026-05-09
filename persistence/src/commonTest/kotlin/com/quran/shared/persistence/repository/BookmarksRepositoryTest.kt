@@ -11,6 +11,7 @@ import com.quran.shared.persistence.input.RemoteBookmark
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepositoryImpl
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksSynchronizationRepository
 import com.quran.shared.persistence.util.QuranData
+import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toPlatform
 import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
@@ -48,6 +49,18 @@ class BookmarksRepositoryTest {
     }
 
     @Test
+    fun `addBookmark respects explicit timestamp`() = runTest {
+        val timestamp = Instant.fromEpochMilliseconds(1234L).toPlatform()
+
+        val bookmark = repository.addBookmark(2, 255, timestamp)
+        val record = database.ayah_bookmarksQueries.getBookmarkForAyah(2L, 255L).executeAsOne()
+
+        assertEquals(1234L, bookmark.lastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(1234L, record.created_at)
+        assertEquals(1234L, record.modified_at)
+    }
+
+    @Test
     fun `addBookmark does not duplicate the same ayah bookmark`() = runTest {
         repository.addBookmark(2, 255)
         repository.addBookmark(2, 255)
@@ -64,6 +77,26 @@ class BookmarksRepositoryTest {
 
         assertTrue(repository.deleteBookmark(2, 255))
         assertTrue(repository.getAllBookmarks().isEmpty())
+    }
+
+    @Test
+    fun `deleteBookmark preserves timestamp for remote rows`() = runTest {
+        database.ayah_bookmarksQueries.persistRemoteBookmark(
+            remote_id = "remote-bookmark-id",
+            ayah_id = QuranData.getAyahId(2, 255).toLong(),
+            sura = 2L,
+            ayah = 255L,
+            created_at = 1L,
+            modified_at = 1L
+        )
+
+        repository.deleteBookmark(2, 255)
+
+        val mutation = syncRepository.fetchMutatedBookmarks().single()
+        val record = database.ayah_bookmarksQueries.getBookmarkByRemoteId("remote-bookmark-id").executeAsOne()
+        assertEquals(Mutation.DELETED, mutation.mutation)
+        assertEquals(1L, mutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(1L, record.modified_at)
     }
 
     @Test

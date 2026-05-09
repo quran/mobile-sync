@@ -12,8 +12,10 @@ import com.quran.shared.persistence.input.RemoteReadingSession
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.repository.readingsession.extension.toReadingSession
 import com.quran.shared.persistence.repository.readingsession.extension.toReadingSessionMutation
+import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
+import com.quran.shared.persistence.util.toEpochMillisecondsOrNull
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.Dispatchers
@@ -61,9 +63,21 @@ class ReadingSessionsRepositoryImpl(
     }
 
     override suspend fun addReadingSession(sura: Int, ayah: Int): ReadingSession {
+        return addReadingSessionWithTimestampMillis(sura, ayah, timestampMillis = null)
+    }
+
+    override suspend fun addReadingSession(sura: Int, ayah: Int, timestamp: PlatformDateTime): ReadingSession {
+        return addReadingSessionWithTimestampMillis(sura, ayah, timestamp.toEpochMillisecondsOrNull())
+    }
+
+    private suspend fun addReadingSessionWithTimestampMillis(
+        sura: Int,
+        ayah: Int,
+        timestampMillis: Long?
+    ): ReadingSession {
         logger.i { "Adding reading session ($sura:$ayah)" }
         return withContext(Dispatchers.IO) {
-            val updatedAt = currentTimeMillis()
+            val updatedAt = timestampMillis ?: currentTimeMillis()
             var readingSession: ReadingSession? = null
 
             database.transaction {
@@ -72,7 +86,7 @@ class ReadingSessionsRepositoryImpl(
                     verse_number = ayah.toLong(),
                     modified_at = updatedAt
                 )
-                pruneOldReadingSessions(updatedAt)
+                pruneOldReadingSessions()
 
                 val record = readingSessionsQueries.value.getReadingSessionForChapterVerse(
                     sura.toLong(),
@@ -88,10 +102,28 @@ class ReadingSessionsRepositoryImpl(
     }
 
     override suspend fun updateReadingSession(localId: String, sura: Int, ayah: Int): ReadingSession {
+        return updateReadingSessionWithTimestampMillis(localId, sura, ayah, timestampMillis = null)
+    }
+
+    override suspend fun updateReadingSession(
+        localId: String,
+        sura: Int,
+        ayah: Int,
+        timestamp: PlatformDateTime
+    ): ReadingSession {
+        return updateReadingSessionWithTimestampMillis(localId, sura, ayah, timestamp.toEpochMillisecondsOrNull())
+    }
+
+    private suspend fun updateReadingSessionWithTimestampMillis(
+        localId: String,
+        sura: Int,
+        ayah: Int,
+        timestampMillis: Long?
+    ): ReadingSession {
         logger.i { "Updating reading session localId=$localId to $sura:$ayah" }
         return withContext(Dispatchers.IO) {
             val id = localId.toLong()
-            val updatedAt = currentTimeMillis()
+            val updatedAt = timestampMillis ?: currentTimeMillis()
             var updatedSession: ReadingSession? = null
 
             database.transaction {
@@ -113,7 +145,7 @@ class ReadingSessionsRepositoryImpl(
                     verse_number = ayah.toLong(),
                     modified_at = updatedAt
                 )
-                pruneOldReadingSessions(updatedAt)
+                pruneOldReadingSessions()
 
                 val record = readingSessionsQueries.value.getReadingSessionByLocalId(id)
                     .executeAsOneOrNull()
@@ -130,8 +162,7 @@ class ReadingSessionsRepositoryImpl(
         withContext(Dispatchers.IO) {
             readingSessionsQueries.value.deleteReadingSession(
                 chapter_number = sura.toLong(),
-                verse_number = ayah.toLong(),
-                modified_at = currentTimeMillis()
+                verse_number = ayah.toLong()
             )
         }
         return true
@@ -187,7 +218,7 @@ class ReadingSessionsRepositoryImpl(
                     )
                 }
 
-                pruneOldReadingSessions(currentTimeMillis())
+                pruneOldReadingSessions()
             }
         }
     }
@@ -215,13 +246,12 @@ class ReadingSessionsRepositoryImpl(
         }
     }
 
-    private fun pruneOldReadingSessions(modifiedAt: Long) {
+    private fun pruneOldReadingSessions() {
         readingSessionsQueries.value.getReadingSessionsToPrune(MAX_ACTIVE_READING_SESSIONS)
             .executeAsList()
             .forEach { session ->
                 readingSessionsQueries.value.pruneReadingSessionByLocalId(
-                    local_id = session.local_id,
-                    modified_at = modifiedAt
+                    local_id = session.local_id
                 )
             }
     }

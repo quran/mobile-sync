@@ -112,7 +112,7 @@ internal class BookmarksSyncAdapter(
             resourceId = localMutation.remoteID,
             mutation = localMutation.mutation,
             data = if (localMutation.mutation == Mutation.DELETED) null else localMutation.model.toResourceData(),
-            timestamp = null
+            timestamp = localMutation.model.lastModified.toEpochMilliseconds()
         )
     }
 
