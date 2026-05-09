@@ -39,7 +39,6 @@ class BookmarksRepositoryImpl(
             ayahBookmarkQueries.value.getBookmarks()
                 .executeAsList()
                 .map { it.toAyahBookmark() }
-                .sortedByDescending { it.lastUpdated.fromPlatform().toEpochMilliseconds() }
         }
     }
 
@@ -49,7 +48,6 @@ class BookmarksRepositoryImpl(
             .mapToList(Dispatchers.IO)
             .map { list ->
                 list.map { it.toAyahBookmark() }
-                    .sortedByDescending { it.lastUpdated.fromPlatform().toEpochMilliseconds() }
             }
     }
 

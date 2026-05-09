@@ -13,10 +13,15 @@ CREATE TABLE IF NOT EXISTS ayah_bookmark(
   UNIQUE(sura, ayah)
 );
 
-CREATE INDEX IF NOT EXISTS ayah_bookmark_remote_id_idx ON ayah_bookmark(remote_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ayah_bookmark_remote_id_idx ON ayah_bookmark(remote_id);
+CREATE INDEX IF NOT EXISTS ayah_bookmark_active_modified_idx
+ON ayah_bookmark(deleted, modified_at DESC);
+CREATE INDEX IF NOT EXISTS ayah_bookmark_unsynced_created_idx
+ON ayah_bookmark(created_at DESC)
+WHERE remote_id IS NULL OR is_edited = 1 OR deleted = 1;
 
 getBookmarks:
-  SELECT * FROM ayah_bookmark WHERE deleted = 0 ORDER BY created_at DESC;
+  SELECT * FROM ayah_bookmark WHERE deleted = 0 ORDER BY modified_at DESC;
 
 countAll:
   SELECT COUNT(*) FROM ayah_bookmark;

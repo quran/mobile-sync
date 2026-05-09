@@ -21,13 +21,24 @@ CREATE TABLE IF NOT EXISTS reading_bookmark(
   UNIQUE(bookmark_type, page)
 );
 
-CREATE INDEX IF NOT EXISTS reading_bookmark_remote_id_idx ON reading_bookmark(remote_id);
+CREATE UNIQUE INDEX IF NOT EXISTS reading_bookmark_remote_id_idx ON reading_bookmark(remote_id);
+CREATE INDEX IF NOT EXISTS reading_bookmark_active_modified_idx
+ON reading_bookmark(deleted, modified_at DESC);
+CREATE INDEX IF NOT EXISTS reading_bookmark_unsynced_modified_idx
+ON reading_bookmark(modified_at DESC)
+WHERE remote_id IS NULL OR is_edited = 1 OR deleted = 1;
 
 getReadingBookmarks:
   SELECT * FROM reading_bookmark WHERE deleted = 0 ORDER BY modified_at DESC;
 
+getCurrentReadingBookmark:
+  SELECT * FROM reading_bookmark WHERE deleted = 0 ORDER BY modified_at DESC LIMIT 1;
+
 countAll:
   SELECT COUNT(*) FROM reading_bookmark;
+
+countActive:
+  SELECT COUNT(*) FROM reading_bookmark WHERE deleted = 0;
 
 getReadingBookmarkForAyah:
   SELECT * FROM reading_bookmark WHERE bookmark_type = 'AYAH' AND sura = ? AND ayah = ? LIMIT 1;
@@ -209,6 +220,15 @@ deleteReadingBookmark {
   SET deleted = 1,
     is_edited = 1
   WHERE local_id = :id AND remote_id IS NOT NULL;
+}
+
+deleteCurrentReadingBookmarks {
+  DELETE FROM reading_bookmark
+  WHERE deleted = 0 AND remote_id IS NULL;
+  UPDATE reading_bookmark
+  SET deleted = 1,
+    is_edited = 1
+  WHERE deleted = 0 AND remote_id IS NOT NULL;
 }
 
 getUnsyncedReadingBookmarks:
