@@ -52,12 +52,14 @@ flowchart LR
 - Cocoa toolchain for iOS simulator/device builds
 
 Optional but recommended:
-- `local.properties` with OAuth credentials:
+- `local.properties` with OAuth credentials for the Android demo app:
 
 ```properties
 OAUTH_CLIENT_ID=your_client_id
 OAUTH_CLIENT_SECRET=your_client_secret
 ```
+
+Published library artifacts do not embed these credentials. Consuming apps must pass their own client ID and optional client secret when initializing the shared graph.
 
 ## Quick Start
 
@@ -94,7 +96,9 @@ AuthFlowFactoryProvider.initialize(authFactory)
 
 val graph = SharedDependencyGraph.init(
     driverFactory = DriverFactory(context = applicationContext),
-    appEnvironment = AppEnvironment.PRELIVE
+    appEnvironment = AppEnvironment.PRELIVE,
+    clientId = appClientId,
+    clientSecret = appClientSecret
 )
 
 val authService = graph.authService
@@ -117,7 +121,9 @@ final class AppContainer {
         let driverFactory = DriverFactory()
         graph = SharedDependencyGraph.shared.doInit(
             driverFactory: driverFactory,
-            appEnvironment: AppEnvironment.prelive
+            appEnvironment: AppEnvironment.prelive,
+            clientId: appClientId,
+            clientSecret: appClientSecret
         )
     }
 }
@@ -127,6 +133,7 @@ Advanced override for custom endpoints remains available:
 
 ```kotlin
 import com.quran.shared.auth.model.AuthEnvironment
+import com.quran.shared.auth.model.AuthConfig
 import com.quran.shared.syncengine.SynchronizationEnvironment
 
 val graph = SharedDependencyGraph.init(
@@ -134,7 +141,11 @@ val graph = SharedDependencyGraph.init(
     environment = SynchronizationEnvironment(
         endPointURL = "https://custom-sync.example.com/auth"
     ),
-    authEnvironment = AuthEnvironment.PRELIVE
+    authConfig = AuthConfig(
+        environment = AuthEnvironment.PRELIVE,
+        clientId = appClientId,
+        clientSecret = appClientSecret
+    )
 )
 ```
 

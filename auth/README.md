@@ -67,10 +67,15 @@ Coordinates token lifecycles, automated refreshes, and process-death survival by
 3.  Note your **Client ID** and **Client Secret**.
 
 ### 2. 🛠 Configuration
-Update `local.properties`:
-```properties
-OAUTH_CLIENT_ID=your_client_id_here
-OAUTH_CLIENT_SECRET=your_client_secret_here
+Provide the app's OAuth client ID and optional client secret when initializing the shared graph. Credentials are runtime app configuration and are not embedded in the published auth artifact.
+
+```kotlin
+val graph = SharedDependencyGraph.init(
+    driverFactory = driverFactory,
+    appEnvironment = AppEnvironment.PRELIVE,
+    clientId = appClientId,
+    clientSecret = appClientSecret
+)
 ```
 
 ### 3. 📦 Installation

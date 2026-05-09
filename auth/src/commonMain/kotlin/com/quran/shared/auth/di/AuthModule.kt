@@ -1,8 +1,6 @@
 package com.quran.shared.auth.di
 
-import com.quran.shared.auth.model.AuthEnvironment
 import com.quran.shared.auth.model.AuthConfig
-import com.quran.shared.auth.model.defaultAuthConfig
 import com.quran.shared.auth.repository.AuthRepository
 import com.quran.shared.auth.repository.OidcAuthRepository
 import com.quran.shared.di.AppScope
@@ -46,12 +44,6 @@ abstract class AuthModule {
                 explicitNulls = false
                 ignoreUnknownKeys = true
             }
-        }
-
-        @Provides
-        @SingleIn(AppScope::class)
-        fun provideAuthConfig(authEnvironment: AuthEnvironment): AuthConfig {
-            return defaultAuthConfig(authEnvironment)
         }
 
         @Provides

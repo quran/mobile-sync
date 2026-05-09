@@ -1,13 +1,4 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import java.util.Properties
-
-// 1. Load the local.properties file
-val localProperties = Properties().apply {
-    val localPropertiesFile = rootProject.file("local.properties")
-    if (localPropertiesFile.exists()) {
-        localPropertiesFile.inputStream().use { load(it) }
-    }
-}
 
 // 2. Resolve build type from BuildKonfig flavor only.
 // Define the default flavor in gradle.properties and override with -Pbuildkonfig.flavor=release in CI/release.
@@ -26,12 +17,6 @@ buildkonfig {
     packageName = "com.quran.shared.auth"
 
     defaultConfigs {
-        // Read from local.properties, provide a fallback for CI/CD environments
-        val clientId = localProperties.getProperty("OAUTH_CLIENT_ID") ?: ""
-        val clientSecret = localProperties.getProperty("OAUTH_CLIENT_SECRET") ?: ""
-
-        buildConfigField(com.codingfeline.buildkonfig.compiler.FieldSpec.Type.STRING, "CLIENT_ID", clientId)
-        buildConfigField(com.codingfeline.buildkonfig.compiler.FieldSpec.Type.STRING, "CLIENT_SECRET", clientSecret)
         buildConfigField(com.codingfeline.buildkonfig.compiler.FieldSpec.Type.STRING, "BUILD_TYPE", resolvedBuildType)
         buildConfigField(com.codingfeline.buildkonfig.compiler.FieldSpec.Type.BOOLEAN, "IS_DEBUG", isDebugBuild.toString())
     }

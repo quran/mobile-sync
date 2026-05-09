@@ -24,6 +24,15 @@ data class AuthConfig(
     val postLogoutRedirectUri: String = "com.quran.oauth://callback",
     val scopes: List<String> = listOf("openid", "offline_access", "content", "user", "bookmark", "sync", "collection", "reading_session", "preference", "note")
 ) {
+    init {
+        require(clientId.isNotBlank()) {
+            "Auth clientId must be provided by the consuming app."
+        }
+        require(clientSecret == null || clientSecret.isNotBlank()) {
+            "Auth clientSecret must be null or non-blank."
+        }
+    }
+
     val baseUrl: String = environment.baseUrl
     val authorizationEndpoint = "$baseUrl/oauth2/auth"
     val tokenEndpoint = "$baseUrl/oauth2/token"
@@ -34,12 +43,4 @@ data class AuthConfig(
 
 fun defaultAuthEnvironment(): AuthEnvironment {
     return if (BuildKonfig.IS_DEBUG) AuthEnvironment.PRELIVE else AuthEnvironment.PRODUCTION
-}
-
-fun defaultAuthConfig(environment: AuthEnvironment = defaultAuthEnvironment()): AuthConfig {
-    return AuthConfig(
-        environment = environment,
-        clientId = BuildKonfig.CLIENT_ID,
-        clientSecret = BuildKonfig.CLIENT_SECRET
-    )
 }

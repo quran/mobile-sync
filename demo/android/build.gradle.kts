@@ -1,3 +1,16 @@
+import java.util.Properties
+
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use { load(it) }
+    }
+}
+
+fun String.toBuildConfigString(): String {
+    return "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+}
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.metro)
@@ -12,6 +25,16 @@ android {
         minSdk = 23
         targetSdk = 36
         manifestPlaceholders["oidcRedirectScheme"] = "com.quran.oauth"
+        buildConfigField(
+            "String",
+            "OAUTH_CLIENT_ID",
+            (localProperties.getProperty("OAUTH_CLIENT_ID") ?: "").toBuildConfigString()
+        )
+        buildConfigField(
+            "String",
+            "OAUTH_CLIENT_SECRET",
+            (localProperties.getProperty("OAUTH_CLIENT_SECRET") ?: "").toBuildConfigString()
+        )
     }
 
     compileOptions {
@@ -19,7 +42,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    buildFeatures.compose = true
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 }
 
 dependencies {

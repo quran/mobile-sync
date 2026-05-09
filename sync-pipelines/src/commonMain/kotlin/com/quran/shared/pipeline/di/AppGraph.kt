@@ -1,8 +1,7 @@
 package com.quran.shared.pipeline.di
 
 import com.quran.shared.auth.di.AuthModule
-import com.quran.shared.auth.model.AuthEnvironment
-import com.quran.shared.auth.model.defaultAuthEnvironment
+import com.quran.shared.auth.model.AuthConfig
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.DriverFactory
@@ -53,7 +52,7 @@ interface AppGraph {
         fun create(
             @Provides driverFactory: DriverFactory,
             @Provides environment: SynchronizationEnvironment,
-            @Provides authEnvironment: AuthEnvironment
+            @Provides authConfig: AuthConfig
         ): AppGraph
     }
 }
@@ -67,22 +66,42 @@ object SharedDependencyGraph {
     private fun doInit(
         driverFactory: DriverFactory,
         environment: SynchronizationEnvironment,
-        authEnvironment: AuthEnvironment
+        authConfig: AuthConfig
     ): AppGraph {
         return createGraphFactory<AppGraph.Factory>()
-            .create(driverFactory, environment, authEnvironment)
+            .create(driverFactory, environment, authConfig)
             .also { instance = it }
     }
 
     @OptIn(InternalCoroutinesApi::class)
     fun init(
         driverFactory: DriverFactory,
-        appEnvironment: AppEnvironment = defaultAppEnvironment()
+        clientId: String,
+        clientSecret: String? = null
+    ): AppGraph {
+        return init(
+            driverFactory = driverFactory,
+            appEnvironment = defaultAppEnvironment(),
+            clientId = clientId,
+            clientSecret = clientSecret
+        )
+    }
+
+    @OptIn(InternalCoroutinesApi::class)
+    fun init(
+        driverFactory: DriverFactory,
+        appEnvironment: AppEnvironment,
+        clientId: String,
+        clientSecret: String? = null
     ): AppGraph {
         return init(
             driverFactory = driverFactory,
             environment = appEnvironment.synchronizationEnvironment(),
-            authEnvironment = appEnvironment.authEnvironment
+            authConfig = AuthConfig(
+                environment = appEnvironment.authEnvironment,
+                clientId = clientId,
+                clientSecret = clientSecret
+            )
         )
     }
 
@@ -90,10 +109,10 @@ object SharedDependencyGraph {
     fun init(
         driverFactory: DriverFactory,
         environment: SynchronizationEnvironment,
-        authEnvironment: AuthEnvironment = defaultAuthEnvironment()
+        authConfig: AuthConfig
     ): AppGraph {
         return instance ?: synchronized(lock) {
-            instance ?: doInit(driverFactory, environment, authEnvironment)
+            instance ?: doInit(driverFactory, environment, authConfig)
         }
     }
 }
