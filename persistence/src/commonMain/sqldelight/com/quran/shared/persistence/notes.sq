@@ -111,3 +111,12 @@ checkRemoteIDsExistence:
 
 deleteAll:
   DELETE FROM note;
+
+deleteUnsyncedNotes:
+  DELETE FROM note WHERE remote_id IS NULL;
+
+markRemoteNotesDeleted:
+  UPDATE note
+  SET deleted = 1,
+    modified_at = :modified_at
+  WHERE remote_id IS NOT NULL;

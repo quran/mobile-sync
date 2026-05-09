@@ -6,11 +6,20 @@ import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
 
 interface PersistenceImportRepository {
     /**
-     * Imports a complete local data set into an empty persistence database.
+     * Imports a local data set into the persistence database.
      *
-     * The import is all-or-nothing. If any managed persistence table already has rows,
-     * or the payload is invalid, no import rows are persisted.
+     * The import is all-or-nothing. If [deleteExisting] is true, existing rows are
+     * deleted first using sync-aware deletion semantics before the payload is merged.
+     * If [deleteExisting] is false, the payload is merged into the current data.
      */
     @NativeCoroutines
-    suspend fun importData(data: PersistenceImportData): PersistenceImportResult
+    suspend fun importData(data: PersistenceImportData): PersistenceImportResult {
+        return importData(data = data, deleteExisting = false)
+    }
+
+    @NativeCoroutines
+    suspend fun importData(
+        data: PersistenceImportData,
+        deleteExisting: Boolean
+    ): PersistenceImportResult
 }

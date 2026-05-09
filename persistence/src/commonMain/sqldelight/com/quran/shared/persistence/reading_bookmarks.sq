@@ -75,8 +75,15 @@ addPageReadingBookmark {
     WHERE bookmark_type = 'PAGE' AND page = :page;
 }
 
-insertImportedAyahReadingBookmark:
-  INSERT INTO reading_bookmark (
+insertImportedAyahReadingBookmark {
+  DELETE FROM reading_bookmark
+  WHERE deleted = 0 AND remote_id IS NULL;
+  UPDATE reading_bookmark
+  SET deleted = 1,
+    is_edited = 1,
+    modified_at = :modified_at
+  WHERE deleted = 0 AND remote_id IS NOT NULL;
+  INSERT OR IGNORE INTO reading_bookmark (
     remote_id,
     bookmark_type,
     sura,
@@ -98,9 +105,30 @@ insertImportedAyahReadingBookmark:
     :modified_at,
     0
   );
+  UPDATE reading_bookmark
+  SET deleted = 0,
+    is_edited = CASE
+      WHEN remote_id IS NULL THEN 0
+      WHEN deleted = 1 THEN 0
+      ELSE is_edited
+    END,
+    modified_at = CASE
+      WHEN remote_id IS NULL THEN :modified_at
+      WHEN deleted = 1 THEN :modified_at
+      ELSE modified_at
+    END
+  WHERE bookmark_type = 'AYAH' AND sura = :sura AND ayah = :ayah;
+}
 
-insertImportedPageReadingBookmark:
-  INSERT INTO reading_bookmark (
+insertImportedPageReadingBookmark {
+  DELETE FROM reading_bookmark
+  WHERE deleted = 0 AND remote_id IS NULL;
+  UPDATE reading_bookmark
+  SET deleted = 1,
+    is_edited = 1,
+    modified_at = :modified_at
+  WHERE deleted = 0 AND remote_id IS NOT NULL;
+  INSERT OR IGNORE INTO reading_bookmark (
     remote_id,
     bookmark_type,
     sura,
@@ -122,6 +150,20 @@ insertImportedPageReadingBookmark:
     :modified_at,
     0
   );
+  UPDATE reading_bookmark
+  SET deleted = 0,
+    is_edited = CASE
+      WHEN remote_id IS NULL THEN 0
+      WHEN deleted = 1 THEN 0
+      ELSE is_edited
+    END,
+    modified_at = CASE
+      WHEN remote_id IS NULL THEN :modified_at
+      WHEN deleted = 1 THEN :modified_at
+      ELSE modified_at
+    END
+  WHERE bookmark_type = 'PAGE' AND page = :page;
+}
 
 deleteReadingBookmark {
   DELETE FROM reading_bookmark WHERE local_id = :id AND remote_id IS NULL;
@@ -209,3 +251,13 @@ checkRemoteIDsExistence:
 
 deleteAll:
   DELETE FROM reading_bookmark;
+
+deleteUnsyncedReadingBookmarks:
+  DELETE FROM reading_bookmark WHERE remote_id IS NULL;
+
+markRemoteReadingBookmarksDeleted:
+  UPDATE reading_bookmark
+  SET deleted = 1,
+    is_edited = 1,
+    modified_at = :modified_at
+  WHERE remote_id IS NOT NULL;

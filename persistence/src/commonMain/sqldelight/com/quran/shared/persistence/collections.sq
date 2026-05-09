@@ -37,8 +37,8 @@ addNewCollection {
   WHERE name = :name;
 }
 
-insertImportedCollection:
-  INSERT INTO collection (
+insertImportedCollection {
+  INSERT OR IGNORE INTO collection (
     remote_id,
     name,
     created_at,
@@ -54,6 +54,20 @@ insertImportedCollection:
     0,
     0
   );
+  UPDATE collection
+  SET deleted = 0,
+    is_edited = CASE
+      WHEN remote_id IS NULL THEN 0
+      WHEN deleted = 1 THEN 0
+      ELSE is_edited
+    END,
+    modified_at = CASE
+      WHEN remote_id IS NULL THEN :modified_at
+      WHEN deleted = 1 THEN :modified_at
+      ELSE modified_at
+    END
+  WHERE name = :name;
+}
 
 updateCollectionName:
   UPDATE collection
@@ -115,3 +129,13 @@ checkRemoteIDsExistence:
 
 deleteAll:
   DELETE FROM collection;
+
+deleteUnsyncedCollections:
+  DELETE FROM collection WHERE remote_id IS NULL;
+
+markRemoteCollectionsDeleted:
+  UPDATE collection
+  SET deleted = 1,
+    is_edited = 1,
+    modified_at = :modified_at
+  WHERE remote_id IS NOT NULL;

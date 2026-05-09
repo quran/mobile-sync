@@ -187,8 +187,22 @@ class SyncService(
 
     @NativeCoroutines
     suspend fun importData(data: PersistenceImportData): PersistenceImportResult {
+        return importData(
+            data = data,
+            deleteExisting = false
+        )
+    }
+
+    @NativeCoroutines
+    suspend fun importData(
+        data: PersistenceImportData,
+        deleteExisting: Boolean
+    ): PersistenceImportResult {
         try {
-            val result = persistenceImportRepository.importData(data)
+            val result = persistenceImportRepository.importData(
+                data = data,
+                deleteExisting = deleteExisting
+            )
             triggerSync()
             return result
         } catch (e: Exception) {
