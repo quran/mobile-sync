@@ -10,6 +10,7 @@ import com.quran.shared.persistence.TestDatabaseDriver
 import com.quran.shared.persistence.input.RemoteBookmark
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepositoryImpl
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksSynchronizationRepository
+import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepositoryImpl
 import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toPlatform
@@ -77,6 +78,79 @@ class BookmarksRepositoryTest {
 
         assertTrue(repository.deleteBookmark(2, 255))
         assertTrue(repository.getAllBookmarks().isEmpty())
+    }
+
+    @Test
+    fun `deleteBookmark with model removes local-only collection links`() = runTest {
+        database.collectionsQueries.addNewCollection(name = "First", timestamp = null)
+        database.collectionsQueries.addNewCollection(name = "Second", timestamp = null)
+        val firstCollection = database.collectionsQueries.getCollectionByName("First").executeAsOne()
+        val secondCollection = database.collectionsQueries.getCollectionByName("Second").executeAsOne()
+        val bookmark = repository.addBookmark(2, 255)
+        database.bookmark_collectionsQueries.addBookmarkToCollection(
+            bookmark_local_id = bookmark.localId,
+            bookmark_type = "AYAH",
+            collection_local_id = firstCollection.local_id,
+            timestamp = null
+        )
+        database.bookmark_collectionsQueries.addBookmarkToCollection(
+            bookmark_local_id = bookmark.localId,
+            bookmark_type = "AYAH",
+            collection_local_id = secondCollection.local_id,
+            timestamp = null
+        )
+
+        assertTrue(repository.deleteBookmark(bookmark))
+
+        assertNull(database.ayah_bookmarksQueries.getBookmarkForAyah(2L, 255L).executeAsOneOrNull())
+        assertEquals(0L, database.bookmark_collectionsQueries.countAll().executeAsOne())
+    }
+
+    @Test
+    fun `deleteBookmark with local id tombstones remote-backed collection links`() = runTest {
+        database.collectionsQueries.addNewCollection(name = "RemoteCollection", timestamp = null)
+        val collection = database.collectionsQueries.getCollectionByName("RemoteCollection").executeAsOne()
+        database.collectionsQueries.updateRemoteCollectionByLocalId(
+            remote_id = "remote-collection-id",
+            name = collection.name,
+            modified_at = 1L,
+            local_id = collection.local_id
+        )
+        database.ayah_bookmarksQueries.persistRemoteBookmark(
+            remote_id = "remote-bookmark-id",
+            ayah_id = QuranData.getAyahId(2, 255).toLong(),
+            sura = 2L,
+            ayah = 255L,
+            created_at = 1L,
+            modified_at = 1L
+        )
+        val bookmark = database.ayah_bookmarksQueries.getBookmarkForAyah(2L, 255L).executeAsOne()
+        database.bookmark_collectionsQueries.addBookmarkToCollection(
+            bookmark_local_id = bookmark.local_id.toString(),
+            bookmark_type = "AYAH",
+            collection_local_id = collection.local_id,
+            timestamp = null
+        )
+        database.bookmark_collectionsQueries.persistRemoteBookmarkCollection(
+            remote_id = "remote-collection-bookmark-id",
+            bookmark_local_id = bookmark.local_id.toString(),
+            bookmark_type = "AYAH",
+            collection_local_id = collection.local_id,
+            created_at = 1L,
+            modified_at = 1L
+        )
+
+        assertTrue(repository.deleteBookmark(bookmark.local_id.toString()))
+
+        val link = database.bookmark_collectionsQueries
+            .getCollectionBookmarkFor(bookmark.local_id.toString(), collection.local_id)
+            .executeAsOne()
+        val collectionBookmarkRepository = CollectionBookmarksRepositoryImpl(database)
+        val mutations = collectionBookmarkRepository.fetchMutatedCollectionBookmarks()
+
+        assertEquals(1L, link.deleted)
+        assertEquals(Mutation.DELETED, mutations.single().mutation)
+        assertEquals("remote-collection-bookmark-id", mutations.single().remoteID)
     }
 
     @Test

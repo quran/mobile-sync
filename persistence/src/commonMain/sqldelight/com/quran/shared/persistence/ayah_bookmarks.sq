@@ -144,12 +144,12 @@ clearLocalMutationFor {
 checkRemoteIDsExistence:
   SELECT remote_id FROM ayah_bookmark WHERE remote_id IN :queried_ids;
 
-deleteBookmark {
-  DELETE FROM ayah_bookmark WHERE sura=:sura AND ayah=:ayah AND remote_id IS NULL;
+deleteBookmarkByLocalId {
+  DELETE FROM ayah_bookmark WHERE local_id=:local_id AND remote_id IS NULL;
   UPDATE ayah_bookmark
   SET deleted = 1,
     is_edited = 1
-  WHERE sura=:sura AND ayah=:ayah AND remote_id IS NOT NULL;
+  WHERE local_id=:local_id AND remote_id IS NOT NULL;
 }
 
 deleteAll:
