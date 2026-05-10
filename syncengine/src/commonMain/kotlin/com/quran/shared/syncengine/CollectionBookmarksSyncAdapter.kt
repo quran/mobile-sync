@@ -2,6 +2,7 @@ package com.quran.shared.syncengine
 
 import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.LocalModelMutation
+import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.syncengine.conflict.CollectionBookmarksConflictDetector
 import com.quran.shared.syncengine.conflict.CollectionBookmarksConflictResolver
@@ -22,7 +23,7 @@ import kotlin.time.Instant
 
 internal class CollectionBookmarksSyncAdapter(
     private val configurations: CollectionBookmarksSynchronizationConfigurations
-) : SyncResourceAdapter {
+) : SyncResourceAdapter, PreDependencyDeletionSyncResourceAdapter {
 
     override val resourceName: String = "COLLECTION_BOOKMARK"
     override val localModificationDateFetcher: LocalModificationDateFetcher =
@@ -69,6 +70,40 @@ internal class CollectionBookmarksSyncAdapter(
             localMutationsToClear = localMutations,
             remoteMutationsToPersist = mutationsToPersist,
             localMutationsToPush = mutationsToPush
+        )
+    }
+
+    override suspend fun buildPreDependencyDeletionPlan(
+        lastModificationDate: Long,
+        remoteMutations: List<SyncMutation>
+    ): ResourceSyncPlan? {
+        val localMutations = configurations.localDataFetcher.fetchLocalMutations(lastModificationDate)
+            .filter { mutation -> mutation.mutation == Mutation.DELETED }
+        if (localMutations.isEmpty()) {
+            return null
+        }
+
+        logger.i {
+            "Local deletion mutations fetched for pre-dependency $resourceName phase: " +
+                "lastModificationDate=$lastModificationDate, localMutations=${localMutations.size}"
+        }
+
+        val parsedRemote = parseRemoteMutations(remoteMutations)
+        val preprocessedRemote = preprocessRemoteMutations(parsedRemote)
+        val conflictDetection = detectConflicts(preprocessedRemote, localMutations)
+        val localMutationsToPush = conflictDetection.nonConflictingLocalMutations
+        if (localMutationsToPush.isEmpty()) {
+            logger.d {
+                "No non-conflicting deletion mutations for pre-dependency $resourceName phase: " +
+                    "conflicts=${conflictDetection.conflicts.size}"
+            }
+            return null
+        }
+
+        return CollectionBookmarksResourceSyncPlan(
+            localMutationsToClear = localMutationsToPush,
+            remoteMutationsToPersist = emptyList(),
+            localMutationsToPush = localMutationsToPush
         )
     }
 

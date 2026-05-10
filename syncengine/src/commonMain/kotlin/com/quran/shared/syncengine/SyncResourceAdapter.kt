@@ -21,3 +21,10 @@ interface ResourceSyncPlan {
 
     suspend fun complete(newToken: Long, pushedMutations: List<SyncMutation>)
 }
+
+internal interface PreDependencyDeletionSyncResourceAdapter : SyncResourceAdapter {
+    suspend fun buildPreDependencyDeletionPlan(
+        lastModificationDate: Long,
+        remoteMutations: List<SyncMutation>
+    ): ResourceSyncPlan?
+}
