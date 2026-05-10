@@ -34,10 +34,26 @@ interface BookmarksRepository {
     suspend fun addBookmark(sura: Int, ayah: Int, timestamp: PlatformDateTime): AyahBookmark
 
     /**
-     * Delete a bookmark for a specific sura and ayah.
+     * Delete a bookmark for a specific sura and ayah, including any collection links.
      *
      * @return a boolean denoting success
      */
     @NativeCoroutines
     suspend fun deleteBookmark(sura: Int, ayah: Int): Boolean
+
+    /**
+     * Delete a bookmark, including any collection links.
+     *
+     * @return a boolean denoting success
+     */
+    @NativeCoroutines
+    suspend fun deleteBookmark(bookmark: AyahBookmark): Boolean
+
+    /**
+     * Delete a bookmark by local ID, including any collection links.
+     *
+     * @return a boolean denoting success
+     */
+    @NativeCoroutines
+    suspend fun deleteBookmark(localId: String): Boolean
 }

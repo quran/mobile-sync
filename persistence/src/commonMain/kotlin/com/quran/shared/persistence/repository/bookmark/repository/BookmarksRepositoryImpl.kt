@@ -33,6 +33,7 @@ class BookmarksRepositoryImpl(
 
     private val logger = Logger.withTag("BookmarksRepository")
     private val ayahBookmarkQueries = lazy { database.ayah_bookmarksQueries }
+    private val bookmarkCollectionQueries = lazy { database.bookmark_collectionsQueries }
 
     override suspend fun getAllBookmarks(): List<AyahBookmark> {
         return withContext(Dispatchers.IO) {
@@ -83,12 +84,44 @@ class BookmarksRepositoryImpl(
     override suspend fun deleteBookmark(sura: Int, ayah: Int): Boolean {
         logger.i { "Deleting ayah bookmark for $sura:$ayah" }
         withContext(Dispatchers.IO) {
-            ayahBookmarkQueries.value.deleteBookmark(
-                sura = sura.toLong(),
-                ayah = ayah.toLong()
-            )
+            database.transaction {
+                val bookmark = ayahBookmarkQueries.value
+                    .getBookmarkForAyah(sura.toLong(), ayah.toLong())
+                    .executeAsOneOrNull()
+                if (bookmark != null) {
+                    deleteBookmarkByLocalIdInTransaction(bookmark.local_id.toString())
+                }
+            }
         }
         return true
+    }
+
+    override suspend fun deleteBookmark(bookmark: AyahBookmark): Boolean {
+        logger.i { "Deleting ayah bookmark for ${bookmark.sura}:${bookmark.ayah}" }
+        return deleteBookmarkWithLocalId(bookmark.localId)
+    }
+
+    override suspend fun deleteBookmark(localId: String): Boolean {
+        logger.i { "Deleting ayah bookmark localId=$localId" }
+        return deleteBookmarkWithLocalId(localId)
+    }
+
+    private suspend fun deleteBookmarkWithLocalId(localId: String): Boolean {
+        withContext(Dispatchers.IO) {
+            database.transaction {
+                deleteBookmarkByLocalIdInTransaction(localId)
+            }
+        }
+        return true
+    }
+
+    private fun deleteBookmarkByLocalIdInTransaction(localId: String) {
+        bookmarkCollectionQueries.value.deleteBookmarkFromAllCollections(
+            bookmark_local_id = localId
+        )
+        ayahBookmarkQueries.value.deleteBookmarkByLocalId(
+            local_id = localId.toLong()
+        )
     }
 
     override suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<AyahBookmark>> {

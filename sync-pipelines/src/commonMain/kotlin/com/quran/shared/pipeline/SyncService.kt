@@ -335,7 +335,7 @@ class SyncService(
     @NativeCoroutines
     suspend fun deleteBookmark(bookmark: AyahBookmark) {
         try {
-            bookmarksRepository.deleteBookmark(bookmark.sura, bookmark.ayah)
+            bookmarksRepository.deleteBookmark(bookmark)
             triggerSync()
         } catch (e: Exception) {
             Logger.e(e) { "Failed to delete bookmark" }

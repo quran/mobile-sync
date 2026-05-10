@@ -177,6 +177,16 @@ deleteBookmarkFromCollection {
     AND remote_id IS NOT NULL;
 }
 
+deleteBookmarkFromAllCollections {
+  DELETE FROM bookmark_collection
+  WHERE bookmark_local_id = :bookmark_local_id
+    AND remote_id IS NULL;
+  UPDATE bookmark_collection
+  SET deleted = 1
+  WHERE bookmark_local_id = :bookmark_local_id
+    AND remote_id IS NOT NULL;
+}
+
 getUnsyncedCollectionBookmarks:
   SELECT * FROM bookmark_collection
   WHERE remote_id IS NULL OR deleted = 1
