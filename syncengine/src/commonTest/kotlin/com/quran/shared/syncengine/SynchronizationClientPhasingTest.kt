@@ -10,6 +10,85 @@ import kotlin.test.assertFailsWith
 class SynchronizationClientPhasingTest {
 
     @Test
+    fun `collection bookmark deletions are pushed before primary resources`() = runTest {
+        val events = mutableListOf<String>()
+        val pushedMutations = mutableListOf<List<SyncMutation>>()
+        val pushedTokens = mutableListOf<Long>()
+        var preDependencyDeleteCompleted = false
+
+        val bookmarkAdapter = RecordingAdapter(
+            resourceName = "BOOKMARK",
+            events = events,
+            onBuild = {
+                assertEquals(
+                    true,
+                    preDependencyDeleteCompleted,
+                    "Bookmark planning should run after collection bookmark deletions complete."
+                )
+            },
+            onSyncComplete = { token -> events += "sync-complete-BOOKMARK-$token" }
+        )
+        val collectionBookmarkAdapter = RecordingAdapter(
+            resourceName = "COLLECTION_BOOKMARK",
+            events = events,
+            preDependencyDeletionMutation = SyncMutation(
+                resource = "COLLECTION_BOOKMARK",
+                resourceId = "remote-collection-bookmark-1",
+                mutation = Mutation.DELETED,
+                data = null,
+                timestamp = null
+            ),
+            onPreDependencyDeletionComplete = {
+                preDependencyDeleteCompleted = true
+            },
+            onSyncComplete = { token -> events += "sync-complete-COLLECTION_BOOKMARK-$token" }
+        )
+
+        executeDependencyAwareSync(
+            resourceAdapters = listOf(
+                bookmarkAdapter,
+                collectionBookmarkAdapter
+            ),
+            initialLastModificationDate = 1L,
+            remoteResponse = MutationsResponse(
+                lastModificationDate = 10L,
+                mutations = emptyList()
+            ),
+            pushMutations = { mutations, mutationToken ->
+                pushedTokens += mutationToken
+                pushedMutations += mutations
+                MutationsResponse(
+                    lastModificationDate = mutationToken + 1,
+                    mutations = mutations.mapIndexed { index, mutation ->
+                        mutation.copy(resourceId = mutation.resourceId ?: "${mutation.resource.lowercase()}-$index")
+                    }
+                )
+            }
+        )
+
+        assertEquals(
+            listOf(
+                "build-pre-COLLECTION_BOOKMARK",
+                "complete-pre-COLLECTION_BOOKMARK-1",
+                "build-BOOKMARK",
+                "complete-BOOKMARK-1",
+                "build-COLLECTION_BOOKMARK",
+                "complete-COLLECTION_BOOKMARK-1",
+                "sync-complete-BOOKMARK-10",
+                "sync-complete-COLLECTION_BOOKMARK-10"
+            ),
+            events
+        )
+        assertEquals(listOf(10L, 11L, 12L), pushedTokens)
+        assertEquals(listOf("COLLECTION_BOOKMARK"), pushedMutations[0].map { it.resource })
+        assertEquals(listOf(Mutation.DELETED), pushedMutations[0].map { it.mutation })
+        assertEquals(listOf("BOOKMARK"), pushedMutations[1].map { it.resource })
+        assertEquals(listOf(Mutation.CREATED), pushedMutations[1].map { it.mutation })
+        assertEquals(listOf("COLLECTION_BOOKMARK"), pushedMutations[2].map { it.resource })
+        assertEquals(listOf(Mutation.CREATED), pushedMutations[2].map { it.mutation })
+    }
+
+    @Test
     fun `collection bookmark plan is built after primary resources complete`() = runTest {
         val events = mutableListOf<String>()
         var completedPrimaryResources = 0
@@ -170,12 +249,29 @@ private class RecordingAdapter(
     private val events: MutableList<String>,
     private val onBuild: () -> Unit = {},
     private val onComplete: () -> Unit = {},
-    private val onSyncComplete: (Long) -> Unit = {}
-) : SyncResourceAdapter {
+    private val onSyncComplete: (Long) -> Unit = {},
+    private val preDependencyDeletionMutation: SyncMutation? = null,
+    private val onPreDependencyDeletionComplete: () -> Unit = {}
+) : SyncResourceAdapter, PreDependencyDeletionSyncResourceAdapter {
     override val localModificationDateFetcher: LocalModificationDateFetcher =
         object : LocalModificationDateFetcher {
             override suspend fun localLastModificationDate(): Long = 0L
         }
+
+    override suspend fun buildPreDependencyDeletionPlan(
+        lastModificationDate: Long,
+        remoteMutations: List<SyncMutation>
+    ): ResourceSyncPlan? {
+        val mutation = preDependencyDeletionMutation ?: return null
+        events += "build-pre-$resourceName"
+        return RecordingPlan(
+            resourceName = resourceName,
+            events = events,
+            onComplete = onPreDependencyDeletionComplete,
+            eventName = "pre-$resourceName",
+            mutation = mutation
+        )
+    }
 
     override suspend fun buildPlan(
         lastModificationDate: Long,
@@ -196,21 +292,21 @@ private class RecordingAdapter(
 private class RecordingPlan(
     override val resourceName: String,
     private val events: MutableList<String>,
-    private val onComplete: () -> Unit
+    private val onComplete: () -> Unit,
+    private val eventName: String = resourceName,
+    private val mutation: SyncMutation = SyncMutation(
+        resource = resourceName,
+        resourceId = null,
+        mutation = Mutation.CREATED,
+        data = null,
+        timestamp = null
+    )
 ) : ResourceSyncPlan {
     override fun mutationsToPush(): List<SyncMutation> =
-        listOf(
-            SyncMutation(
-                resource = resourceName,
-                resourceId = null,
-                mutation = Mutation.CREATED,
-                data = null,
-                timestamp = null
-            )
-        )
+        listOf(mutation)
 
     override suspend fun complete(newToken: Long, pushedMutations: List<SyncMutation>) {
-        events += "complete-$resourceName-$newToken"
+        events += "complete-$eventName-$newToken"
         onComplete()
     }
 }

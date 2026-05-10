@@ -162,12 +162,17 @@ internal suspend fun executeDependencyAwareSync(
 ) {
     var mutationToken = remoteResponse.lastModificationDate
     val safeCompletionToken = remoteResponse.lastModificationDate
+    val preDependencyDeletionPlans = resourceAdapters
+        .mapNotNull { adapter ->
+            (adapter as? PreDependencyDeletionSyncResourceAdapter)
+                ?.buildPreDependencyDeletionPlan(initialLastModificationDate, remoteResponse.mutations)
+        }
     val phases = resourceAdapters.dependencyAwareSyncPhases()
-    val totalPlans = phases.sumOf { it.size }
+    val totalPlans = phases.sumOf { it.size } + preDependencyDeletionPlans.size
 
-    phases.forEach { phaseAdapters ->
-        val plans = phaseAdapters.map { adapter ->
-            adapter.buildPlan(initialLastModificationDate, remoteResponse.mutations)
+    suspend fun executePlans(plans: List<ResourceSyncPlan>) {
+        if (plans.isEmpty()) {
+            return
         }
 
         val mutationsToPush = plans.flatMap { it.mutationsToPush() }
@@ -180,6 +185,15 @@ internal suspend fun executeDependencyAwareSync(
             val completionToken = if (totalPlans == 1) mutationToken else initialLastModificationDate
             plan.complete(completionToken, pushedForResource)
         }
+    }
+
+    executePlans(preDependencyDeletionPlans)
+
+    phases.forEach { phaseAdapters ->
+        val plans = phaseAdapters.map { adapter ->
+            adapter.buildPlan(initialLastModificationDate, remoteResponse.mutations)
+        }
+        executePlans(plans)
     }
 
     if (totalPlans > 1) {
