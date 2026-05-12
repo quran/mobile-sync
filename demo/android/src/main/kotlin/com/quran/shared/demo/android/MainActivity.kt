@@ -20,7 +20,8 @@ import org.publicvalue.multiplatform.oidc.appsupport.AndroidCodeAuthFlowFactory
  * - Display the authentication screen
  * - Initialize and Start Sync Engine
  *
- * The OIDC library handles all browser launching and redirect handling internally.
+ * The auth module contributes the exported OAuth redirect proxy. The upstream OIDC activity is
+ * kept internal so only in-app browser launch requests can reach it.
  */
 class MainActivity : ComponentActivity() {
     
@@ -32,8 +33,7 @@ class MainActivity : ComponentActivity() {
         val graph = SharedDependencyGraph.init(
             driverFactory = driverFactory,
             appEnvironment = AppEnvironment.PRELIVE,
-            clientId = BuildConfig.OAUTH_CLIENT_ID,
-            clientSecret = BuildConfig.OAUTH_CLIENT_SECRET.takeIf { it.isNotBlank() }
+            clientId = BuildConfig.OAUTH_CLIENT_ID
         )
         
         SyncViewModel(graph.authService, graph.syncService)
