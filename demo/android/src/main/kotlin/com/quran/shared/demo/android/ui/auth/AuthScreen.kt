@@ -240,7 +240,7 @@ fun AuthScreen(
 
 @Composable
 private fun SuccessContent(
-    userInfo: UserInfo,
+    userInfo: UserInfo?,
     bookmarks: List<AyahBookmark>,
     readingBookmark: ReadingBookmark?,
     collectionsWithBookmarks: List<CollectionWithAyahBookmarks>,
@@ -286,11 +286,11 @@ private fun SuccessContent(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
-                    text = "Welcome, ${userInfo.displayName ?: "User"}!",
+                    text = "Welcome, ${userInfo?.displayName ?: "User"}!",
                     style = MaterialTheme.typography.headlineSmall
                 )
 
-                userInfo.email?.let {
+                userInfo?.email?.let {
                     Text(
                         text = it,
                         style = MaterialTheme.typography.bodyMedium,

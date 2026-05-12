@@ -24,11 +24,11 @@ class ResultReceiverTest {
             bookmarksRepository = RecordingBookmarksRepository(events),
             readingBookmarksRepository = RecordingReadingBookmarksRepository(events),
             callback = object : SyncEngineCallback {
-                override fun synchronizationDone(newLastModificationDate: Long) {
+                override suspend fun synchronizationDone(newLastModificationDate: Long) {
                     events += "done-$newLastModificationDate"
                 }
 
-                override fun encounteredError(errorMsg: String) {
+                override suspend fun encounteredError(errorMsg: String) {
                     events += "error-$errorMsg"
                 }
             }
@@ -63,8 +63,8 @@ class ResultReceiverTest {
                 remoteUpdates = readingUpdates
             ),
             callback = object : SyncEngineCallback {
-                override fun synchronizationDone(newLastModificationDate: Long) = Unit
-                override fun encounteredError(errorMsg: String) = Unit
+                override suspend fun synchronizationDone(newLastModificationDate: Long) = Unit
+                override suspend fun encounteredError(errorMsg: String) = Unit
             }
         )
 

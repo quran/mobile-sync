@@ -14,6 +14,8 @@ import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.header
 import io.ktor.http.HttpHeaders
 import kotlin.io.encoding.Base64
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.publicvalue.multiplatform.oidc.OpenIdConnectClient
 import org.publicvalue.multiplatform.oidc.types.remote.AccessTokenResponse
 
@@ -30,6 +32,7 @@ class OidcAuthRepository @Inject constructor(
 ) : AuthRepository {
 
     private var isExchangingToken = false
+    private val refreshMutex = Mutex()
 
     // Safety margin to refresh tokens before they actually expire (5 minutes)
     private val REFRESH_SAFETY_MARGIN_MS = 5 * 60_000
@@ -42,7 +45,10 @@ class OidcAuthRepository @Inject constructor(
     }
 
     override suspend fun getAuthHeaders(): Map<String, String> {
-        refreshTokensIfNeeded()
+        if (!refreshTokensIfNeeded()) {
+            return emptyMap()
+        }
+
         val token = getAccessToken()
         return if (token != null) {
             mapOf(
@@ -76,7 +82,7 @@ class OidcAuthRepository @Inject constructor(
                 },
                 configureTokenExchange = configureTokenExchange
             )
-            handleTokenResponse(response)
+            handleTokenResponse(response, replaceSession = true)
         } catch (e: Exception) {
             logger.e(e) { "Login failed" }
             throw e
@@ -86,27 +92,39 @@ class OidcAuthRepository @Inject constructor(
     }
 
     override suspend fun refreshTokensIfNeeded(): Boolean {
-        val refreshToken = authStorage.retrieveStoredRefreshToken() ?: return false
-        val expirationTime = authStorage.retrieveTokenExpiration()
-        val currentTime = currentTimeMillis()
+        return refreshMutex.withLock {
+            if (authStorage.retrieveStoredAccessToken() == null) {
+                return@withLock false
+            }
 
-        // If current time is before the safety window, no refresh needed
-        if (currentTime < expirationTime - REFRESH_SAFETY_MARGIN_MS) {
-            return true
-        }
+            val refreshToken = authStorage.retrieveStoredRefreshToken()
+            val expirationTime = authStorage.retrieveTokenExpiration()
+            val currentTime = currentTimeMillis()
 
-        return try {
-            val response = oidcClient.refreshToken(
-                refreshToken = refreshToken,
-                configure = configureTokenExchange
-            )
-            handleTokenResponse(response)
-            true
-        } catch (e: Exception) {
-            logger.e(e) { "Token refresh failed, clearing session" }
-            // Critical: If refresh fails, session is invalid. Clear everything.
-            authStorage.clearAllTokens()
-            false
+            // If current time is before the safety window, no refresh needed.
+            if (currentTime < expirationTime - REFRESH_SAFETY_MARGIN_MS) {
+                return@withLock true
+            }
+
+            if (refreshToken == null) {
+                logger.e { "Token refresh required but no refresh token is stored, clearing session" }
+                authStorage.clearAllTokens()
+                return@withLock false
+            }
+
+            try {
+                val response = oidcClient.refreshToken(
+                    refreshToken = refreshToken,
+                    configure = configureTokenExchange
+                )
+                handleTokenResponse(response, replaceSession = false)
+                true
+            } catch (e: Exception) {
+                logger.e(e) { "Token refresh failed, clearing session" }
+                // Critical: If refresh fails, session is invalid. Clear everything.
+                authStorage.clearAllTokens()
+                false
+            }
         }
     }
 
@@ -133,13 +151,21 @@ class OidcAuthRepository @Inject constructor(
         authStorage.clearAllTokens()
     }
 
-    override fun getAccessToken(): String? = authStorage.retrieveStoredAccessToken()
-    override fun isLoggedIn(): Boolean = getAccessToken() != null
-    override fun getCurrentUser(): UserInfo? =
+    override suspend fun getAccessToken(): String? = authStorage.retrieveStoredAccessToken()
+    override suspend fun isLoggedIn(): Boolean = getAccessToken() != null
+    override suspend fun getCurrentUser(): UserInfo? =
         authStorage.retrieveUserInfo() ?: tryParseUserFromToken()
 
-    private suspend fun handleTokenResponse(response: AccessTokenResponse) {
-        authStorage.storeTokens(TokenResponse.fromOidc(response))
+    private suspend fun handleTokenResponse(
+        response: AccessTokenResponse,
+        replaceSession: Boolean
+    ) {
+        val tokenResponse = TokenResponse.fromOidc(response)
+        if (replaceSession) {
+            authStorage.storeNewSessionTokens(tokenResponse)
+        } else {
+            authStorage.storeTokens(tokenResponse)
+        }
         fetchAndStoreUserInfo()
     }
 
@@ -154,7 +180,7 @@ class OidcAuthRepository @Inject constructor(
         }
     }
 
-    private fun tryParseUserFromToken(): UserInfo? {
+    private suspend fun tryParseUserFromToken(): UserInfo? {
         val idToken = authStorage.retrieveStoredIdToken() ?: getAccessToken() ?: return null
         return UserInfo.fromJwt(idToken)
     }
@@ -173,7 +199,7 @@ class OidcAuthRepository @Inject constructor(
         try {
             val authFlow = AuthFlowFactoryProvider.factory.createAuthFlow(oidcClient)
             val response = authFlow.continueLogin(configureTokenExchange)
-            handleTokenResponse(response)
+            handleTokenResponse(response, replaceSession = true)
         } finally {
             isExchangingToken = false
         }

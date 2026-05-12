@@ -4,7 +4,6 @@ import com.quran.shared.auth.model.AuthConfig
 import com.quran.shared.auth.repository.AuthRepository
 import com.quran.shared.auth.repository.OidcAuthRepository
 import com.quran.shared.di.AppScope
-import com.russhwolf.settings.Settings
 import dev.zacsweers.metro.Binds
 import dev.zacsweers.metro.BindingContainer
 import dev.zacsweers.metro.ContributesTo
@@ -31,12 +30,6 @@ abstract class AuthModule {
     abstract fun bindAuthRepository(impl: OidcAuthRepository): AuthRepository
 
     companion object {
-        @Provides
-        @SingleIn(AppScope::class)
-        fun provideSettings(): Settings {
-            return Settings()
-        }
-
         @Provides
         @SingleIn(AppScope::class)
         fun provideJson(): Json {

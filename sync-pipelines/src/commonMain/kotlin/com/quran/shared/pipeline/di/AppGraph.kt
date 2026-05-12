@@ -15,6 +15,8 @@ import com.quran.shared.persistence.repository.readingsession.repository.Reading
 import com.quran.shared.pipeline.AppEnvironment
 import com.quran.shared.pipeline.SyncService
 import com.quran.shared.pipeline.defaultAppEnvironment
+import com.quran.shared.pipeline.storage.MobileSyncStorage
+import com.quran.shared.pipeline.storage.MobileSyncStorageModule
 import com.quran.shared.syncengine.SynchronizationEnvironment
 import dev.zacsweers.metro.DependencyGraph
 import dev.zacsweers.metro.Provides
@@ -35,7 +37,7 @@ import kotlin.concurrent.Volatile
  */
 @DependencyGraph(
     AppScope::class,
-    bindingContainers = [PersistenceModule::class, AuthModule::class]
+    bindingContainers = [PersistenceModule::class, AuthModule::class, MobileSyncStorageModule::class]
 )
 interface AppGraph {
     val syncService: SyncService
@@ -51,6 +53,7 @@ interface AppGraph {
     fun interface Factory {
         fun create(
             @Provides driverFactory: DriverFactory,
+            @Provides storage: MobileSyncStorage,
             @Provides environment: SynchronizationEnvironment,
             @Provides authConfig: AuthConfig
         ): AppGraph
@@ -65,22 +68,25 @@ object SharedDependencyGraph {
 
     private fun doInit(
         driverFactory: DriverFactory,
+        storage: MobileSyncStorage,
         environment: SynchronizationEnvironment,
         authConfig: AuthConfig
     ): AppGraph {
         return createGraphFactory<AppGraph.Factory>()
-            .create(driverFactory, environment, authConfig)
+            .create(driverFactory, storage, environment, authConfig)
             .also { instance = it }
     }
 
     @OptIn(InternalCoroutinesApi::class)
     fun init(
         driverFactory: DriverFactory,
+        storage: MobileSyncStorage,
         clientId: String,
         clientSecret: String? = null
     ): AppGraph {
         return init(
             driverFactory = driverFactory,
+            storage = storage,
             appEnvironment = defaultAppEnvironment(),
             clientId = clientId,
             clientSecret = clientSecret
@@ -90,12 +96,14 @@ object SharedDependencyGraph {
     @OptIn(InternalCoroutinesApi::class)
     fun init(
         driverFactory: DriverFactory,
+        storage: MobileSyncStorage,
         appEnvironment: AppEnvironment,
         clientId: String,
         clientSecret: String? = null
     ): AppGraph {
         return init(
             driverFactory = driverFactory,
+            storage = storage,
             environment = appEnvironment.synchronizationEnvironment(),
             authConfig = AuthConfig(
                 environment = appEnvironment.authEnvironment,
@@ -108,11 +116,12 @@ object SharedDependencyGraph {
     @OptIn(InternalCoroutinesApi::class)
     fun init(
         driverFactory: DriverFactory,
+        storage: MobileSyncStorage,
         environment: SynchronizationEnvironment,
         authConfig: AuthConfig
     ): AppGraph {
         return instance ?: synchronized(lock) {
-            instance ?: doInit(driverFactory, environment, authConfig)
+            instance ?: doInit(driverFactory, storage, environment, authConfig)
         }
     }
 }

@@ -61,7 +61,9 @@ kotlin {
             implementation(libs.ktor.client.content.negotiation)
             implementation(libs.ktor.serialization.json)
             implementation(libs.sha2)
-            api(libs.multiplatform.settings.no.arg)
+            api(libs.multiplatform.settings)
+            api(libs.multiplatform.settings.coroutines)
+            api(libs.oidc.tokenstore)
             implementation(libs.kermit)
             implementation(libs.kotlinx.serialization.json)
             api(libs.androidx.lifecycle.viewmodel) // using `api` for better access from swift code
@@ -72,6 +74,7 @@ kotlin {
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.multiplatform.settings.test)
         }
         
         androidMain.dependencies {
@@ -87,6 +90,11 @@ kotlin {
                 implementation(libs.ktor.client.darwin)
             }
         }
+    }
+
+    sourceSets.all {
+        languageSettings.optIn("com.russhwolf.settings.ExperimentalSettingsApi")
+        languageSettings.optIn("org.publicvalue.multiplatform.oidc.ExperimentalOpenIdConnect")
     }
 }
 

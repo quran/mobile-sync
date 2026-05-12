@@ -4,39 +4,37 @@ import com.quran.shared.auth.model.TokenResponse
 import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.auth.utils.currentTimeMillis
 import com.quran.shared.di.AppScope
-import com.russhwolf.settings.Settings
-import com.russhwolf.settings.set
+import com.russhwolf.settings.coroutines.SuspendSettings
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlin.time.Instant
 import kotlinx.serialization.json.Json
+import org.publicvalue.multiplatform.oidc.tokenstore.TokenStore
 
 /**
- * Persists authentication tokens and OAuth state across app restarts.
+ * Persists authentication token material and non-secret session metadata across app restarts.
+ *
+ * OAuth tokens are stored through [TokenStore] so each platform can use its secure storage
+ * implementation. Metadata such as expiry, scope, and cached profile data remains outside the
+ * token store because the OIDC token-store API intentionally owns only token material.
  */
 @SingleIn(AppScope::class)
 class AuthStorage @Inject constructor(
-    private val settings: Settings,
+    private val tokenStore: TokenStore,
+    private val settings: SuspendSettings,
     private val json: Json
 ) {
 
-    fun retrieveStoredAccessToken(): String? = settings.getStringOrNull(KEY_ACCESS_TOKEN)
-    fun retrieveStoredRefreshToken(): String? = settings.getStringOrNull(KEY_REFRESH_TOKEN)
-    fun retrieveStoredIdToken(): String? = settings.getStringOrNull(KEY_ID_TOKEN)
-    fun retrieveStoredScope(): String? = settings.getStringOrNull(KEY_SCOPE)
-    fun retrieveTokenExpiration(): Long = settings.getLong(KEY_TOKEN_EXPIRATION, 0)
+    suspend fun retrieveStoredAccessToken(): String? = tokenStore.getAccessToken()
+    suspend fun retrieveStoredRefreshToken(): String? = tokenStore.getRefreshToken()
+    suspend fun retrieveStoredIdToken(): String? = tokenStore.getIdToken()
+    suspend fun retrieveStoredScope(): String? = settings.getStringOrNull(KEY_SCOPE)
+    suspend fun retrieveTokenExpiration(): Long = settings.getLong(KEY_TOKEN_EXPIRATION, 0)
 
     /**
-     * Retrieves stored code verifier for token exchange (survival after process death).
+     * Retrieves cached user profile data from non-token session metadata.
      */
-    fun retrieveStoredCodeVerifier(): String? = settings.getStringOrNull(KEY_CODE_VERIFIER)
-
-    /**
-     * Retrieves stored state parameter for validation (survival after process death).
-     */
-    fun retrieveStoredState(): String? = settings.getStringOrNull(KEY_STATE)
-
-    fun retrieveUserInfo(): UserInfo? {
+    suspend fun retrieveUserInfo(): UserInfo? {
         val userInfoJson = settings.getStringOrNull(KEY_USER_INFO) ?: return null
         return try {
             json.decodeFromString<UserInfo>(userInfoJson)
@@ -45,7 +43,38 @@ class AuthStorage @Inject constructor(
         }
     }
 
-    fun storeTokens(tokenResponse: TokenResponse) {
+    /**
+     * Stores token response data for an existing session while preserving stable refresh and ID
+     * tokens when a refresh response omits them.
+     *
+     * Some providers return only a new access token during refresh. Passing null directly to
+     * [TokenStore.saveTokens] would remove the previous refresh token, so this method reads the
+     * existing secure token values first and keeps them unless replacements are present.
+     *
+     * @param tokenResponse token response returned from a refresh or same-session update.
+     */
+    suspend fun storeTokens(tokenResponse: TokenResponse) {
+        storeTokens(tokenResponse, preserveExistingTokens = true)
+    }
+
+    /**
+     * Stores token response data for a newly completed interactive login session.
+     *
+     * This intentionally does not preserve existing refresh or ID tokens. A successful login or
+     * login-continuation is a session boundary, so stale identity metadata must be removed before
+     * the new token material is stored.
+     *
+     * @param tokenResponse token response returned from a successful interactive login.
+     */
+    suspend fun storeNewSessionTokens(tokenResponse: TokenResponse) {
+        clearSessionMetadata()
+        storeTokens(tokenResponse, preserveExistingTokens = false)
+    }
+
+    private suspend fun storeTokens(
+        tokenResponse: TokenResponse,
+        preserveExistingTokens: Boolean
+    ) {
         val expirationTime = if (tokenResponse.expiresAt != null) {
             try {
                 Instant.parse(tokenResponse.expiresAt).toEpochMilliseconds()
@@ -55,55 +84,46 @@ class AuthStorage @Inject constructor(
         } else {
             currentTimeMillis() + (tokenResponse.expiresIn * 1000)
         }
+        val refreshToken = tokenResponse.refreshToken
+            ?: if (preserveExistingTokens) tokenStore.getRefreshToken() else null
+        val idToken = tokenResponse.idToken
+            ?: if (preserveExistingTokens) tokenStore.getIdToken() else null
 
-        settings[KEY_ACCESS_TOKEN] = tokenResponse.accessToken
-        tokenResponse.refreshToken?.let { settings[KEY_REFRESH_TOKEN] = it }
-        tokenResponse.idToken?.let { settings[KEY_ID_TOKEN] = it }
-        tokenResponse.scope?.let { settings[KEY_SCOPE] = it }
-        settings[KEY_TOKEN_EXPIRATION] = expirationTime
-        settings[KEY_TOKEN_RETRIEVED_AT] = currentTimeMillis()
+        tokenStore.saveTokens(
+            accessToken = tokenResponse.accessToken,
+            refreshToken = refreshToken,
+            idToken = idToken
+        )
+        tokenResponse.scope?.let { settings.putString(KEY_SCOPE, it) }
+        settings.putLong(KEY_TOKEN_EXPIRATION, expirationTime)
+        settings.putLong(KEY_TOKEN_RETRIEVED_AT, currentTimeMillis())
     }
 
-    fun storeUserInfo(userInfo: UserInfo) {
-        settings[KEY_USER_INFO] = json.encodeToString(userInfo)
+    suspend fun storeUserInfo(userInfo: UserInfo) {
+        settings.putString(KEY_USER_INFO, json.encodeToString(userInfo))
     }
 
     /**
-     * Stores OAuth state (verifier and state) during login flow initiation.
+     * Clears secure token material and non-token auth metadata.
      */
-    fun storeOAuthState(codeVerifier: String, state: String) {
-        settings[KEY_CODE_VERIFIER] = codeVerifier
-        settings[KEY_STATE] = state
+    suspend fun clearAllTokens() {
+        tokenStore.removeAccessToken()
+        tokenStore.removeRefreshToken()
+        tokenStore.removeIdToken()
+        clearSessionMetadata()
     }
 
-    /**
-     * Clears OAuth state after successful or failed callback.
-     */
-    fun clearOAuthState() {
-        settings.remove(KEY_CODE_VERIFIER)
-        settings.remove(KEY_STATE)
-    }
-
-    fun clearAllTokens() {
-        settings.remove(KEY_ACCESS_TOKEN)
-        settings.remove(KEY_REFRESH_TOKEN)
-        settings.remove(KEY_ID_TOKEN)
+    private suspend fun clearSessionMetadata() {
         settings.remove(KEY_SCOPE)
         settings.remove(KEY_USER_INFO)
         settings.remove(KEY_TOKEN_EXPIRATION)
         settings.remove(KEY_TOKEN_RETRIEVED_AT)
-        clearOAuthState()
     }
 
     companion object {
-        private const val KEY_ACCESS_TOKEN = "access_token"
-        private const val KEY_REFRESH_TOKEN = "refresh_token"
-        private const val KEY_ID_TOKEN = "id_token"
         private const val KEY_SCOPE = "scope"
         private const val KEY_TOKEN_EXPIRATION = "token_expiration"
         private const val KEY_TOKEN_RETRIEVED_AT = "token_retrieved_at"
         private const val KEY_USER_INFO = "user_info"
-        private const val KEY_CODE_VERIFIER = "code_verifier"
-        private const val KEY_STATE = "state"
     }
 }

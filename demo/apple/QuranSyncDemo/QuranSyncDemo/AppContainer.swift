@@ -24,9 +24,11 @@ final class AppContainer {
         Shared.AuthFlowFactoryProvider.shared.doInitialize()
 
         let driverFactory = DriverFactory()
+        let storage = AppleMobileSyncStorageFactory.shared.create()
 
         self.graph = SharedDependencyGraph.shared.doInit(
             driverFactory: driverFactory,
+            storage: storage,
             appEnvironment: AppEnvironment.prelive,
             clientId: AuthCredentials.clientId,
             clientSecret: AuthCredentials.clientSecret

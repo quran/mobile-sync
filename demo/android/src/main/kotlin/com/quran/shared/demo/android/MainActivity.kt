@@ -8,6 +8,7 @@ import com.quran.shared.demo.android.ui.auth.AuthScreen
 import com.quran.shared.persistence.DriverFactory
 import com.quran.shared.pipeline.AppEnvironment
 import com.quran.shared.pipeline.di.SharedDependencyGraph
+import com.quran.shared.pipeline.storage.createMobileSyncStorage
 import com.quran.shared.demo.android.ui.SyncViewModel
 import org.publicvalue.multiplatform.oidc.appsupport.AndroidCodeAuthFlowFactory
 
@@ -31,6 +32,7 @@ class MainActivity : ComponentActivity() {
         val driverFactory = DriverFactory(context = this.applicationContext)
         val graph = SharedDependencyGraph.init(
             driverFactory = driverFactory,
+            storage = createMobileSyncStorage(this.applicationContext),
             appEnvironment = AppEnvironment.PRELIVE,
             clientId = BuildConfig.OAUTH_CLIENT_ID,
             clientSecret = BuildConfig.OAUTH_CLIENT_SECRET.takeIf { it.isNotBlank() }

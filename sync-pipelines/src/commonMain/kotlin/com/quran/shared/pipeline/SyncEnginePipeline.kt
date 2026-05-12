@@ -50,8 +50,8 @@ import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 
 interface SyncEngineCallback {
-    fun synchronizationDone(newLastModificationDate: Long)
-    fun encounteredError(errorMsg: String)
+    suspend fun synchronizationDone(newLastModificationDate: Long)
+    suspend fun encounteredError(errorMsg: String)
 }
 
 @Inject

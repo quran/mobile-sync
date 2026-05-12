@@ -70,6 +70,11 @@ internal class SynchronizationClientImpl(
         logger.i { "Starting sync operation for ${resourceAdapters.size} resource(s)" }
 
         val authHeaders = getAuthHeaders()
+        if (authHeaders.isEmpty()) {
+            logger.i { "No authentication headers available, skipping sync operation" }
+            return
+        }
+
         // Assume a shared sync token across resources.
         val lastModificationDate = resourceAdapters.first()
             .localModificationDateFetcher
