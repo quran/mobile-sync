@@ -3,7 +3,7 @@ agp = "9.2.1"
 kotlin = "2.3.21"
 kotlinx-serialization = "1.11.0"
 kotlinx-datetime = "0.8.0-0.6.x-compat"
-ksp = "2.3.7"
+ksp = "2.3.8"
 
 kermit = "2.1.0"
 native-coroutines = "1.0.3"
