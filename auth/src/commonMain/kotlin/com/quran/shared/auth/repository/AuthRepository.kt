@@ -39,17 +39,17 @@ interface AuthRepository {
     /**
      * Returns the current access token if available.
      */
-    fun getAccessToken(): String?
+    suspend fun getAccessToken(): String?
 
     /**
      * Checks if the user is currently authenticated with a valid session.
      */
-    fun isLoggedIn(): Boolean
+    suspend fun isLoggedIn(): Boolean
 
     /**
      * Returns the current authenticated user info if available.
      */
-    fun getCurrentUser(): UserInfo?
+    suspend fun getCurrentUser(): UserInfo?
 
     /**
      * Provides the headers required for authorized requests, refreshing the token if needed.

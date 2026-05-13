@@ -30,40 +30,36 @@ class AuthService @Inject constructor(
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
+    private var cachedAccessToken: String? = null
 
     @NativeCoroutinesState
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
     init {
-        checkCurrentSession()
-        checkPendingLogin()
-    }
-
-    private fun checkCurrentSession() {
-        if (authRepository.isLoggedIn()) {
-            val user = authRepository.getCurrentUser()
-            if (user != null) {
-                _authState.value = AuthState.Success(user)
-            }
+        scope.launch {
+            checkCurrentSession()
+            checkPendingLogin()
         }
     }
 
-    private fun checkPendingLogin() {
-        scope.launch {
-            try {
-                val oidcRepo = authRepository as? OidcAuthRepository
-                if (oidcRepo?.canContinueLogin() == true) {
-                    _authState.value = AuthState.Loading
-                    oidcRepo.continueLogin()
+    private suspend fun checkCurrentSession() {
+        if (!publishCurrentSession()) {
+            cachedAccessToken = null
+            _authState.value = AuthState.Idle
+        }
+    }
 
-                    val user = authRepository.getCurrentUser()
-                    if (user != null) {
-                        _authState.value = AuthState.Success(user)
-                    }
-                }
-            } catch (e: Exception) {
-                // Ignore - no pending login
+    private suspend fun checkPendingLogin() {
+        try {
+            val oidcRepo = authRepository as? OidcAuthRepository
+            if (oidcRepo?.canContinueLogin() == true) {
+                _authState.value = AuthState.Loading
+                oidcRepo.continueLogin()
+
+                publishCurrentSession()
             }
+        } catch (e: Exception) {
+            // Ignore - no pending login
         }
     }
 
@@ -73,11 +69,8 @@ class AuthService @Inject constructor(
         try {
             _authState.value = AuthState.Loading
             authRepository.login()
-            val user = authRepository.getCurrentUser()
-            if (user != null) {
-                _authState.value = AuthState.Success(user)
-            } else {
-                throw Exception("Failed to retrieve user info after login")
+            if (!publishCurrentSession()) {
+                throw Exception("Failed to persist authentication tokens after login")
             }
         } catch (e: Exception) {
             handleError(e, "Login failed")
@@ -90,11 +83,8 @@ class AuthService @Inject constructor(
         try {
             _authState.value = AuthState.Loading
             authRepository.loginWithReauthentication()
-            val user = authRepository.getCurrentUser()
-            if (user != null) {
-                _authState.value = AuthState.Success(user)
-            } else {
-                throw Exception("Failed to retrieve user info after login")
+            if (!publishCurrentSession()) {
+                throw Exception("Failed to persist authentication tokens after login")
             }
         } catch (e: Exception) {
             handleError(e, "Login failed")
@@ -106,6 +96,7 @@ class AuthService @Inject constructor(
     suspend fun logout(): Unit {
         try {
             authRepository.logout()
+            cachedAccessToken = null
             _authState.value = AuthState.Idle
         } catch (e: Exception) {
             handleError(e, "Logout failed")
@@ -115,23 +106,56 @@ class AuthService @Inject constructor(
 
     @NativeCoroutines
     suspend fun refreshAccessTokenIfNeeded(): Boolean {
-        return authRepository.refreshTokensIfNeeded()
+        val refreshed = authRepository.refreshTokensIfNeeded()
+        if (refreshed) {
+            publishCurrentSession()
+        } else {
+            cachedAccessToken = null
+            _authState.value = AuthState.Idle
+        }
+        return refreshed
     }
 
-    fun isLoggedIn(): Boolean = authRepository.isLoggedIn()
+    fun isLoggedIn(): Boolean = _authState.value is AuthState.Success
 
-    fun getAccessToken(): String? = authRepository.getAccessToken()
+    fun getAccessToken(): String? = cachedAccessToken
 
     @NativeCoroutines
-    suspend fun getAuthHeaders(): Map<String, String> = authRepository.getAuthHeaders()
+    suspend fun getAuthHeaders(): Map<String, String> {
+        val headers = authRepository.getAuthHeaders()
+        if (headers.isEmpty()) {
+            cachedAccessToken = null
+            _authState.value = AuthState.Idle
+        } else {
+            cachedAccessToken = authRepository.getAccessToken()
+        }
+        return headers
+    }
+
+    /**
+     * Publishes an authenticated session when token material is available, regardless of whether
+     * profile metadata is currently cached or fetchable.
+     */
+    private suspend fun publishCurrentSession(): Boolean {
+        if (!authRepository.isLoggedIn()) {
+            return false
+        }
+
+        cachedAccessToken = authRepository.getAccessToken()
+        if (cachedAccessToken == null) {
+            return false
+        }
+
+        _authState.value = AuthState.Success(authRepository.getCurrentUser())
+        return true
+    }
 
 
     fun clearError() {
         if (_authState.value is AuthState.Error) {
-            checkCurrentSession()
-            // If checkCurrentSession didn't find a session, default to Idle
-            if (_authState.value is AuthState.Error) {
-                _authState.value = AuthState.Idle
+            _authState.value = AuthState.Idle
+            scope.launch {
+                checkCurrentSession()
             }
         }
     }

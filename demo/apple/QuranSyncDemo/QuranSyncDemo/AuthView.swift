@@ -76,7 +76,7 @@ struct AuthView: View {
 
 struct SuccessTabView: View {
     @ObservedObject var viewModel: SyncViewModel
-    let userInfo: Shared.UserInfo
+    let userInfo: Shared.UserInfo?
     @State private var selectedTab = 0
     @State private var clearLocalData = false
     
@@ -85,9 +85,9 @@ struct SuccessTabView: View {
             // Mini Header
             HStack {
                 VStack(alignment: .leading) {
-                    Text("Welcome, \(userInfo.displayName ?? "User")!")
+                    Text("Welcome, \(userInfo?.displayName ?? "User")!")
                         .font(.headline)
-                    if let email = userInfo.email {
+                    if let email = userInfo?.email {
                         Text(email)
                             .font(.caption)
                             .foregroundColor(.secondary)

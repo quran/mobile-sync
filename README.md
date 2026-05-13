@@ -88,6 +88,7 @@ import com.quran.shared.auth.di.AuthFlowFactoryProvider
 import com.quran.shared.persistence.DriverFactory
 import com.quran.shared.pipeline.AppEnvironment
 import com.quran.shared.pipeline.di.SharedDependencyGraph
+import com.quran.shared.pipeline.storage.createMobileSyncStorage
 import org.publicvalue.multiplatform.oidc.appsupport.AndroidCodeAuthFlowFactory
 
 val authFactory = AndroidCodeAuthFlowFactory(useWebView = false)
@@ -96,6 +97,7 @@ AuthFlowFactoryProvider.initialize(authFactory)
 
 val graph = SharedDependencyGraph.init(
     driverFactory = DriverFactory(context = applicationContext),
+    storage = createMobileSyncStorage(applicationContext),
     appEnvironment = AppEnvironment.PRELIVE,
     clientId = appClientId,
     clientSecret = appClientSecret
@@ -119,8 +121,10 @@ final class AppContainer {
     private init() {
         Shared.AuthFlowFactoryProvider.shared.doInitialize()
         let driverFactory = DriverFactory()
+        let storage = AppleMobileSyncStorageFactory.shared.create()
         graph = SharedDependencyGraph.shared.doInit(
             driverFactory: driverFactory,
+            storage: storage,
             appEnvironment: AppEnvironment.prelive,
             clientId: appClientId,
             clientSecret: appClientSecret
@@ -138,6 +142,7 @@ import com.quran.shared.syncengine.SynchronizationEnvironment
 
 val graph = SharedDependencyGraph.init(
     driverFactory = DriverFactory(context = applicationContext),
+    storage = createMobileSyncStorage(applicationContext),
     environment = SynchronizationEnvironment(
         endPointURL = "https://custom-sync.example.com/auth"
     ),
@@ -148,6 +153,19 @@ val graph = SharedDependencyGraph.init(
     )
 )
 ```
+
+### Android backup exclusions
+
+The shared Android storage uses stable DataStore file names so apps can exclude derived sync state
+and token-store data from backup or device transfer:
+
+```xml
+<exclude domain="file" path="datastore/quran_mobile_sync_settings.preferences_pb"/>
+<exclude domain="file" path="datastore/org.publicvalue.multiplatform.oidc.tokenstore.preferences_pb"/>
+```
+
+Add those entries to both `full-backup-content` and Android 12+ `data-extraction-rules` when app
+backup is enabled.
 
 ### 3. Use `SyncService`
 

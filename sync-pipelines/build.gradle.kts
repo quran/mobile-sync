@@ -33,7 +33,12 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.datetime)
             implementation(libs.kermit)
-            implementation(libs.multiplatform.settings.no.arg)
+            implementation(libs.androidx.datastore)
+            implementation(libs.androidx.datastore.preferences)
+            implementation(libs.multiplatform.settings)
+            implementation(libs.multiplatform.settings.coroutines)
+            implementation(libs.multiplatform.settings.datastore)
+            implementation(libs.oidc.tokenstore)
             api(libs.androidx.lifecycle.viewmodel)
             api(projects.syncengine)
             api(projects.persistence)
@@ -44,10 +49,15 @@ kotlin {
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.multiplatform.settings.test)
         }
+
     }
 
     sourceSets.all {
+        languageSettings.optIn("com.russhwolf.settings.ExperimentalSettingsApi")
+        languageSettings.optIn("com.russhwolf.settings.ExperimentalSettingsImplementation")
+        languageSettings.optIn("org.publicvalue.multiplatform.oidc.ExperimentalOpenIdConnect")
         languageSettings.optIn("kotlin.time.ExperimentalTime")
     }
 

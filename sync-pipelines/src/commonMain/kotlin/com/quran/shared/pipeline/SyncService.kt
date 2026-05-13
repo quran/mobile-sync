@@ -24,13 +24,10 @@ import com.quran.shared.persistence.repository.note.repository.NotesRepository
 import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksRepository
 import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepository
 import com.quran.shared.syncengine.AuthenticationDataFetcher
-import com.quran.shared.syncengine.LocalModificationDateFetcher
 import com.quran.shared.syncengine.SynchronizationClient
 import com.quran.shared.syncengine.SynchronizationEnvironment
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutinesState
-import com.russhwolf.settings.Settings
-import com.russhwolf.settings.set
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.CoroutineScope
@@ -59,7 +56,7 @@ class SyncService(
     private val environment: SynchronizationEnvironment,
     private val persistenceResetRepository: PersistenceResetRepository,
     private val persistenceImportRepository: PersistenceImportRepository,
-    private val settings: Settings
+    private val syncLocalModificationDateStore: SyncLocalModificationDateStore
 ) {
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -126,7 +123,6 @@ class SyncService(
     val readingSessions: Flow<List<ReadingSession>> get() = readingSessionsRepository.getReadingSessionsFlow()
 
     init {
-        val dateFetcher = SettingsLocalModificationDateFetcher(settings)
         val authFetcher = object : AuthenticationDataFetcher {
             override suspend fun fetchAuthenticationHeaders(): Map<String, String> {
                 return authService.getAuthHeaders()
@@ -139,15 +135,15 @@ class SyncService(
 
         syncClient = pipeline.setup(
             environment = environment,
-            localModificationDateFetcher = dateFetcher,
+            localModificationDateFetcher = syncLocalModificationDateStore,
             authenticationDataFetcher = authFetcher,
             callback = object : SyncEngineCallback {
-                override fun synchronizationDone(newLastModificationDate: Long) {
+                override suspend fun synchronizationDone(newLastModificationDate: Long) {
                     Logger.i { "Sync completed. New last modified: $newLastModificationDate" }
-                    dateFetcher.updateLastModificationDate(newLastModificationDate)
+                    syncLocalModificationDateStore.updateLastModificationDate(newLastModificationDate)
                 }
 
-                override fun encounteredError(errorMsg: String) {
+                override suspend fun encounteredError(errorMsg: String) {
                     Logger.e { "Sync error: $errorMsg" }
                 }
             }
@@ -174,7 +170,7 @@ class SyncService(
             syncClient.cancelSyncing()
             if (clearLocalData) {
                 persistenceResetRepository.deleteAllData()
-                SettingsLocalModificationDateFetcher(settings).updateLastModificationDate(0L)
+                syncLocalModificationDateStore.updateLastModificationDate(0L)
             }
         } catch (e: Exception) {
             Logger.e(e) { "Logout failed" }
@@ -504,19 +500,4 @@ class SyncService(
         collectionBookmarksRepository.getBookmarksForCollectionFlow(collectionLocalId)
 
     val pipelineForIos: SyncEnginePipeline get() = pipeline
-}
-
-fun makeSettings(): Settings = Settings()
-
-class SettingsLocalModificationDateFetcher(private val settings: Settings) :
-    LocalModificationDateFetcher {
-    private val KEY_LAST_MODIFIED = "com.quran.sync.last_modified_date"
-
-    override suspend fun localLastModificationDate(): Long {
-        return settings.getLong(KEY_LAST_MODIFIED, 0L)
-    }
-
-    fun updateLastModificationDate(date: Long) {
-        settings[KEY_LAST_MODIFIED] = date
-    }
 }

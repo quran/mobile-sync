@@ -15,8 +15,14 @@ sealed class AuthState {
     /** Authentication in progress (browser may be open) */
     data object Loading : AuthState()
 
-    /** Successfully authenticated with user info */
-    data class Success(val userInfo: UserInfo) : AuthState()
+    /**
+     * Successfully authenticated.
+     *
+     * [userInfo] is optional because OAuth token validity and profile availability are separate
+     * concerns. A profile request can fail or cached profile data can be unavailable while the
+     * stored token session is still valid for authenticated sync calls.
+     */
+    data class Success(val userInfo: UserInfo?) : AuthState()
 
     /** Authentication failed with an exception */
     data class Error(val exception: Exception, val message: String) : AuthState()

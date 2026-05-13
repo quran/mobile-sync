@@ -31,7 +31,8 @@ graph TD
 
     subgraph "External Dependencies"
         Ktor[Ktor Client]
-        Settings[Multiplatform Settings]
+        TokenStore[OIDC TokenStore]
+        DataStore[DataStore Settings]
         OIDC[Kalinjul OIDC Lib]
         NC[KMP-NativeCoroutines]
     end
@@ -41,6 +42,8 @@ graph TD
     Service --> Repo
     Repo --> NDS
     Repo --> Storage
+    Storage --> TokenStore
+    Storage --> DataStore
     Repo --> OIDC
     IVM -.-> NC
 ```
@@ -55,7 +58,8 @@ The central hub for authentication logic and state.
 - **iOS (`AuthViewModel`)**: A native Swift ViewModel that observes the `authStateFlow` from the shared service, allowing seamless integration with SwiftUI's `@Published` properties.
 
 ### 3. **Repository Layer (`OidcAuthRepository`)**
-Coordinates token lifecycles, automated refreshes, and process-death survival by persisting OAuth state.
+Coordinates token lifecycles and automated refreshes. OAuth token material is persisted through the
+OIDC `TokenStore`; non-token session metadata is stored in the app-provided DataStore settings.
 
 ---
 
@@ -70,8 +74,11 @@ Coordinates token lifecycles, automated refreshes, and process-death survival by
 Provide the app's OAuth client ID and optional client secret when initializing the shared graph. Credentials are runtime app configuration and are not embedded in the published auth artifact.
 
 ```kotlin
+val storage = createMobileSyncStorage(applicationContext)
+
 val graph = SharedDependencyGraph.init(
     driverFactory = driverFactory,
+    storage = storage,
     appEnvironment = AppEnvironment.PRELIVE,
     clientId = appClientId,
     clientSecret = appClientSecret
@@ -130,7 +137,7 @@ Task {
 
 // In View
 if let success = viewModel.authState as? AuthState.Success {
-    Text("Welcome, \(success.userInfo.displayName ?? "User")")
+    Text("Welcome, \(success.userInfo?.displayName ?? "User")")
 } else if let error = viewModel.authState as? AuthState.Error {
     Text(error.message)
 }
