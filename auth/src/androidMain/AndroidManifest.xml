@@ -1,4 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <activity
+            android:name="com.quran.shared.auth.android.SafeOidcRedirectActivity"
+            android:exported="true"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
 
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:scheme="${oidcRedirectScheme}"
+                    android:host="${oidcRedirectHost}" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:scheme="${oidcPostLogoutRedirectScheme}"
+                    android:host="${oidcPostLogoutRedirectHost}" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name="org.publicvalue.multiplatform.oidc.appsupport.HandleRedirectActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            tools:node="mergeOnlyAttributes"
+            tools:replace="android:exported" />
+    </application>
 </manifest>

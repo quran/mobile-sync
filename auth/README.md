@@ -68,10 +68,13 @@ OIDC `TokenStore`; non-token session metadata is stored in the app-provided Data
 ### 1. 🔑 Registering your App
 1.  Visit the [Quran Foundation Developer Portal](https://quran.foundation).
 2.  Set the **Redirect URI** to: `com.quran.oauth://callback`.
-3.  Note your **Client ID** and **Client Secret**.
+3.  Note your **Client ID**. Android apps are OAuth public clients using PKCE and must not embed
+    client secrets.
 
 ### 2. 🛠 Configuration
-Provide the app's OAuth client ID and optional client secret when initializing the shared graph. Credentials are runtime app configuration and are not embedded in the published auth artifact.
+Provide the app's OAuth client ID when initializing the shared graph. Credentials are runtime app
+configuration and are not embedded in the published auth artifact. Android callers should omit
+`clientSecret`; PKCE is the supported Android flow.
 
 ```kotlin
 val storage = createMobileSyncStorage(applicationContext)
@@ -80,8 +83,7 @@ val graph = SharedDependencyGraph.init(
     driverFactory = driverFactory,
     storage = storage,
     appEnvironment = AppEnvironment.PRELIVE,
-    clientId = appClientId,
-    clientSecret = appClientSecret
+    clientId = appClientId
 )
 ```
 
@@ -99,6 +101,27 @@ implementation(project(":auth"))
 ### 4. ⚙️ Platform Initialization
 
 #### **Android (`MainActivity.kt`)**
+
+In the Android app module, configure the login and post-logout redirect manifest placeholders. The
+auth artifact provides the exported safe proxy activity and makes the upstream OIDC
+`HandleRedirectActivity` non-exported.
+
+```kotlin
+android {
+    defaultConfig {
+        manifestPlaceholders["oidcRedirectScheme"] = "com.quran.oauth"
+        manifestPlaceholders["oidcRedirectHost"] = "callback"
+        manifestPlaceholders["oidcPostLogoutRedirectScheme"] = "com.quran.oauth"
+        manifestPlaceholders["oidcPostLogoutRedirectHost"] = "callback"
+    }
+}
+```
+
+Do not declare or export
+`org.publicvalue.multiplatform.oidc.appsupport.HandleRedirectActivity` in the app manifest.
+If you override `AuthConfig.redirectUri` or `AuthConfig.postLogoutRedirectUri` on Android, keep
+the corresponding manifest placeholders aligned with those URIs.
+
 ```kotlin
 val factory = AndroidCodeAuthFlowFactory(this)
 AuthFlowFactoryProvider.initialize(factory)

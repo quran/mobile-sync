@@ -52,14 +52,14 @@ flowchart LR
 - Cocoa toolchain for iOS simulator/device builds
 
 Optional but recommended:
-- `local.properties` with OAuth credentials for the Android demo app:
+- `local.properties` with the OAuth client ID for the Android demo app:
 
 ```properties
 OAUTH_CLIENT_ID=your_client_id
-OAUTH_CLIENT_SECRET=your_client_secret
 ```
 
-Published library artifacts do not embed these credentials. Consuming apps must pass their own client ID and optional client secret when initializing the shared graph.
+Published library artifacts do not embed credentials. Android apps are OAuth public clients using
+PKCE and must not embed OAuth client secrets.
 
 ## Quick Start
 
@@ -83,6 +83,27 @@ cd mobile-sync
 
 ### 1. Initialize app graph (Android/Kotlin)
 
+Configure the Android app manifest placeholders for the login and post-logout redirect URIs. The
+`:auth` artifact contributes `com.quran.shared.auth.android.SafeOidcRedirectActivity` as the
+exported browser callback entry point and keeps the upstream OIDC `HandleRedirectActivity`
+non-exported.
+
+```kotlin
+android {
+    defaultConfig {
+        manifestPlaceholders["oidcRedirectScheme"] = "com.quran.oauth"
+        manifestPlaceholders["oidcRedirectHost"] = "callback"
+        manifestPlaceholders["oidcPostLogoutRedirectScheme"] = "com.quran.oauth"
+        manifestPlaceholders["oidcPostLogoutRedirectHost"] = "callback"
+    }
+}
+```
+
+Do not declare or export
+`org.publicvalue.multiplatform.oidc.appsupport.HandleRedirectActivity` in the app manifest.
+If you override `AuthConfig.redirectUri` or `AuthConfig.postLogoutRedirectUri` on Android, keep
+the corresponding manifest placeholders aligned with those URIs.
+
 ```kotlin
 import com.quran.shared.auth.di.AuthFlowFactoryProvider
 import com.quran.shared.persistence.DriverFactory
@@ -99,8 +120,7 @@ val graph = SharedDependencyGraph.init(
     driverFactory = DriverFactory(context = applicationContext),
     storage = createMobileSyncStorage(applicationContext),
     appEnvironment = AppEnvironment.PRELIVE,
-    clientId = appClientId,
-    clientSecret = appClientSecret
+    clientId = appClientId
 )
 
 val authService = graph.authService
@@ -148,8 +168,7 @@ val graph = SharedDependencyGraph.init(
     ),
     authConfig = AuthConfig(
         environment = AuthEnvironment.PRELIVE,
-        clientId = appClientId,
-        clientSecret = appClientSecret
+        clientId = appClientId
     )
 )
 ```
