@@ -26,7 +26,7 @@ androidx-datastore = "1.2.1"
 multiplatform-settings = "1.3.0"
 
 #KMP alternative to BuildConfig
-buildkonfig = "0.20.0"
+buildkonfig = "0.21.0"
 
 # Android configuration
 android-compile-sdk = "36"
