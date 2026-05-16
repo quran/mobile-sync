@@ -315,6 +315,35 @@ class SyncService(
     }
 
     @NativeCoroutines
+    suspend fun updateReadingSession(localId: String, sura: Int, ayah: Int): ReadingSession {
+        try {
+            val readingSession = readingSessionsRepository.updateReadingSession(localId, sura, ayah)
+            triggerSync()
+            return readingSession
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to update reading session" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun updateReadingSession(
+        localId: String,
+        sura: Int,
+        ayah: Int,
+        timestamp: PlatformDateTime
+    ): ReadingSession {
+        try {
+            val readingSession = readingSessionsRepository.updateReadingSession(localId, sura, ayah, timestamp)
+            triggerSync()
+            return readingSession
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to update reading session" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
     suspend fun deleteReadingBookmark(): Boolean {
         try {
             val deleted = readingBookmarksRepository.deleteReadingBookmark()
