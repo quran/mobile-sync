@@ -17,6 +17,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -194,9 +195,11 @@ class CollectionBookmarksRepositoryTest {
     fun `removeAyahBookmarkFromCollection removes the link using model`() = runTest {
         database.collectionsQueries.addNewCollection(name = "TestRemoveModel", timestamp = null)
         val collection = database.collectionsQueries.getCollectionByName("TestRemoveModel").executeAsOne()
+        bookmarksRepository.addBookmark(3, 1)
         val cb = repository.addAyahBookmarkToCollection(collection.local_id.toString(), 2, 1)
 
         val removed = repository.removeAyahBookmarkFromCollection(cb)
+        assertNotEquals(cb.localId, cb.bookmarkLocalId)
         assertTrue(removed)
         assertTrue(repository.getBookmarksForCollection(collection.local_id.toString()).isEmpty())
     }

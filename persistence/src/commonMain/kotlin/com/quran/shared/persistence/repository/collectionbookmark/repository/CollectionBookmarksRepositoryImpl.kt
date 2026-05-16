@@ -228,7 +228,7 @@ class CollectionBookmarksRepositoryImpl(
     override suspend fun removeAyahBookmarkFromCollection(collectionAyahBookmark: CollectionAyahBookmark): Boolean {
         return withContext(Dispatchers.IO) {
             bookmarkCollectionQueries.value.deleteBookmarkFromCollection(
-                bookmark_local_id = collectionAyahBookmark.localId,
+                bookmark_local_id = collectionAyahBookmark.bookmarkLocalId,
                 collection_local_id = collectionAyahBookmark.collectionLocalId.toLong()
             )
             true
