@@ -23,19 +23,19 @@ sealed class SyncBookmark {
 }
 
 internal sealed class SyncBookmarkKey {
-    data class Ayah(val sura: Int, val ayah: Int, val isReading: Boolean) : SyncBookmarkKey() {
-        override fun toString(): String = "sura=$sura, ayah=$ayah, isReading=$isReading"
+    data class Ayah(val sura: Int, val ayah: Int) : SyncBookmarkKey() {
+        override fun toString(): String = "sura=$sura, ayah=$ayah"
     }
 
-    data class Page(val page: Int, val isReading: Boolean) : SyncBookmarkKey() {
-        override fun toString(): String = "page=$page, isReading=$isReading"
+    data class Page(val page: Int) : SyncBookmarkKey() {
+        override fun toString(): String = "page=$page"
     }
 }
 
 internal fun SyncBookmark.conflictKeyOrNull(): SyncBookmarkKey {
     return when (this) {
-        is SyncBookmark.AyahBookmark -> SyncBookmarkKey.Ayah(sura, ayah, isReading)
-        is SyncBookmark.PageBookmark -> SyncBookmarkKey.Page(page, isReading)
+        is SyncBookmark.AyahBookmark -> SyncBookmarkKey.Ayah(sura, ayah)
+        is SyncBookmark.PageBookmark -> SyncBookmarkKey.Page(page)
     }
 }
 

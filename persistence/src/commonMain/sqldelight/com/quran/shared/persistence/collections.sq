@@ -89,7 +89,15 @@ updateCollectionName:
   WHERE local_id = :id;
 
 deleteCollection {
-  DELETE FROM bookmark_collection WHERE collection_local_id = :id;
+  DELETE FROM bookmark_collection
+  WHERE collection_local_id = :id
+    AND last_synced_bookmark_remote_id IS NULL
+    AND last_synced_collection_remote_id IS NULL;
+  UPDATE bookmark_collection
+  SET is_active = 0,
+    pending_op = 'DELETED',
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  WHERE collection_local_id = :id;
   DELETE FROM collection WHERE local_id = :id AND remote_id IS NULL;
   UPDATE collection
   SET deleted = 1,

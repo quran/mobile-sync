@@ -133,6 +133,6 @@ class BookmarksSynchronizationExecutor {
         mutationsToPersist: List<RemoteModelMutation<SyncBookmark>>,
         pushedMutations: List<RemoteModelMutation<SyncBookmark>>
     ): List<RemoteModelMutation<SyncBookmark>> {
-        return otherRemoteMutations + mutationsToPersist + pushedMutations
+        return pushedMutations + otherRemoteMutations + mutationsToPersist
     }
 } 

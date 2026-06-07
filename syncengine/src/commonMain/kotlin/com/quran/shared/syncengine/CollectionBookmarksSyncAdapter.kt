@@ -42,7 +42,7 @@ internal class CollectionBookmarksSyncAdapter(
         }
 
         val parsedRemote = parseRemoteMutations(remoteMutations)
-        val preprocessedRemote = preprocessRemoteMutations(parsedRemote)
+        val preprocessedRemote = preprocessRemoteMutations(parsedRemote, localMutations)
         logger.d {
             "Remote mutations preprocessed for $resourceName: " +
                 "${parsedRemote.size} -> ${preprocessedRemote.size}"
@@ -89,7 +89,7 @@ internal class CollectionBookmarksSyncAdapter(
         }
 
         val parsedRemote = parseRemoteMutations(remoteMutations)
-        val preprocessedRemote = preprocessRemoteMutations(parsedRemote)
+        val preprocessedRemote = preprocessRemoteMutations(parsedRemote, localMutations)
         val conflictDetection = detectConflicts(preprocessedRemote, localMutations)
         val localMutationsToPush = conflictDetection.nonConflictingLocalMutations
         if (localMutationsToPush.isEmpty()) {
@@ -163,12 +163,13 @@ internal class CollectionBookmarksSyncAdapter(
     }
 
     private suspend fun preprocessRemoteMutations(
-        mutations: List<RemoteModelMutation<SyncCollectionBookmark>>
+        mutations: List<RemoteModelMutation<SyncCollectionBookmark>>,
+        localMutations: List<LocalModelMutation<SyncCollectionBookmark>> = emptyList()
     ): List<RemoteModelMutation<SyncCollectionBookmark>> {
         val preprocessor = CollectionBookmarksRemoteMutationsPreprocessor { remoteIds ->
             configurations.localDataFetcher.checkLocalExistence(remoteIds)
         }
-        return preprocessor.preprocess(mutations)
+        return preprocessor.preprocess(mutations, localMutations)
     }
 
     private fun detectConflicts(
@@ -204,7 +205,8 @@ internal class CollectionBookmarksSyncAdapter(
                 logger.e { message }
                 throw IllegalStateException(message)
             }
-            val remoteId = localMutation.model.remoteIdOrNull() ?: pushedMutation.resourceId
+            val model = localMutation.model.withPushedBookmarkId(pushedMutation)
+            val remoteId = model.remoteIdOrNull() ?: pushedMutation.resourceId
             if (remoteId == null) {
                 val message = "Missing composite remote ID for pushed mutation at index=$index for $resourceName"
                 logger.e { message }
@@ -218,7 +220,7 @@ internal class CollectionBookmarksSyncAdapter(
             }
 
             RemoteModelMutation(
-                model = localMutation.model,
+                model = model,
                 remoteID = remoteId,
                 mutation = pushedMutation.mutation
             )
@@ -238,14 +240,31 @@ internal class CollectionBookmarksSyncAdapter(
 
         override suspend fun complete(newToken: Long, pushedMutations: List<SyncMutation>) {
             val mappedPushed = mapPushedMutations(localMutationsToPush, pushedMutations)
-            val preprocessedPushed = preprocessRemoteMutations(mappedPushed)
-            val finalRemoteMutations = remoteMutationsToPersist + preprocessedPushed
+            val pushedLocalMutationsToClear = mapPushedLocalMutations(localMutationsToPush, mappedPushed)
+            val pushedLocalMutationsById = pushedLocalMutationsToClear.associateBy { it.localID }
+            val finalLocalMutationsToClear = localMutationsToClear.map { localMutation ->
+                pushedLocalMutationsById[localMutation.localID] ?: localMutation
+            }
             configurations.resultNotifier.didSucceed(
                 newToken,
-                finalRemoteMutations,
-                localMutationsToClear
+                remoteMutationsToPersist,
+                finalLocalMutationsToClear
             )
         }
+    }
+}
+
+private fun mapPushedLocalMutations(
+    localMutations: List<LocalModelMutation<SyncCollectionBookmark>>,
+    pushedMutations: List<RemoteModelMutation<SyncCollectionBookmark>>
+): List<LocalModelMutation<SyncCollectionBookmark>> {
+    return localMutations.zip(pushedMutations) { local, pushed ->
+        LocalModelMutation(
+            model = pushed.model,
+            remoteID = pushed.remoteID,
+            localID = local.localID,
+            mutation = pushed.mutation
+        )
     }
 }
 
@@ -254,14 +273,27 @@ private suspend fun SyncMutation.toSyncCollectionBookmark(
     localDataFetcher: LocalDataFetcher<SyncCollectionBookmark>,
     remoteAyahBookmarksById: Map<String, RemoteAyahBookmarkLookup>
 ): SyncCollectionBookmark? {
-    val data = data ?: return null
+    val lastModified = Instant.fromEpochMilliseconds(timestamp ?: 0)
+    val data = data
+    if (data == null) {
+        if (mutation == Mutation.DELETED && !resourceId.isNullOrEmpty()) {
+            val localModel = localDataFetcher.fetchLocalModel(resourceId)
+            if (localModel != null) {
+                logger.d { "Mapped collection bookmark delete using local relation data: resourceId=$resourceId" }
+                return when (localModel) {
+                    is SyncCollectionBookmark.AyahBookmark -> localModel.copy(lastModified = lastModified)
+                }
+            }
+            logger.w { "Skipping collection bookmark delete without data or local model: resourceId=$resourceId" }
+        }
+        return null
+    }
     val collectionId = data.stringOrNull("collectionId")
     if (collectionId.isNullOrEmpty()) {
         logger.w { "Skipping collection bookmark mutation without collectionId: resourceId=$resourceId" }
         return null
     }
     val normalizedType = data.stringOrNull("bookmarkType") ?: data.stringOrNull("type")
-    val lastModified = Instant.fromEpochMilliseconds(timestamp ?: 0)
     val bookmarkId = data.stringOrNull("bookmarkId")
         ?: data.stringOrNull("bookmark_id")
         ?: parseBookmarkId(resourceId, collectionId)
@@ -288,14 +320,14 @@ private suspend fun SyncMutation.toSyncCollectionBookmark(
         else -> {
             val localModel = localDataFetcher.fetchLocalModel(bookmarkId)
             if (localModel != null) {
-                logger.d { "Mapped unknown collection bookmark type using local data: resourceId=$localModel" }
+                logger.d { "Mapped unknown collection bookmark type using local data: bookmarkId=$bookmarkId" }
                 when (localModel) {
                     is SyncCollectionBookmark.AyahBookmark -> SyncCollectionBookmark.AyahBookmark(
                         collectionId = collectionId,
                         sura = localModel.sura,
                         ayah = localModel.ayah,
                         lastModified = lastModified,
-                        bookmarkId = bookmarkId,
+                        bookmarkId = bookmarkId
                     )
                 }
             } else {
@@ -326,10 +358,23 @@ private fun SyncCollectionBookmark.toResourceData(): JsonObject {
     return when (this) {
         is SyncCollectionBookmark.AyahBookmark -> buildJsonObject {
             put("collectionId", collectionId)
+            bookmarkId?.let { put("bookmarkId", it) }
             put("type", "ayah")
             put("key", sura)
             put("verseNumber", ayah)
             put("mushaf", 1)
+        }
+    }
+}
+
+private fun SyncCollectionBookmark.withPushedBookmarkId(pushedMutation: SyncMutation): SyncCollectionBookmark {
+    return when (this) {
+        is SyncCollectionBookmark.AyahBookmark -> {
+            val pushedBookmarkId = pushedMutation.data?.stringOrNull("bookmarkId")
+                ?: pushedMutation.data?.stringOrNull("bookmark_id")
+                ?: parseBookmarkId(pushedMutation.resourceId, collectionId)
+                ?: bookmarkId
+            copy(bookmarkId = pushedBookmarkId)
         }
     }
 }

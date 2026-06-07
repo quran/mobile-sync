@@ -5,10 +5,7 @@ package com.quran.shared.pipeline
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.input.RemoteBookmark
-import com.quran.shared.persistence.model.AyahBookmark
-import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksSynchronizationRepository
-import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksSynchronizationRepository
 import com.quran.shared.syncengine.model.SyncBookmark
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -22,7 +19,6 @@ class ResultReceiverTest {
         val events = mutableListOf<String>()
         val receiver = ResultReceiver(
             bookmarksRepository = RecordingBookmarksRepository(events),
-            readingBookmarksRepository = RecordingReadingBookmarksRepository(events),
             callback = object : SyncEngineCallback {
                 override suspend fun synchronizationDone(newLastModificationDate: Long) {
                     events += "done-$newLastModificationDate"
@@ -41,24 +37,23 @@ class ResultReceiverTest {
         )
 
         assertEquals(
-            listOf("bookmarks-applied", "reading-bookmarks-applied"),
+            listOf("bookmarks-applied"),
             events
         )
 
         receiver.didCompleteSync(10L)
 
         assertEquals(
-            listOf("bookmarks-applied", "reading-bookmarks-applied", "done-10"),
+            listOf("bookmarks-applied", "done-10"),
             events
         )
     }
 
     @Test
-    fun `page reading bookmark mutations are routed to reading bookmarks repository`() = runTest {
+    fun `page reading bookmark mutations are routed to unified bookmarks repository`() = runTest {
         val readingUpdates = mutableListOf<RemoteModelMutation<RemoteBookmark>>()
         val receiver = ResultReceiver(
-            bookmarksRepository = RecordingBookmarksRepository(mutableListOf()),
-            readingBookmarksRepository = RecordingReadingBookmarksRepository(
+            bookmarksRepository = RecordingBookmarksRepository(
                 events = mutableListOf(),
                 remoteUpdates = readingUpdates
             ),
@@ -92,39 +87,21 @@ class ResultReceiverTest {
 }
 
 private class RecordingBookmarksRepository(
-    private val events: MutableList<String>
+    private val events: MutableList<String>,
+    private val remoteUpdates: MutableList<RemoteModelMutation<RemoteBookmark>> = mutableListOf()
 ) : BookmarksSynchronizationRepository {
-    override suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<AyahBookmark>> = emptyList()
+    override suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<RemoteBookmark>> = emptyList()
 
     override suspend fun applyRemoteChanges(
-        updatesToPersist: List<RemoteModelMutation<RemoteBookmark.Ayah>>,
-        localMutationsToClear: List<LocalModelMutation<AyahBookmark>>
+        updatesToPersist: List<RemoteModelMutation<RemoteBookmark>>,
+        localMutationsToClear: List<LocalModelMutation<RemoteBookmark>>
     ) {
+        remoteUpdates += updatesToPersist
         events += "bookmarks-applied"
     }
 
     override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
         remoteIDs.associateWith { false }
 
-    override suspend fun fetchBookmarkByRemoteId(remoteId: String): AyahBookmark? = null
-}
-
-private class RecordingReadingBookmarksRepository(
-    private val events: MutableList<String>,
-    private val remoteUpdates: MutableList<RemoteModelMutation<RemoteBookmark>> = mutableListOf()
-) : ReadingBookmarksSynchronizationRepository {
-    override suspend fun fetchMutatedReadingBookmarks(): List<LocalModelMutation<ReadingBookmark>> = emptyList()
-
-    override suspend fun applyRemoteChanges(
-        updatesToPersist: List<RemoteModelMutation<RemoteBookmark>>,
-        localMutationsToClear: List<LocalModelMutation<ReadingBookmark>>
-    ) {
-        remoteUpdates += updatesToPersist
-        events += "reading-bookmarks-applied"
-    }
-
-    override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
-        remoteIDs.associateWith { false }
-
-    override suspend fun fetchReadingBookmarkByRemoteId(remoteId: String): ReadingBookmark? = null
+    override suspend fun fetchBookmarkByRemoteId(remoteId: String): RemoteBookmark? = null
 }
