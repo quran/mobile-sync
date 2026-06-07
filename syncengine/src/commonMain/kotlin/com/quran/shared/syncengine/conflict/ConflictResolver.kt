@@ -4,6 +4,7 @@ import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.syncengine.model.SyncBookmark
+import com.quran.shared.syncengine.model.conflictKey
 
 // region: Result
 data class ConflictResolutionResult<Model>(
@@ -70,6 +71,8 @@ class ConflictResolver(private val conflicts: List<ResourceConflict<SyncBookmark
         }
         
         // Handling conflicts
+        resolveReadingCreateConflict(resourceConflict)?.let { return it }
+
         if (resourceConflict.mustHave(Mutation.CREATED, MutationSide.BOTH).only() ||
             resourceConflict.mustHave(Mutation.DELETED, MutationSide.BOTH).only() ||
             resourceConflict.mustHave(Mutation.DELETED, MutationSide.BOTH)
@@ -98,6 +101,56 @@ class ConflictResolver(private val conflicts: List<ResourceConflict<SyncBookmark
                 "Unexpected conflict scenario detected. " +
                 "Local mutations: ${resourceConflict.localMutations.map { "${it.mutation}(${it.localID})" }}, " +
                 "Remote mutations: ${resourceConflict.remoteMutations.map { "${it.mutation}(${it.remoteID})" }}"
+            )
+        }
+    }
+
+    private fun resolveReadingCreateConflict(
+        resourceConflict: ResourceConflict<SyncBookmark>
+    ): ConflictResolutionResult<SyncBookmark>? {
+        val localMutation = resourceConflict.localMutations.singleOrNull()
+        val remoteMutation = resourceConflict.remoteMutations.singleOrNull()
+        if (localMutation?.mutation != Mutation.CREATED || remoteMutation?.mutation != Mutation.CREATED) {
+            return null
+        }
+        if (localMutation.model.isReading == remoteMutation.model.isReading) {
+            return null
+        }
+        if (localMutation.model.conflictKey() != remoteMutation.model.conflictKey()) {
+            return if (localMutation.model.lastModified > remoteMutation.model.lastModified) {
+                ConflictResolutionResult(
+                    mutationsToPush = listOf(
+                        LocalModelMutation(
+                            model = localMutation.model,
+                            remoteID = null,
+                            localID = localMutation.localID,
+                            mutation = Mutation.CREATED
+                        )
+                    ),
+                    mutationsToPersist = listOf(remoteMutation)
+                )
+            } else {
+                null
+            }
+        }
+
+        return if (localMutation.model.lastModified > remoteMutation.model.lastModified) {
+            val remoteIdToUpdate = localMutation.remoteID ?: remoteMutation.remoteID
+            ConflictResolutionResult(
+                mutationsToPush = listOf(
+                    LocalModelMutation(
+                        model = localMutation.model,
+                        remoteID = remoteIdToUpdate,
+                        localID = localMutation.localID,
+                        mutation = Mutation.MODIFIED
+                    )
+                ),
+                mutationsToPersist = listOf()
+            )
+        } else {
+            ConflictResolutionResult(
+                mutationsToPush = listOf(),
+                mutationsToPersist = listOf(remoteMutation)
             )
         }
     }

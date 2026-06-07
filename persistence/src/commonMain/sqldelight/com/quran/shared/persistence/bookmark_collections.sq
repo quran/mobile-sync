@@ -1,251 +1,430 @@
 CREATE TABLE IF NOT EXISTS bookmark_collection(
   local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-  remote_id TEXT,
-  bookmark_local_id TEXT NOT NULL,
-  bookmark_type TEXT NOT NULL,
+  bookmark_local_id INTEGER NOT NULL,
   collection_local_id INTEGER NOT NULL,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  pending_op TEXT,
+  last_synced_bookmark_remote_id TEXT,
+  last_synced_collection_remote_id TEXT,
   created_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
   modified_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
-  deleted INTEGER NOT NULL DEFAULT 0,
-  CHECK (deleted IN (0, 1)),
+  CHECK (is_active IN (0, 1)),
+  CHECK (pending_op IS NULL OR pending_op IN ('CREATED', 'DELETED')),
   UNIQUE(bookmark_local_id, collection_local_id),
-  CHECK (bookmark_type IN ('AYAH')),
+  FOREIGN KEY(bookmark_local_id) REFERENCES bookmark(local_id),
   FOREIGN KEY(collection_local_id) REFERENCES collection(local_id)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS bookmark_collection_remote_id_idx ON bookmark_collection(remote_id);
 CREATE INDEX IF NOT EXISTS bookmark_collection_active_created_idx
-ON bookmark_collection(deleted, created_at DESC);
+ON bookmark_collection(is_active, created_at DESC);
 CREATE INDEX IF NOT EXISTS bookmark_collection_collection_active_created_idx
-ON bookmark_collection(collection_local_id, deleted, created_at DESC);
-CREATE INDEX IF NOT EXISTS bookmark_collection_unsynced_created_idx
-ON bookmark_collection(created_at DESC)
-WHERE remote_id IS NULL OR deleted = 1;
+ON bookmark_collection(collection_local_id, is_active, created_at DESC);
+CREATE INDEX IF NOT EXISTS bookmark_collection_pending_idx
+ON bookmark_collection(pending_op, modified_at DESC);
+CREATE INDEX IF NOT EXISTS bookmark_collection_snapshots_idx
+ON bookmark_collection(last_synced_collection_remote_id, last_synced_bookmark_remote_id);
 
 getCollectionBookmarks:
-  SELECT * FROM bookmark_collection WHERE deleted = 0 ORDER BY created_at DESC;
+  SELECT * FROM bookmark_collection WHERE is_active = 1 ORDER BY created_at DESC;
 
 countAll:
   SELECT COUNT(*) FROM bookmark_collection;
 
+countActiveForBookmark:
+  SELECT COUNT(*) FROM bookmark_collection
+  WHERE bookmark_local_id = ? AND is_active = 1;
+
+countRetainedForBookmark:
+  SELECT COUNT(*) FROM bookmark_collection
+  WHERE bookmark_local_id = ? AND (is_active = 1 OR pending_op IS NOT NULL);
+
 getCollectionBookmarksForCollection:
   SELECT * FROM bookmark_collection
-  WHERE collection_local_id = ? AND deleted = 0
+  WHERE collection_local_id = ? AND is_active = 1
   ORDER BY created_at DESC;
 
 getCollectionBookmarksWithDetails:
   SELECT
     bc.local_id,
-    bc.remote_id,
     bc.bookmark_local_id,
-    bc.bookmark_type,
     bc.collection_local_id,
+    bc.is_active,
+    bc.pending_op,
+    bc.last_synced_bookmark_remote_id,
+    bc.last_synced_collection_remote_id,
     bc.created_at,
     bc.modified_at,
-    bc.deleted,
     c.remote_id AS collection_remote_id,
     c.name AS collection_name,
-    ab.remote_id AS bookmark_remote_id,
-    ab.sura AS sura,
-    ab.ayah AS ayah
+    b.remote_id AS bookmark_remote_id,
+    b.bookmark_type AS bookmark_type,
+    b.sura AS sura,
+    b.ayah AS ayah,
+    b.page AS page
   FROM bookmark_collection bc
   JOIN collection c ON c.local_id = bc.collection_local_id
-  LEFT JOIN ayah_bookmark ab
-    ON ab.local_id = CAST(bc.bookmark_local_id AS INTEGER)
-    AND bc.bookmark_type = 'AYAH'
-  WHERE bc.deleted = 0
+  JOIN bookmark b ON b.local_id = bc.bookmark_local_id
+  WHERE bc.is_active = 1
+    AND b.deleted = 0
+    AND c.deleted = 0
   ORDER BY bc.created_at DESC;
 
 getCollectionBookmarksForCollectionWithDetails:
   SELECT
     bc.local_id,
-    bc.remote_id,
     bc.bookmark_local_id,
-    bc.bookmark_type,
     bc.collection_local_id,
+    bc.is_active,
+    bc.pending_op,
+    bc.last_synced_bookmark_remote_id,
+    bc.last_synced_collection_remote_id,
     bc.created_at,
     bc.modified_at,
-    bc.deleted,
     c.remote_id AS collection_remote_id,
     c.name AS collection_name,
-    ab.remote_id AS bookmark_remote_id,
-    ab.sura AS sura,
-    ab.ayah AS ayah
+    b.remote_id AS bookmark_remote_id,
+    b.bookmark_type AS bookmark_type,
+    b.sura AS sura,
+    b.ayah AS ayah,
+    b.page AS page
   FROM bookmark_collection bc
   JOIN collection c ON c.local_id = bc.collection_local_id
-  LEFT JOIN ayah_bookmark ab
-    ON ab.local_id = CAST(bc.bookmark_local_id AS INTEGER)
-    AND bc.bookmark_type = 'AYAH'
+  JOIN bookmark b ON b.local_id = bc.bookmark_local_id
   WHERE bc.collection_local_id = :collection_local_id
-    AND bc.deleted = 0
+    AND bc.is_active = 1
+    AND b.deleted = 0
+    AND c.deleted = 0
   ORDER BY bc.created_at DESC;
 
 getUnsyncedCollectionBookmarksWithDetails:
   SELECT
     bc.local_id,
-    bc.remote_id,
     bc.bookmark_local_id,
-    bc.bookmark_type,
     bc.collection_local_id,
+    bc.is_active,
+    bc.pending_op,
+    bc.last_synced_bookmark_remote_id,
+    bc.last_synced_collection_remote_id,
     bc.created_at,
     bc.modified_at,
-    bc.deleted,
     c.remote_id AS collection_remote_id,
     c.name AS collection_name,
-    ab.remote_id AS bookmark_remote_id,
-    ab.sura AS sura,
-    ab.ayah AS ayah
+    b.remote_id AS bookmark_remote_id,
+    b.bookmark_type AS bookmark_type,
+    b.sura AS sura,
+    b.ayah AS ayah,
+    b.page AS page
   FROM bookmark_collection bc
   JOIN collection c ON c.local_id = bc.collection_local_id
-  JOIN ayah_bookmark ab
-    ON ab.local_id = CAST(bc.bookmark_local_id AS INTEGER)
-    AND bc.bookmark_type = 'AYAH'
-  WHERE (bc.remote_id IS NULL OR bc.deleted = 1)
-    AND c.remote_id IS NOT NULL
-    AND c.remote_id != ''
-  ORDER BY bc.created_at DESC;
+  JOIN bookmark b ON b.local_id = bc.bookmark_local_id
+  WHERE bc.pending_op IS NOT NULL
+    AND (
+      (bc.pending_op = 'CREATED' AND bc.is_active = 1 AND c.deleted = 0 AND c.remote_id IS NOT NULL AND c.remote_id != '')
+      OR
+      (bc.pending_op = 'DELETED' AND bc.last_synced_collection_remote_id IS NOT NULL AND bc.last_synced_bookmark_remote_id IS NOT NULL)
+    )
+  ORDER BY bc.modified_at DESC;
 
 getCollectionBookmarkFor:
   SELECT * FROM bookmark_collection
   WHERE bookmark_local_id = ? AND collection_local_id = ? LIMIT 1;
 
+getCollectionBookmarkByLocalId:
+  SELECT * FROM bookmark_collection
+  WHERE local_id = ? LIMIT 1;
+
+getBookmarkLocalIdBySnapshot:
+  SELECT bookmark_local_id FROM bookmark_collection
+  WHERE last_synced_bookmark_remote_id = :bookmark_remote_id
+    AND last_synced_collection_remote_id = :collection_remote_id
+  LIMIT 1;
+
+getBookmarkLocalIdByCurrentRemoteIds:
+  SELECT bc.bookmark_local_id FROM bookmark_collection bc
+  JOIN collection c ON c.local_id = bc.collection_local_id
+  JOIN bookmark b ON b.local_id = bc.bookmark_local_id
+  WHERE c.remote_id = :collection_remote_id
+    AND b.remote_id = :bookmark_remote_id
+    AND bc.is_active = 1
+  LIMIT 1;
+
+getBookmarkLocalIdsForCollectionRemoteId:
+  SELECT bc.bookmark_local_id FROM bookmark_collection bc
+  JOIN collection c ON c.local_id = bc.collection_local_id
+  WHERE c.remote_id = :collection_remote_id;
+
+getCollectionBookmarkWithDetailsByRemoteId:
+  SELECT
+    bc.local_id,
+    bc.bookmark_local_id,
+    bc.collection_local_id,
+    bc.is_active,
+    bc.pending_op,
+    bc.last_synced_bookmark_remote_id,
+    bc.last_synced_collection_remote_id,
+    bc.created_at,
+    bc.modified_at,
+    c.remote_id AS collection_remote_id,
+    c.name AS collection_name,
+    b.remote_id AS bookmark_remote_id,
+    b.bookmark_type AS bookmark_type,
+    b.sura AS sura,
+    b.ayah AS ayah,
+    b.page AS page
+  FROM bookmark_collection bc
+  JOIN collection c ON c.local_id = bc.collection_local_id
+  JOIN bookmark b ON b.local_id = bc.bookmark_local_id
+  WHERE (
+      bc.last_synced_collection_remote_id || '-' || bc.last_synced_bookmark_remote_id = :remote_id
+      OR (bc.is_active = 1 AND c.remote_id || '-' || b.remote_id = :remote_id)
+    )
+  LIMIT 1;
+
 addBookmarkToCollection {
   INSERT OR IGNORE INTO bookmark_collection (
-    remote_id,
     bookmark_local_id,
-    bookmark_type,
     collection_local_id,
+    is_active,
+    pending_op,
     created_at,
-    modified_at,
-    deleted
+    modified_at
   )
   VALUES (
-    NULL,
     :bookmark_local_id,
-    :bookmark_type,
     :collection_local_id,
+    1,
+    'CREATED',
     COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
-    COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
-    0
+    COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
   );
   UPDATE bookmark_collection
-  SET deleted = 0,
+  SET is_active = 1,
+    pending_op = CASE
+      WHEN last_synced_bookmark_remote_id = (
+          SELECT remote_id FROM bookmark WHERE local_id = :bookmark_local_id
+        )
+        AND last_synced_collection_remote_id = (
+          SELECT remote_id FROM collection WHERE local_id = :collection_local_id
+        ) THEN NULL
+      ELSE 'CREATED'
+    END,
     modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
-  WHERE bookmark_local_id = :bookmark_local_id AND collection_local_id = :collection_local_id;
-}
-
-insertImportedBookmarkCollection {
-  INSERT OR IGNORE INTO bookmark_collection (
-    remote_id,
-    bookmark_local_id,
-    bookmark_type,
-    collection_local_id,
-    created_at,
-    modified_at,
-    deleted
-  )
-  VALUES (
-    NULL,
-    :bookmark_local_id,
-    :bookmark_type,
-    :collection_local_id,
-    :created_at,
-    :modified_at,
-    0
-  );
-  UPDATE bookmark_collection
-  SET bookmark_type = :bookmark_type,
-    deleted = 0,
-    modified_at = CASE
-      WHEN remote_id IS NULL THEN :modified_at
-      WHEN deleted = 1 THEN :modified_at
-      ELSE modified_at
-    END
   WHERE bookmark_local_id = :bookmark_local_id
     AND collection_local_id = :collection_local_id;
 }
 
-deleteBookmarkFromCollection {
-  DELETE FROM bookmark_collection
-  WHERE bookmark_local_id = :bookmark_local_id
-    AND collection_local_id = :collection_local_id
-    AND remote_id IS NULL;
-  UPDATE bookmark_collection
-  SET deleted = 1
-  WHERE bookmark_local_id = :bookmark_local_id
-    AND collection_local_id = :collection_local_id
-    AND remote_id IS NOT NULL;
-}
-
-deleteBookmarkFromAllCollections {
-  DELETE FROM bookmark_collection
-  WHERE bookmark_local_id = :bookmark_local_id
-    AND remote_id IS NULL;
-  UPDATE bookmark_collection
-  SET deleted = 1
-  WHERE bookmark_local_id = :bookmark_local_id
-    AND remote_id IS NOT NULL;
-}
-
-getUnsyncedCollectionBookmarks:
-  SELECT * FROM bookmark_collection
-  WHERE remote_id IS NULL OR deleted = 1
-  ORDER BY created_at DESC;
-
-persistRemoteBookmarkCollection {
+insertImportedBookmarkCollection {
   INSERT OR IGNORE INTO bookmark_collection (
-    remote_id,
     bookmark_local_id,
-    bookmark_type,
     collection_local_id,
+    is_active,
+    pending_op,
     created_at,
-    modified_at,
-    deleted
+    modified_at
   )
   VALUES (
-    :remote_id,
     :bookmark_local_id,
-    :bookmark_type,
     :collection_local_id,
+    1,
+    'CREATED',
     :created_at,
-    :modified_at,
-    0
+    :modified_at
   );
   UPDATE bookmark_collection
-  SET remote_id = :remote_id,
-    bookmark_type = :bookmark_type,
-    deleted = 0,
+  SET is_active = 1,
+    pending_op = 'CREATED',
     modified_at = :modified_at
-  WHERE bookmark_local_id = :bookmark_local_id AND collection_local_id = :collection_local_id;
+  WHERE bookmark_local_id = :bookmark_local_id
+    AND collection_local_id = :collection_local_id;
 }
 
-deleteRemoteBookmarkCollectionByRemoteId:
-  DELETE FROM bookmark_collection WHERE remote_id = :remote_id;
-
-deleteRemoteBookmarkCollection {
+markBookmarkCollectionDeleted {
   DELETE FROM bookmark_collection
-  WHERE bookmark_local_id = :bookmark_local_id AND collection_local_id = :collection_local_id;
+  WHERE bookmark_local_id = :bookmark_local_id
+    AND collection_local_id = :collection_local_id
+    AND last_synced_bookmark_remote_id IS NULL
+    AND last_synced_collection_remote_id IS NULL;
+  UPDATE bookmark_collection
+  SET is_active = 0,
+    pending_op = 'DELETED',
+    modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
+  WHERE bookmark_local_id = :bookmark_local_id
+    AND collection_local_id = :collection_local_id;
+}
+
+markBookmarkCollectionsDeletedForBookmark {
+  DELETE FROM bookmark_collection
+  WHERE bookmark_local_id = :bookmark_local_id
+    AND last_synced_bookmark_remote_id IS NULL
+    AND last_synced_collection_remote_id IS NULL;
+  UPDATE bookmark_collection
+  SET is_active = 0,
+    pending_op = 'DELETED',
+    modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
+  WHERE bookmark_local_id = :bookmark_local_id;
 }
 
 clearLocalMutationFor {
-  DELETE FROM bookmark_collection WHERE remote_id IS NULL AND local_id = :id;
+  DELETE FROM bookmark_collection
+  WHERE local_id = :id
+    AND pending_op = 'DELETED';
   UPDATE bookmark_collection
-  SET deleted = 0,
-    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  SET pending_op = NULL,
+    last_synced_bookmark_remote_id = COALESCE(:bookmark_remote_id, last_synced_bookmark_remote_id),
+    last_synced_collection_remote_id = COALESCE(:collection_remote_id, last_synced_collection_remote_id),
+    modified_at = :modified_at
   WHERE local_id = :id;
 }
 
-checkRemoteIDsExistence:
-  SELECT remote_id FROM bookmark_collection WHERE remote_id IN :queried_ids;
+markBookmarkCollectionForRecreation:
+  UPDATE bookmark_collection
+  SET pending_op = 'CREATED',
+    modified_at = :modified_at
+  WHERE local_id = :id
+    AND is_active = 1
+    AND pending_op IS NULL;
 
-deleteAll:
-  DELETE FROM bookmark_collection;
+persistRemoteBookmarkCollection {
+  INSERT OR IGNORE INTO bookmark_collection (
+    bookmark_local_id,
+    collection_local_id,
+    is_active,
+    pending_op,
+    last_synced_bookmark_remote_id,
+    last_synced_collection_remote_id,
+    created_at,
+    modified_at
+  )
+  VALUES (
+    :bookmark_local_id,
+    :collection_local_id,
+    1,
+    NULL,
+    :bookmark_remote_id,
+    :collection_remote_id,
+    :created_at,
+    :modified_at
+  );
+  UPDATE bookmark_collection
+  SET is_active = 1,
+    pending_op = NULL,
+    last_synced_bookmark_remote_id = :bookmark_remote_id,
+    last_synced_collection_remote_id = :collection_remote_id,
+    modified_at = :modified_at
+  WHERE bookmark_local_id = :bookmark_local_id
+    AND collection_local_id = :collection_local_id;
+}
+
+deleteRemoteBookmarkCollectionBySnapshot {
+  UPDATE bookmark_collection
+  SET last_synced_bookmark_remote_id = NULL,
+    last_synced_collection_remote_id = NULL,
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  WHERE last_synced_bookmark_remote_id = :bookmark_remote_id
+    AND last_synced_collection_remote_id = :collection_remote_id
+    AND is_active = 1
+    AND pending_op = 'CREATED';
+  DELETE FROM bookmark_collection
+  WHERE last_synced_bookmark_remote_id = :bookmark_remote_id
+    AND last_synced_collection_remote_id = :collection_remote_id;
+}
+
+deleteBookmarkCollectionByCurrentRemoteIds:
+  DELETE FROM bookmark_collection
+  WHERE local_id IN (
+    SELECT bc.local_id FROM bookmark_collection bc
+    JOIN collection c ON c.local_id = bc.collection_local_id
+    JOIN bookmark b ON b.local_id = bc.bookmark_local_id
+    WHERE c.remote_id = :collection_remote_id
+      AND b.remote_id = :bookmark_remote_id
+      AND bc.is_active = 1
+  );
+
+deleteUnsyncedBookmarkCollectionByLocalIds:
+  DELETE FROM bookmark_collection
+  WHERE bookmark_local_id = :bookmark_local_id
+    AND collection_local_id = :collection_local_id
+    AND (
+      last_synced_bookmark_remote_id IS NULL
+      OR last_synced_collection_remote_id IS NULL
+    );
+
+markActiveLinksWithChangedSnapshots:
+  UPDATE bookmark_collection
+  SET pending_op = 'CREATED',
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  WHERE is_active = 1
+    AND (
+      last_synced_bookmark_remote_id IS NOT NULL
+      OR last_synced_collection_remote_id IS NOT NULL
+    )
+    AND EXISTS (
+      SELECT 1 FROM bookmark b
+      JOIN collection c ON c.local_id = bookmark_collection.collection_local_id
+      WHERE b.local_id = bookmark_collection.bookmark_local_id
+        AND b.deleted = 0
+        AND c.deleted = 0
+        AND b.remote_id IS NOT NULL
+        AND c.remote_id IS NOT NULL
+        AND (
+          bookmark_collection.last_synced_bookmark_remote_id != b.remote_id
+          OR bookmark_collection.last_synced_collection_remote_id != c.remote_id
+        )
+    );
+
+deleteInactiveClearedLinks:
+  DELETE FROM bookmark_collection WHERE is_active = 0 AND pending_op IS NULL;
+
+deleteLinksForInactiveParents:
+  DELETE FROM bookmark_collection
+  WHERE last_synced_bookmark_remote_id IS NULL
+    AND last_synced_collection_remote_id IS NULL
+    AND (
+      NOT EXISTS (SELECT 1 FROM bookmark b WHERE b.local_id = bookmark_collection.bookmark_local_id AND b.deleted = 0)
+      OR NOT EXISTS (SELECT 1 FROM collection c WHERE c.local_id = bookmark_collection.collection_local_id AND c.deleted = 0)
+    );
+
+markSyncedLinksForInactiveParents:
+  UPDATE bookmark_collection
+  SET is_active = 0,
+    pending_op = 'DELETED',
+    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  WHERE (
+      last_synced_bookmark_remote_id IS NOT NULL
+      OR last_synced_collection_remote_id IS NOT NULL
+    )
+    AND (
+      NOT EXISTS (SELECT 1 FROM bookmark b WHERE b.local_id = bookmark_collection.bookmark_local_id AND b.deleted = 0)
+      OR NOT EXISTS (SELECT 1 FROM collection c WHERE c.local_id = bookmark_collection.collection_local_id AND c.deleted = 0)
+    );
 
 deleteUnsyncedBookmarkCollections:
-  DELETE FROM bookmark_collection WHERE remote_id IS NULL;
+  DELETE FROM bookmark_collection
+  WHERE pending_op = 'CREATED'
+    AND last_synced_bookmark_remote_id IS NULL
+    AND last_synced_collection_remote_id IS NULL;
 
 markRemoteBookmarkCollectionsDeleted:
   UPDATE bookmark_collection
-  SET deleted = 1,
+  SET is_active = 0,
+    pending_op = 'DELETED',
     modified_at = :modified_at
-  WHERE remote_id IS NOT NULL;
+  WHERE last_synced_bookmark_remote_id IS NOT NULL
+    OR last_synced_collection_remote_id IS NOT NULL;
+
+checkRemoteIDsExistence:
+  SELECT last_synced_collection_remote_id || '-' || last_synced_bookmark_remote_id AS remote_id
+  FROM bookmark_collection
+  WHERE last_synced_collection_remote_id || '-' || last_synced_bookmark_remote_id IN :queried_ids
+  UNION
+  SELECT c.remote_id || '-' || b.remote_id AS remote_id
+  FROM bookmark_collection bc
+  JOIN collection c ON c.local_id = bc.collection_local_id
+  JOIN bookmark b ON b.local_id = bc.bookmark_local_id
+  WHERE bc.is_active = 1
+    AND c.remote_id IS NOT NULL
+    AND b.remote_id IS NOT NULL
+    AND c.remote_id || '-' || b.remote_id IN :queried_ids;
+
+deleteAll:
+  DELETE FROM bookmark_collection;

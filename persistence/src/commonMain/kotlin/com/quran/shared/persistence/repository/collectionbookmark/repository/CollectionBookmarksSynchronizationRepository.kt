@@ -26,4 +26,6 @@ interface CollectionBookmarksSynchronizationRepository {
     )
 
     suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean>
+
+    suspend fun fetchCollectionBookmarkByRemoteId(remoteId: String): CollectionAyahBookmark?
 }

@@ -8,6 +8,7 @@ import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.AyahReadingBookmark
 import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.model.CollectionWithAyahBookmarks
+import com.quran.shared.persistence.model.DEFAULT_COLLECTION_ID
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
@@ -58,6 +59,8 @@ class SyncService(
     private val persistenceImportRepository: PersistenceImportRepository,
     private val syncLocalModificationDateStore: SyncLocalModificationDateStore
 ) {
+    val defaultCollectionId: String = DEFAULT_COLLECTION_ID
+
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val syncClient: SynchronizationClient
@@ -73,7 +76,7 @@ class SyncService(
     // Cast the synchronization repository to the transactional repository
     // This allows the Service to be the single entry point for UI
     private val bookmarksRepository = pipeline.bookmarksRepository as BookmarksRepository
-    private val readingBookmarksRepository = pipeline.readingBookmarksRepository as ReadingBookmarksRepository
+    private val readingBookmarksRepository = pipeline.readingBookmarksRepository
     private val collectionsRepository = pipeline.collectionsRepository as CollectionsRepository
     private val collectionBookmarksRepository =
         pipeline.collectionBookmarksRepository as CollectionBookmarksRepository
@@ -228,6 +231,35 @@ class SyncService(
             return bookmark
         } catch (e: Exception) {
             Logger.e(e) { "Failed to add ayah bookmark" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun addBookmark(sura: Int, ayah: Int, collectionLocalIds: List<String>?): AyahBookmark {
+        try {
+            val bookmark = bookmarksRepository.addBookmark(sura, ayah, collectionLocalIds)
+            triggerSync()
+            return bookmark
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to add ayah bookmark with collection memberships" }
+            throw e
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun addBookmark(
+        sura: Int,
+        ayah: Int,
+        collectionLocalIds: List<String>?,
+        timestamp: PlatformDateTime
+    ): AyahBookmark {
+        try {
+            val bookmark = bookmarksRepository.addBookmark(sura, ayah, collectionLocalIds, timestamp)
+            triggerSync()
+            return bookmark
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to add ayah bookmark with collection memberships" }
             throw e
         }
     }

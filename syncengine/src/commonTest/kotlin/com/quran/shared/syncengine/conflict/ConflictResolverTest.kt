@@ -55,6 +55,166 @@ class ConflictResolverTest {
         assertEquals(0, result.mutationsToPush.size, "Number of mutations to push")
         assertEquals(remoteMutation, result.mutationsToPersist.first(), "Persisted mutation should be the remote mutation")
     }
+
+    @Test
+    fun `resolve with local newer reading create should push local mutation`() {
+        val remoteMutation = RemoteModelMutation<SyncBookmark>(
+            model = SyncBookmark.AyahBookmark(
+                id = "remote-1",
+                sura = 10,
+                ayah = 1,
+                isReading = false,
+                lastModified = Instant.fromEpochMilliseconds(1000)
+            ),
+            remoteID = "remote-1",
+            mutation = Mutation.CREATED
+        )
+        val localMutation = LocalModelMutation<SyncBookmark>(
+            model = SyncBookmark.AyahBookmark(
+                id = "local-1",
+                sura = 10,
+                ayah = 1,
+                isReading = true,
+                lastModified = Instant.fromEpochMilliseconds(1001)
+            ),
+            remoteID = null,
+            localID = "local-1",
+            mutation = Mutation.CREATED
+        )
+        val resourceConflict = ResourceConflict(
+            localMutations = listOf(localMutation),
+            remoteMutations = listOf(remoteMutation)
+        )
+        val conflictResolver = ConflictResolver(listOf(resourceConflict))
+
+        val result = conflictResolver.resolve()
+
+        assertEquals(0, result.mutationsToPersist.size, "Number of mutations to persist")
+        assertEquals(1, result.mutationsToPush.size, "Number of mutations to push")
+        val pushedMutation = result.mutationsToPush.first()
+        assertEquals("remote-1", pushedMutation.remoteID, "Pushed mutation should update the remote canonical row")
+        assertEquals(localMutation.localID, pushedMutation.localID, "Pushed mutation should retain the local row id")
+        assertEquals(localMutation.model, pushedMutation.model, "Pushed mutation should use the newer local reading model")
+        assertEquals(Mutation.MODIFIED, pushedMutation.mutation, "Pushed mutation should update the remote canonical row")
+    }
+
+    @Test
+    fun `resolve with remote newer reading create should persist remote mutation`() {
+        val remoteMutation = RemoteModelMutation<SyncBookmark>(
+            model = SyncBookmark.AyahBookmark(
+                id = "remote-1",
+                sura = 10,
+                ayah = 1,
+                isReading = false,
+                lastModified = Instant.fromEpochMilliseconds(1001)
+            ),
+            remoteID = "remote-1",
+            mutation = Mutation.CREATED
+        )
+        val localMutation = LocalModelMutation<SyncBookmark>(
+            model = SyncBookmark.AyahBookmark(
+                id = "local-1",
+                sura = 10,
+                ayah = 1,
+                isReading = true,
+                lastModified = Instant.fromEpochMilliseconds(1000)
+            ),
+            remoteID = null,
+            localID = "local-1",
+            mutation = Mutation.CREATED
+        )
+        val resourceConflict = ResourceConflict(
+            localMutations = listOf(localMutation),
+            remoteMutations = listOf(remoteMutation)
+        )
+        val conflictResolver = ConflictResolver(listOf(resourceConflict))
+
+        val result = conflictResolver.resolve()
+
+        assertEquals(1, result.mutationsToPersist.size, "Number of mutations to persist")
+        assertEquals(0, result.mutationsToPush.size, "Number of mutations to push")
+        assertEquals(remoteMutation, result.mutationsToPersist.first(), "Persisted mutation should be the newer remote mutation")
+    }
+
+    @Test
+    fun `resolve with local newer reading create should not retarget existing local remote id`() {
+        val remoteMutation = RemoteModelMutation<SyncBookmark>(
+            model = SyncBookmark.AyahBookmark(
+                id = "stale-remote",
+                sura = 10,
+                ayah = 2,
+                isReading = false,
+                lastModified = Instant.fromEpochMilliseconds(1000)
+            ),
+            remoteID = "stale-remote",
+            mutation = Mutation.CREATED
+        )
+        val localMutation = LocalModelMutation<SyncBookmark>(
+            model = SyncBookmark.AyahBookmark(
+                id = "local-2",
+                sura = 10,
+                ayah = 2,
+                isReading = true,
+                lastModified = Instant.fromEpochMilliseconds(1001)
+            ),
+            remoteID = "current-remote",
+            localID = "local-2",
+            mutation = Mutation.CREATED
+        )
+        val resourceConflict = ResourceConflict(
+            localMutations = listOf(localMutation),
+            remoteMutations = listOf(remoteMutation)
+        )
+        val conflictResolver = ConflictResolver(listOf(resourceConflict))
+
+        val result = conflictResolver.resolve()
+
+        assertEquals(0, result.mutationsToPersist.size, "Number of mutations to persist")
+        val pushedMutation = result.mutationsToPush.single()
+        assertEquals("current-remote", pushedMutation.remoteID, "Pushed mutation should keep the local canonical remote id")
+        assertEquals(Mutation.MODIFIED, pushedMutation.mutation, "Pushed mutation should update the local canonical row")
+    }
+
+    @Test
+    fun `resolve with local newer reading create should not update remote id for different location`() {
+        val remoteMutation = RemoteModelMutation<SyncBookmark>(
+            model = SyncBookmark.AyahBookmark(
+                id = "remote-1",
+                sura = 10,
+                ayah = 3,
+                isReading = false,
+                lastModified = Instant.fromEpochMilliseconds(1000)
+            ),
+            remoteID = "remote-1",
+            mutation = Mutation.CREATED
+        )
+        val localMutation = LocalModelMutation<SyncBookmark>(
+            model = SyncBookmark.AyahBookmark(
+                id = "local-3",
+                sura = 10,
+                ayah = 4,
+                isReading = true,
+                lastModified = Instant.fromEpochMilliseconds(1001)
+            ),
+            remoteID = "remote-1",
+            localID = "local-3",
+            mutation = Mutation.CREATED
+        )
+        val resourceConflict = ResourceConflict(
+            localMutations = listOf(localMutation),
+            remoteMutations = listOf(remoteMutation)
+        )
+        val conflictResolver = ConflictResolver(listOf(resourceConflict))
+
+        val result = conflictResolver.resolve()
+
+        val pushedMutation = result.mutationsToPush.single()
+        assertEquals(null, pushedMutation.remoteID, "Pushed mutation should not reuse the stale remote id")
+        assertEquals(localMutation.localID, pushedMutation.localID, "Pushed mutation should retain the local row id")
+        assertEquals(localMutation.model, pushedMutation.model, "Pushed mutation should use the local reading model")
+        assertEquals(Mutation.CREATED, pushedMutation.mutation, "Pushed mutation should create a new canonical remote row")
+        assertEquals(remoteMutation, result.mutationsToPersist.single(), "Remote mutation should remain at its own location")
+    }
     
     @Test
     fun `resolve with single resource deleted locally and remotely should persist remote mutation`() {

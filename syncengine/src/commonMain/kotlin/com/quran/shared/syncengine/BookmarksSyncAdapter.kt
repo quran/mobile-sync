@@ -200,7 +200,7 @@ internal class BookmarksSyncAdapter(
         override suspend fun complete(newToken: Long, pushedMutations: List<SyncMutation>) {
             val mappedPushed = mapPushedMutations(localMutationsToPush, pushedMutations)
             val preprocessedPushed = preprocessRemoteMutations(mappedPushed)
-            val finalRemoteMutations = remoteMutationsToPersist + preprocessedPushed
+            val finalRemoteMutations = preprocessedPushed + remoteMutationsToPersist
             configurations.resultNotifier.didSucceed(
                 newToken,
                 finalRemoteMutations,
@@ -226,7 +226,7 @@ private suspend fun SyncMutation.toSyncBookmark(
                     id = id,
                     sura = sura,
                     ayah = ayah,
-                    isReading = data?.booleanOrNull("isReading") ?: false,
+                    isReading = data.booleanOrNull("isReading") ?: false,
                     lastModified = lastModified
                 )
             } else {
@@ -239,7 +239,7 @@ private suspend fun SyncMutation.toSyncBookmark(
                 SyncBookmark.PageBookmark(
                     id = id,
                     page = page,
-                    isReading = data?.booleanOrNull("isReading") ?: false,
+                    isReading = data.booleanOrNull("isReading") ?: false,
                     lastModified = lastModified
                 )
             } else {

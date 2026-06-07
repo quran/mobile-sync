@@ -34,6 +34,25 @@ interface BookmarksRepository {
     suspend fun addBookmark(sura: Int, ayah: Int, timestamp: PlatformDateTime): AyahBookmark
 
     /**
+     * Add a saved ayah bookmark and add it to the requested memberships.
+     *
+     * Null or empty memberships normalize to the virtual default collection. A non-empty list is
+     * additive: requested memberships are added, while existing custom memberships not present in
+     * the list are left unchanged. [com.quran.shared.persistence.model.DEFAULT_COLLECTION_ID]
+     * represents default membership.
+     */
+    @NativeCoroutines
+    suspend fun addBookmark(sura: Int, ayah: Int, collectionLocalIds: List<String>?): AyahBookmark
+
+    @NativeCoroutines
+    suspend fun addBookmark(
+        sura: Int,
+        ayah: Int,
+        collectionLocalIds: List<String>?,
+        timestamp: PlatformDateTime
+    ): AyahBookmark
+
+    /**
      * Delete a bookmark for a specific sura and ayah, including any collection links.
      *
      * @return a boolean denoting success

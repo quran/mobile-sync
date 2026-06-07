@@ -11,6 +11,7 @@ import com.quran.shared.persistence.input.ImportReadingSession
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.PersistenceImportResult
 import com.quran.shared.persistence.model.DatabaseNote
+import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.fromPlatform
@@ -23,7 +24,8 @@ import kotlinx.coroutines.withContext
 @Inject
 @SingleIn(AppScope::class)
 class PersistenceImportRepositoryImpl(
-    private val database: QuranDatabase
+    private val database: QuranDatabase,
+    private val reconciler: BookmarkDependencyReconciler = BookmarkDependencyReconciler(database)
 ) : PersistenceImportRepository {
 
     override suspend fun importData(
@@ -69,10 +71,8 @@ class PersistenceImportRepositoryImpl(
         val timestamp = currentImportTimestampMillis()
         database.bookmark_collectionsQueries.deleteUnsyncedBookmarkCollections()
         database.bookmark_collectionsQueries.markRemoteBookmarkCollectionsDeleted(modified_at = timestamp)
-        database.ayah_bookmarksQueries.deleteUnsyncedBookmarks()
-        database.ayah_bookmarksQueries.markRemoteBookmarksDeleted(modified_at = timestamp)
-        database.reading_bookmarksQueries.deleteUnsyncedReadingBookmarks()
-        database.reading_bookmarksQueries.markRemoteReadingBookmarksDeleted(modified_at = timestamp)
+        database.bookmarksQueries.deleteUnsyncedBookmarks()
+        database.bookmarksQueries.markRemoteBookmarksDeleted(modified_at = timestamp)
         database.collectionsQueries.deleteUnsyncedCollections()
         database.collectionsQueries.markRemoteCollectionsDeleted(modified_at = timestamp)
         database.notesQueries.deleteUnsyncedNotes()
@@ -144,14 +144,13 @@ class PersistenceImportRepositoryImpl(
         return bookmarks.associate { bookmark ->
             val ayahId = requireAyahId(bookmark.sura, bookmark.ayah, "bookmark ${bookmark.importId}")
             val timestamp = bookmark.lastUpdated.toImportTimestampMillis()
-            database.ayah_bookmarksQueries.insertImportedBookmark(
+            database.bookmarksQueries.addAyahToDefaultCollection(
                 ayah_id = ayahId.toLong(),
                 sura = bookmark.sura.toLong(),
                 ayah = bookmark.ayah.toLong(),
-                created_at = timestamp,
-                modified_at = timestamp
+                timestamp = timestamp
             )
-            val record = database.ayah_bookmarksQueries
+            val record = database.bookmarksQueries
                 .getBookmarkForAyah(bookmark.sura.toLong(), bookmark.ayah.toLong())
                 .executeAsOneOrNull()
             requireNotNull(record) { "Expected imported bookmark ${bookmark.importId}." }
@@ -191,19 +190,36 @@ class PersistenceImportRepositoryImpl(
         when (readingBookmark) {
             is ImportReadingBookmark.Ayah -> {
                 val timestamp = readingBookmark.lastUpdated.toImportTimestampMillis()
-                database.reading_bookmarksQueries.insertImportedAyahReadingBookmark(
+                database.bookmarksQueries.setAyahReadingBookmark(
+                    ayah_id = requireAyahId(readingBookmark.sura, readingBookmark.ayah, "reading bookmark").toLong(),
                     sura = readingBookmark.sura.toLong(),
                     ayah = readingBookmark.ayah.toLong(),
-                    created_at = timestamp,
-                    modified_at = timestamp
+                    timestamp = timestamp
+                )
+                val row = requireNotNull(
+                    database.bookmarksQueries
+                        .getBookmarkForAyah(readingBookmark.sura.toLong(), readingBookmark.ayah.toLong())
+                        .executeAsOneOrNull()
+                ) { "Expected imported reading bookmark for ${readingBookmark.sura}:${readingBookmark.ayah}." }
+                database.bookmarksQueries.clearOtherReadingBookmarks(
+                    local_id = row.local_id,
+                    timestamp = timestamp
                 )
             }
             is ImportReadingBookmark.Page -> {
                 val timestamp = readingBookmark.lastUpdated.toImportTimestampMillis()
-                database.reading_bookmarksQueries.insertImportedPageReadingBookmark(
+                database.bookmarksQueries.setPageReadingBookmark(
                     page = readingBookmark.page.toLong(),
-                    created_at = timestamp,
-                    modified_at = timestamp
+                    timestamp = timestamp
+                )
+                val row = requireNotNull(
+                    database.bookmarksQueries
+                        .getBookmarkForPage(readingBookmark.page.toLong())
+                        .executeAsOneOrNull()
+                ) { "Expected imported page reading bookmark for page=${readingBookmark.page}." }
+                database.bookmarksQueries.clearOtherReadingBookmarks(
+                    local_id = row.local_id,
+                    timestamp = timestamp
                 )
             }
             null -> Unit
@@ -246,13 +262,13 @@ class PersistenceImportRepositoryImpl(
             }
             val timestamp = link.lastUpdated.toImportTimestampMillis()
             database.bookmark_collectionsQueries.insertImportedBookmarkCollection(
-                bookmark_local_id = bookmarkLocalId,
-                bookmark_type = "AYAH",
+                bookmark_local_id = bookmarkLocalId.toLong(),
                 collection_local_id = collectionLocalId,
                 created_at = timestamp,
                 modified_at = timestamp
             )
         }
+        reconciler.reconcile()
     }
 
     private fun requireAyahId(sura: Int, ayah: Int, label: String): Int {

@@ -12,9 +12,8 @@ class PersistenceResetRepositoryImpl @Inject constructor(
 ) : PersistenceResetRepository {
     override fun deleteAllData() {
         database.transaction {
-            database.ayah_bookmarksQueries.deleteAll()
-            database.reading_bookmarksQueries.deleteAll()
             database.bookmark_collectionsQueries.deleteAll()
+            database.bookmarksQueries.deleteAll()
             database.collectionsQueries.deleteAll()
             database.notesQueries.deleteAll()
             database.reading_sessionsQueries.deleteAll()

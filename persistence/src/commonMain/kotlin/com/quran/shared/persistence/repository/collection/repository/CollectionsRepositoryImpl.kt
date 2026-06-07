@@ -10,6 +10,7 @@ import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.model.Collection
+import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
 import com.quran.shared.persistence.repository.collection.extension.toCollection
 import com.quran.shared.persistence.repository.collection.extension.toCollectionMutation
 import com.quran.shared.persistence.util.PlatformDateTime
@@ -27,11 +28,13 @@ import kotlinx.coroutines.withContext
 @Inject
 @SingleIn(AppScope::class)
 class CollectionsRepositoryImpl(
-    private val database: QuranDatabase
+    private val database: QuranDatabase,
+    private val reconciler: BookmarkDependencyReconciler = BookmarkDependencyReconciler(database)
 ) : CollectionsRepository, CollectionsSynchronizationRepository {
 
     private val logger = Logger.withTag("CollectionsRepository")
     private val collectionQueries = lazy { database.collectionsQueries }
+    private val bookmarkCollectionQueries = lazy { database.bookmark_collectionsQueries }
 
     override suspend fun getAllCollections(): List<Collection> {
         return withContext(Dispatchers.IO) {
@@ -102,9 +105,12 @@ class CollectionsRepositoryImpl(
     override suspend fun deleteCollection(localId: String): Boolean {
         logger.i { "Deleting collection localId=$localId" }
         withContext(Dispatchers.IO) {
-            collectionQueries.value.deleteCollection(
-                id = localId.toLong()
-            )
+            database.transaction {
+                collectionQueries.value.deleteCollection(
+                    id = localId.toLong()
+                )
+                reconciler.reconcile()
+            }
         }
         return true
     }
@@ -137,6 +143,7 @@ class CollectionsRepositoryImpl(
                         Mutation.DELETED -> applyRemoteCollectionDeletion(remote)
                     }
                 }
+                reconciler.reconcile()
             }
         }
     }
@@ -181,7 +188,13 @@ class CollectionsRepositoryImpl(
     }
 
     private fun applyRemoteCollectionDeletion(remote: RemoteModelMutation<RemoteCollection>) {
+        val affectedBookmarkLocalIds = bookmarkCollectionQueries.value
+            .getBookmarkLocalIdsForCollectionRemoteId(remote.remoteID)
+            .executeAsList()
         collectionQueries.value.deleteRemoteCollection(remote_id = remote.remoteID)
+        affectedBookmarkLocalIds.forEach { bookmarkLocalId ->
+            reconciler.pruneBookmarkIfOrphan(bookmarkLocalId)
+        }
     }
 
     override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> {
