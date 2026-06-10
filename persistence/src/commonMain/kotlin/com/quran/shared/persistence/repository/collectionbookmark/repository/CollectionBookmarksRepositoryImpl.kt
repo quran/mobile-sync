@@ -4,7 +4,11 @@ import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import co.touchlab.kermit.Logger
 import com.quran.shared.di.AppScope
+import com.quran.shared.mutations.LOCAL_MUTATION_BOOKMARK_DEFAULT_FACET
+import com.quran.shared.mutations.LOCAL_MUTATION_COLLECTION_BOOKMARK_LINK_FACET
 import com.quran.shared.mutations.LocalModelMutation
+import com.quran.shared.mutations.LocalMutationAck
+import com.quran.shared.mutations.LocalMutationResource
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
@@ -14,6 +18,7 @@ import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.model.DEFAULT_COLLECTION_ID
 import com.quran.shared.persistence.model.DatabaseBookmark
 import com.quran.shared.persistence.model.DatabaseBookmarkCollection
+import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
 import com.quran.shared.persistence.repository.bookmark.extension.toAyahBookmark
 import com.quran.shared.persistence.util.PlatformDateTime
@@ -318,17 +323,31 @@ class CollectionBookmarksRepositoryImpl(
                 .executeAsList()
                 .map { row ->
                     val mutation = if (row.default_pending_op == "DELETED") Mutation.DELETED else Mutation.CREATED
+                    val relationBookmarkRemoteId = if (mutation == Mutation.DELETED) {
+                        row.default_last_synced_bookmark_remote_id ?: row.remote_id
+                    } else {
+                        row.remote_id
+                    }
                     LocalModelMutation(
                         mutation = mutation,
                         model = defaultCollectionBookmark(
                             bookmarkLocalId = row.local_id,
-                            bookmarkRemoteId = row.remote_id,
+                            bookmarkRemoteId = relationBookmarkRemoteId,
                             sura = row.sura,
                             ayah = row.ayah,
                             modifiedAt = row.default_modified_at ?: row.modified_at
                         ),
-                        remoteID = row.remote_id?.let { collectionBookmarkRemoteId(DEFAULT_COLLECTION_ID, it) },
-                        localID = defaultLocalId(row.local_id)
+                        remoteID = relationBookmarkRemoteId?.let {
+                            collectionBookmarkRemoteId(DEFAULT_COLLECTION_ID, it)
+                        },
+                        localID = defaultLocalId(row.local_id),
+                        ack = LocalMutationAck(
+                            localID = defaultLocalId(row.local_id),
+                            resource = LocalMutationResource.COLLECTION_BOOKMARK,
+                            facet = LOCAL_MUTATION_BOOKMARK_DEFAULT_FACET,
+                            observedPendingOp = mutation,
+                            observedPendingVersion = row.default_pending_version
+                        )
                     )
                 }
             val customMutations = bookmarkCollectionQueries.value.getUnsyncedCollectionBookmarksWithDetails()
@@ -368,22 +387,140 @@ class CollectionBookmarksRepositoryImpl(
                         } else {
                             null
                         },
-                        localID = record.local_id.toString()
+                        localID = record.local_id.toString(),
+                        ack = LocalMutationAck(
+                            localID = record.local_id.toString(),
+                            resource = LocalMutationResource.COLLECTION_BOOKMARK,
+                            facet = LOCAL_MUTATION_COLLECTION_BOOKMARK_LINK_FACET,
+                            observedPendingOp = mutation,
+                            observedPendingVersion = record.pending_version
+                        )
                     )
                 }
             defaultMutations + customMutations
         }
     }
 
+    override suspend fun markMutatedCollectionBookmarksInFlight(acks: List<LocalMutationAck>): List<LocalMutationAck> {
+        if (acks.isEmpty()) {
+            return emptyList()
+        }
+        return withContext(Dispatchers.IO) {
+            val markedAcks = mutableListOf<LocalMutationAck>()
+            database.transaction {
+                acks.forEach { ack ->
+                    if (ack.resource != LocalMutationResource.COLLECTION_BOOKMARK ||
+                        ack.observedPendingOp != Mutation.CREATED
+                    ) {
+                        return@forEach
+                    }
+                    when (ack.facet) {
+                        LOCAL_MUTATION_BOOKMARK_DEFAULT_FACET -> {
+                            val bookmarkLocalId = ack.localID
+                                .removePrefix(DEFAULT_LOCAL_ID_PREFIX)
+                                .toLongOrNull() ?: return@forEach
+                            bookmarkQueries.value.markDefaultCreateInFlight(
+                                local_id = bookmarkLocalId,
+                                pending_version = ack.observedPendingVersion
+                            )
+                            val changedRows = bookmarkQueries.value.changedRowCount().executeAsOne()
+                            val row = bookmarkQueries.value.getBookmarkByLocalId(bookmarkLocalId).executeAsOneOrNull()
+                            if (changedRows > 0 &&
+                                row?.is_in_default_collection == 1L &&
+                                row.default_pending_op == "CREATED" &&
+                                row.default_pending_version == ack.observedPendingVersion + 1
+                            ) {
+                                markedAcks += ack
+                            }
+                        }
+                        LOCAL_MUTATION_COLLECTION_BOOKMARK_LINK_FACET -> {
+                            val localId = ack.localID.toLongOrNull() ?: return@forEach
+                            bookmarkCollectionQueries.value.markCreatedMutationInFlight(
+                                id = localId,
+                                pending_version = ack.observedPendingVersion
+                            )
+                            val changedRows = bookmarkCollectionQueries.value.changedRowCount().executeAsOne()
+                            val row = bookmarkCollectionQueries.value
+                                .getCollectionBookmarkByLocalId(localId)
+                                .executeAsOneOrNull()
+                            if (changedRows > 0 &&
+                                row?.is_active == 1L &&
+                                row.pending_op == "CREATED" &&
+                                row.pending_version == ack.observedPendingVersion + 1
+                            ) {
+                                markedAcks += ack
+                            }
+                        }
+                    }
+                }
+            }
+            markedAcks
+        }
+    }
+
+    override suspend fun rollbackMutatedCollectionBookmarksInFlight(acks: List<LocalMutationAck>) {
+        if (acks.isEmpty()) {
+            return
+        }
+        withContext(Dispatchers.IO) {
+            database.transaction {
+                acks.forEach { ack ->
+                    if (ack.resource != LocalMutationResource.COLLECTION_BOOKMARK ||
+                        ack.observedPendingOp != Mutation.CREATED
+                    ) {
+                        return@forEach
+                    }
+                    when (ack.facet) {
+                        LOCAL_MUTATION_BOOKMARK_DEFAULT_FACET -> {
+                            val bookmarkLocalId = ack.localID
+                                .removePrefix(DEFAULT_LOCAL_ID_PREFIX)
+                                .toLongOrNull() ?: return@forEach
+                            bookmarkQueries.value.rollbackActiveDefaultCreateInFlight(
+                                local_id = bookmarkLocalId,
+                                pending_version = ack.observedPendingVersion,
+                                marked_pending_version = ack.observedPendingVersion + 1
+                            )
+                            bookmarkQueries.value.clearCanceledDefaultCreateInFlight(
+                                local_id = bookmarkLocalId,
+                                canceled_pending_version = ack.observedPendingVersion + 2
+                            )
+                            reconciler.pruneBookmarkIfOrphan(bookmarkLocalId)
+                        }
+                        LOCAL_MUTATION_COLLECTION_BOOKMARK_LINK_FACET -> {
+                            val localId = ack.localID.toLongOrNull() ?: return@forEach
+                            val bookmarkLocalId = bookmarkCollectionQueries.value
+                                .getCollectionBookmarkByLocalId(localId)
+                                .executeAsOneOrNull()
+                                ?.bookmark_local_id
+                            bookmarkCollectionQueries.value.rollbackActiveCreatedMutationInFlight(
+                                id = localId,
+                                pending_version = ack.observedPendingVersion,
+                                marked_pending_version = ack.observedPendingVersion + 1
+                            )
+                            bookmarkCollectionQueries.value.deleteCanceledCreatedMutationInFlight(
+                                id = localId,
+                                canceled_pending_version = ack.observedPendingVersion + 2
+                            )
+                            bookmarkLocalId?.let(reconciler::pruneBookmarkIfOrphan)
+                        }
+                    }
+                }
+                reconciler.reconcile()
+            }
+        }
+    }
+
     override suspend fun applyRemoteChanges(
         updatesToPersist: List<RemoteModelMutation<RemoteCollectionBookmark>>,
-        localMutationsToClear: List<LocalModelMutation<CollectionAyahBookmark>>
+        localMutationsToClear: List<LocalModelMutation<CollectionAyahBookmark>>,
+        writeBoundaryGuard: PersistenceWriteBoundaryGuard
     ) {
         logger.i {
             "Applying remote collection bookmark changes with " +
                 "${updatesToPersist.size} updates to persist and ${localMutationsToClear.size} local mutations to clear"
         }
         return withContext(Dispatchers.IO) {
+            writeBoundaryGuard.checkWriteBoundary()
             database.transaction {
                 localMutationsToClear.forEach { local ->
                     clearLocalMutation(local)
@@ -419,9 +556,7 @@ class CollectionBookmarksRepositoryImpl(
                 chunk.filter { it.startsWith("$DEFAULT_COLLECTION_ID-") }
                     .mapNotNullTo(existentIDs) { remoteId ->
                         val bookmarkRemoteId = remoteId.removePrefix("$DEFAULT_COLLECTION_ID-")
-                        val bookmark = bookmarkQueries.value
-                            .getBookmarkByRemoteId(bookmarkRemoteId)
-                            .executeAsOneOrNull()
+                        val bookmark = findBookmarkByDefaultRelationBookmarkRemoteId(bookmarkRemoteId)
                         if (bookmark != null &&
                             bookmark.deleted == 0L &&
                             (bookmark.is_in_default_collection == 1L || bookmark.default_pending_op == "DELETED")
@@ -441,13 +576,12 @@ class CollectionBookmarksRepositoryImpl(
         return withContext(Dispatchers.IO) {
             if (remoteId.startsWith("$DEFAULT_COLLECTION_ID-")) {
                 val bookmarkRemoteId = remoteId.removePrefix("$DEFAULT_COLLECTION_ID-")
-                val row = bookmarkQueries.value.getBookmarkByRemoteId(bookmarkRemoteId)
-                    .executeAsOneOrNull()
+                val row = findBookmarkByDefaultRelationBookmarkRemoteId(bookmarkRemoteId)
                 if (row != null &&
                     row.deleted == 0L &&
                     (row.is_in_default_collection == 1L || row.default_pending_op == "DELETED")
                 ) {
-                    return@withContext row.toDefaultCollectionBookmark()
+                    return@withContext row.toDefaultCollectionBookmark(bookmarkRemoteId)
                 }
                 return@withContext null
             }
@@ -500,14 +634,28 @@ class CollectionBookmarksRepositoryImpl(
             clearCustomDeleteMutation(local, relationRow, updatedAt)
             return
         }
+        if (relationRow?.pending_op == "DELETED" && relationRow.is_active == 0L) {
+            bindCustomCreatedAckToPendingDelete(local, relationRow, updatedAt)
+            return
+        }
         if (relationRow?.pending_op != "CREATED" || relationRow.is_active != 1L) {
+            return
+        }
+        if (!ackMatches(local, LOCAL_MUTATION_COLLECTION_BOOKMARK_LINK_FACET)) {
+            return
+        }
+        val ack = local.ack ?: return
+        val relationBookmarkRemoteId = local.relationBookmarkRemoteId()
+        if (local.mutation == Mutation.CREATED && relationBookmarkRemoteId.isNullOrEmpty()) {
             return
         }
         bookmarkCollectionQueries.value.clearLocalMutationFor(
             id = localId,
-            bookmark_remote_id = local.model.bookmarkRemoteId,
+            bookmark_remote_id = relationBookmarkRemoteId,
             collection_remote_id = local.model.collectionRemoteId,
-            modified_at = updatedAt
+            modified_at = updatedAt,
+            pending_op = ack.observedPendingOp.name,
+            pending_version = ack.observedPendingVersion
         )
         if (!local.model.bookmarkRemoteId.isNullOrEmpty() && local.mutation != Mutation.DELETED) {
             val bookmarkLocalId = relationRow.bookmark_local_id
@@ -526,21 +674,34 @@ class CollectionBookmarksRepositoryImpl(
         updatedAt: Long
     ) {
         val row = bookmarkQueries.value.getBookmarkByLocalId(bookmarkLocalId).executeAsOneOrNull() ?: return
+        if (!ackMatches(local, LOCAL_MUTATION_BOOKMARK_DEFAULT_FACET)) {
+            return
+        }
+        val ack = local.ack ?: return
         if (local.mutation == Mutation.DELETED) {
             if (row.default_pending_op == "DELETED" &&
-                row.is_in_default_collection == 0L
+                row.is_in_default_collection == 0L &&
+                row.default_pending_version == ack.observedPendingVersion
             ) {
                 bookmarkQueries.value.clearDefaultPending(
                     local_id = bookmarkLocalId,
                     remote_id = null,
-                    modified_at = updatedAt
+                    default_last_synced_bookmark_remote_id = null,
+                    modified_at = updatedAt,
+                    pending_op = ack.observedPendingOp.name,
+                    pending_version = ack.observedPendingVersion
                 )
-                if (row.remote_id == local.model.bookmarkRemoteId) {
+                if (row.remote_id == local.model.bookmarkRemoteId ||
+                    row.default_last_synced_bookmark_remote_id == local.model.bookmarkRemoteId
+                ) {
                     reconciler.pruneBookmarkIfOrphan(bookmarkLocalId)
                 }
             } else if (row.default_pending_op == null &&
                 row.is_in_default_collection == 1L &&
-                row.remote_id == local.model.bookmarkRemoteId
+                (
+                    row.remote_id == local.model.bookmarkRemoteId ||
+                        row.default_last_synced_bookmark_remote_id == local.model.bookmarkRemoteId
+                )
             ) {
                 bookmarkQueries.value.markDefaultRelationForRecreation(
                     local_id = bookmarkLocalId,
@@ -550,14 +711,100 @@ class CollectionBookmarksRepositoryImpl(
             return
         }
 
+        if (row.default_pending_op == "DELETED" &&
+            row.is_in_default_collection == 0L &&
+            ack.observedPendingOp == Mutation.CREATED
+        ) {
+            val relationBookmarkRemoteId = local.relationBookmarkRemoteId() ?: return
+            bookmarkQueries.value.bindDefaultRemoteSnapshotForCreatedAck(
+                local_id = bookmarkLocalId,
+                remote_id = local.model.bookmarkRemoteId,
+                default_last_synced_bookmark_remote_id = relationBookmarkRemoteId,
+                modified_at = updatedAt
+            )
+            return
+        }
+
+        if (row.default_pending_op == "DELETED" &&
+            row.is_in_default_collection == 1L &&
+            ack.observedPendingOp == Mutation.CREATED
+        ) {
+            val relationBookmarkRemoteId = local.relationBookmarkRemoteId() ?: return
+            bookmarkQueries.value.clearReaddedDefaultCreatedAck(
+                local_id = bookmarkLocalId,
+                remote_id = local.model.bookmarkRemoteId,
+                default_last_synced_bookmark_remote_id = relationBookmarkRemoteId,
+                modified_at = updatedAt
+            )
+            return
+        }
+
         if (row.default_pending_op != "CREATED" || row.is_in_default_collection != 1L) {
             return
         }
+        val relationBookmarkRemoteId = local.relationBookmarkRemoteId() ?: return
         bookmarkQueries.value.clearDefaultPending(
             local_id = bookmarkLocalId,
             remote_id = local.model.bookmarkRemoteId,
+            default_last_synced_bookmark_remote_id = relationBookmarkRemoteId,
+            modified_at = updatedAt,
+            pending_op = ack.observedPendingOp.name,
+            pending_version = ack.observedPendingVersion
+        )
+    }
+
+    private fun bindCustomCreatedAckToPendingDelete(
+        local: LocalModelMutation<CollectionAyahBookmark>,
+        relationRow: DatabaseBookmarkCollection,
+        updatedAt: Long
+    ) {
+        if (!ackMatches(local, LOCAL_MUTATION_COLLECTION_BOOKMARK_LINK_FACET)) {
+            return
+        }
+        val ack = local.ack ?: return
+        if (ack.observedPendingOp != Mutation.CREATED) {
+            return
+        }
+        val relationBookmarkRemoteId = local.relationBookmarkRemoteId() ?: return
+        bookmarkCollectionQueries.value.bindRemoteSnapshotForCreatedAck(
+            id = relationRow.local_id,
+            bookmark_remote_id = relationBookmarkRemoteId,
+            collection_remote_id = local.model.collectionRemoteId,
             modified_at = updatedAt
         )
+        if (!local.model.bookmarkRemoteId.isNullOrEmpty()) {
+            bookmarkQueries.value.getBookmarkByLocalId(relationRow.bookmark_local_id)
+                .executeAsOneOrNull()
+                ?.takeIf { it.remote_id == null }
+                ?.let {
+                    bookmarkQueries.value.attachRemoteBookmarkIdByLocalId(
+                        local_id = relationRow.bookmark_local_id,
+                        remote_id = local.model.bookmarkRemoteId,
+                        modified_at = updatedAt
+                    )
+                }
+        }
+    }
+
+    private fun LocalModelMutation<CollectionAyahBookmark>.relationBookmarkRemoteId(): String? {
+        model.bookmarkRemoteId
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { return it }
+        val collectionRemoteId = model.collectionRemoteId ?: return null
+        val remoteId = remoteID ?: return null
+        val prefix = "$collectionRemoteId-"
+        return if (remoteId.startsWith(prefix) && remoteId.length > prefix.length) {
+            remoteId.removePrefix(prefix)
+        } else {
+            null
+        }
+    }
+
+    private fun findBookmarkByDefaultRelationBookmarkRemoteId(bookmarkRemoteId: String): DatabaseBookmark? {
+        return bookmarkQueries.value.getBookmarkByRemoteId(bookmarkRemoteId)
+            .executeAsOneOrNull()
+            ?: bookmarkQueries.value.getBookmarkByDefaultRelationBookmarkRemoteId(bookmarkRemoteId)
+                .executeAsOneOrNull()
     }
 
     private fun clearCustomDeleteMutation(
@@ -566,15 +813,24 @@ class CollectionBookmarksRepositoryImpl(
         updatedAt: Long
     ) {
         relationRow ?: return
+        if (!ackMatches(local, LOCAL_MUTATION_COLLECTION_BOOKMARK_LINK_FACET)) {
+            return
+        }
+        val ack = local.ack ?: return
         if (!relationRow.matchesSyncedSnapshot(local.model)) {
             return
         }
-        if (relationRow.pending_op == "DELETED" && relationRow.is_active == 0L) {
+        if (relationRow.pending_op == "DELETED" &&
+            relationRow.is_active == 0L &&
+            relationRow.pending_version == ack.observedPendingVersion
+        ) {
             bookmarkCollectionQueries.value.clearLocalMutationFor(
                 id = relationRow.local_id,
                 bookmark_remote_id = local.model.bookmarkRemoteId,
                 collection_remote_id = local.model.collectionRemoteId,
-                modified_at = updatedAt
+                modified_at = updatedAt,
+                pending_op = ack.observedPendingOp.name,
+                pending_version = ack.observedPendingVersion
             )
             reconciler.pruneBookmarkIfOrphan(relationRow.bookmark_local_id)
         } else if (relationRow.pending_op == null && relationRow.is_active == 1L) {
@@ -588,6 +844,16 @@ class CollectionBookmarksRepositoryImpl(
     private fun DatabaseBookmarkCollection.matchesSyncedSnapshot(bookmark: CollectionAyahBookmark): Boolean {
         return last_synced_bookmark_remote_id == bookmark.bookmarkRemoteId &&
             last_synced_collection_remote_id == bookmark.collectionRemoteId
+    }
+
+    private fun ackMatches(
+        local: LocalModelMutation<CollectionAyahBookmark>,
+        facet: String
+    ): Boolean {
+        val ack = local.ack ?: return false
+        return ack.localID == local.localID &&
+            ack.resource == LocalMutationResource.COLLECTION_BOOKMARK &&
+            ack.facet == facet
     }
 
     private fun applyRemoteCollectionBookmarkUpsert(remote: RemoteModelMutation<RemoteCollectionBookmark>) {
@@ -622,7 +888,15 @@ class CollectionBookmarksRepositoryImpl(
     }
 
     private fun applyRemoteDefaultBookmarkUpsert(remote: RemoteModelMutation<RemoteCollectionBookmark>) {
-        val bookmarkLocalId = resolveBookmarkLocalId(remote.model, createIfMissing = true) ?: return
+        val bookmarkLocalId = resolveBookmarkLocalId(
+            bookmark = remote.model,
+            createIfMissing = true,
+            markDefaultForRecreationOnBackfill = false
+        ) ?: return
+        val bookmarkRow = bookmarkQueries.value.getBookmarkByLocalId(bookmarkLocalId).executeAsOneOrNull()
+        if (bookmarkRow?.bookmark_pending_op == "DELETED") {
+            return
+        }
         val updatedAt = remote.model.lastUpdated.fromPlatform().toEpochMilliseconds()
         bookmarkQueries.value.setDefaultFromRemote(
             local_id = bookmarkLocalId,
@@ -720,7 +994,8 @@ class CollectionBookmarksRepositoryImpl(
 
     private fun resolveBookmarkLocalId(
         bookmark: RemoteCollectionBookmark,
-        createIfMissing: Boolean
+        createIfMissing: Boolean,
+        markDefaultForRecreationOnBackfill: Boolean = true
     ): Long? {
         return when (bookmark) {
             is RemoteCollectionBookmark.Page -> null
@@ -745,11 +1020,19 @@ class CollectionBookmarksRepositoryImpl(
                     .executeAsOneOrNull()
                 if (existingByLocation != null) {
                     if (!bookmark.bookmarkId.isNullOrEmpty() && existingByLocation.remote_id == null) {
-                        upsertRelationBookmarkRemoteId(
-                            bookmark = bookmark,
-                            bookmarkLocalId = existingByLocation.local_id,
-                            updatedAt = bookmark.lastUpdated.fromPlatform().toEpochMilliseconds()
-                        )
+                        if (markDefaultForRecreationOnBackfill) {
+                            upsertRelationBookmarkRemoteId(
+                                bookmark = bookmark,
+                                bookmarkLocalId = existingByLocation.local_id,
+                                updatedAt = bookmark.lastUpdated.fromPlatform().toEpochMilliseconds()
+                            )
+                        } else {
+                            bookmarkQueries.value.attachRemoteBookmarkIdByLocalId(
+                                local_id = existingByLocation.local_id,
+                                remote_id = bookmark.bookmarkId,
+                                modified_at = bookmark.lastUpdated.fromPlatform().toEpochMilliseconds()
+                            )
+                        }
                     } else if (!bookmark.bookmarkId.isNullOrEmpty() && existingByLocation.remote_id != bookmark.bookmarkId) {
                         logger.w {
                             "Skipping stale remote collection bookmark for ${bookmark.sura}:${bookmark.ayah}: " +
@@ -835,7 +1118,10 @@ class CollectionBookmarksRepositoryImpl(
         bookmark: RemoteCollectionBookmark.Ayah,
         row: DatabaseBookmark
     ) {
-        if (row.deleted != 1L && row.bookmark_pending_op != "DELETED") {
+        if (row.bookmark_pending_op == "DELETED") {
+            return
+        }
+        if (row.deleted != 1L) {
             return
         }
 
@@ -914,10 +1200,12 @@ class CollectionBookmarksRepositoryImpl(
         )
     }
 
-    private fun DatabaseBookmark.toDefaultCollectionBookmark(): CollectionAyahBookmark {
+    private fun DatabaseBookmark.toDefaultCollectionBookmark(
+        relationBookmarkRemoteId: String? = remote_id
+    ): CollectionAyahBookmark {
         return defaultCollectionBookmark(
             bookmarkLocalId = local_id,
-            bookmarkRemoteId = remote_id,
+            bookmarkRemoteId = relationBookmarkRemoteId,
             sura = sura,
             ayah = ayah,
             modifiedAt = default_modified_at ?: modified_at

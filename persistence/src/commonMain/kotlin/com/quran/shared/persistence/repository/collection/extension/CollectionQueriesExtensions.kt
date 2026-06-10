@@ -3,6 +3,9 @@
 package com.quran.shared.persistence.repository.collection.extension
 
 import com.quran.shared.mutations.LocalModelMutation
+import com.quran.shared.mutations.LOCAL_MUTATION_ENTITY_FACET
+import com.quran.shared.mutations.LocalMutationAck
+import com.quran.shared.mutations.LocalMutationResource
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.persistence.model.DatabaseCollection
 import com.quran.shared.persistence.model.Collection as PersistenceCollection
@@ -29,6 +32,13 @@ internal fun DatabaseCollection.toCollectionMutation(): LocalModelMutation<Persi
         mutation = mutation,
         model = toCollection(),
         remoteID = remote_id,
-        localID = local_id.toString()
+        localID = local_id.toString(),
+        ack = LocalMutationAck(
+            localID = local_id.toString(),
+            resource = LocalMutationResource.COLLECTION,
+            facet = LOCAL_MUTATION_ENTITY_FACET,
+            observedPendingOp = mutation,
+            observedPendingVersion = pending_version
+        )
     )
 }

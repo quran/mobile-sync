@@ -20,12 +20,15 @@ This repository contains shared modules used by Android and iOS apps for:
 
 ## Architecture
 
-`auth` + `persistence` + `syncengine` are composed in `sync-pipelines`, exposed through a DI graph (`AppGraph` / `SharedDependencyGraph`), and exported to iOS through `umbrella`.
+`auth` + `persistence` + `syncengine` are composed in `sync-pipelines`, exposed through a managed DI graph (`AppGraph` / `SharedDependencyGraph`), and exported to iOS through `umbrella`.
 
 ```mermaid
 flowchart LR
-  UI[Android/iOS UI] --> S[SyncService]
-  S --> A[Auth Module]
+  UI[Android/iOS UI] --> G[AppGraph]
+  G --> S[SyncService]
+  G --> F[SyncAuthService]
+  F --> A[Auth Module]
+  S --> A
   S --> P[Persistence Module]
   S --> E[SyncEngine Module]
   U[Umbrella XCFramework] --> UI
@@ -81,7 +84,31 @@ cd mobile-sync
 
 ## Usage
 
-### 1. Initialize app graph (Android/Kotlin)
+### Integration modes
+
+Choose one integration mode per database.
+
+Persistence-only mode uses the public `:persistence` repositories directly. Repositories preserve
+local integrity and mutation tracking, but consumers must not mutate SQL tables directly. Use this
+mode only when the database is not managed by `:sync-pipelines`.
+
+Managed sync-capable mode uses `:sync-pipelines` through `AppGraph`. In this mode, all
+user-visible data reads and writes go through `SyncService`, and authentication goes through
+`SyncAuthService`. Do not mix direct persistence writes with the managed sync graph. If sync may be
+enabled later for the same app data, use managed mode from day one, even while logged out.
+Logged-out managed-service writes are local-first; sync triggers no-op until the user is
+authenticated.
+
+`AppGraph` exposes only managed facades: `syncService: SyncService` and
+`authService: SyncAuthService`. Raw write-capable persistence repositories are no longer exposed
+from `:sync-pipelines` `AppGraph`; they remain public in `:persistence` for persistence-only
+consumers. The raw `:auth` `AuthService` is hidden from `AppGraph` and wrapped by
+`SyncAuthService`.
+
+This repository is still in active development. Schema changes are made directly in `.sq` files;
+`.sqm` migrations are not currently maintained.
+
+### 1. Initialize managed app graph (Android/Kotlin)
 
 Configure the Android app manifest placeholders for the login and post-logout redirect URIs. The
 `:auth` artifact contributes `com.quran.shared.auth.android.SafeOidcRedirectActivity` as the
@@ -127,7 +154,7 @@ val authService = graph.authService
 val syncService = graph.syncService
 ```
 
-### 2. Initialize app graph (iOS/Swift)
+### 2. Initialize managed app graph (iOS/Swift)
 
 ```swift
 import Shared
@@ -186,15 +213,17 @@ and token-store data from backup or device transfer:
 Add those entries to both `full-backup-content` and Android 12+ `data-extraction-rules` when app
 backup is enabled.
 
-### 3. Use `SyncService`
+### 3. Use managed services
 
 Core API examples:
 - Observe: `authState`, `bookmarks`, `collectionsWithBookmarks`, `notes`
 - Mutations: `addBookmark`, `deleteBookmark`, `addCollection`, `deleteCollection`, `addNote`, `deleteNote`
 - Trigger sync: `triggerSync()`
+- Auth: use `SyncAuthService.login()`, `loginWithReauthentication()`, `logout()`, and `clearError()`
 
 Lifecycle note:
 - `SyncService` is app-scoped. Initialize once via `SharedDependencyGraph.init(...)`.
+- Prefer `SyncAuthService.logout()` for managed apps. `SyncService.logout()` remains as a compatibility delegate.
 - Do not clear app-scoped services from UI/view-model teardown.
 
 ### 4. App environment selection

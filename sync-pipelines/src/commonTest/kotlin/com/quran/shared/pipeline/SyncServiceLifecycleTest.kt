@@ -1,0 +1,906 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class, kotlin.time.ExperimentalTime::class)
+
+package com.quran.shared.pipeline
+
+import com.quran.shared.auth.model.AuthState
+import com.quran.shared.auth.model.UserInfo
+import com.quran.shared.auth.repository.AuthRepository
+import com.quran.shared.auth.repository.LogoutTokenMaterial
+import com.quran.shared.auth.repository.RemoteLogoutFailure
+import com.quran.shared.auth.repository.RemoteLogoutOperation
+import com.quran.shared.auth.service.AuthSessionPublicationGuard
+import com.quran.shared.auth.service.AuthService
+import com.quran.shared.mutations.LocalModelMutation
+import com.quran.shared.mutations.LocalMutationAck
+import com.quran.shared.mutations.RemoteModelMutation
+import com.quran.shared.persistence.input.PersistenceImportData
+import com.quran.shared.persistence.input.PersistenceImportResult
+import com.quran.shared.persistence.input.RemoteBookmark
+import com.quran.shared.persistence.input.RemoteCollection
+import com.quran.shared.persistence.input.RemoteCollectionBookmark
+import com.quran.shared.persistence.input.RemoteNote
+import com.quran.shared.persistence.input.RemoteReadingSession
+import com.quran.shared.persistence.model.AyahBookmark
+import com.quran.shared.persistence.model.AyahReadingBookmark
+import com.quran.shared.persistence.model.Collection
+import com.quran.shared.persistence.model.CollectionAyahBookmark
+import com.quran.shared.persistence.model.Note
+import com.quran.shared.persistence.model.PageReadingBookmark
+import com.quran.shared.persistence.model.ReadingBookmark
+import com.quran.shared.persistence.model.ReadingSession
+import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
+import com.quran.shared.persistence.repository.PersistenceResetRepository
+import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepository
+import com.quran.shared.persistence.repository.bookmark.repository.BookmarksSynchronizationRepository
+import com.quran.shared.persistence.repository.collection.repository.CollectionsRepository
+import com.quran.shared.persistence.repository.collection.repository.CollectionsSynchronizationRepository
+import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepository
+import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksSynchronizationRepository
+import com.quran.shared.persistence.repository.importdata.PersistenceImportRepository
+import com.quran.shared.persistence.repository.note.repository.NotesRepository
+import com.quran.shared.persistence.repository.note.repository.NotesSynchronizationRepository
+import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksRepository
+import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepository
+import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsSynchronizationRepository
+import com.quran.shared.persistence.util.toPlatform
+import com.quran.shared.syncengine.SynchronizationEnvironment
+import com.russhwolf.settings.MapSettings
+import com.russhwolf.settings.coroutines.toSuspendSettings
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.yield
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.time.Instant
+
+class SyncServiceLifecycleTest {
+    private val dispatcher = StandardTestDispatcher()
+    private val fixtures = mutableListOf<SyncServiceFixture>()
+
+    @BeforeTest
+    fun setUp() {
+        Dispatchers.setMain(dispatcher)
+    }
+
+    @AfterTest
+    fun tearDown() {
+        runTest(dispatcher) {
+            fixtures.forEach { it.clearAndJoin() }
+            fixtures.clear()
+            advanceUntilIdle()
+        }
+        Dispatchers.resetMain()
+    }
+
+    private fun syncServiceFixture(
+        authRepository: ServiceAuthRepository = ServiceAuthRepository(),
+        resetRepository: ServiceResetRepository = ServiceResetRepository(),
+        lifecycleStore: SettingsSessionLifecycleStateStore =
+            SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings())
+    ): SyncServiceFixture =
+        SyncServiceFixture(
+            authRepository = authRepository,
+            resetRepository = resetRepository,
+            lifecycleStore = lifecycleStore
+        ).also { fixtures += it }
+
+    @Test
+    fun `clearLocalData false throws exact unsupported message`() = runTest(dispatcher) {
+        val fixture = syncServiceFixture()
+        advanceUntilIdle()
+
+        val error = assertFailsWith<UnsupportedOperationException> {
+            fixture.service.logout(clearLocalData = false)
+        }
+
+        assertEquals("Keep-local logout is not implemented yet", error.message)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `remote logout failures return warnings after local auth data and token are cleared`() = runTest(dispatcher) {
+        val fixture = syncServiceFixture(
+            authRepository = ServiceAuthRepository(
+                refreshToken = "refresh-token",
+                idToken = "id-token",
+                remoteFailures = listOf(
+                    RemoteLogoutFailure(RemoteLogoutOperation.REVOKE_REFRESH_TOKEN, Exception("revoke failed")),
+                    RemoteLogoutFailure(RemoteLogoutOperation.END_SESSION, Exception("end-session failed"))
+                )
+            )
+        )
+        fixture.tokenStore.updateLastModificationDate(77L)
+        advanceUntilIdle()
+
+        val result = fixture.service.logout()
+
+        assertEquals(
+            listOf(
+                LogoutWarning(LogoutWarningType.REVOKE_TOKEN_FAILED, "revoke failed"),
+                LogoutWarning(LogoutWarningType.END_SESSION_FAILED, "end-session failed")
+            ),
+            result.warnings
+        )
+        assertEquals(null, fixture.authRepository.getAccessToken())
+        assertEquals(1, fixture.resetRepository.deleteCount)
+        assertEquals(0L, fixture.tokenStore.localLastModificationDate())
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `managed logout clears published auth before waiting for sync drain`() = runTest(dispatcher) {
+        val fixture = syncServiceFixture(
+            authRepository = ServiceAuthRepository(
+                accessToken = "access-token",
+                refreshToken = "refresh-token",
+                idToken = "id-token",
+                blockFirstAuthHeaders = true
+            )
+        )
+
+        advanceUntilIdle()
+        withContext(kotlinx.coroutines.Dispatchers.Default) {
+            withTimeout(1_000) {
+                fixture.authRepository.firstAuthHeadersStarted.await()
+            }
+        }
+
+        val logoutJob = launch {
+            fixture.service.logout()
+        }
+        try {
+            advanceUntilIdle()
+
+            assertEquals(true, fixture.lifecycleStore.snapshot().resetInProgress)
+            withContext(Dispatchers.Default) {
+                withTimeout(1_000) {
+                    while (fixture.service.authState.value != AuthState.Idle) {
+                        yield()
+                    }
+                }
+            }
+            assertEquals(AuthState.Idle, fixture.service.authState.value)
+            assertEquals(false, fixture.authService.isLoggedIn())
+            assertEquals(null, fixture.authService.getAccessToken())
+            assertEquals(emptyMap(), fixture.authService.getAuthHeaders())
+            assertEquals(false, logoutJob.isCompleted)
+        } finally {
+            fixture.authRepository.firstAuthHeadersCanFinish.complete(Unit)
+        }
+
+        logoutJob.join()
+        advanceUntilIdle()
+
+        assertEquals(1, fixture.resetRepository.deleteCount)
+        assertEquals(0L, fixture.tokenStore.localLastModificationDate())
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `managed logout clears published auth before waiting for active mutating write drain`() = runTest(dispatcher) {
+        val activeWriteCanFinish = CompletableDeferred<Unit>()
+        val activeWriteStarted = CompletableDeferred<Unit>()
+        val fixture = syncServiceFixture(
+            authRepository = ServiceAuthRepository(
+                accessToken = "access-token",
+                refreshToken = "refresh-token",
+                idToken = "id-token"
+            )
+        )
+        advanceUntilIdle()
+        fixture.authService.refreshAccessTokenIfNeeded()
+        assertEquals(true, fixture.authService.isLoggedIn())
+
+        val activeWrite = launch {
+            fixture.lifecycleCoordinator.withMutatingWrite {
+                activeWriteStarted.complete(Unit)
+                activeWriteCanFinish.await()
+            }
+        }
+        activeWriteStarted.await()
+
+        val logoutJob = launch {
+            fixture.service.logout()
+        }
+        advanceUntilIdle()
+
+        assertEquals(true, fixture.lifecycleStore.snapshot().resetInProgress)
+        withContext(Dispatchers.Default) {
+            withTimeout(1_000) {
+                while (fixture.service.authState.value != AuthState.Idle) {
+                    yield()
+                }
+            }
+        }
+        assertEquals(AuthState.Idle, fixture.service.authState.value)
+        assertEquals(false, fixture.authService.isLoggedIn())
+        assertEquals(null, fixture.authService.getAccessToken())
+        assertEquals(emptyMap(), fixture.authService.getAuthHeaders())
+        assertEquals(0, fixture.resetRepository.deleteCount)
+        assertEquals(false, logoutJob.isCompleted)
+
+        activeWriteCanFinish.complete(Unit)
+        activeWrite.join()
+        logoutJob.join()
+        advanceUntilIdle()
+
+        assertEquals(1, fixture.resetRepository.deleteCount)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `remote logout cleanup runs only after local data auth and sync token are cleared`() = runTest(dispatcher) {
+        lateinit var fixture: SyncServiceFixture
+        fixture = syncServiceFixture(
+            authRepository = ServiceAuthRepository(
+                accessToken = "access-token",
+                refreshToken = "refresh-token",
+                idToken = "id-token",
+                onAttemptRemoteLogout = {
+                    assertEquals(null, fixture.authRepository.getAccessToken())
+                    assertEquals(1, fixture.resetRepository.deleteCount)
+                    assertEquals(0L, fixture.tokenStore.localLastModificationDate())
+                }
+            )
+        )
+        fixture.tokenStore.updateLastModificationDate(77L)
+        advanceUntilIdle()
+
+        fixture.service.logout()
+
+        assertEquals(1, fixture.authRepository.remoteLogoutAttemptCount)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `sync auth facade logout uses managed reset coordinator`() = runTest(dispatcher) {
+        val fixture = syncServiceFixture(
+            authRepository = ServiceAuthRepository(
+                accessToken = "access-token",
+                refreshToken = "refresh-token",
+                idToken = "id-token"
+            )
+        )
+        val authFacade = SyncAuthService(fixture.authService, fixture.service, fixture.lifecycleCoordinator)
+        fixture.tokenStore.updateLastModificationDate(77L)
+        advanceUntilIdle()
+
+        val result = authFacade.logout()
+
+        assertEquals(emptyList(), result.warnings)
+        assertEquals(null, fixture.authRepository.getAccessToken())
+        assertEquals(1, fixture.resetRepository.deleteCount)
+        assertEquals(0L, fixture.tokenStore.localLastModificationDate())
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `sync auth facade login throws during reset before committing tokens`() = runTest(dispatcher) {
+        val fixture = syncServiceFixture()
+        val authFacade = SyncAuthService(fixture.authService, fixture.service, fixture.lifecycleCoordinator)
+        advanceUntilIdle()
+
+        fixture.lifecycleCoordinator.runManagedReset {
+            assertFailsWith<SessionResetInProgressException> {
+                authFacade.login()
+            }
+        }
+
+        assertEquals(null, fixture.authRepository.getAccessToken())
+        assertEquals(0, fixture.authRepository.loginCalls)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `sync auth facade reauthentication throws during reset before committing tokens`() = runTest(dispatcher) {
+        val fixture = syncServiceFixture()
+        val authFacade = SyncAuthService(fixture.authService, fixture.service, fixture.lifecycleCoordinator)
+        advanceUntilIdle()
+
+        fixture.lifecycleCoordinator.runManagedReset {
+            assertFailsWith<SessionResetInProgressException> {
+                authFacade.loginWithReauthentication()
+            }
+        }
+
+        assertEquals(null, fixture.authRepository.getAccessToken())
+        assertEquals(0, fixture.authRepository.reauthenticationCalls)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `remote logout cancellation propagates instead of returning warning`() = runTest(dispatcher) {
+        val fixture = syncServiceFixture(
+            authRepository = ServiceAuthRepository(
+                accessToken = "access-token",
+                refreshToken = "refresh-token",
+                idToken = "id-token",
+                remoteLogoutException = CancellationException("remote logout cancelled")
+            )
+        )
+        fixture.tokenStore.updateLastModificationDate(77L)
+        advanceUntilIdle()
+
+        assertFailsWith<CancellationException> {
+            fixture.service.logout()
+        }
+
+        assertEquals(null, fixture.authRepository.getAccessToken())
+        assertEquals(1, fixture.resetRepository.deleteCount)
+        assertEquals(0L, fixture.tokenStore.localLastModificationDate())
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `logout token capture failure still clears local auth data and token`() = runTest(dispatcher) {
+        val fixture = syncServiceFixture(
+            authRepository = ServiceAuthRepository(
+                accessToken = "access-token",
+                refreshToken = "refresh-token",
+                idToken = "id-token",
+                throwOnLogoutTokenCapture = true
+            )
+        )
+        fixture.tokenStore.updateLastModificationDate(77L)
+        advanceUntilIdle()
+
+        val result = fixture.service.logout()
+
+        assertEquals(
+            listOf(
+                LogoutWarning(LogoutWarningType.REVOKE_TOKEN_FAILED, "token capture failed"),
+                LogoutWarning(LogoutWarningType.END_SESSION_FAILED, "token capture failed")
+            ),
+            result.warnings
+        )
+        assertEquals(null, fixture.authRepository.getAccessToken())
+        assertEquals(1, fixture.resetRepository.deleteCount)
+        assertEquals(0L, fixture.tokenStore.localLastModificationDate())
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `startup recovery completes persisted reset before normal use`() = runTest(dispatcher) {
+        val settings = MapSettings().toSuspendSettings()
+        val lifecycleStore = SettingsSessionLifecycleStateStore(settings)
+        lifecycleStore.beginReset()
+        val fixture = syncServiceFixture(lifecycleStore = lifecycleStore)
+
+        repeat(10) {
+            advanceUntilIdle()
+            if (!lifecycleStore.snapshot().resetInProgress) {
+                return@repeat
+            }
+            yield()
+        }
+
+        assertEquals(SessionLifecycleState(epoch = 1L, resetInProgress = false), lifecycleStore.snapshot())
+        assertEquals(1, fixture.resetRepository.deleteCount)
+        assertEquals(0L, fixture.tokenStore.localLastModificationDate())
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `startup persisted reset suppresses stale stored auth publication`() = runTest(dispatcher) {
+        val settings = MapSettings().toSuspendSettings()
+        val lifecycleStore = SettingsSessionLifecycleStateStore(settings)
+        lifecycleStore.beginReset()
+        val fixture = syncServiceFixture(
+            authRepository = ServiceAuthRepository(
+                accessToken = "stale-access-token",
+                refreshToken = "stale-refresh-token",
+                idToken = "stale-id-token"
+            ),
+            lifecycleStore = lifecycleStore
+        )
+
+        repeat(10) {
+            advanceUntilIdle()
+            if (!lifecycleStore.snapshot().resetInProgress) {
+                return@repeat
+            }
+            yield()
+        }
+
+        assertEquals(AuthState.Idle, fixture.service.authState.value)
+        assertEquals(false, fixture.authService.isLoggedIn())
+        assertEquals(null, fixture.authService.getAccessToken())
+        assertEquals(null, fixture.authRepository.getAccessToken())
+        assertEquals(1, fixture.resetRepository.deleteCount)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `mutating calls throw during reset and logged out writes are allowed after reset`() = runTest(dispatcher) {
+        val fixture = syncServiceFixture()
+        advanceUntilIdle()
+
+        fixture.lifecycleCoordinator.runManagedReset {
+            assertFailsWith<SessionResetInProgressException> {
+                fixture.service.addBookmark(2, 255)
+            }
+        }
+
+        fixture.service.addBookmark(2, 255)
+
+        assertEquals(1, fixture.bookmarksRepository.addCount)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `reset failure leaves marker active and blocks mutating writes`() = runTest(dispatcher) {
+        val resetRepository = ServiceResetRepository(failDelete = true)
+        val fixture = syncServiceFixture(resetRepository = resetRepository)
+        advanceUntilIdle()
+
+        assertFailsWith<IllegalStateException> {
+            fixture.service.logout()
+        }
+
+        assertEquals(true, fixture.lifecycleStore.snapshot().resetInProgress)
+        assertFailsWith<SessionResetInProgressException> {
+            fixture.service.addBookmark(2, 255)
+        }
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `local auth clear failure aborts logout and leaves reset marker active`() = runTest(dispatcher) {
+        val fixture = syncServiceFixture(
+            authRepository = ServiceAuthRepository(
+                accessToken = "access-token",
+                refreshToken = "refresh-token",
+                idToken = "id-token",
+                throwOnClearLocalSession = true
+            )
+        )
+        fixture.tokenStore.updateLastModificationDate(77L)
+        advanceUntilIdle()
+
+        val error = assertFailsWith<IllegalStateException> {
+            fixture.service.logout()
+        }
+
+        assertEquals("local session clear failed", error.message)
+        assertEquals(true, fixture.lifecycleStore.snapshot().resetInProgress)
+        assertEquals(0, fixture.resetRepository.deleteCount)
+        assertEquals(77L, fixture.tokenStore.localLastModificationDate())
+        assertEquals(0, fixture.authRepository.remoteLogoutAttemptCount)
+        assertEquals("access-token", fixture.authRepository.getAccessToken())
+        assertFailsWith<SessionResetInProgressException> {
+            fixture.service.addBookmark(2, 255)
+        }
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `logout blocks mutating writes while token capture is suspended`() = runTest(dispatcher) {
+        val fixture = syncServiceFixture(
+            authRepository = ServiceAuthRepository(
+                accessToken = "access-token",
+                refreshToken = "refresh-token",
+                idToken = "id-token",
+                suspendLogoutTokenCapture = true
+            )
+        )
+        advanceUntilIdle()
+
+        val logoutJob = launch {
+            fixture.service.logout()
+        }
+
+        fixture.authRepository.logoutTokenCaptureStarted.await()
+        try {
+            assertEquals(AuthState.Idle, fixture.service.authState.value)
+            assertEquals(false, fixture.authService.isLoggedIn())
+            assertEquals(null, fixture.authService.getAccessToken())
+            assertEquals(emptyMap(), fixture.authService.getAuthHeaders())
+            assertFailsWith<SessionResetInProgressException> {
+                fixture.service.addBookmark(2, 255)
+            }
+            assertEquals(0, fixture.bookmarksRepository.addCount)
+        } finally {
+            fixture.authRepository.logoutTokenCaptureCanFinish.complete(Unit)
+        }
+
+        logoutJob.join()
+        advanceUntilIdle()
+
+        assertEquals(0, fixture.bookmarksRepository.addCount)
+        fixture.clearAndJoin()
+    }
+}
+
+private class SyncServiceFixture(
+    val authRepository: ServiceAuthRepository = ServiceAuthRepository(),
+    val resetRepository: ServiceResetRepository = ServiceResetRepository(),
+    val lifecycleStore: SettingsSessionLifecycleStateStore =
+        SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings())
+) {
+    val tokenStore = SyncSettingsLocalModificationDateStore(MapSettings().toSuspendSettings())
+    val lifecycleCoordinator = SessionLifecycleCoordinator(lifecycleStore)
+    val bookmarksRepository = ServiceBookmarksRepository()
+    private val readingBookmarksRepository = ServiceReadingBookmarksRepository()
+    private val collectionsRepository = ServiceCollectionsRepository()
+    private val collectionBookmarksRepository = ServiceCollectionBookmarksRepository()
+    private val notesRepository = ServiceNotesRepository()
+    private val readingSessionsRepository = ServiceReadingSessionsRepository()
+    private val importRepository = ServiceImportRepository()
+    val authService = AuthService(
+        authRepository = authRepository,
+        sessionPublicationGuard = AuthSessionPublicationGuard {
+            !lifecycleStore.snapshot().resetInProgress
+        }
+    )
+    private val pipeline = SyncEnginePipeline(
+        bookmarksRepository = bookmarksRepository,
+        readingBookmarksRepository = readingBookmarksRepository,
+        collectionsRepository = collectionsRepository,
+        collectionBookmarksRepository = collectionBookmarksRepository,
+        notesRepository = notesRepository,
+        readingSessionsRepository = readingSessionsRepository
+    )
+    val service = SyncService(
+        authService = authService,
+        pipeline = pipeline,
+        environment = SynchronizationEnvironment("https://example.invalid"),
+        persistenceResetRepository = resetRepository,
+        persistenceImportRepository = importRepository,
+        syncLocalModificationDateStore = tokenStore,
+        sessionLifecycleCoordinator = lifecycleCoordinator
+    )
+
+    suspend fun clearAndJoin() {
+        service.clearAndJoin()
+    }
+}
+
+private class ServiceAuthRepository(
+    private var accessToken: String? = null,
+    private var refreshToken: String? = null,
+    private var idToken: String? = null,
+    private val remoteFailures: List<RemoteLogoutFailure> = emptyList(),
+    private val throwOnLogoutTokenCapture: Boolean = false,
+    private val throwOnClearLocalSession: Boolean = false,
+    private val suspendLogoutTokenCapture: Boolean = false,
+    private val blockFirstAuthHeaders: Boolean = false,
+    private val remoteLogoutException: Throwable? = null,
+    private val onAttemptRemoteLogout: suspend () -> Unit = {}
+) : AuthRepository {
+    val logoutTokenCaptureStarted = CompletableDeferred<Unit>()
+    val logoutTokenCaptureCanFinish = CompletableDeferred<Unit>()
+    val firstAuthHeadersStarted = CompletableDeferred<Unit>()
+    val firstAuthHeadersCanFinish = CompletableDeferred<Unit>()
+    var remoteLogoutAttemptCount = 0
+        private set
+    var loginCalls = 0
+        private set
+    var reauthenticationCalls = 0
+        private set
+    private var authHeadersCalls = 0
+
+    override suspend fun login() {
+        loginCalls += 1
+        accessToken = "access-token"
+    }
+
+    override suspend fun loginWithReauthentication() {
+        reauthenticationCalls += 1
+        accessToken = "access-token"
+    }
+
+    override suspend fun refreshTokensIfNeeded(): Boolean = accessToken != null
+
+    override suspend fun logout() {
+        val failures = attemptRemoteLogout(captureLogoutTokenMaterial())
+        if (failures.isNotEmpty()) {
+            throw failures.first().exception
+        }
+        clearLocalSession()
+    }
+
+    override suspend fun captureLogoutTokenMaterial(): LogoutTokenMaterial {
+        if (suspendLogoutTokenCapture) {
+            logoutTokenCaptureStarted.complete(Unit)
+            logoutTokenCaptureCanFinish.await()
+        }
+        if (throwOnLogoutTokenCapture) {
+            throw IllegalStateException("token capture failed")
+        }
+        return LogoutTokenMaterial(refreshToken = refreshToken, idToken = idToken)
+    }
+
+    override suspend fun clearLocalSession() {
+        if (throwOnClearLocalSession) {
+            throw IllegalStateException("local session clear failed")
+        }
+        accessToken = null
+        refreshToken = null
+        idToken = null
+    }
+
+    override suspend fun attemptRemoteLogout(tokenMaterial: LogoutTokenMaterial): List<RemoteLogoutFailure> {
+        remoteLogoutAttemptCount += 1
+        onAttemptRemoteLogout()
+        remoteLogoutException?.let { throw it }
+        return remoteFailures
+    }
+
+    override suspend fun getAccessToken(): String? = accessToken
+
+    override suspend fun isLoggedIn(): Boolean = accessToken != null
+
+    override suspend fun getCurrentUser(): UserInfo? = null
+
+    override suspend fun getAuthHeaders(): Map<String, String> {
+        authHeadersCalls += 1
+        if (blockFirstAuthHeaders && authHeadersCalls == 1) {
+            firstAuthHeadersStarted.complete(Unit)
+            withContext(NonCancellable) {
+                firstAuthHeadersCanFinish.await()
+            }
+        }
+        return accessToken?.let { mapOf("Authorization" to "Bearer $it") }.orEmpty()
+    }
+}
+
+private class ServiceResetRepository(
+    private val failDelete: Boolean = false
+) : PersistenceResetRepository {
+    var deleteCount = 0
+
+    override fun deleteAllData() {
+        if (failDelete) {
+            throw IllegalStateException("delete failed")
+        }
+        deleteCount++
+    }
+}
+
+private class ServiceImportRepository : PersistenceImportRepository {
+    override suspend fun importData(
+        data: PersistenceImportData,
+        deleteExisting: Boolean
+    ): PersistenceImportResult =
+        PersistenceImportResult(
+            bookmarksImported = 0,
+            collectionsImported = 0,
+            collectionBookmarksImported = 0,
+            readingSessionsImported = 0,
+            readingBookmarkImported = false,
+            notesImported = 0
+        )
+}
+
+private class ServiceBookmarksRepository : BookmarksRepository, BookmarksSynchronizationRepository {
+    var addCount = 0
+    private val bookmarks = MutableStateFlow<List<AyahBookmark>>(emptyList())
+
+    override suspend fun getAllBookmarks(): List<AyahBookmark> = bookmarks.value
+    override fun getBookmarksFlow(): Flow<List<AyahBookmark>> = bookmarks
+    override suspend fun addBookmark(sura: Int, ayah: Int): AyahBookmark =
+        AyahBookmark(sura, ayah, testTimestamp(), "bookmark-${++addCount}")
+
+    override suspend fun addBookmark(sura: Int, ayah: Int, timestamp: com.quran.shared.persistence.util.PlatformDateTime): AyahBookmark =
+        addBookmark(sura, ayah)
+
+    override suspend fun addBookmark(sura: Int, ayah: Int, collectionLocalIds: List<String>?): AyahBookmark =
+        addBookmark(sura, ayah)
+
+    override suspend fun addBookmark(
+        sura: Int,
+        ayah: Int,
+        collectionLocalIds: List<String>?,
+        timestamp: com.quran.shared.persistence.util.PlatformDateTime
+    ): AyahBookmark = addBookmark(sura, ayah)
+
+    override suspend fun deleteBookmark(sura: Int, ayah: Int): Boolean = true
+    override suspend fun deleteBookmark(bookmark: AyahBookmark): Boolean = true
+    override suspend fun deleteBookmark(localId: String): Boolean = true
+    override suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<RemoteBookmark>> = emptyList()
+    override suspend fun markMutatedBookmarksInFlight(acks: List<LocalMutationAck>): List<LocalMutationAck> = emptyList()
+    override suspend fun rollbackMutatedBookmarksInFlight(acks: List<LocalMutationAck>) = Unit
+    override suspend fun applyRemoteChanges(
+        updatesToPersist: List<RemoteModelMutation<RemoteBookmark>>,
+        localMutationsToClear: List<LocalModelMutation<RemoteBookmark>>,
+        writeBoundaryGuard: PersistenceWriteBoundaryGuard
+    ) = writeBoundaryGuard.checkWriteBoundary()
+    override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
+        remoteIDs.associateWith { false }
+    override suspend fun fetchBookmarkByRemoteId(remoteId: String): RemoteBookmark? = null
+}
+
+private class ServiceReadingBookmarksRepository : ReadingBookmarksRepository {
+    override suspend fun getReadingBookmark(): ReadingBookmark? = null
+    override fun getReadingBookmarkFlow(): Flow<ReadingBookmark?> = MutableStateFlow(null)
+    override suspend fun addAyahReadingBookmark(sura: Int, ayah: Int): AyahReadingBookmark =
+        AyahReadingBookmark(sura, ayah, testTimestamp(), "reading-ayah")
+    override suspend fun addAyahReadingBookmark(
+        sura: Int,
+        ayah: Int,
+        timestamp: com.quran.shared.persistence.util.PlatformDateTime
+    ): AyahReadingBookmark = addAyahReadingBookmark(sura, ayah)
+    override suspend fun addPageReadingBookmark(page: Int): PageReadingBookmark =
+        PageReadingBookmark(page, testTimestamp(), "reading-page")
+    override suspend fun addPageReadingBookmark(
+        page: Int,
+        timestamp: com.quran.shared.persistence.util.PlatformDateTime
+    ): PageReadingBookmark = addPageReadingBookmark(page)
+    override suspend fun deleteReadingBookmark(): Boolean = true
+}
+
+private class ServiceCollectionsRepository : CollectionsRepository, CollectionsSynchronizationRepository {
+    override suspend fun getAllCollections(): List<Collection> = emptyList()
+    override suspend fun addCollection(name: String): Collection =
+        Collection(name, testTimestamp(), "collection")
+    override suspend fun addCollection(
+        name: String,
+        timestamp: com.quran.shared.persistence.util.PlatformDateTime
+    ): Collection = addCollection(name)
+    override suspend fun updateCollection(localId: String, name: String): Collection = addCollection(name)
+    override suspend fun updateCollection(
+        localId: String,
+        name: String,
+        timestamp: com.quran.shared.persistence.util.PlatformDateTime
+    ): Collection = addCollection(name)
+    override suspend fun deleteCollection(localId: String): Boolean = true
+    override fun getCollectionsFlow(): Flow<List<Collection>> = MutableStateFlow(emptyList())
+    override suspend fun fetchMutatedCollections(): List<LocalModelMutation<Collection>> = emptyList()
+    override suspend fun applyRemoteChanges(
+        updatesToPersist: List<RemoteModelMutation<RemoteCollection>>,
+        localMutationsToClear: List<LocalModelMutation<Collection>>,
+        writeBoundaryGuard: PersistenceWriteBoundaryGuard
+    ) = writeBoundaryGuard.checkWriteBoundary()
+    override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
+        remoteIDs.associateWith { false }
+}
+
+private class ServiceCollectionBookmarksRepository :
+    CollectionBookmarksRepository,
+    CollectionBookmarksSynchronizationRepository {
+    override suspend fun getBookmarksForCollection(collectionLocalId: String): List<CollectionAyahBookmark> = emptyList()
+    override suspend fun addBookmarkToCollection(
+        collectionLocalId: String,
+        bookmark: AyahBookmark
+    ): CollectionAyahBookmark = bookmarkLink(collectionLocalId)
+    override suspend fun addBookmarkToCollection(
+        collectionLocalId: String,
+        bookmark: AyahBookmark,
+        timestamp: com.quran.shared.persistence.util.PlatformDateTime
+    ): CollectionAyahBookmark = bookmarkLink(collectionLocalId)
+    override suspend fun addAyahBookmarkToCollection(
+        collectionLocalId: String,
+        sura: Int,
+        ayah: Int
+    ): CollectionAyahBookmark = bookmarkLink(collectionLocalId)
+    override suspend fun addAyahBookmarkToCollection(
+        collectionLocalId: String,
+        sura: Int,
+        ayah: Int,
+        timestamp: com.quran.shared.persistence.util.PlatformDateTime
+    ): CollectionAyahBookmark = bookmarkLink(collectionLocalId)
+    override suspend fun removeBookmarkFromCollection(collectionLocalId: String, bookmark: AyahBookmark): Boolean = true
+    override suspend fun removeAyahBookmarkFromCollection(collectionAyahBookmark: CollectionAyahBookmark): Boolean = true
+    override fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<CollectionAyahBookmark>> =
+        MutableStateFlow(emptyList())
+    override suspend fun fetchMutatedCollectionBookmarks(): List<LocalModelMutation<CollectionAyahBookmark>> =
+        emptyList()
+    override suspend fun markMutatedCollectionBookmarksInFlight(acks: List<LocalMutationAck>): List<LocalMutationAck> =
+        emptyList()
+    override suspend fun rollbackMutatedCollectionBookmarksInFlight(acks: List<LocalMutationAck>) = Unit
+    override suspend fun applyRemoteChanges(
+        updatesToPersist: List<RemoteModelMutation<RemoteCollectionBookmark>>,
+        localMutationsToClear: List<LocalModelMutation<CollectionAyahBookmark>>,
+        writeBoundaryGuard: PersistenceWriteBoundaryGuard
+    ) = writeBoundaryGuard.checkWriteBoundary()
+    override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
+        remoteIDs.associateWith { false }
+    override suspend fun fetchCollectionBookmarkByRemoteId(remoteId: String): CollectionAyahBookmark? = null
+}
+
+private class ServiceNotesRepository : NotesRepository, NotesSynchronizationRepository {
+    override suspend fun getAllNotes(): List<Note> = emptyList()
+    override suspend fun addNote(body: String, startSura: Int, startAyah: Int, endSura: Int, endAyah: Int): Note =
+        Note(body, startSura, startAyah, endSura, endAyah, testTimestamp(), "note")
+    override suspend fun addNote(
+        body: String,
+        startSura: Int,
+        startAyah: Int,
+        endSura: Int,
+        endAyah: Int,
+        timestamp: com.quran.shared.persistence.util.PlatformDateTime
+    ): Note = addNote(body, startSura, startAyah, endSura, endAyah)
+    override suspend fun updateNote(
+        localId: String,
+        body: String,
+        startSura: Int,
+        startAyah: Int,
+        endSura: Int,
+        endAyah: Int
+    ): Note = addNote(body, startSura, startAyah, endSura, endAyah)
+    override suspend fun updateNote(
+        localId: String,
+        body: String,
+        startSura: Int,
+        startAyah: Int,
+        endSura: Int,
+        endAyah: Int,
+        timestamp: com.quran.shared.persistence.util.PlatformDateTime
+    ): Note = addNote(body, startSura, startAyah, endSura, endAyah)
+    override suspend fun deleteNote(localId: String): Boolean = true
+    override fun getNotesFlow(): Flow<List<Note>> = MutableStateFlow(emptyList())
+    override suspend fun fetchMutatedNotes(lastModified: Long): List<LocalModelMutation<Note>> = emptyList()
+    override suspend fun applyRemoteChanges(
+        updatesToPersist: List<RemoteModelMutation<RemoteNote>>,
+        localMutationsToClear: List<LocalModelMutation<Note>>,
+        writeBoundaryGuard: PersistenceWriteBoundaryGuard
+    ) = writeBoundaryGuard.checkWriteBoundary()
+    override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
+        remoteIDs.associateWith { false }
+}
+
+private class ServiceReadingSessionsRepository : ReadingSessionsRepository, ReadingSessionsSynchronizationRepository {
+    override suspend fun getReadingSessions(): List<ReadingSession> = emptyList()
+    override suspend fun addReadingSession(sura: Int, ayah: Int): ReadingSession =
+        ReadingSession(sura, ayah, testTimestamp(), "reading-session")
+    override suspend fun addReadingSession(
+        sura: Int,
+        ayah: Int,
+        timestamp: com.quran.shared.persistence.util.PlatformDateTime
+    ): ReadingSession = addReadingSession(sura, ayah)
+    override suspend fun updateReadingSession(localId: String, sura: Int, ayah: Int): ReadingSession =
+        addReadingSession(sura, ayah)
+    override suspend fun updateReadingSession(
+        localId: String,
+        sura: Int,
+        ayah: Int,
+        timestamp: com.quran.shared.persistence.util.PlatformDateTime
+    ): ReadingSession = addReadingSession(sura, ayah)
+    override fun getReadingSessionsFlow(): Flow<List<ReadingSession>> = MutableStateFlow(emptyList())
+    override suspend fun deleteReadingSession(sura: Int, ayah: Int): Boolean = true
+    override suspend fun fetchMutatedReadingSessions(): List<LocalModelMutation<ReadingSession>> = emptyList()
+    override suspend fun applyRemoteChanges(
+        updatesToPersist: List<RemoteModelMutation<RemoteReadingSession>>,
+        localMutationIdsToClear: List<String>,
+        writeBoundaryGuard: PersistenceWriteBoundaryGuard
+    ) = writeBoundaryGuard.checkWriteBoundary()
+    override suspend fun applyRemoteChangesForMutations(
+        updatesToPersist: List<RemoteModelMutation<RemoteReadingSession>>,
+        localMutationsToClear: List<LocalModelMutation<ReadingSession>>,
+        writeBoundaryGuard: PersistenceWriteBoundaryGuard
+    ) = writeBoundaryGuard.checkWriteBoundary()
+    override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
+        remoteIDs.associateWith { false }
+    override suspend fun fetchReadingSessionByRemoteId(remoteId: String): ReadingSession? = null
+}
+
+private fun bookmarkLink(collectionLocalId: String): CollectionAyahBookmark =
+    CollectionAyahBookmark(
+        collectionLocalId = collectionLocalId,
+        collectionRemoteId = null,
+        bookmarkLocalId = "bookmark",
+        bookmarkRemoteId = null,
+        sura = 2,
+        ayah = 255,
+        lastUpdated = testTimestamp(),
+        localId = "collection-bookmark"
+    )
+
+private fun testTimestamp(): com.quran.shared.persistence.util.PlatformDateTime =
+    Instant.fromEpochMilliseconds(1).toPlatform()

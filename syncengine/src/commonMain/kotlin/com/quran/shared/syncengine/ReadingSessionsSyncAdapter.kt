@@ -48,10 +48,6 @@ internal class ReadingSessionsSyncAdapter(
         configurations.resultNotifier.didFail(message)
     }
 
-    override suspend fun didCompleteSync(newToken: Long) {
-        configurations.resultNotifier.didCompleteSync(newToken)
-    }
-
     private suspend fun parseRemoteMutations(
         mutations: List<SyncMutation>
     ): List<RemoteModelMutation<SyncReadingSession>> {
@@ -59,7 +55,7 @@ internal class ReadingSessionsSyncAdapter(
             if (!mutation.resource.equals(resourceName, ignoreCase = true)) {
                 return@mapNotNull null
             }
-            val resourceId = mutation.resourceId ?: return@mapNotNull null
+            val resourceId = mutation.requireSimpleResourceRemoteId(resourceName)
             val session = mutation.toSyncReadingSession(logger) ?: return@mapNotNull null
             RemoteModelMutation(
                 model = session,
@@ -96,12 +92,24 @@ internal class ReadingSessionsSyncAdapter(
         localMutations: List<LocalModelMutation<SyncReadingSession>>,
         pushedMutations: List<SyncMutation>
     ): List<RemoteModelMutation<SyncReadingSession>> {
+        validatePushedMutationCount(resourceName, localMutations.size, pushedMutations.size)
+
         return localMutations.mapIndexed { index, localMutation ->
             val pushedMutation = pushedMutations[index]
+            val remoteId = validatePushedMutationAck(
+                resourceName = resourceName,
+                index = index,
+                expectedRemoteId = localMutation.remoteID,
+                expectedMutation = localMutation.mutation,
+                pushedMutation = pushedMutation,
+                acknowledgedRemoteId = pushedMutation.resourceId
+            )
+
             RemoteModelMutation(
                 model = localMutation.model,
-                remoteID = pushedMutation.resourceId!!,
-                mutation = pushedMutation.mutation
+                remoteID = remoteId,
+                mutation = pushedMutation.mutation,
+                ack = localMutation.ack
             )
         }
     }
@@ -113,9 +121,8 @@ internal class ReadingSessionsSyncAdapter(
     ) : ResourceSyncPlan {
         override val resourceName: String = this@ReadingSessionsSyncAdapter.resourceName
 
-        override fun mutationsToPush(): List<SyncMutation> {
-            return localMutationsToPush.map { toSyncMutation(it) }
-        }
+        override suspend fun mutationsToPush(): List<SyncMutation> =
+            localMutationsToPush.map { toSyncMutation(it) }
 
         override suspend fun complete(newToken: Long, pushedMutations: List<SyncMutation>) {
             val mappedPushed = mapPushedMutations(localMutationsToPush, pushedMutations)
@@ -131,9 +138,19 @@ internal class ReadingSessionsSyncAdapter(
 
 private fun SyncMutation.toSyncReadingSession(logger: Logger): SyncReadingSession? {
     val id = resourceId ?: return null
+    val lastModified = Instant.fromEpochMilliseconds(timestamp ?: 0)
+    if (mutation == Mutation.DELETED) {
+        return SyncReadingSession(
+            id = id,
+            chapterNumber = 0,
+            verseNumber = 0,
+            lastModified = lastModified
+        )
+    }
+
     val sura = data?.intOrNull("chapterNumber")
     val ayah = data?.intOrNull("verseNumber")
-    
+
     if (sura == null || ayah == null) {
         logger.w { "Skipping reading session mutation without sura/ayah: resourceId=$id" }
         return null
@@ -143,7 +160,7 @@ private fun SyncMutation.toSyncReadingSession(logger: Logger): SyncReadingSessio
         id = id,
         chapterNumber = sura,
         verseNumber = ayah,
-        lastModified = Instant.fromEpochMilliseconds(timestamp ?: 0)
+        lastModified = lastModified
     )
 }
 

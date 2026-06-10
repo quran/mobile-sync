@@ -9,15 +9,17 @@ interface SyncResourceAdapter {
         remoteMutations: List<SyncMutation>
     ): ResourceSyncPlan
 
-    suspend fun didCompleteSync(newToken: Long) = Unit
-
     suspend fun didFail(message: String)
 }
 
 interface ResourceSyncPlan {
     val resourceName: String
 
-    fun mutationsToPush(): List<SyncMutation>
+    suspend fun mutationsToPush(): List<SyncMutation>
+
+    suspend fun markMutationsInFlight() = Unit
+
+    suspend fun rollbackMutationsInFlight() = Unit
 
     suspend fun complete(newToken: Long, pushedMutations: List<SyncMutation>)
 }

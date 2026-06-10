@@ -1,6 +1,7 @@
 package com.quran.shared.syncengine
 
 import co.touchlab.kermit.Logger
+import com.quran.shared.mutations.Mutation
 import com.quran.shared.syncengine.network.GetMutationsRequest
 import com.quran.shared.syncengine.network.MutationsResponse
 import com.quran.shared.syncengine.network.PostMutationsRequest
@@ -8,12 +9,22 @@ import com.quran.shared.syncengine.scheduling.Scheduler
 import com.quran.shared.syncengine.scheduling.Trigger
 import com.quran.shared.syncengine.scheduling.createScheduler
 import io.ktor.client.HttpClient
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 
 internal class SynchronizationClientImpl(
     private val environment: SynchronizationEnvironment,
     private val httpClient: HttpClient,
     private val resourceAdapters: List<SyncResourceAdapter>,
-    private val authenticationDataFetcher: AuthenticationDataFetcher): SynchronizationClient {
+    private val authenticationDataFetcher: AuthenticationDataFetcher,
+    private val syncCompletionFinalizer: SyncCompletionFinalizer,
+    private val syncLifecycleGate: SyncLifecycleGate
+) : SynchronizationClient {
 
     private val logger = Logger.withTag("SynchronizationClient")
     
@@ -29,26 +40,30 @@ internal class SynchronizationClientImpl(
     )
 
     override fun localDataUpdated() {
-        if (authenticationDataFetcher.isLoggedIn()) {
+        if (syncLifecycleGate.canStartSync()) {
             logger.i { "Local data updated, triggering scheduler" }
             scheduler.invoke(Trigger.LOCAL_DATA_MODIFIED)
         } else {
-            logger.d { "Local data updated but user is not logged in, skipping trigger" }
+            logger.d { "Local data updated but sync lifecycle is unavailable, skipping trigger" }
         }
     }
 
     override fun applicationStarted() {
-        if (authenticationDataFetcher.isLoggedIn()) {
+        if (syncLifecycleGate.canStartSync()) {
             logger.i { "Application started, triggering scheduler" }
             scheduler.invoke(Trigger.APP_REFRESH)
         } else {
-            logger.d { "Application started but user is not logged in, skipping trigger" }
+            logger.d { "Application started but sync lifecycle is unavailable, skipping trigger" }
         }
     }
 
     override fun triggerSyncImmediately() {
-        logger.i { "Triggering immediate sync" }
-        scheduler.invoke(Trigger.IMMEDIATE)
+        if (syncLifecycleGate.canStartSync()) {
+            logger.i { "Triggering immediate sync" }
+            scheduler.invoke(Trigger.IMMEDIATE)
+        } else {
+            logger.d { "Immediate sync requested but sync lifecycle is unavailable, skipping trigger" }
+        }
     }
 
     override fun cancelSyncing() {
@@ -56,9 +71,20 @@ internal class SynchronizationClientImpl(
         scheduler.cancel()
     }
 
+    override suspend fun cancelSyncingAndJoin() {
+        logger.i { "Cancelling and draining all scheduled operations" }
+        scheduler.cancelAndJoin()
+    }
+
     private suspend fun startSyncOperation() {
-        if (!authenticationDataFetcher.isLoggedIn()) {
-            logger.i { "User is not logged in, skipping sync operation" }
+        val syncEpoch = try {
+            if (!syncLifecycleGate.canStartSync()) {
+                logger.i { "Sync lifecycle is unavailable, skipping sync operation" }
+                return
+            }
+            syncLifecycleGate.captureSyncEpoch()
+        } catch (exception: SyncOperationInvalidatedException) {
+            logger.i { "Sync operation invalidated before start: ${exception.message}" }
             return
         }
 
@@ -83,12 +109,34 @@ internal class SynchronizationClientImpl(
         val resources = resourceAdapters.map { it.resourceName }.distinct()
         val remoteResponse = fetchRemoteMutations(lastModificationDate, authHeaders, resources)
 
-        executeDependencyAwareSync(
-            resourceAdapters = resourceAdapters,
-            initialLastModificationDate = lastModificationDate,
-            remoteResponse = remoteResponse
-        ) { mutations, mutationToken ->
-            pushMutations(mutations, mutationToken, authHeaders)
+        try {
+            executeDependencyAwareSync(
+                resourceAdapters = resourceAdapters,
+                initialLastModificationDate = lastModificationDate,
+                remoteResponse = remoteResponse,
+                pushMutations = { mutations, mutationToken, admitPost ->
+                    syncLifecycleGate.checkSyncEpoch(syncEpoch)
+                    if (mutations.isNotEmpty()) {
+                        syncLifecycleGate.admitSyncPost(syncEpoch)
+                        admitPost()
+                    }
+                    val response = pushMutations(mutations, mutationToken, authHeaders)
+                    syncLifecycleGate.checkSyncEpoch(syncEpoch)
+                    response
+                },
+                preparePush = { mutations ->
+                    syncLifecycleGate.checkSyncEpoch(syncEpoch)
+                    mutations.isNotEmpty()
+                },
+                checkSyncStillValid = {
+                    syncLifecycleGate.checkSyncEpoch(syncEpoch)
+                },
+                completeSync = { token ->
+                    syncCompletionFinalizer.completeSync(token)
+                }
+            )
+        } catch (exception: SyncOperationInvalidatedException) {
+            logger.i { "Sync operation invalidated, aborting without retry: ${exception.message}" }
         }
     }
 
@@ -163,10 +211,14 @@ internal suspend fun executeDependencyAwareSync(
     resourceAdapters: List<SyncResourceAdapter>,
     initialLastModificationDate: Long,
     remoteResponse: MutationsResponse,
-    pushMutations: suspend (List<SyncMutation>, Long) -> MutationsResponse
+    pushMutations: suspend (List<SyncMutation>, Long, admitPost: () -> Unit) -> MutationsResponse,
+    preparePush: suspend (List<SyncMutation>) -> Boolean = { mutations -> mutations.isNotEmpty() },
+    checkSyncStillValid: suspend () -> Unit = {},
+    completeSync: suspend (Long) -> Unit = {}
 ) {
     var mutationToken = remoteResponse.lastModificationDate
-    val safeCompletionToken = remoteResponse.lastModificationDate
+    val initialGetToken = remoteResponse.lastModificationDate
+    var pushedPlanCount = 0
     val preDependencyDeletionPlans = resourceAdapters
         .mapNotNull { adapter ->
             (adapter as? PreDependencyDeletionSyncResourceAdapter)
@@ -175,35 +227,125 @@ internal suspend fun executeDependencyAwareSync(
     val phases = resourceAdapters.dependencyAwareSyncPhases()
     val totalPlans = phases.sumOf { it.size } + preDependencyDeletionPlans.size
 
-    suspend fun executePlans(plans: List<ResourceSyncPlan>) {
+    suspend fun executePlans(plans: List<ResourceSyncPlan>): List<SyncMutation> {
         if (plans.isEmpty()) {
-            return
+            return emptyList()
         }
 
-        val mutationsToPush = plans.flatMap { it.mutationsToPush() }
-        val pushResponse = pushMutations(mutationsToPush, mutationToken)
-        mutationToken = pushResponse.lastModificationDate
+        val markedPlans = mutableListOf<ResourceSyncPlan>()
+        val completedPlans = mutableListOf<ResourceSyncPlan>()
+        var mutationsToPush: List<SyncMutation> = emptyList()
+        var postMayHaveBeenAttempted = false
+        try {
+            plans.forEach { plan ->
+                markedPlans += plan
+                withContext(NonCancellable) {
+                    plan.markMutationsInFlight()
+                }
+            }
+            currentCoroutineContext().ensureActive()
+            mutationsToPush = buildList {
+                plans.forEach { plan ->
+                    val planMutations = plan.mutationsToPush()
+                    if (planMutations.isNotEmpty()) {
+                        pushedPlanCount += 1
+                    }
+                    addAll(planMutations)
+                }
+            }
+            checkSyncStillValid()
+            // Keep durable create markers once a POST could have reached the backend so replay can bind
+            // accepted remote IDs to local tombstones. Rollback below is only local preflight cleanup.
+            preparePush(mutationsToPush)
+            var postAdmitted = false
+            val pushResponse = try {
+                pushMutations(mutationsToPush, mutationToken) {
+                    postAdmitted = true
+                    postMayHaveBeenAttempted = mutationsToPush.isNotEmpty()
+                }
+            } catch (exception: Throwable) {
+                if (!postAdmitted && exception !is SyncOperationInvalidatedException) {
+                    postMayHaveBeenAttempted = mutationsToPush.isNotEmpty()
+                }
+                throw exception
+            }
+            if (!postAdmitted) {
+                postMayHaveBeenAttempted = mutationsToPush.isNotEmpty()
+            }
+            checkSyncStillValid()
+            validatePushedMutationResponse(mutationsToPush, pushResponse.mutations)
+            mutationToken = pushResponse.lastModificationDate
 
-        val pushedMutationsByResource = pushResponse.mutations.groupBy { it.resource.uppercase() }
-        plans.forEach { plan ->
-            val pushedForResource = pushedMutationsByResource[plan.resourceName.uppercase()].orEmpty()
-            val completionToken = if (totalPlans == 1) mutationToken else initialLastModificationDate
-            plan.complete(completionToken, pushedForResource)
+            val pushedMutationsByResource = pushResponse.mutations.groupBy { it.resource.uppercase() }
+            plans.forEach { plan ->
+                val pushedForResource = pushedMutationsByResource[plan.resourceName.uppercase()].orEmpty()
+                checkSyncStillValid()
+                withContext(NonCancellable + SyncWriteBoundaryContext(checkSyncStillValid)) {
+                    checkSyncStillValid()
+                    plan.complete(initialLastModificationDate, pushedForResource)
+                    completedPlans += plan
+                }
+                currentCoroutineContext().ensureActive()
+            }
+        } catch (exception: Throwable) {
+            if (!postMayHaveBeenAttempted) {
+                withContext(NonCancellable) {
+                    markedPlans.filterNot { plan -> plan in completedPlans }.forEach { plan ->
+                        plan.rollbackMutationsInFlight()
+                    }
+                }
+            }
+            throw exception
+        }
+        return mutationsToPush
+    }
+
+    val acceptedPreDependencyDeletes = executePlans(preDependencyDeletionPlans)
+        .filter { mutation -> mutation.mutation == Mutation.DELETED }
+        .mapNotNull { mutation ->
+            mutation.resourceId?.let { resourceId -> mutation.resource.uppercase() to resourceId }
+        }
+        .toSet()
+    val remoteMutationsForNormalPhases = if (acceptedPreDependencyDeletes.isEmpty()) {
+        remoteResponse.mutations
+    } else {
+        remoteResponse.mutations.filterNot { mutation ->
+            val resourceId = mutation.effectiveCreatedResourceId()
+            mutation.mutation == Mutation.CREATED &&
+                resourceId != null &&
+                (mutation.resource.uppercase() to resourceId) in acceptedPreDependencyDeletes
         }
     }
 
-    executePlans(preDependencyDeletionPlans)
-
     phases.forEach { phaseAdapters ->
         val plans = phaseAdapters.map { adapter ->
-            adapter.buildPlan(initialLastModificationDate, remoteResponse.mutations)
+            adapter.buildPlan(initialLastModificationDate, remoteMutationsForNormalPhases)
         }
         executePlans(plans)
     }
 
-    if (totalPlans > 1) {
-        resourceAdapters.forEach { adapter ->
-            adapter.didCompleteSync(safeCompletionToken)
-        }
+    checkSyncStillValid()
+    val finalToken = if (pushedPlanCount > 1) initialGetToken else mutationToken
+    withContext(NonCancellable + SyncWriteBoundaryContext(checkSyncStillValid)) {
+        checkSyncStillValid()
+        completeSync(finalToken)
     }
 }
+
+private fun SyncMutation.effectiveCreatedResourceId(): String? {
+    if (mutation != Mutation.CREATED || !resource.equals(COLLECTION_BOOKMARK_SYNC_RESOURCE, ignoreCase = true)) {
+        return resourceId
+    }
+    resourceId?.let { return it }
+    val collectionId = data?.stringOrNull("collectionId")
+    val bookmarkId = data?.stringOrNull("bookmarkId")
+        ?: data?.stringOrNull("bookmark_id")
+    return if (!collectionId.isNullOrEmpty() && !bookmarkId.isNullOrEmpty()) {
+        "$collectionId-$bookmarkId"
+    } else {
+        null
+    }
+}
+
+private fun JsonObject.stringOrNull(key: String): String? =
+    this[key]?.jsonPrimitive?.contentOrNull

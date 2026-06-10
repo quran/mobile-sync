@@ -11,8 +11,12 @@ CREATE TABLE IF NOT EXISTS bookmark(
   is_in_default_collection INTEGER NOT NULL DEFAULT 0,
   deleted INTEGER NOT NULL DEFAULT 0,
   bookmark_pending_op TEXT,
+  bookmark_pending_version INTEGER NOT NULL DEFAULT 0,
   reading_pending_op TEXT,
+  reading_pending_version INTEGER NOT NULL DEFAULT 0,
   default_pending_op TEXT,
+  default_pending_version INTEGER NOT NULL DEFAULT 0,
+  default_last_synced_bookmark_remote_id TEXT,
   created_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
   modified_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
   bookmark_modified_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
@@ -45,6 +49,8 @@ CREATE INDEX IF NOT EXISTS bookmark_reading_idx
 ON bookmark(is_reading, reading_modified_at DESC);
 CREATE INDEX IF NOT EXISTS bookmark_pending_idx
 ON bookmark(bookmark_pending_op, reading_pending_op, default_pending_op, modified_at DESC);
+CREATE INDEX IF NOT EXISTS bookmark_default_last_synced_idx
+ON bookmark(default_last_synced_bookmark_remote_id);
 
 getSavedAyahBookmarks:
   SELECT b.* FROM bookmark b
@@ -77,6 +83,9 @@ countAll:
 countActive:
   SELECT COUNT(*) FROM bookmark WHERE deleted = 0;
 
+changedRowCount:
+  SELECT changes();
+
 getBookmarkForAyah:
   SELECT * FROM bookmark
   WHERE bookmark_type = 'AYAH' AND sura = ? AND ayah = ? AND mushaf_id = 1
@@ -93,23 +102,48 @@ getBookmarkByLocalId:
 getBookmarkByRemoteId:
   SELECT * FROM bookmark WHERE remote_id = ? LIMIT 1;
 
+getBookmarkByDefaultRelationBookmarkRemoteId:
+  SELECT * FROM bookmark WHERE default_last_synced_bookmark_remote_id = ? LIMIT 1;
+
 clearBookmarkRemoteIdByLocalId:
   UPDATE bookmark
   SET remote_id = NULL
   WHERE local_id = :local_id AND remote_id = :remote_id;
+
+attachRemoteBookmarkIdByLocalId:
+  UPDATE bookmark
+  SET remote_id = :remote_id,
+    modified_at = CASE
+      WHEN modified_at > :modified_at THEN modified_at
+      ELSE :modified_at
+    END,
+    bookmark_modified_at = CASE
+      WHEN bookmark_modified_at > :modified_at THEN bookmark_modified_at
+      ELSE :modified_at
+    END
+  WHERE local_id = :local_id
+    AND remote_id IS NULL;
 
 getBookmarksByRemoteIds:
   SELECT * FROM bookmark WHERE remote_id IN :remote_ids;
 
 getUnsyncedBookmarkRows:
   SELECT * FROM bookmark
-  WHERE bookmark_pending_op IS NOT NULL
-    OR reading_pending_op IS NOT NULL
+  WHERE (
+      bookmark_pending_op IS NOT NULL
+      AND (bookmark_pending_op != 'DELETED' OR remote_id IS NOT NULL)
+    )
+    OR (reading_pending_op IS NOT NULL AND deleted = 0)
   ORDER BY modified_at DESC;
 
 getDefaultPendingBookmarks:
   SELECT * FROM bookmark
   WHERE default_pending_op IS NOT NULL
+    AND (
+      default_pending_op != 'DELETED'
+      OR remote_id IS NOT NULL
+      OR default_last_synced_bookmark_remote_id IS NOT NULL
+    )
   ORDER BY COALESCE(default_modified_at, modified_at) DESC;
 
 upsertAyahBookmark {
@@ -149,11 +183,19 @@ upsertAyahBookmark {
       ELSE :remote_id
     END,
     ayah_id = :ayah_id,
-    deleted = 0,
+    deleted = CASE
+      WHEN :remote_id IS NOT NULL AND remote_id IS NULL AND deleted = 1 AND bookmark_pending_op = 'DELETED' THEN deleted
+      ELSE 0
+    END,
     bookmark_pending_op = CASE
+      WHEN :remote_id IS NOT NULL AND remote_id IS NULL AND deleted = 1 AND bookmark_pending_op = 'DELETED' THEN bookmark_pending_op
       WHEN :remote_id IS NOT NULL THEN NULL
       WHEN bookmark_pending_op = 'DELETED' THEN NULL
       ELSE bookmark_pending_op
+    END,
+    bookmark_pending_version = CASE
+      WHEN :remote_id IS NULL AND bookmark_pending_op = 'DELETED' THEN bookmark_pending_version + 1
+      ELSE bookmark_pending_version
     END,
     modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
     bookmark_modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
@@ -196,11 +238,19 @@ upsertPageBookmark {
       WHEN :remote_id IS NULL THEN remote_id
       ELSE :remote_id
     END,
-    deleted = 0,
+    deleted = CASE
+      WHEN :remote_id IS NOT NULL AND remote_id IS NULL AND deleted = 1 AND bookmark_pending_op = 'DELETED' THEN deleted
+      ELSE 0
+    END,
     bookmark_pending_op = CASE
+      WHEN :remote_id IS NOT NULL AND remote_id IS NULL AND deleted = 1 AND bookmark_pending_op = 'DELETED' THEN bookmark_pending_op
       WHEN :remote_id IS NOT NULL THEN NULL
       WHEN bookmark_pending_op = 'DELETED' THEN NULL
       ELSE bookmark_pending_op
+    END,
+    bookmark_pending_version = CASE
+      WHEN :remote_id IS NULL AND bookmark_pending_op = 'DELETED' THEN bookmark_pending_version + 1
+      ELSE bookmark_pending_version
     END,
     modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
     bookmark_modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
@@ -221,7 +271,9 @@ addAyahToDefaultCollection {
     created_at,
     modified_at,
     bookmark_modified_at,
-    default_modified_at
+    default_modified_at,
+    default_pending_op,
+    default_pending_version
   )
   VALUES (
     'AYAH',
@@ -236,7 +288,9 @@ addAyahToDefaultCollection {
     COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
     COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
     COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
-    COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
+    COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    'CREATED',
+    1
   );
   UPDATE bookmark
   SET ayah_id = :ayah_id,
@@ -246,12 +300,25 @@ addAyahToDefaultCollection {
       WHEN bookmark_pending_op = 'DELETED' THEN NULL
       ELSE bookmark_pending_op
     END,
+    bookmark_pending_version = CASE
+      WHEN bookmark_pending_op = 'DELETED' THEN bookmark_pending_version + 1
+      ELSE bookmark_pending_version
+    END,
     default_pending_op = CASE
+      WHEN default_pending_op = 'DELETED' AND remote_id IS NULL THEN 'DELETED'
       WHEN default_pending_op = 'DELETED' THEN NULL
       WHEN is_in_default_collection = 1
         AND remote_id IS NOT NULL
         AND default_pending_op IS NULL THEN NULL
       ELSE 'CREATED'
+    END,
+    default_pending_version = CASE
+      WHEN default_pending_op = 'DELETED' THEN default_pending_version + 1
+      WHEN is_in_default_collection = 1
+        AND remote_id IS NOT NULL
+        AND default_pending_op IS NULL THEN default_pending_version
+      WHEN default_pending_op = 'CREATED' THEN default_pending_version
+      ELSE default_pending_version + 1
     END,
     modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
     default_modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
@@ -262,9 +329,25 @@ clearDefaultCollection {
   UPDATE bookmark
   SET is_in_default_collection = 0,
     default_pending_op = CASE
+      WHEN default_pending_op = 'CREATED' AND default_pending_version > 1 THEN 'DELETED'
       WHEN default_pending_op = 'CREATED' THEN NULL
-      WHEN remote_id IS NULL THEN NULL
+      WHEN default_pending_op = 'DELETED'
+        AND remote_id IS NULL
+        AND default_last_synced_bookmark_remote_id IS NULL THEN 'DELETED'
+      WHEN remote_id IS NULL
+        AND default_last_synced_bookmark_remote_id IS NULL THEN NULL
       ELSE 'DELETED'
+    END,
+    default_pending_version = CASE
+      WHEN default_pending_op = 'CREATED' THEN default_pending_version + 1
+      WHEN remote_id IS NULL
+        AND default_last_synced_bookmark_remote_id IS NULL
+        AND default_pending_op IS NOT NULL THEN default_pending_version + 1
+      WHEN (remote_id IS NOT NULL OR default_last_synced_bookmark_remote_id IS NOT NULL)
+        AND default_pending_op != 'DELETED' THEN default_pending_version + 1
+      WHEN (remote_id IS NOT NULL OR default_last_synced_bookmark_remote_id IS NOT NULL)
+        AND default_pending_op IS NULL THEN default_pending_version + 1
+      ELSE default_pending_version
     END,
     modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
     default_modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
@@ -278,19 +361,59 @@ clearDefaultPending:
       WHEN remote_id IS NULL THEN :remote_id
       ELSE remote_id
     END,
+    default_last_synced_bookmark_remote_id = :default_last_synced_bookmark_remote_id,
     modified_at = :modified_at,
     default_modified_at = :modified_at
-  WHERE local_id = :local_id;
+  WHERE local_id = :local_id
+    AND default_pending_op = :pending_op
+    AND default_pending_version = :pending_version;
+
+clearReaddedDefaultCreatedAck:
+  UPDATE bookmark
+  SET default_pending_op = NULL,
+    remote_id = CASE
+      WHEN remote_id IS NULL THEN :remote_id
+      ELSE remote_id
+    END,
+    default_last_synced_bookmark_remote_id = :default_last_synced_bookmark_remote_id,
+    modified_at = :modified_at,
+    default_modified_at = :modified_at
+  WHERE local_id = :local_id
+    AND is_in_default_collection = 1
+    AND default_pending_op = 'DELETED';
+
+bindDefaultRemoteSnapshotForCreatedAck:
+  UPDATE bookmark
+  SET remote_id = CASE
+      WHEN remote_id IS NULL THEN :remote_id
+      ELSE remote_id
+    END,
+    default_last_synced_bookmark_remote_id = :default_last_synced_bookmark_remote_id,
+    modified_at = :modified_at,
+    default_modified_at = :modified_at
+  WHERE local_id = :local_id
+    AND is_in_default_collection = 0
+    AND default_pending_op = 'DELETED';
 
 setDefaultFromRemote {
   UPDATE bookmark
-  SET is_in_default_collection = :is_in_default_collection,
-    default_pending_op = NULL,
+  SET is_in_default_collection = CASE
+      WHEN is_in_default_collection = 0 AND default_pending_op = 'DELETED' THEN is_in_default_collection
+      ELSE :is_in_default_collection
+    END,
     remote_id = CASE
       WHEN :remote_id IS NULL THEN remote_id
       ELSE :remote_id
     END,
-    deleted = 0,
+    default_last_synced_bookmark_remote_id = CASE
+      WHEN :is_in_default_collection = 1 THEN COALESCE(:remote_id, default_last_synced_bookmark_remote_id)
+      WHEN default_pending_op = 'DELETED' THEN COALESCE(:remote_id, default_last_synced_bookmark_remote_id)
+      ELSE NULL
+    END,
+    deleted = CASE
+      WHEN remote_id IS NULL AND deleted = 1 AND bookmark_pending_op = 'DELETED' THEN deleted
+      ELSE 0
+    END,
     modified_at = :modified_at,
     default_modified_at = :modified_at
   WHERE local_id = :local_id;
@@ -299,6 +422,7 @@ setDefaultFromRemote {
 markDefaultRelationForRecreation:
   UPDATE bookmark
   SET default_pending_op = 'CREATED',
+    default_pending_version = default_pending_version + 1,
     modified_at = :modified_at,
     default_modified_at = :modified_at
   WHERE local_id = :local_id
@@ -308,6 +432,30 @@ markDefaultRelationForRecreation:
       default_pending_op IS NULL
       OR default_pending_op = 'CREATED'
     );
+
+markDefaultCreateInFlight:
+  UPDATE bookmark
+  SET default_pending_version = default_pending_version + 1
+  WHERE local_id = :local_id
+    AND default_pending_op = 'CREATED'
+    AND default_pending_version = :pending_version;
+
+rollbackActiveDefaultCreateInFlight:
+  UPDATE bookmark
+  SET default_pending_version = :pending_version
+  WHERE local_id = :local_id
+    AND is_in_default_collection = 1
+    AND default_pending_op = 'CREATED'
+    AND default_pending_version = :marked_pending_version;
+
+clearCanceledDefaultCreateInFlight:
+  UPDATE bookmark
+  SET default_pending_op = NULL
+  WHERE local_id = :local_id
+    AND remote_id IS NULL
+    AND is_in_default_collection = 0
+    AND default_pending_op = 'DELETED'
+    AND default_pending_version = :canceled_pending_version;
 
 setAyahReadingBookmark {
   INSERT OR IGNORE INTO bookmark (
@@ -321,6 +469,7 @@ setAyahReadingBookmark {
     is_in_default_collection,
     deleted,
     reading_pending_op,
+    reading_pending_version,
     created_at,
     modified_at,
     bookmark_modified_at,
@@ -337,6 +486,7 @@ setAyahReadingBookmark {
     0,
     0,
     'CREATED',
+    1,
     COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
     COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
     COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
@@ -350,7 +500,15 @@ setAyahReadingBookmark {
       WHEN bookmark_pending_op = 'DELETED' THEN NULL
       ELSE bookmark_pending_op
     END,
+    bookmark_pending_version = CASE
+      WHEN bookmark_pending_op = 'DELETED' THEN bookmark_pending_version + 1
+      ELSE bookmark_pending_version
+    END,
     reading_pending_op = 'CREATED',
+    reading_pending_version = CASE
+      WHEN is_reading = 1 AND reading_pending_op = 'CREATED' THEN reading_pending_version
+      ELSE reading_pending_version + 1
+    END,
     modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
     reading_modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
   WHERE bookmark_type = 'AYAH' AND sura = :sura AND ayah = :ayah AND mushaf_id = 1;
@@ -368,6 +526,7 @@ setPageReadingBookmark {
     is_in_default_collection,
     deleted,
     reading_pending_op,
+    reading_pending_version,
     created_at,
     modified_at,
     bookmark_modified_at,
@@ -384,6 +543,7 @@ setPageReadingBookmark {
     0,
     0,
     'CREATED',
+    1,
     COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
     COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
     COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
@@ -396,7 +556,15 @@ setPageReadingBookmark {
       WHEN bookmark_pending_op = 'DELETED' THEN NULL
       ELSE bookmark_pending_op
     END,
+    bookmark_pending_version = CASE
+      WHEN bookmark_pending_op = 'DELETED' THEN bookmark_pending_version + 1
+      ELSE bookmark_pending_version
+    END,
     reading_pending_op = 'CREATED',
+    reading_pending_version = CASE
+      WHEN is_reading = 1 AND reading_pending_op = 'CREATED' THEN reading_pending_version
+      ELSE reading_pending_version + 1
+    END,
     modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
     reading_modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
   WHERE bookmark_type = 'PAGE' AND page = :page AND mushaf_id = 1;
@@ -411,7 +579,12 @@ clearOtherReadingBookmarks:
         AND NOT EXISTS (
           SELECT 1 FROM bookmark_collection bc
           WHERE bc.bookmark_local_id = bookmark.local_id
-            AND (bc.is_active = 1 OR bc.pending_op IS NOT NULL)
+            AND (
+              bc.is_active = 1
+              OR bc.pending_op IS NOT NULL
+              OR bc.last_synced_bookmark_remote_id IS NOT NULL
+              OR bc.last_synced_collection_remote_id IS NOT NULL
+            )
         ) THEN 1
       ELSE deleted
     END,
@@ -421,9 +594,43 @@ clearOtherReadingBookmarks:
         AND NOT EXISTS (
           SELECT 1 FROM bookmark_collection bc
           WHERE bc.bookmark_local_id = bookmark.local_id
-            AND (bc.is_active = 1 OR bc.pending_op IS NOT NULL)
+            AND (
+              bc.is_active = 1
+              OR bc.pending_op IS NOT NULL
+              OR bc.last_synced_bookmark_remote_id IS NOT NULL
+              OR bc.last_synced_collection_remote_id IS NOT NULL
+            )
         ) THEN 'DELETED'
       ELSE bookmark_pending_op
+    END,
+    bookmark_pending_version = CASE
+      WHEN remote_id IS NOT NULL
+        AND is_in_default_collection = 0
+        AND bookmark_pending_op != 'DELETED'
+        AND NOT EXISTS (
+          SELECT 1 FROM bookmark_collection bc
+          WHERE bc.bookmark_local_id = bookmark.local_id
+            AND (
+              bc.is_active = 1
+              OR bc.pending_op IS NOT NULL
+              OR bc.last_synced_bookmark_remote_id IS NOT NULL
+              OR bc.last_synced_collection_remote_id IS NOT NULL
+            )
+        ) THEN bookmark_pending_version + 1
+      WHEN remote_id IS NOT NULL
+        AND is_in_default_collection = 0
+        AND bookmark_pending_op IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM bookmark_collection bc
+          WHERE bc.bookmark_local_id = bookmark.local_id
+            AND (
+              bc.is_active = 1
+              OR bc.pending_op IS NOT NULL
+              OR bc.last_synced_bookmark_remote_id IS NOT NULL
+              OR bc.last_synced_collection_remote_id IS NOT NULL
+            )
+        ) THEN bookmark_pending_version + 1
+      ELSE bookmark_pending_version
     END,
     reading_pending_op = CASE
       WHEN remote_id IS NULL
@@ -431,17 +638,28 @@ clearOtherReadingBookmarks:
         AND NOT EXISTS (
           SELECT 1 FROM bookmark_collection bc
           WHERE bc.bookmark_local_id = bookmark.local_id
-            AND (bc.is_active = 1 OR bc.pending_op IS NOT NULL)
+            AND (
+              bc.is_active = 1
+              OR bc.pending_op IS NOT NULL
+              OR bc.last_synced_bookmark_remote_id IS NOT NULL
+              OR bc.last_synced_collection_remote_id IS NOT NULL
+            )
         ) THEN NULL
       WHEN remote_id IS NOT NULL
         AND is_in_default_collection = 0
         AND NOT EXISTS (
           SELECT 1 FROM bookmark_collection bc
           WHERE bc.bookmark_local_id = bookmark.local_id
-            AND (bc.is_active = 1 OR bc.pending_op IS NOT NULL)
+            AND (
+              bc.is_active = 1
+              OR bc.pending_op IS NOT NULL
+              OR bc.last_synced_bookmark_remote_id IS NOT NULL
+              OR bc.last_synced_collection_remote_id IS NOT NULL
+            )
         ) THEN NULL
       ELSE 'CREATED'
     END,
+    reading_pending_version = reading_pending_version + 1,
     modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
     reading_modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
   WHERE deleted = 0 AND is_reading = 1 AND local_id != :local_id;
@@ -450,9 +668,11 @@ clearReadingBookmark:
   UPDATE bookmark
   SET is_reading = 0,
     reading_pending_op = CASE
+      WHEN reading_pending_op = 'CREATED' THEN 'CREATED'
       WHEN remote_id IS NULL THEN NULL
       ELSE 'CREATED'
     END,
+    reading_pending_version = reading_pending_version + 1,
     modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
     reading_modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
   WHERE local_id = :local_id;
@@ -463,10 +683,33 @@ markBookmarkDeleted:
     is_reading = 0,
     is_in_default_collection = 0,
     bookmark_pending_op = 'DELETED',
+    bookmark_pending_version = bookmark_pending_version + 1,
     reading_pending_op = NULL,
+    reading_pending_version = reading_pending_version + 1,
     default_pending_op = NULL,
+    default_pending_version = default_pending_version + 1,
     modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
   WHERE local_id = :local_id AND remote_id IS NOT NULL;
+
+markPendingReadingBookmarkDeleted:
+  UPDATE bookmark
+  SET deleted = 1,
+    is_reading = 0,
+    is_in_default_collection = 0,
+    bookmark_pending_op = 'DELETED',
+    bookmark_pending_version = CASE
+      WHEN bookmark_pending_op = 'DELETED' THEN bookmark_pending_version
+      ELSE bookmark_pending_version + 1
+    END,
+    reading_pending_op = NULL,
+    reading_pending_version = reading_pending_version + 1,
+    default_pending_op = NULL,
+    default_pending_version = default_pending_version + 1,
+    modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    reading_modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
+  WHERE local_id = :local_id
+    AND remote_id IS NULL
+    AND reading_pending_op = 'CREATED';
 
 deleteLocalBookmark:
   DELETE FROM bookmark WHERE local_id = :local_id AND remote_id IS NULL;
@@ -501,7 +744,12 @@ deleteLocalOrphanBookmarks:
     AND NOT EXISTS (
       SELECT 1 FROM bookmark_collection bc
       WHERE bc.bookmark_local_id = bookmark.local_id
-        AND (bc.is_active = 1 OR bc.pending_op IS NOT NULL)
+        AND (
+          bc.is_active = 1
+          OR bc.pending_op IS NOT NULL
+          OR bc.last_synced_bookmark_remote_id IS NOT NULL
+          OR bc.last_synced_collection_remote_id IS NOT NULL
+        )
     );
 
 clearReadingWithoutPending:
@@ -511,6 +759,29 @@ clearReadingWithoutPending:
     modified_at = :modified_at,
     reading_modified_at = :modified_at
   WHERE local_id = :local_id;
+
+markReadingCreateInFlight:
+  UPDATE bookmark
+  SET reading_pending_version = reading_pending_version + 1
+  WHERE local_id = :local_id
+    AND reading_pending_op = 'CREATED'
+    AND reading_pending_version = :pending_version;
+
+rollbackActiveReadingCreateInFlight:
+  UPDATE bookmark
+  SET reading_pending_version = :pending_version
+  WHERE local_id = :local_id
+    AND is_reading = 1
+    AND reading_pending_op = 'CREATED'
+    AND reading_pending_version = :marked_pending_version;
+
+clearCanceledReadingCreateInFlight:
+  UPDATE bookmark
+  SET reading_pending_op = NULL
+  WHERE local_id = :local_id
+    AND is_reading = 0
+    AND reading_pending_op = 'CREATED'
+    AND reading_pending_version = :canceled_pending_version;
 
 clearBookmarkPending:
   UPDATE bookmark
@@ -532,7 +803,29 @@ clearBookmarkPending:
       WHEN bookmark_modified_at > :modified_at THEN bookmark_modified_at
       ELSE :modified_at
     END
-  WHERE local_id = :local_id;
+  WHERE local_id = :local_id
+    AND bookmark_pending_op = :pending_op
+    AND bookmark_pending_version = :pending_version;
+
+clearBookmarkDeletePending:
+  UPDATE bookmark
+  SET bookmark_pending_op = NULL,
+    remote_id = CASE
+      WHEN remote_id IS NULL THEN :remote_id
+      ELSE remote_id
+    END,
+    modified_at = CASE
+      WHEN modified_at > :modified_at THEN modified_at
+      ELSE :modified_at
+    END,
+    bookmark_modified_at = CASE
+      WHEN bookmark_modified_at > :modified_at THEN bookmark_modified_at
+      ELSE :modified_at
+    END
+  WHERE local_id = :local_id
+    AND deleted = 1
+    AND bookmark_pending_op = :pending_op
+    AND bookmark_pending_version = :pending_version;
 
 clearReadingPending:
   UPDATE bookmark
@@ -550,7 +843,9 @@ clearReadingPending:
       WHEN reading_modified_at IS NOT NULL AND reading_modified_at > :modified_at THEN reading_modified_at
       ELSE :modified_at
     END
-  WHERE local_id = :local_id;
+  WHERE local_id = :local_id
+    AND reading_pending_op = :pending_op
+    AND reading_pending_version = :pending_version;
 
 applyRemoteReading:
   UPDATE bookmark
@@ -558,9 +853,15 @@ applyRemoteReading:
       WHEN :remote_id IS NULL THEN remote_id
       ELSE :remote_id
     END,
-    is_reading = :is_reading,
-    reading_pending_op = NULL,
-    deleted = 0,
+    is_reading = CASE
+      WHEN deleted = 1 AND bookmark_pending_op = 'DELETED' THEN is_reading
+      ELSE :is_reading
+    END,
+    reading_pending_op = reading_pending_op,
+    deleted = CASE
+      WHEN deleted = 1 AND bookmark_pending_op = 'DELETED' THEN deleted
+      ELSE 0
+    END,
     modified_at = :modified_at,
     reading_modified_at = :modified_at
   WHERE local_id = :local_id;
@@ -574,12 +875,56 @@ deleteUnsyncedBookmarks:
       OR default_pending_op IS NOT NULL
     );
 
+markUnsyncedBookmarksDeletedForImport:
+  UPDATE bookmark
+  SET deleted = 1,
+    is_reading = 0,
+    is_in_default_collection = 0,
+    bookmark_pending_op = CASE
+      WHEN bookmark_pending_op IS NOT NULL THEN 'DELETED'
+      WHEN reading_pending_op IS NOT NULL THEN 'DELETED'
+      ELSE bookmark_pending_op
+    END,
+    bookmark_pending_version = CASE
+      WHEN bookmark_pending_op = 'DELETED' THEN bookmark_pending_version
+      WHEN bookmark_pending_op IS NOT NULL OR reading_pending_op IS NOT NULL THEN bookmark_pending_version + 1
+      ELSE bookmark_pending_version
+    END,
+    reading_pending_op = NULL,
+    reading_pending_version = CASE
+      WHEN reading_pending_op IS NOT NULL OR is_reading = 1 THEN reading_pending_version + 1
+      ELSE reading_pending_version
+    END,
+    default_pending_op = CASE
+      WHEN default_pending_op IS NOT NULL OR is_in_default_collection = 1 THEN 'DELETED'
+      ELSE default_pending_op
+    END,
+    default_pending_version = CASE
+      WHEN default_pending_op = 'DELETED' THEN default_pending_version
+      WHEN default_pending_op IS NOT NULL OR is_in_default_collection = 1 THEN default_pending_version + 1
+      ELSE default_pending_version
+    END,
+    modified_at = :modified_at,
+    reading_modified_at = CASE
+      WHEN reading_pending_op IS NOT NULL OR is_reading = 1 THEN :modified_at
+      ELSE reading_modified_at
+    END,
+    default_modified_at = CASE
+      WHEN default_pending_op IS NOT NULL OR is_in_default_collection = 1 THEN :modified_at
+      ELSE default_modified_at
+    END
+  WHERE remote_id IS NULL
+    AND deleted = 0;
+
 markRemoteBookmarksDeleted:
   UPDATE bookmark
   SET deleted = 1,
     bookmark_pending_op = 'DELETED',
+    bookmark_pending_version = bookmark_pending_version + 1,
     reading_pending_op = NULL,
+    reading_pending_version = reading_pending_version + 1,
     default_pending_op = NULL,
+    default_pending_version = default_pending_version + 1,
     modified_at = :modified_at
   WHERE remote_id IS NOT NULL;
 

@@ -2,6 +2,9 @@ package com.quran.shared.pipeline
 
 import co.touchlab.kermit.Logger
 import com.quran.shared.auth.model.AuthState
+import com.quran.shared.auth.repository.LogoutTokenCaptureException
+import com.quran.shared.auth.repository.LogoutTokenMaterial
+import com.quran.shared.auth.repository.RemoteLogoutOperation
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.model.AyahBookmark
@@ -32,9 +35,11 @@ import com.rickclephas.kmp.nativecoroutines.NativeCoroutinesState
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -51,23 +56,31 @@ import kotlinx.coroutines.launch
  */
 @Inject
 @SingleIn(AppScope::class)
-class SyncService(
+class SyncService internal constructor(
     private val authService: AuthService,
     private val pipeline: SyncEnginePipeline,
     private val environment: SynchronizationEnvironment,
     private val persistenceResetRepository: PersistenceResetRepository,
     private val persistenceImportRepository: PersistenceImportRepository,
-    private val syncLocalModificationDateStore: SyncLocalModificationDateStore
+    private val syncLocalModificationDateStore: SyncLocalModificationDateStore,
+    private val sessionLifecycleCoordinator: SessionLifecycleCoordinator
 ) {
     val defaultCollectionId: String = DEFAULT_COLLECTION_ID
 
 
-    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private val serviceJob: Job = SupervisorJob()
+    private val scope = CoroutineScope(Dispatchers.Main + serviceJob)
     private val syncClient: SynchronizationClient
 
     fun clear() {
-        scope.cancel()
+        serviceJob.cancel()
         syncClient.cancelSyncing()
+    }
+
+    suspend fun clearAndJoin() {
+        clear()
+        serviceJob.cancelAndJoin()
+        syncClient.cancelSyncingAndJoin()
     }
 
     @NativeCoroutinesState
@@ -140,41 +153,78 @@ class SyncService(
             environment = environment,
             localModificationDateFetcher = syncLocalModificationDateStore,
             authenticationDataFetcher = authFetcher,
-            callback = object : SyncEngineCallback {
-                override suspend fun synchronizationDone(newLastModificationDate: Long) {
-                    Logger.i { "Sync completed. New last modified: $newLastModificationDate" }
-                    syncLocalModificationDateStore.updateLastModificationDate(newLastModificationDate)
-                }
-
-                override suspend fun encounteredError(errorMsg: String) {
-                    Logger.e { "Sync error: $errorMsg" }
-                }
-            }
+            syncLifecycleGate = sessionLifecycleCoordinator,
+            callback = SettingsSyncEngineCallback(syncLocalModificationDateStore, CurrentSyncWriteBoundaryGuard)
         )
 
         scope.launch {
+            try {
+                sessionLifecycleCoordinator.completePersistedResetIfNeeded {
+                    syncClient.cancelSyncingAndJoin()
+                    resetLocalAuthDataAndToken()
+                }
+            } catch (e: Exception) {
+                Logger.e(e) { "Failed to recover persisted session reset" }
+                return@launch
+            }
+
             syncClient.applicationStarted()
 
-            // Observe auth state and trigger sync when logged in
+            // Observe auth state and trigger sync when a session is published. Logged-out sync
+            // attempts no-op after fetching empty headers; managed reset owns cancellation.
             authState.collect { state ->
-                if (state is AuthState.Success) {
+                if (state is AuthState.Success && sessionLifecycleCoordinator.canStartSync()) {
                     syncClient.triggerSyncImmediately()
-                } else if (state is AuthState.Idle || state is AuthState.Error) {
-                    syncClient.cancelSyncing()
                 }
             }
         }
     }
 
     @NativeCoroutines
-    suspend fun logout(clearLocalData: Boolean = false) {
+    suspend fun logout(clearLocalData: Boolean = true): LogoutResult {
+        if (!clearLocalData) {
+            throw UnsupportedOperationException("Keep-local logout is not implemented yet")
+        }
+        var tokenMaterial: LogoutTokenMaterial? = null
+        var tokenCaptureFailure: Throwable? = null
         try {
-            authService.logout()
-            syncClient.cancelSyncing()
-            if (clearLocalData) {
-                persistenceResetRepository.deleteAllData()
-                syncLocalModificationDateStore.updateLastModificationDate(0L)
+            sessionLifecycleCoordinator.runManagedReset(
+                beforeWriteDrain = {
+                    try {
+                        authService.captureLogoutTokenMaterialForLogout()
+                    } catch (e: LogoutTokenCaptureException) {
+                        tokenCaptureFailure = e.cause ?: e
+                        null
+                    }.let { captured ->
+                        tokenMaterial = captured
+                    }
+                }
+            ) {
+                syncClient.cancelSyncingAndJoin()
+                resetLocalDataAndSyncToken()
             }
+            val warnings = tokenCaptureFailure?.let { failure ->
+                logoutRemoteCleanupFailureWarnings(failure)
+            } ?: try {
+                authService.attemptRemoteLogout(tokenMaterial!!).let { failures ->
+                    failures.map { failure ->
+                        LogoutWarning(
+                            type = when (failure.operation) {
+                                RemoteLogoutOperation.REVOKE_REFRESH_TOKEN -> LogoutWarningType.REVOKE_TOKEN_FAILED
+                                RemoteLogoutOperation.END_SESSION -> LogoutWarningType.END_SESSION_FAILED
+                            },
+                            message = failure.exception.message
+                        )
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (failure: Throwable) {
+                logoutRemoteCleanupFailureWarnings(failure)
+            }
+            return LogoutResult(warnings)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.e(e) { "Logout failed" }
             throw e
@@ -182,7 +232,52 @@ class SyncService(
     }
 
     fun triggerSync() {
+        if (!sessionLifecycleCoordinator.canStartSync()) {
+            Logger.d { "Sync trigger skipped because session is resetting" }
+            return
+        }
         syncClient.localDataUpdated()
+    }
+
+    private suspend fun resetLocalAuthDataAndToken() {
+        authService.clearLocalSession()
+        resetLocalDataAndSyncToken()
+    }
+
+    private suspend fun resetLocalDataAndSyncToken() {
+        persistenceResetRepository.deleteAllData()
+        syncLocalModificationDateStore.updateLastModificationDate(0L)
+    }
+
+    private fun logoutRemoteCleanupFailureWarnings(failure: Throwable): List<LogoutWarning> =
+        listOf(
+            LogoutWarning(
+                type = LogoutWarningType.REVOKE_TOKEN_FAILED,
+                message = failure.message
+            ),
+            LogoutWarning(
+                type = LogoutWarningType.END_SESSION_FAILED,
+                message = failure.message
+            )
+        )
+
+    private suspend fun <T> mutatingCall(
+        errorMessage: String,
+        triggerAfter: Boolean = true,
+        block: suspend () -> T
+    ): T {
+        try {
+            return sessionLifecycleCoordinator.withMutatingWrite {
+                val result = block()
+                if (triggerAfter) {
+                    triggerSync()
+                }
+                result
+            }
+        } catch (e: Exception) {
+            Logger.e(e) { errorMessage }
+            throw e
+        }
     }
 
     @NativeCoroutines
@@ -198,52 +293,32 @@ class SyncService(
         data: PersistenceImportData,
         deleteExisting: Boolean
     ): PersistenceImportResult {
-        try {
-            val result = persistenceImportRepository.importData(
+        return mutatingCall("Failed to import persistence data") {
+            persistenceImportRepository.importData(
                 data = data,
                 deleteExisting = deleteExisting
             )
-            triggerSync()
-            return result
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to import persistence data" }
-            throw e
         }
     }
 
     @NativeCoroutines
     suspend fun addBookmark(sura: Int, ayah: Int): AyahBookmark {
-        try {
-            val bookmark = bookmarksRepository.addBookmark(sura, ayah)
-            triggerSync()
-            return bookmark
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to add ayah bookmark" }
-            throw e
+        return mutatingCall("Failed to add ayah bookmark") {
+            bookmarksRepository.addBookmark(sura, ayah)
         }
     }
 
     @NativeCoroutines
     suspend fun addBookmark(sura: Int, ayah: Int, timestamp: PlatformDateTime): AyahBookmark {
-        try {
-            val bookmark = bookmarksRepository.addBookmark(sura, ayah, timestamp)
-            triggerSync()
-            return bookmark
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to add ayah bookmark" }
-            throw e
+        return mutatingCall("Failed to add ayah bookmark") {
+            bookmarksRepository.addBookmark(sura, ayah, timestamp)
         }
     }
 
     @NativeCoroutines
     suspend fun addBookmark(sura: Int, ayah: Int, collectionLocalIds: List<String>?): AyahBookmark {
-        try {
-            val bookmark = bookmarksRepository.addBookmark(sura, ayah, collectionLocalIds)
-            triggerSync()
-            return bookmark
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to add ayah bookmark with collection memberships" }
-            throw e
+        return mutatingCall("Failed to add ayah bookmark with collection memberships") {
+            bookmarksRepository.addBookmark(sura, ayah, collectionLocalIds)
         }
     }
 
@@ -254,13 +329,8 @@ class SyncService(
         collectionLocalIds: List<String>?,
         timestamp: PlatformDateTime
     ): AyahBookmark {
-        try {
-            val bookmark = bookmarksRepository.addBookmark(sura, ayah, collectionLocalIds, timestamp)
-            triggerSync()
-            return bookmark
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to add ayah bookmark with collection memberships" }
-            throw e
+        return mutatingCall("Failed to add ayah bookmark with collection memberships") {
+            bookmarksRepository.addBookmark(sura, ayah, collectionLocalIds, timestamp)
         }
     }
 
@@ -276,85 +346,50 @@ class SyncService(
 
     @NativeCoroutines
     suspend fun addAyahReadingBookmark(sura: Int, ayah: Int): AyahReadingBookmark {
-        try {
-            val bookmark = readingBookmarksRepository.addAyahReadingBookmark(sura, ayah)
-            triggerSync()
-            return bookmark
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to add reading ayah bookmark" }
-            throw e
+        return mutatingCall("Failed to add reading ayah bookmark") {
+            readingBookmarksRepository.addAyahReadingBookmark(sura, ayah)
         }
     }
 
     @NativeCoroutines
     suspend fun addAyahReadingBookmark(sura: Int, ayah: Int, timestamp: PlatformDateTime): AyahReadingBookmark {
-        try {
-            val bookmark = readingBookmarksRepository.addAyahReadingBookmark(sura, ayah, timestamp)
-            triggerSync()
-            return bookmark
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to add reading ayah bookmark" }
-            throw e
+        return mutatingCall("Failed to add reading ayah bookmark") {
+            readingBookmarksRepository.addAyahReadingBookmark(sura, ayah, timestamp)
         }
     }
 
     @NativeCoroutines
     suspend fun addPageReadingBookmark(page: Int): PageReadingBookmark {
-        try {
-            val bookmark = readingBookmarksRepository.addPageReadingBookmark(page)
-            triggerSync()
-            return bookmark
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to add reading page bookmark" }
-            throw e
+        return mutatingCall("Failed to add reading page bookmark") {
+            readingBookmarksRepository.addPageReadingBookmark(page)
         }
     }
 
     @NativeCoroutines
     suspend fun addPageReadingBookmark(page: Int, timestamp: PlatformDateTime): PageReadingBookmark {
-        try {
-            val bookmark = readingBookmarksRepository.addPageReadingBookmark(page, timestamp)
-            triggerSync()
-            return bookmark
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to add reading page bookmark" }
-            throw e
+        return mutatingCall("Failed to add reading page bookmark") {
+            readingBookmarksRepository.addPageReadingBookmark(page, timestamp)
         }
     }
 
     @NativeCoroutines
     suspend fun addReadingSession(sura: Int, ayah: Int): ReadingSession {
-        try {
-            val readingSession = readingSessionsRepository.addReadingSession(sura, ayah)
-            triggerSync()
-            return readingSession
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to add reading session" }
-            throw e
+        return mutatingCall("Failed to add reading session") {
+            readingSessionsRepository.addReadingSession(sura, ayah)
         }
     }
 
     @NativeCoroutines
     suspend fun addReadingSession(sura: Int, ayah: Int, timestamp: PlatformDateTime): ReadingSession {
-        try {
-            val readingSession = readingSessionsRepository.addReadingSession(sura, ayah, timestamp)
-            triggerSync()
-            return readingSession
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to add reading session" }
-            throw e
+        return mutatingCall("Failed to add reading session") {
+            readingSessionsRepository.addReadingSession(sura, ayah, timestamp)
         }
     }
 
     @NativeCoroutines
     suspend fun updateReadingSession(localId: String, sura: Int, ayah: Int): ReadingSession {
-        try {
-            val readingSession = readingSessionsRepository.updateReadingSession(localId, sura, ayah)
-            triggerSync()
-            return readingSession
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to update reading session" }
-            throw e
+        return mutatingCall("Failed to update reading session") {
+            readingSessionsRepository.updateReadingSession(localId, sura, ayah)
         }
     }
 
@@ -365,82 +400,54 @@ class SyncService(
         ayah: Int,
         timestamp: PlatformDateTime
     ): ReadingSession {
-        try {
-            val readingSession = readingSessionsRepository.updateReadingSession(localId, sura, ayah, timestamp)
-            triggerSync()
-            return readingSession
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to update reading session" }
-            throw e
+        return mutatingCall("Failed to update reading session") {
+            readingSessionsRepository.updateReadingSession(localId, sura, ayah, timestamp)
         }
     }
 
     @NativeCoroutines
     suspend fun deleteReadingBookmark(): Boolean {
-        try {
+        return mutatingCall("Failed to delete current reading bookmark", triggerAfter = false) {
             val deleted = readingBookmarksRepository.deleteReadingBookmark()
             if (deleted) {
                 triggerSync()
             }
-            return deleted
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to delete current reading bookmark" }
-            throw e
+            deleted
         }
     }
 
     @NativeCoroutines
     suspend fun deleteBookmark(bookmark: AyahBookmark) {
-        try {
+        mutatingCall("Failed to delete bookmark") {
             bookmarksRepository.deleteBookmark(bookmark)
-            triggerSync()
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to delete bookmark" }
-            throw e
         }
     }
 
     @NativeCoroutines
     suspend fun addCollection(name: String) {
-        try {
+        mutatingCall("Failed to add collection") {
             collectionsRepository.addCollection(name)
-            triggerSync()
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to add collection" }
-            throw e
         }
     }
 
     @NativeCoroutines
     suspend fun addCollection(name: String, timestamp: PlatformDateTime) {
-        try {
+        mutatingCall("Failed to add collection") {
             collectionsRepository.addCollection(name, timestamp)
-            triggerSync()
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to add collection" }
-            throw e
         }
     }
 
     @NativeCoroutines
     suspend fun deleteCollection(localId: String) {
-        try {
+        mutatingCall("Failed to delete collection") {
             collectionsRepository.deleteCollection(localId)
-            triggerSync()
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to delete collection" }
-            throw e
         }
     }
 
     @NativeCoroutines
     suspend fun addBookmarkToCollection(collectionLocalId: String, bookmark: AyahBookmark) {
-        try {
+        mutatingCall("Failed to add bookmark to collection") {
             collectionBookmarksRepository.addBookmarkToCollection(collectionLocalId, bookmark)
-            triggerSync()
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to add bookmark to collection" }
-            throw e
         }
     }
 
@@ -450,12 +457,8 @@ class SyncService(
         bookmark: AyahBookmark,
         timestamp: PlatformDateTime
     ) {
-        try {
+        mutatingCall("Failed to add bookmark to collection") {
             collectionBookmarksRepository.addBookmarkToCollection(collectionLocalId, bookmark, timestamp)
-            triggerSync()
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to add bookmark to collection" }
-            throw e
         }
     }
 
@@ -465,14 +468,8 @@ class SyncService(
         sura: Int,
         ayah: Int
     ): CollectionAyahBookmark {
-        try {
-            val collectionBookmark = collectionBookmarksRepository
-                .addAyahBookmarkToCollection(collectionLocalId, sura, ayah)
-            triggerSync()
-            return collectionBookmark
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to add ayah bookmark to collection" }
-            throw e
+        return mutatingCall("Failed to add ayah bookmark to collection") {
+            collectionBookmarksRepository.addAyahBookmarkToCollection(collectionLocalId, sura, ayah)
         }
     }
 
@@ -483,47 +480,29 @@ class SyncService(
         ayah: Int,
         timestamp: PlatformDateTime
     ): CollectionAyahBookmark {
-        try {
-            val collectionBookmark = collectionBookmarksRepository
-                .addAyahBookmarkToCollection(collectionLocalId, sura, ayah, timestamp)
-            triggerSync()
-            return collectionBookmark
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to add ayah bookmark to collection" }
-            throw e
+        return mutatingCall("Failed to add ayah bookmark to collection") {
+            collectionBookmarksRepository.addAyahBookmarkToCollection(collectionLocalId, sura, ayah, timestamp)
         }
     }
 
     @NativeCoroutines
     suspend fun removeBookmarkFromCollection(collectionLocalId: String, bookmark: AyahBookmark) {
-        try {
+        mutatingCall("Failed to remove bookmark from collection") {
             collectionBookmarksRepository.removeBookmarkFromCollection(collectionLocalId, bookmark)
-            triggerSync()
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to remove bookmark from collection" }
-            throw e
         }
     }
 
     @NativeCoroutines
     suspend fun removeAyahBookmarkFromCollection(bookmark: CollectionAyahBookmark) {
-        try {
+        mutatingCall("Failed to remove bookmark from collection") {
             collectionBookmarksRepository.removeAyahBookmarkFromCollection(bookmark)
-            triggerSync()
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to remove bookmark from collection" }
-            throw e
         }
     }
 
     @NativeCoroutines
     suspend fun addNote(body: String, startSura: Int, startAyah: Int, endSura: Int, endAyah: Int) {
-        try {
+        mutatingCall("Failed to add note") {
             notesRepository.addNote(body, startSura, startAyah, endSura, endAyah)
-            triggerSync()
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to add note" }
-            throw e
         }
     }
 
@@ -536,29 +515,33 @@ class SyncService(
         endAyah: Int,
         timestamp: PlatformDateTime
     ) {
-        try {
+        mutatingCall("Failed to add note") {
             notesRepository.addNote(body, startSura, startAyah, endSura, endAyah, timestamp)
-            triggerSync()
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to add note" }
-            throw e
         }
     }
 
     @NativeCoroutines
     suspend fun deleteNote(localId: String) {
-        try {
+        mutatingCall("Failed to delete note") {
             notesRepository.deleteNote(localId)
-            triggerSync()
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to delete note" }
-            throw e
         }
     }
 
     @NativeCoroutines
     fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<CollectionAyahBookmark>> =
         collectionBookmarksRepository.getBookmarksForCollectionFlow(collectionLocalId)
+}
 
-    val pipelineForIos: SyncEnginePipeline get() = pipeline
+internal class SettingsSyncEngineCallback(
+    private val syncLocalModificationDateStore: SyncLocalModificationDateStore,
+    private val writeBoundaryGuard: SyncWriteBoundaryGuard = SyncWriteBoundaryGuard {}
+) : SyncEngineCallback {
+    override suspend fun synchronizationDone(newLastModificationDate: Long) {
+        Logger.i { "Sync completed. New last modified: $newLastModificationDate" }
+        syncLocalModificationDateStore.updateLastModificationDate(newLastModificationDate, writeBoundaryGuard)
+    }
+
+    override suspend fun encounteredError(errorMsg: String) {
+        Logger.e { "Sync error: $errorMsg" }
+    }
 }

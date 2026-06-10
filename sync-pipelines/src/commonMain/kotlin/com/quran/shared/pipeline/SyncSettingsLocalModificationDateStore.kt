@@ -16,6 +16,14 @@ interface SyncLocalModificationDateStore : LocalModificationDateFetcher {
      * @param date epoch-millisecond mutation timestamp returned by the sync API.
      */
     suspend fun updateLastModificationDate(date: Long)
+
+    suspend fun updateLastModificationDate(
+        date: Long,
+        writeBoundaryGuard: SyncWriteBoundaryGuard
+    ) {
+        writeBoundaryGuard.checkWriteBoundary()
+        updateLastModificationDate(date)
+    }
 }
 
 /**
@@ -31,6 +39,14 @@ class SyncSettingsLocalModificationDateStore @Inject constructor(
     }
 
     override suspend fun updateLastModificationDate(date: Long) {
+        settings.putLong(KEY_LAST_MODIFIED, date)
+    }
+
+    override suspend fun updateLastModificationDate(
+        date: Long,
+        writeBoundaryGuard: SyncWriteBoundaryGuard
+    ) {
+        writeBoundaryGuard.checkWriteBoundary()
         settings.putLong(KEY_LAST_MODIFIED, date)
     }
 

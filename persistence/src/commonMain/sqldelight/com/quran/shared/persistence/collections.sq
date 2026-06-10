@@ -1,16 +1,20 @@
 CREATE TABLE IF NOT EXISTS collection(
   local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   remote_id TEXT,
-  name TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
   created_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
   modified_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
   deleted INTEGER NOT NULL DEFAULT 0,
   is_edited INTEGER NOT NULL DEFAULT 0,
+  pending_version INTEGER NOT NULL DEFAULT 0,
   CHECK (deleted IN (0, 1)),
   CHECK (is_edited IN (0, 1))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS collection_remote_id_idx ON collection(remote_id);
+CREATE UNIQUE INDEX IF NOT EXISTS collection_active_name_idx
+ON collection(name)
+WHERE deleted = 0;
 CREATE INDEX IF NOT EXISTS collection_active_created_idx
 ON collection(deleted, created_at DESC);
 CREATE INDEX IF NOT EXISTS collection_unsynced_created_idx
@@ -24,7 +28,24 @@ countAll:
   SELECT COUNT(*) FROM collection;
 
 getCollectionByName:
-  SELECT * FROM collection WHERE name = ? LIMIT 1;
+  SELECT * FROM collection WHERE name = ? AND deleted = 0 LIMIT 1;
+
+getPendingCreatedCollectionsByName:
+  SELECT * FROM collection
+  WHERE remote_id IS NULL
+    AND name = :name;
+
+getPendingDeletedCreatedCollectionsByName:
+  SELECT * FROM collection
+  WHERE remote_id IS NULL
+    AND deleted = 1
+    AND name = :name;
+
+getPendingActiveCreatedCollectionsByName:
+  SELECT * FROM collection
+  WHERE remote_id IS NULL
+    AND deleted = 0
+    AND name = :name;
 
 getCollectionByLocalId:
   SELECT * FROM collection WHERE local_id = ? LIMIT 1;
@@ -33,20 +54,54 @@ getCollectionByRemoteId:
   SELECT * FROM collection WHERE remote_id = ? LIMIT 1;
 
 addNewCollection {
-  INSERT OR IGNORE INTO collection (remote_id, name, created_at, modified_at, deleted, is_edited)
-  VALUES (
+  UPDATE collection
+  SET deleted = 0,
+    is_edited = CASE
+      WHEN remote_id IS NULL THEN 0
+      WHEN deleted = 1 THEN 1
+      ELSE is_edited
+    END,
+    modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    pending_version = CASE
+      WHEN remote_id IS NULL OR deleted = 1 OR is_edited = 1 THEN pending_version + 1
+      ELSE pending_version
+    END
+  WHERE name = :name
+    AND deleted = 0;
+  UPDATE collection
+  SET deleted = 0,
+    is_edited = CASE
+      WHEN remote_id IS NULL THEN 0
+      ELSE 1
+    END,
+    modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    pending_version = pending_version + 1
+  WHERE local_id = (
+    SELECT local_id FROM collection
+    WHERE name = :name
+      AND deleted = 1
+      AND NOT EXISTS (
+        SELECT 1 FROM collection AS active
+        WHERE active.name = :name
+          AND active.deleted = 0
+      )
+    ORDER BY modified_at DESC, local_id DESC
+    LIMIT 1
+  );
+  INSERT OR IGNORE INTO collection (remote_id, name, created_at, modified_at, deleted, is_edited, pending_version)
+  SELECT
     NULL,
     :name,
     COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
     COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
     0,
-    0
+    0,
+    1
+  WHERE NOT EXISTS (
+    SELECT 1 FROM collection
+    WHERE name = :name
+      AND deleted = 0
   );
-  UPDATE collection
-  SET deleted = 0,
-    is_edited = 0,
-    modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
-  WHERE name = :name;
 }
 
 insertImportedCollection {
@@ -56,13 +111,15 @@ insertImportedCollection {
     created_at,
     modified_at,
     deleted,
-    is_edited
+    is_edited,
+    pending_version
   )
   VALUES (
     NULL,
     :name,
     :created_at,
     :modified_at,
+    0,
     0,
     0
   );
@@ -77,36 +134,48 @@ insertImportedCollection {
       WHEN remote_id IS NULL THEN :modified_at
       WHEN deleted = 1 THEN :modified_at
       ELSE modified_at
+    END,
+    pending_version = CASE
+      WHEN remote_id IS NULL OR deleted = 1 THEN pending_version + 1
+      ELSE pending_version
     END
-  WHERE name = :name;
+  WHERE name = :name
+    AND deleted = 0;
 }
 
 updateCollectionName:
   UPDATE collection
   SET name = :name,
     is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
-    modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
+    modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    pending_version = pending_version + 1
   WHERE local_id = :id;
 
 deleteCollection {
   DELETE FROM bookmark_collection
   WHERE collection_local_id = :id
     AND last_synced_bookmark_remote_id IS NULL
-    AND last_synced_collection_remote_id IS NULL;
+    AND last_synced_collection_remote_id IS NULL
+    AND (pending_op IS NULL OR pending_op != 'CREATED' OR pending_version <= 1);
   UPDATE bookmark_collection
   SET is_active = 0,
     pending_op = 'DELETED',
+    pending_version = CASE WHEN pending_op = 'DELETED' THEN pending_version ELSE pending_version + 1 END,
     modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
   WHERE collection_local_id = :id;
-  DELETE FROM collection WHERE local_id = :id AND remote_id IS NULL;
   UPDATE collection
   SET deleted = 1,
-    is_edited = 1
-  WHERE local_id = :id AND remote_id IS NOT NULL;
+    is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
+    pending_version = pending_version + 1
+  WHERE local_id = :id;
 }
 
 getUnsyncedCollections:
-  SELECT * FROM collection WHERE remote_id IS NULL OR is_edited = 1 ORDER BY created_at DESC;
+  SELECT * FROM collection
+  WHERE (remote_id IS NULL AND deleted = 0)
+    OR (remote_id IS NOT NULL AND deleted = 1)
+    OR is_edited = 1
+  ORDER BY created_at DESC;
 
 persistRemoteCollection:
   INSERT INTO collection (remote_id, name, created_at, modified_at, deleted, is_edited)
@@ -118,7 +187,9 @@ updateRemoteCollection:
     modified_at = :modified_at,
     deleted = 0,
     is_edited = 0
-  WHERE remote_id = :remote_id;
+  WHERE remote_id = :remote_id
+    AND deleted = 0
+    AND is_edited = 0;
 
 updateRemoteCollectionByLocalId:
   UPDATE collection
@@ -127,7 +198,38 @@ updateRemoteCollectionByLocalId:
     modified_at = :modified_at,
     deleted = 0,
     is_edited = 0
-  WHERE local_id = :local_id;
+  WHERE local_id = :local_id
+    AND deleted = 0
+    AND is_edited = 0;
+
+attachRemoteCollectionIdForCreatedAck:
+  UPDATE collection
+  SET remote_id = :remote_id,
+    is_edited = CASE
+      WHEN deleted = 1 THEN is_edited
+      WHEN pending_version = :pending_version THEN 0
+      ELSE 1
+    END,
+    modified_at = CASE
+      WHEN pending_version = :pending_version THEN :modified_at
+      ELSE modified_at
+    END
+  WHERE local_id = :local_id
+    AND remote_id IS NULL;
+
+attachRemoteCollectionIdForSemanticReplay:
+  UPDATE collection
+  SET remote_id = :remote_id,
+    is_edited = CASE
+      WHEN deleted = 1 THEN is_edited
+      ELSE 0
+    END,
+    modified_at = CASE
+      WHEN deleted = 1 THEN modified_at
+      ELSE :modified_at
+    END
+  WHERE local_id = :local_id
+    AND remote_id IS NULL;
 
 deleteRemoteCollection {
   DELETE FROM bookmark_collection WHERE collection_local_id IN (
@@ -136,12 +238,31 @@ deleteRemoteCollection {
   DELETE FROM collection WHERE remote_id = :remote_id;
 }
 
-clearLocalMutationFor:
+clearLocalMutationFor {
+  DELETE FROM bookmark_collection
+  WHERE collection_local_id IN (
+    SELECT local_id FROM collection
+    WHERE local_id = :id
+      AND deleted = 1
+      AND pending_version = :pending_version
+      AND :pending_op = 'DELETED'
+  );
+  DELETE FROM collection
+  WHERE local_id = :id
+    AND deleted = 1
+    AND pending_version = :pending_version
+    AND :pending_op = 'DELETED';
   UPDATE collection
   SET deleted = 0,
     is_edited = 0,
     modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
-  WHERE local_id = :id;
+  WHERE local_id = :id
+    AND pending_version = :pending_version
+    AND (
+      (:pending_op = 'CREATED' AND remote_id IS NULL)
+      OR (:pending_op = 'MODIFIED' AND remote_id IS NOT NULL AND deleted = 0 AND is_edited = 1)
+    );
+}
 
 checkRemoteIDsExistence:
   SELECT remote_id FROM collection WHERE remote_id IN :queried_ids;
@@ -152,9 +273,18 @@ deleteAll:
 deleteUnsyncedCollections:
   DELETE FROM collection WHERE remote_id IS NULL;
 
+markUnsyncedCollectionsDeletedForImport:
+  UPDATE collection
+  SET deleted = 1,
+    modified_at = :modified_at,
+    pending_version = pending_version + 1
+  WHERE remote_id IS NULL
+    AND deleted = 0;
+
 markRemoteCollectionsDeleted:
   UPDATE collection
   SET deleted = 1,
     is_edited = 1,
-    modified_at = :modified_at
+    modified_at = :modified_at,
+    pending_version = pending_version + 1
   WHERE remote_id IS NOT NULL;

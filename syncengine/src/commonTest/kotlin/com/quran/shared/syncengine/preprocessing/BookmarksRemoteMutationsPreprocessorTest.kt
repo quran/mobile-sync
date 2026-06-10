@@ -1,6 +1,9 @@
 @file:OptIn(kotlin.time.ExperimentalTime::class)
 package com.quran.shared.syncengine.preprocessing
 
+import com.quran.shared.mutations.LOCAL_MUTATION_ENTITY_FACET
+import com.quran.shared.mutations.LocalMutationAck
+import com.quran.shared.mutations.LocalMutationResource
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.syncengine.model.SyncBookmark
@@ -143,6 +146,35 @@ class BookmarksRemoteMutationsPreprocessorTest {
         val resultRemoteIDs = result.map { it.remoteID }.toSet()
         val expectedRemoteIDs = setOf("existing-1", "existing-2")
         assertEquals(expectedRemoteIDs, resultRemoteIDs, "Should have expected remote IDs")
+    }
+
+    @Test
+    fun `test preprocess preserves ACK when converting MODIFIED mutation to CREATED`() = runTest {
+        // Arrange
+        val checkLocalExistence = createMockExistenceChecker(emptySet())
+        val preprocessor = BookmarksRemoteMutationsPreprocessor(checkLocalExistence)
+        val ack = LocalMutationAck(
+            localID = "local-bookmark-id",
+            resource = LocalMutationResource.BOOKMARK,
+            facet = LOCAL_MUTATION_ENTITY_FACET,
+            observedPendingOp = Mutation.CREATED,
+            observedPendingVersion = 3L
+        )
+        val remoteMutations = listOf<RemoteModelMutation<SyncBookmark>>(
+            RemoteModelMutation(
+                model = PageBookmark("remote-bookmark-id", 10, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                remoteID = "remote-bookmark-id",
+                mutation = Mutation.MODIFIED,
+                ack = ack
+            )
+        )
+
+        // Act
+        val result = preprocessor.preprocess(remoteMutations)
+
+        // Assert
+        assertEquals(Mutation.CREATED, result.single().mutation)
+        assertEquals(ack, result.single().ack)
     }
     
     @Test
@@ -354,4 +386,4 @@ class BookmarksRemoteMutationsPreprocessorTest {
             remoteIDs.associateWith { it in existingRemoteIDs }
         }
     }
-} 
+}

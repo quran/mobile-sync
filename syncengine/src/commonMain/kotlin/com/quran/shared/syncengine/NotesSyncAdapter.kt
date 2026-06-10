@@ -85,10 +85,6 @@ internal class NotesSyncAdapter(
         configurations.resultNotifier.didFail(message)
     }
 
-    override suspend fun didCompleteSync(newToken: Long) {
-        configurations.resultNotifier.didCompleteSync(newToken)
-    }
-
     private fun parseRemoteMutations(
         mutations: List<SyncMutation>
     ): List<RemoteModelMutation<SyncNote>> {
@@ -96,11 +92,7 @@ internal class NotesSyncAdapter(
             if (!mutation.resource.equals(resourceName, ignoreCase = true)) {
                 return@mapNotNull null
             }
-            val resourceId = mutation.resourceId
-            if (resourceId == null) {
-                logger.w { "Skipping note mutation without resourceId" }
-                return@mapNotNull null
-            }
+            val resourceId = mutation.requireSimpleResourceRemoteId(resourceName)
             val note = mutation.toSyncNote(logger) ?: return@mapNotNull null
             RemoteModelMutation(
                 model = note,
@@ -155,37 +147,24 @@ internal class NotesSyncAdapter(
         localMutations: List<LocalModelMutation<SyncNote>>,
         pushedMutations: List<SyncMutation>
     ): List<RemoteModelMutation<SyncNote>> {
-        if (localMutations.size != pushedMutations.size) {
-            val message = "Mismatched pushed mutation counts for $resourceName: " +
-                "local=${localMutations.size}, remote=${pushedMutations.size}"
-            logger.e { message }
-            throw IllegalStateException(message)
-        }
+        validatePushedMutationCount(resourceName, localMutations.size, pushedMutations.size)
 
         return localMutations.mapIndexed { index, localMutation ->
             val pushedMutation = pushedMutations[index]
-            if (!pushedMutation.resource.equals(resourceName, ignoreCase = true)) {
-                val message = "Unexpected pushed mutation resource=${pushedMutation.resource} for $resourceName"
-                logger.e { message }
-                throw IllegalStateException(message)
-            }
-            val remoteId = pushedMutation.resourceId
-            if (remoteId == null) {
-                val message = "Missing resourceId for pushed mutation at index=$index for $resourceName"
-                logger.e { message }
-                throw IllegalStateException(message)
-            }
-            if (pushedMutation.mutation != localMutation.mutation) {
-                logger.w {
-                    "Mutation type mismatch at index=$index for $resourceName: " +
-                        "local=${localMutation.mutation}, remote=${pushedMutation.mutation}"
-                }
-            }
+            val remoteId = validatePushedMutationAck(
+                resourceName = resourceName,
+                index = index,
+                expectedRemoteId = localMutation.remoteID,
+                expectedMutation = localMutation.mutation,
+                pushedMutation = pushedMutation,
+                acknowledgedRemoteId = pushedMutation.resourceId
+            )
 
             RemoteModelMutation(
                 model = localMutation.model,
                 remoteID = remoteId,
-                mutation = pushedMutation.mutation
+                mutation = pushedMutation.mutation,
+                ack = localMutation.ack
             )
         }
     }
@@ -197,9 +176,8 @@ internal class NotesSyncAdapter(
     ) : ResourceSyncPlan {
         override val resourceName: String = this@NotesSyncAdapter.resourceName
 
-        override fun mutationsToPush(): List<SyncMutation> {
-            return localMutationsToPush.map { toSyncMutation(it) }
-        }
+        override suspend fun mutationsToPush(): List<SyncMutation> =
+            localMutationsToPush.map { toSyncMutation(it) }
 
         override suspend fun complete(newToken: Long, pushedMutations: List<SyncMutation>) {
             val mappedPushed = mapPushedMutations(localMutationsToPush, pushedMutations)

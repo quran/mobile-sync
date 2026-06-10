@@ -41,7 +41,8 @@ private fun <T> RemoteModelMutation<T>.mapModified(): RemoteModelMutation<T> =
             RemoteModelMutation(
                 model = this.model,
                 remoteID = this.remoteID,
-                mutation = Mutation.CREATED
+                mutation = Mutation.CREATED,
+                ack = this.ack
             )
         Mutation.DELETED, Mutation.CREATED -> this
     }

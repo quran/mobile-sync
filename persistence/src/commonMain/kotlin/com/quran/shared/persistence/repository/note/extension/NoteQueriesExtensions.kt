@@ -3,6 +3,9 @@
 package com.quran.shared.persistence.repository.note.extension
 
 import com.quran.shared.mutations.LocalModelMutation
+import com.quran.shared.mutations.LOCAL_MUTATION_ENTITY_FACET
+import com.quran.shared.mutations.LocalMutationAck
+import com.quran.shared.mutations.LocalMutationResource
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.persistence.model.DatabaseNote
 import com.quran.shared.persistence.model.Note
@@ -41,7 +44,14 @@ internal fun DatabaseNote.toNoteMutation(): LocalModelMutation<Note> {
         mutation = mutation,
         model = toNote(),
         remoteID = remote_id,
-        localID = local_id.toString()
+        localID = local_id.toString(),
+        ack = LocalMutationAck(
+            localID = local_id.toString(),
+            resource = LocalMutationResource.NOTE,
+            facet = LOCAL_MUTATION_ENTITY_FACET,
+            observedPendingOp = mutation,
+            observedPendingVersion = pending_version
+        )
     )
 }
 

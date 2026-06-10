@@ -6,26 +6,26 @@ import Combine
 /**
  * Native iOS ViewModel for Authentication.
  * 
- * This class wraps the shared AuthCore.AuthService and provides it to SwiftUI.
+ * This class wraps the shared managed SyncAuthService and provides it to SwiftUI.
  * It uses KMP-NativeCoroutines to convert Kotlin Flows into Swift AsyncSequences.
  */
 @MainActor
 class AuthViewModel: ObservableObject {
-    private let authService: AuthService
-    private let bookmarksRepository: BookmarksRepository
+    private let authService: SyncAuthService
+    private let syncService: SyncService
 
     @Published var authState: AuthState = AuthState.Idle()
 
     init(
-        authService: AuthService,
-        bookmarksRepository: BookmarksRepository
+        authService: SyncAuthService,
+        syncService: SyncService
     ) {
         self.authService = authService
-        self.bookmarksRepository = bookmarksRepository
+        self.syncService = syncService
     }
 
     func bookmarksSequence() -> any AsyncSequence<[AyahBookmark], Error> {
-        return asyncSequence(for: bookmarksRepository.getBookmarksFlow())
+        return asyncSequence(for: syncService.bookmarks)
     }
 
     func observeAuthState() async {
@@ -49,7 +49,7 @@ class AuthViewModel: ObservableObject {
 
 
     func logout() async throws {
-        try await asyncFunction(for: authService.logout())
+        try await asyncFunction(for: authService.logout(clearLocalData: true))
     }
 
     func clearError() {

@@ -3,6 +3,9 @@
 package com.quran.shared.persistence.repository.readingsession.extension
 
 import com.quran.shared.mutations.LocalModelMutation
+import com.quran.shared.mutations.LOCAL_MUTATION_ENTITY_FACET
+import com.quran.shared.mutations.LocalMutationAck
+import com.quran.shared.mutations.LocalMutationResource
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.persistence.model.DatabaseReadingSession
 import com.quran.shared.persistence.model.ReadingSession
@@ -29,6 +32,13 @@ internal fun DatabaseReadingSession.toReadingSessionMutation(): LocalModelMutati
         mutation = mutation,
         model = toReadingSession(),
         remoteID = remote_id,
-        localID = local_id.toString()
+        localID = local_id.toString(),
+        ack = LocalMutationAck(
+            localID = local_id.toString(),
+            resource = LocalMutationResource.READING_SESSION,
+            facet = LOCAL_MUTATION_ENTITY_FACET,
+            observedPendingOp = mutation,
+            observedPendingVersion = pending_version
+        )
     )
 }

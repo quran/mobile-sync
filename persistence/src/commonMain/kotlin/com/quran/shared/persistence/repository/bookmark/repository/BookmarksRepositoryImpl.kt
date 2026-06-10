@@ -4,7 +4,11 @@ import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import co.touchlab.kermit.Logger
 import com.quran.shared.di.AppScope
+import com.quran.shared.mutations.LOCAL_MUTATION_BOOKMARK_ENTITY_FACET
+import com.quran.shared.mutations.LOCAL_MUTATION_BOOKMARK_READING_FACET
 import com.quran.shared.mutations.LocalModelMutation
+import com.quran.shared.mutations.LocalMutationAck
+import com.quran.shared.mutations.LocalMutationResource
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
@@ -12,6 +16,7 @@ import com.quran.shared.persistence.input.RemoteBookmark
 import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.DEFAULT_COLLECTION_ID
 import com.quran.shared.persistence.model.DatabaseBookmark
+import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
 import com.quran.shared.persistence.repository.bookmark.extension.toAyahBookmark
 import com.quran.shared.persistence.util.PlatformDateTime
@@ -208,20 +213,103 @@ class BookmarksRepositoryImpl(
         }
     }
 
+    override suspend fun markMutatedBookmarksInFlight(acks: List<LocalMutationAck>): List<LocalMutationAck> {
+        if (acks.isEmpty()) {
+            return emptyList()
+        }
+        return withContext(Dispatchers.IO) {
+            val markedAcks = mutableListOf<LocalMutationAck>()
+            database.transaction {
+                acks.forEach { ack ->
+                    if (ack.resource == LocalMutationResource.BOOKMARK &&
+                        ack.facet == LOCAL_MUTATION_BOOKMARK_READING_FACET &&
+                        ack.observedPendingOp == Mutation.CREATED
+                    ) {
+                        val localId = ack.localID.toLongOrNull() ?: return@forEach
+                        bookmarkQueries.value.markReadingCreateInFlight(
+                            local_id = localId,
+                            pending_version = ack.observedPendingVersion
+                        )
+                        val changedRows = bookmarkQueries.value.changedRowCount().executeAsOne()
+                        val row = bookmarkQueries.value.getBookmarkByLocalId(localId).executeAsOneOrNull()
+                        if (changedRows > 0 &&
+                            row?.deleted == 0L &&
+                            row.reading_pending_op == "CREATED" &&
+                            row.reading_pending_version == ack.observedPendingVersion + 1
+                        ) {
+                            markedAcks += ack
+                        }
+                    }
+                }
+            }
+            markedAcks
+        }
+    }
+
+    override suspend fun rollbackMutatedBookmarksInFlight(acks: List<LocalMutationAck>) {
+        if (acks.isEmpty()) {
+            return
+        }
+        withContext(Dispatchers.IO) {
+            database.transaction {
+                acks.forEach { ack ->
+                    if (ack.resource != LocalMutationResource.BOOKMARK ||
+                        ack.facet != LOCAL_MUTATION_BOOKMARK_READING_FACET ||
+                        ack.observedPendingOp != Mutation.CREATED
+                    ) {
+                        return@forEach
+                    }
+                    val localId = ack.localID.toLongOrNull() ?: return@forEach
+                    bookmarkQueries.value.rollbackActiveReadingCreateInFlight(
+                        local_id = localId,
+                        pending_version = ack.observedPendingVersion,
+                        marked_pending_version = ack.observedPendingVersion + 1
+                    )
+                    bookmarkQueries.value.clearCanceledReadingCreateInFlight(
+                        local_id = localId,
+                        canceled_pending_version = ack.observedPendingVersion + 2
+                    )
+                    val row = bookmarkQueries.value.getBookmarkByLocalId(localId).executeAsOneOrNull()
+                    if (row?.remote_id == null &&
+                        row?.deleted == 1L &&
+                        row.bookmark_pending_op == "DELETED" &&
+                        row.reading_pending_op == null &&
+                        row.reading_pending_version == ack.observedPendingVersion + 2
+                    ) {
+                        bookmarkQueries.value.hardDeleteBookmarkByLocalId(localId)
+                    }
+                    reconciler.pruneBookmarkIfOrphan(localId)
+                }
+                reconciler.reconcile()
+            }
+        }
+    }
+
     override suspend fun applyRemoteChanges(
         updatesToPersist: List<RemoteModelMutation<RemoteBookmark>>,
-        localMutationsToClear: List<LocalModelMutation<RemoteBookmark>>
+        localMutationsToClear: List<LocalModelMutation<RemoteBookmark>>,
+        writeBoundaryGuard: PersistenceWriteBoundaryGuard
     ) {
         logger.i {
             "Applying remote bookmark changes with ${updatesToPersist.size} updates to persist and " +
                 "${localMutationsToClear.size} local mutations to clear"
         }
         return withContext(Dispatchers.IO) {
+            writeBoundaryGuard.checkWriteBoundary()
             database.transaction {
                 updatesToPersist.forEach { remote ->
                     when (remote.mutation) {
-                        Mutation.CREATED, Mutation.MODIFIED -> applyRemoteBookmarkUpsert(remote)
-                        Mutation.DELETED -> applyRemoteBookmarkDeletion(remote)
+                        Mutation.CREATED, Mutation.MODIFIED -> {
+                            attachRemoteIdForCreatedAck(remote)
+                            if (!remote.isPushedBookmarkAck()) {
+                                applyRemoteBookmarkUpsert(remote)
+                            }
+                        }
+                        Mutation.DELETED -> {
+                            if (!remote.isPushedBookmarkAck()) {
+                                applyRemoteBookmarkDeletion(remote)
+                            }
+                        }
                     }
                 }
 
@@ -262,33 +350,80 @@ class BookmarksRepositoryImpl(
 
     private fun clearLocalBookmarkMutation(local: LocalModelMutation<RemoteBookmark>) {
         val localId = local.localID.toLongOrNull() ?: return
+        val ack = local.ack ?: return
+        if (ack.localID != local.localID || ack.resource != LocalMutationResource.BOOKMARK) {
+            return
+        }
         val remoteTimestamp = local.model.lastUpdated.fromPlatform().toEpochMilliseconds()
         val remoteIdToBackfill = remoteIdBackfillFor(localId, local.remoteID)
-        when {
-            local.mutation == Mutation.DELETED -> {
+        when (ack.facet) {
+            LOCAL_MUTATION_BOOKMARK_ENTITY_FACET -> {
                 val current = bookmarkQueries.value.getBookmarkByLocalId(localId).executeAsOneOrNull() ?: return
-                if (current.deleted == 1L &&
-                    current.bookmark_pending_op == "DELETED" &&
+                if (ack.observedPendingOp == Mutation.DELETED &&
+                    current.deleted == 1L &&
+                    current.bookmark_pending_op == ack.observedPendingOp.name &&
+                    current.bookmark_pending_version == ack.observedPendingVersion &&
                     current.remote_id == local.remoteID
                 ) {
-                    bookmarkQueries.value.hardDeleteBookmarkByLocalId(local_id = localId)
+                    bookmarkQueries.value.clearBookmarkDeletePending(
+                        local_id = localId,
+                        remote_id = remoteIdToBackfill,
+                        modified_at = remoteTimestamp,
+                        pending_op = ack.observedPendingOp.name,
+                        pending_version = ack.observedPendingVersion
+                    )
+                    reconciler.pruneBookmarkIfOrphan(localId)
+                    return
                 }
+                bookmarkQueries.value.clearBookmarkPending(
+                    local_id = localId,
+                    remote_id = remoteIdToBackfill,
+                    modified_at = remoteTimestamp,
+                    clear_reading = 0L,
+                    pending_op = ack.observedPendingOp.name,
+                    pending_version = ack.observedPendingVersion
+                )
             }
-            local.model.isReading -> {
+            LOCAL_MUTATION_BOOKMARK_READING_FACET -> {
                 bookmarkQueries.value.clearReadingPending(
                     local_id = localId,
                     remote_id = remoteIdToBackfill,
-                    modified_at = remoteTimestamp
+                    modified_at = remoteTimestamp,
+                    pending_op = ack.observedPendingOp.name,
+                    pending_version = ack.observedPendingVersion
                 )
             }
             else -> {
-                bookmarkQueries.value.clearReadingPending(
-                    local_id = localId,
-                    remote_id = remoteIdToBackfill,
-                    modified_at = remoteTimestamp
-                )
+                return
             }
         }
+    }
+
+    private fun RemoteModelMutation<RemoteBookmark>.isPushedBookmarkAck(): Boolean {
+        return ack?.resource == LocalMutationResource.BOOKMARK
+    }
+
+    private fun attachRemoteIdForCreatedAck(remote: RemoteModelMutation<RemoteBookmark>) {
+        val ack = remote.ack ?: return
+        if (ack.resource != LocalMutationResource.BOOKMARK ||
+            ack.observedPendingOp != Mutation.CREATED
+        ) {
+            return
+        }
+        val localId = ack.localID.toLongOrNull() ?: return
+        val row = bookmarkQueries.value.getBookmarkByLocalId(localId).executeAsOneOrNull() ?: return
+        if (!row.matches(remote.model)) {
+            return
+        }
+        val owner = bookmarkQueries.value.getBookmarkByRemoteId(remote.remoteID).executeAsOneOrNull()
+        if (owner != null && owner.local_id != localId) {
+            return
+        }
+        bookmarkQueries.value.attachRemoteBookmarkIdByLocalId(
+            local_id = localId,
+            remote_id = remote.remoteID,
+            modified_at = remote.model.lastUpdated.fromPlatform().toEpochMilliseconds()
+        )
     }
 
     private fun remoteIdBackfillFor(localId: Long, remoteId: String?): String? {
@@ -306,17 +441,19 @@ class BookmarksRepositoryImpl(
         // Backend bookmark IDs are stable canonical row IDs and are not reused or moved between locations.
         val existingByRemoteId = bookmarkQueries.value.getBookmarkByRemoteId(remote.remoteID).executeAsOneOrNull()
         if (existingByRemoteId != null && !existingByRemoteId.matches(remote.model)) {
-            if (existingByRemoteId.hasPendingBookmarkMutation()) {
-                bookmarkQueries.value.clearBookmarkRemoteIdByLocalId(
-                    local_id = existingByRemoteId.local_id,
-                    remote_id = remote.remoteID
-                )
-            } else {
-                logger.w {
-                    "Skipping remote bookmark ${remote.remoteID}; existing row is a different location."
-                }
-                return
+            logger.w {
+                "Skipping remote bookmark ${remote.remoteID}; existing row is a different location."
             }
+            return
+        }
+        val existingAtLocation = getBookmarkAtLocation(remote.model)
+        if (existingAtLocation?.remote_id != null &&
+            existingAtLocation.remote_id != remote.remoteID
+        ) {
+            logger.w {
+                "Skipping remote bookmark ${remote.remoteID}; location already belongs to ${existingAtLocation.remote_id}."
+            }
+            return
         }
         val row = when (val model = remote.model) {
             is RemoteBookmark.Ayah -> {
@@ -349,6 +486,17 @@ class BookmarksRepositoryImpl(
         )
     }
 
+    private fun getBookmarkAtLocation(bookmark: RemoteBookmark): DatabaseBookmark? {
+        return when (bookmark) {
+            is RemoteBookmark.Ayah -> bookmarkQueries.value
+                .getBookmarkForAyah(bookmark.sura.toLong(), bookmark.ayah.toLong())
+                .executeAsOneOrNull()
+            is RemoteBookmark.Page -> bookmarkQueries.value
+                .getBookmarkForPage(bookmark.page.toLong())
+                .executeAsOneOrNull()
+        }
+    }
+
     private fun DatabaseBookmark.matches(bookmark: RemoteBookmark): Boolean {
         return when (bookmark) {
             is RemoteBookmark.Ayah ->
@@ -359,10 +507,6 @@ class BookmarksRepositoryImpl(
                 bookmark_type == "PAGE" &&
                     page == bookmark.page.toLong()
         }
-    }
-
-    private fun DatabaseBookmark.hasPendingBookmarkMutation(): Boolean {
-        return bookmark_pending_op != null || reading_pending_op != null
     }
 
     private fun applyRemoteBookmarkDeletion(remote: RemoteModelMutation<RemoteBookmark>) {
@@ -388,17 +532,43 @@ class BookmarksRepositoryImpl(
         val model = toRemoteBookmark()
         val pendingOp = when {
             deleted == 1L || bookmark_pending_op == "DELETED" -> Mutation.DELETED
-            reading_pending_op != null -> Mutation.CREATED
+            reading_pending_op != null -> reading_pending_op.toMutationOrNull() ?: Mutation.CREATED
             bookmark_pending_op == "MODIFIED" -> Mutation.MODIFIED
             bookmark_pending_op == "CREATED" -> Mutation.CREATED
+            else -> return null
+        }
+        val facet = when {
+            deleted == 1L || bookmark_pending_op != null -> LOCAL_MUTATION_BOOKMARK_ENTITY_FACET
+            reading_pending_op != null -> LOCAL_MUTATION_BOOKMARK_READING_FACET
+            else -> return null
+        }
+        val version = when (facet) {
+            LOCAL_MUTATION_BOOKMARK_ENTITY_FACET -> bookmark_pending_version
+            LOCAL_MUTATION_BOOKMARK_READING_FACET -> reading_pending_version
             else -> return null
         }
         return LocalModelMutation(
             mutation = pendingOp,
             model = model,
             remoteID = remote_id,
-            localID = local_id.toString()
+            localID = local_id.toString(),
+            ack = LocalMutationAck(
+                localID = local_id.toString(),
+                resource = LocalMutationResource.BOOKMARK,
+                facet = facet,
+                observedPendingOp = pendingOp,
+                observedPendingVersion = version
+            )
         )
+    }
+
+    private fun String?.toMutationOrNull(): Mutation? {
+        return when (this) {
+            "CREATED" -> Mutation.CREATED
+            "MODIFIED" -> Mutation.MODIFIED
+            "DELETED" -> Mutation.DELETED
+            else -> null
+        }
     }
 
     private fun DatabaseBookmark.toRemoteBookmark(): RemoteBookmark {

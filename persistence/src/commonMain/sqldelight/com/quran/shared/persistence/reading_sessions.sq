@@ -7,12 +7,15 @@ CREATE TABLE IF NOT EXISTS reading_session(
   created_at INTEGER DEFAULT (CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) NOT NULL,
   modified_at INTEGER DEFAULT (CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) NOT NULL,
   deleted INTEGER NOT NULL DEFAULT 0,
+  pending_version INTEGER NOT NULL DEFAULT 0,
   CHECK (is_edited IN (0, 1)),
-  CHECK (deleted IN (0, 1)),
-  UNIQUE (chapter_number, verse_number)
+  CHECK (deleted IN (0, 1))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS reading_session_remote_id_idx ON reading_session(remote_id);
+CREATE UNIQUE INDEX IF NOT EXISTS reading_session_active_position_idx
+ON reading_session(chapter_number, verse_number)
+WHERE deleted = 0;
 CREATE INDEX IF NOT EXISTS reading_session_active_modified_idx
 ON reading_session(deleted, modified_at DESC, local_id DESC);
 CREATE INDEX IF NOT EXISTS reading_session_unsynced_modified_idx
@@ -26,7 +29,21 @@ countAll:
   SELECT COUNT(*) FROM reading_session;
 
 getReadingSessionForChapterVerse:
-  SELECT * FROM reading_session WHERE chapter_number = ? AND verse_number = ? LIMIT 1;
+  SELECT * FROM reading_session WHERE chapter_number = ? AND verse_number = ? AND deleted = 0 LIMIT 1;
+
+getPendingCreatedReadingSessionsForChapterVerse:
+  SELECT * FROM reading_session
+  WHERE remote_id IS NULL
+    AND chapter_number = :chapter_number
+    AND verse_number = :verse_number
+    AND deleted = 0;
+
+getDeletedPendingCreatedReadingSessionsForChapterVerse:
+  SELECT * FROM reading_session
+  WHERE remote_id IS NULL
+    AND chapter_number = :chapter_number
+    AND verse_number = :verse_number
+    AND deleted = 1;
 
 getReadingSessionByLocalId:
   SELECT * FROM reading_session WHERE local_id = ? LIMIT 1;
@@ -46,7 +63,24 @@ getReadingSessionsToPrune:
   ORDER BY modified_at DESC, local_id DESC;
 
 pruneLocalReadingSessions {
-  DELETE FROM reading_session
+  UPDATE reading_session
+  SET deleted = 1,
+    is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
+    pending_version = pending_version + 1
+  WHERE deleted = 0
+    AND remote_id IS NULL
+    AND local_id NOT IN (
+      SELECT local_id FROM reading_session
+      WHERE deleted = 0
+      ORDER BY modified_at DESC, local_id DESC
+      LIMIT :max_sessions
+    );
+}
+
+pruneLocalReadingSessionsForRemoteApply {
+  UPDATE reading_session
+  SET deleted = 1,
+    is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END
   WHERE deleted = 0
     AND remote_id IS NULL
     AND local_id NOT IN (
@@ -58,6 +92,21 @@ pruneLocalReadingSessions {
 }
 
 pruneRemoteReadingSessions {
+  UPDATE reading_session
+  SET deleted = 1,
+    is_edited = 1,
+    pending_version = pending_version + 1
+  WHERE deleted = 0
+    AND remote_id IS NOT NULL
+    AND local_id NOT IN (
+      SELECT local_id FROM reading_session
+      WHERE deleted = 0
+      ORDER BY modified_at DESC, local_id DESC
+      LIMIT :max_sessions
+    );
+}
+
+pruneRemoteReadingSessionsForRemoteApply {
   UPDATE reading_session
   SET deleted = 1,
     is_edited = 1
@@ -72,15 +121,16 @@ pruneRemoteReadingSessions {
 }
 
 addReadingSession {
-  INSERT OR IGNORE INTO reading_session (remote_id, chapter_number, verse_number, is_edited, created_at, modified_at, deleted)
-  VALUES (NULL, :chapter_number, :verse_number, 0, :modified_at, :modified_at, 0);
+  INSERT OR IGNORE INTO reading_session (remote_id, chapter_number, verse_number, is_edited, created_at, modified_at, deleted, pending_version)
+  VALUES (NULL, :chapter_number, :verse_number, 0, :modified_at, :modified_at, 0, 0);
   UPDATE reading_session
   SET deleted = 0,
     chapter_number = :chapter_number,
     verse_number = :verse_number,
     is_edited = CASE WHEN remote_id IS NULL THEN 0 ELSE 1 END,
-    modified_at = :modified_at
-  WHERE chapter_number = :chapter_number AND verse_number = :verse_number;
+    modified_at = :modified_at,
+    pending_version = pending_version + 1
+  WHERE chapter_number = :chapter_number AND verse_number = :verse_number AND deleted = 0;
 }
 
 insertImportedReadingSession {
@@ -91,7 +141,8 @@ insertImportedReadingSession {
     is_edited,
     created_at,
     modified_at,
-    deleted
+    deleted,
+    pending_version
   )
   VALUES (
     NULL,
@@ -100,6 +151,7 @@ insertImportedReadingSession {
     0,
     :created_at,
     :modified_at,
+    0,
     0
   );
   UPDATE reading_session
@@ -113,8 +165,12 @@ insertImportedReadingSession {
       WHEN remote_id IS NULL THEN :modified_at
       WHEN deleted = 1 THEN :modified_at
       ELSE modified_at
+    END,
+    pending_version = CASE
+      WHEN remote_id IS NULL OR deleted = 1 THEN pending_version + 1
+      ELSE pending_version
     END
-  WHERE chapter_number = :chapter_number AND verse_number = :verse_number;
+  WHERE chapter_number = :chapter_number AND verse_number = :verse_number AND deleted = 0;
 }
 
 updateReadingSession:
@@ -123,31 +179,36 @@ updateReadingSession:
     chapter_number = :chapter_number,
     verse_number = :verse_number,
     is_edited = CASE WHEN remote_id IS NULL THEN 0 ELSE 1 END,
-    modified_at = :modified_at
+    modified_at = :modified_at,
+    pending_version = pending_version + 1
   WHERE local_id = :local_id;
 
 deleteReadingSession {
-  DELETE FROM reading_session WHERE chapter_number = :chapter_number AND verse_number = :verse_number AND remote_id IS NULL;
   UPDATE reading_session
   SET deleted = 1,
-    is_edited = 1
-  WHERE chapter_number = :chapter_number AND verse_number = :verse_number AND remote_id IS NOT NULL;
+    is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
+    pending_version = pending_version + 1
+  WHERE chapter_number = :chapter_number AND verse_number = :verse_number AND deleted = 0;
 }
 
 pruneReadingSessionByLocalId {
-  DELETE FROM reading_session WHERE local_id = :local_id AND remote_id IS NULL;
   UPDATE reading_session
   SET deleted = 1,
-    is_edited = 1
-  WHERE local_id = :local_id AND remote_id IS NOT NULL;
+    is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
+    pending_version = pending_version + 1
+  WHERE local_id = :local_id;
 }
 
 getUnsyncedReadingSessions:
-  SELECT * FROM reading_session WHERE remote_id IS NULL OR is_edited = 1 OR deleted = 1 ORDER BY modified_at DESC;
+  SELECT * FROM reading_session
+  WHERE (remote_id IS NULL AND deleted = 0)
+    OR (remote_id IS NOT NULL AND deleted = 1)
+    OR is_edited = 1
+  ORDER BY modified_at DESC;
 
 persistRemoteReadingSession {
-  INSERT OR IGNORE INTO reading_session (remote_id, chapter_number, verse_number, is_edited, created_at, modified_at, deleted)
-  VALUES (:remote_id, :chapter_number, :verse_number, 0, :created_at, :modified_at, 0);
+  INSERT OR IGNORE INTO reading_session (remote_id, chapter_number, verse_number, is_edited, created_at, modified_at, deleted, pending_version)
+  VALUES (:remote_id, :chapter_number, :verse_number, 0, :created_at, :modified_at, 0, 0);
   UPDATE reading_session
   SET remote_id = :remote_id,
     chapter_number = :chapter_number,
@@ -156,20 +217,66 @@ persistRemoteReadingSession {
     created_at = :created_at,
     modified_at = :modified_at,
     deleted = 0
-  WHERE remote_id = :remote_id OR (chapter_number = :chapter_number AND verse_number = :verse_number);
+  WHERE remote_id = :remote_id
+    AND deleted = 0
+    AND is_edited = 0;
 }
+
+attachRemoteReadingSessionIdForCreatedAck:
+  UPDATE reading_session
+  SET remote_id = :remote_id,
+    is_edited = CASE
+      WHEN deleted = 1 THEN is_edited
+      WHEN pending_version = :pending_version THEN 0
+      ELSE 1
+    END,
+    modified_at = CASE
+      WHEN pending_version = :pending_version THEN :modified_at
+      ELSE modified_at
+    END
+  WHERE local_id = :local_id
+    AND remote_id IS NULL;
+
+attachRemoteReadingSessionIdForSemanticReplay:
+  UPDATE reading_session
+  SET remote_id = :remote_id,
+    is_edited = CASE
+      WHEN deleted = 1 THEN is_edited
+      ELSE 0
+    END,
+    modified_at = CASE
+      WHEN deleted = 1 THEN modified_at
+      ELSE :modified_at
+    END
+  WHERE local_id = :local_id
+    AND remote_id IS NULL;
 
 hardDeleteReadingSessionFor {
   DELETE FROM reading_session WHERE remote_id = :remoteID;
 }
 
 clearLocalMutationFor {
-  DELETE FROM reading_session WHERE remote_id IS NULL AND local_id = :id;
+  DELETE FROM reading_session
+  WHERE remote_id IS NULL
+    AND local_id = :id
+    AND pending_version = :pending_version
+    AND :pending_op = 'CREATED';
+  DELETE FROM reading_session
+  WHERE local_id = :id
+    AND remote_id IS NOT NULL
+    AND deleted = 1
+    AND pending_version = :pending_version
+    AND :pending_op = 'DELETED';
   UPDATE reading_session
   SET deleted = 0,
     is_edited = 0,
     modified_at = :modified_at
-  WHERE local_id = :id;
+  WHERE local_id = :id
+    AND remote_id IS NOT NULL
+    AND pending_version = :pending_version
+    AND deleted = 0
+    AND is_edited = 1
+    AND :pending_op = 'MODIFIED';
 }
 
 checkRemoteIDsExistence:
@@ -181,9 +288,18 @@ deleteAll:
 deleteUnsyncedReadingSessions:
   DELETE FROM reading_session WHERE remote_id IS NULL;
 
+markUnsyncedReadingSessionsDeletedForImport:
+  UPDATE reading_session
+  SET deleted = 1,
+    modified_at = :modified_at,
+    pending_version = pending_version + 1
+  WHERE remote_id IS NULL
+    AND deleted = 0;
+
 markRemoteReadingSessionsDeleted:
   UPDATE reading_session
   SET deleted = 1,
     is_edited = 1,
-    modified_at = :modified_at
+    modified_at = :modified_at,
+    pending_version = pending_version + 1
   WHERE remote_id IS NOT NULL;

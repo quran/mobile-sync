@@ -2,6 +2,25 @@ package com.quran.shared.auth.repository
 
 import com.quran.shared.auth.model.UserInfo
 
+data class LogoutTokenMaterial(
+    val refreshToken: String?,
+    val idToken: String?
+)
+
+class LogoutTokenCaptureException(
+    cause: Exception
+) : Exception(cause.message, cause)
+
+enum class RemoteLogoutOperation {
+    REVOKE_REFRESH_TOKEN,
+    END_SESSION
+}
+
+data class RemoteLogoutFailure(
+    val operation: RemoteLogoutOperation,
+    val exception: Exception
+)
+
 /**
  * Repository handling authentication operations and token persistence.
  *
@@ -36,6 +55,26 @@ interface AuthRepository {
      */
     suspend fun logout()
 
+    suspend fun captureLogoutTokenMaterial(): LogoutTokenMaterial
+
+    suspend fun captureLogoutTokenMaterialAndClearLocalSession(): LogoutTokenMaterial {
+        var tokenMaterial: LogoutTokenMaterial? = null
+        var captureFailure: Exception? = null
+        try {
+            tokenMaterial = captureLogoutTokenMaterial()
+        } catch (e: Exception) {
+            captureFailure = e
+        } finally {
+            clearLocalSession()
+        }
+        captureFailure?.let { throw LogoutTokenCaptureException(it) }
+        return requireNotNull(tokenMaterial)
+    }
+
+    suspend fun clearLocalSession()
+
+    suspend fun attemptRemoteLogout(tokenMaterial: LogoutTokenMaterial): List<RemoteLogoutFailure>
+
     /**
      * Returns the current access token if available.
      */
@@ -55,4 +94,10 @@ interface AuthRepository {
      * Provides the headers required for authorized requests, refreshing the token if needed.
      * */
     suspend fun getAuthHeaders(): Map<String, String>
+}
+
+internal interface AuthRepositoryLoginCommitCallbacks : AuthRepository {
+    suspend fun login(onDurableCommit: suspend () -> Unit)
+
+    suspend fun loginWithReauthentication(onDurableCommit: suspend () -> Unit)
 }

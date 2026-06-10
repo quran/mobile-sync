@@ -2,6 +2,9 @@
 package com.quran.shared.syncengine.conflict
 
 import com.quran.shared.mutations.LocalModelMutation
+import com.quran.shared.mutations.LOCAL_MUTATION_BOOKMARK_ENTITY_FACET
+import com.quran.shared.mutations.LocalMutationAck
+import com.quran.shared.mutations.LocalMutationResource
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.syncengine.model.SyncBookmark
@@ -478,7 +481,7 @@ class ConflictResolverTest {
         )
         val localDeleteMutation = LocalModelMutation<SyncBookmark>(
             model = PageBookmark(id = "local-1", page = 0, isReading = false, lastModified = Instant.fromEpochMilliseconds(1001)),
-            remoteID = "remote-1",
+            remoteID = null,
             localID = "local-1",
             mutation = Mutation.DELETED
         )
@@ -505,5 +508,49 @@ class ConflictResolverTest {
             exception.message?.contains("CREATED(remote-1)") == true,
             "Error message should include remote mutation details"
         )
+    }
+
+    @Test
+    fun `resolve with remote backed local deletion vs replayed remote creation pushes local delete`() {
+        val ack = LocalMutationAck(
+            localID = "local-1",
+            resource = LocalMutationResource.BOOKMARK,
+            facet = LOCAL_MUTATION_BOOKMARK_ENTITY_FACET,
+            observedPendingOp = Mutation.DELETED,
+            observedPendingVersion = 2L
+        )
+        val remoteCreateMutation = RemoteModelMutation<SyncBookmark>(
+            model = PageBookmark(
+                id = "remote-1",
+                page = 10,
+                isReading = false,
+                lastModified = Instant.fromEpochMilliseconds(1000)
+            ),
+            remoteID = "remote-1",
+            mutation = Mutation.CREATED
+        )
+        val localDeleteMutation = LocalModelMutation<SyncBookmark>(
+            model = PageBookmark(
+                id = "local-1",
+                page = 10,
+                isReading = false,
+                lastModified = Instant.fromEpochMilliseconds(1001)
+            ),
+            remoteID = "remote-1",
+            localID = "local-1",
+            mutation = Mutation.DELETED,
+            ack = ack
+        )
+        val resourceConflict = ResourceConflict(
+            localMutations = listOf(localDeleteMutation),
+            remoteMutations = listOf(remoteCreateMutation)
+        )
+
+        val result = ConflictResolver(listOf(resourceConflict)).resolve()
+
+        assertEquals(emptyList(), result.mutationsToPersist)
+        val pushed = result.mutationsToPush.single()
+        assertEquals(localDeleteMutation, pushed)
+        assertEquals(ack, pushed.ack)
     }
 }

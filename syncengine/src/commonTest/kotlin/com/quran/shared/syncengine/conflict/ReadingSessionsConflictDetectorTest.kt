@@ -70,4 +70,75 @@ class ReadingSessionsConflictDetectorTest {
         assertEquals(1, result.nonConflictingLocalMutations.size)
         assertEquals(0, result.nonConflictingRemoteMutations.size)
     }
+
+    @Test
+    fun `getConflicts with replayed remote create at same position suppresses pending local create`() {
+        val remoteMutation = RemoteModelMutation(
+            model = SyncReadingSession(
+                id = "remote-1",
+                chapterNumber = 2,
+                verseNumber = 255,
+                lastModified = Instant.fromEpochMilliseconds(1000)
+            ),
+            remoteID = "remote-1",
+            mutation = Mutation.CREATED
+        )
+        val localMutation = LocalModelMutation(
+            model = SyncReadingSession(
+                id = "local-1",
+                chapterNumber = 2,
+                verseNumber = 255,
+                lastModified = Instant.fromEpochMilliseconds(1001)
+            ),
+            remoteID = null,
+            localID = "local-1",
+            mutation = Mutation.CREATED
+        )
+
+        val result = ReadingSessionsConflictDetector(
+            remoteMutations = listOf(remoteMutation),
+            localMutations = listOf(localMutation)
+        ).getConflicts()
+        val resolution = ReadingSessionsConflictResolver(result.conflicts).resolve()
+
+        assertEquals(1, result.conflicts.size)
+        assertEquals(0, result.nonConflictingRemoteMutations.size)
+        assertEquals(0, result.nonConflictingLocalMutations.size)
+        assertEquals(listOf(remoteMutation), resolution.mutationsToPersist)
+        assertEquals(emptyList(), resolution.mutationsToPush)
+    }
+
+    @Test
+    fun `getConflicts with replayed remote create at old position leaves moved local create non-conflicting`() {
+        val remoteMutation = RemoteModelMutation(
+            model = SyncReadingSession(
+                id = "remote-1",
+                chapterNumber = 2,
+                verseNumber = 255,
+                lastModified = Instant.fromEpochMilliseconds(1000)
+            ),
+            remoteID = "remote-1",
+            mutation = Mutation.CREATED
+        )
+        val localMutation = LocalModelMutation(
+            model = SyncReadingSession(
+                id = "local-1",
+                chapterNumber = 3,
+                verseNumber = 10,
+                lastModified = Instant.fromEpochMilliseconds(1001)
+            ),
+            remoteID = null,
+            localID = "local-1",
+            mutation = Mutation.CREATED
+        )
+
+        val result = ReadingSessionsConflictDetector(
+            remoteMutations = listOf(remoteMutation),
+            localMutations = listOf(localMutation)
+        ).getConflicts()
+
+        assertEquals(0, result.conflicts.size)
+        assertEquals(listOf(remoteMutation), result.nonConflictingRemoteMutations)
+        assertEquals(listOf(localMutation), result.nonConflictingLocalMutations)
+    }
 }

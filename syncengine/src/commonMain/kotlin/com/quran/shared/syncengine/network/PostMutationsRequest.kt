@@ -57,7 +57,7 @@ class PostMutationsRequest(
         val type: String,
         val resource: String,
         val data: JsonObject? = null,
-        val resourceId: String,
+        val resourceId: String? = null,
         val timestamp: Long? = null
     )
 
@@ -109,6 +109,14 @@ class PostMutationsRequest(
         }
 
         val response: PostMutationsResponse = httpResponse.body()
+        if (!response.success) {
+            logger.e { "Server returned success=false in response body" }
+            logger.e {
+                "Response data: lastMutationAt=${response.data.lastMutationAt}, " +
+                    "mutations count=${response.data.mutations.size}"
+            }
+            throw RuntimeException("Server returned success=false in response body")
+        }
 
         logger.i { "Received response: success=${response.success}" }
 

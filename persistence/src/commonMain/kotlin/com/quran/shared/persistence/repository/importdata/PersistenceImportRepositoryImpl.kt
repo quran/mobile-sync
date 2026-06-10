@@ -69,15 +69,15 @@ class PersistenceImportRepositoryImpl(
 
     private fun deleteExistingData() {
         val timestamp = currentImportTimestampMillis()
-        database.bookmark_collectionsQueries.deleteUnsyncedBookmarkCollections()
+        database.bookmark_collectionsQueries.markUnsyncedBookmarkCollectionsDeletedForImport(modified_at = timestamp)
         database.bookmark_collectionsQueries.markRemoteBookmarkCollectionsDeleted(modified_at = timestamp)
-        database.bookmarksQueries.deleteUnsyncedBookmarks()
+        database.bookmarksQueries.markUnsyncedBookmarksDeletedForImport(modified_at = timestamp)
         database.bookmarksQueries.markRemoteBookmarksDeleted(modified_at = timestamp)
-        database.collectionsQueries.deleteUnsyncedCollections()
+        database.collectionsQueries.markUnsyncedCollectionsDeletedForImport(modified_at = timestamp)
         database.collectionsQueries.markRemoteCollectionsDeleted(modified_at = timestamp)
-        database.notesQueries.deleteUnsyncedNotes()
+        database.notesQueries.markUnsyncedNotesDeletedForImport(modified_at = timestamp)
         database.notesQueries.markRemoteNotesDeleted(modified_at = timestamp)
-        database.reading_sessionsQueries.deleteUnsyncedReadingSessions()
+        database.reading_sessionsQueries.markUnsyncedReadingSessionsDeletedForImport(modified_at = timestamp)
         database.reading_sessionsQueries.markRemoteReadingSessionsDeleted(modified_at = timestamp)
     }
 

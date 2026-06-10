@@ -2,17 +2,11 @@ package com.quran.shared.pipeline.di
 
 import com.quran.shared.auth.di.AuthModule
 import com.quran.shared.auth.model.AuthConfig
-import com.quran.shared.auth.service.AuthService
 import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.DriverFactory
 import com.quran.shared.persistence.di.PersistenceModule
-import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepository
-import com.quran.shared.persistence.repository.collection.repository.CollectionsRepository
-import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepository
-import com.quran.shared.persistence.repository.importdata.PersistenceImportRepository
-import com.quran.shared.persistence.repository.note.repository.NotesRepository
-import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepository
 import com.quran.shared.pipeline.AppEnvironment
+import com.quran.shared.pipeline.SyncAuthService
 import com.quran.shared.pipeline.SyncService
 import com.quran.shared.pipeline.defaultAppEnvironment
 import com.quran.shared.pipeline.storage.MobileSyncStorage
@@ -41,13 +35,7 @@ import kotlin.concurrent.Volatile
 )
 interface AppGraph {
     val syncService: SyncService
-    val authService: AuthService
-    val bookmarksRepository: BookmarksRepository
-    val collectionsRepository: CollectionsRepository
-    val collectionBookmarksRepository: CollectionBookmarksRepository
-    val persistenceImportRepository: PersistenceImportRepository
-    val notesRepository: NotesRepository
-    val readingSessionsRepository: ReadingSessionsRepository
+    val authService: SyncAuthService
 
     @DependencyGraph.Factory
     fun interface Factory {

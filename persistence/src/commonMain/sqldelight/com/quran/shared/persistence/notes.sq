@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS note(
   modified_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
   deleted INTEGER NOT NULL DEFAULT 0,
   is_edited INTEGER NOT NULL DEFAULT 0,
+  pending_version INTEGER NOT NULL DEFAULT 0,
   -- Ensure deleted is either 0 or 1
   CHECK (deleted IN (0, 1)),
   CHECK (is_edited IN (0, 1))
@@ -31,6 +32,32 @@ countAll:
 getNoteByLocalId:
   SELECT * FROM note WHERE local_id = ? LIMIT 1;
 
+getNoteByRemoteId:
+  SELECT * FROM note WHERE remote_id = ? LIMIT 1;
+
+getPendingCreatedNotesByContent:
+  SELECT * FROM note
+  WHERE remote_id IS NULL
+    AND note = :note
+    AND start_ayah_id = :start_ayah_id
+    AND end_ayah_id = :end_ayah_id;
+
+getPendingDeletedCreatedNotesByContent:
+  SELECT * FROM note
+  WHERE remote_id IS NULL
+    AND deleted = 1
+    AND note = :note
+    AND start_ayah_id = :start_ayah_id
+    AND end_ayah_id = :end_ayah_id;
+
+getPendingActiveCreatedNotesByContent:
+  SELECT * FROM note
+  WHERE remote_id IS NULL
+    AND deleted = 0
+    AND note = :note
+    AND start_ayah_id = :start_ayah_id
+    AND end_ayah_id = :end_ayah_id;
+
 getLastInsertedNote:
   SELECT * FROM note WHERE local_id = last_insert_rowid() LIMIT 1;
 
@@ -42,7 +69,8 @@ addNewNote:
     end_ayah_id,
     created_at,
     modified_at,
-    deleted
+    deleted,
+    pending_version
   )
   VALUES (
     NULL,
@@ -51,7 +79,8 @@ addNewNote:
     :end_ayah_id,
     COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
     COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
-    0
+    0,
+    1
   );
 
 insertImportedNote:
@@ -63,7 +92,8 @@ insertImportedNote:
     created_at,
     modified_at,
     deleted,
-    is_edited
+    is_edited,
+    pending_version
   )
   VALUES (
     NULL,
@@ -73,7 +103,8 @@ insertImportedNote:
     :created_at,
     :modified_at,
     0,
-    0
+    0,
+    1
   );
 
 updateNote:
@@ -83,20 +114,22 @@ updateNote:
     end_ayah_id = :end_ayah_id,
     deleted = 0,
     is_edited = CASE WHEN remote_id IS NULL THEN 0 ELSE 1 END,
-    modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
+    modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    pending_version = pending_version + 1
   WHERE local_id = :id;
 
 deleteNote {
-  DELETE FROM note WHERE local_id = :id AND remote_id IS NULL;
   UPDATE note
-  SET deleted = 1
-  WHERE local_id = :id AND remote_id IS NOT NULL;
+  SET deleted = 1,
+    is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
+    pending_version = pending_version + 1
+  WHERE local_id = :id;
 }
 
 getUnsyncedNotes:
   SELECT * FROM note
-  WHERE remote_id IS NULL
-    OR deleted = 1
+  WHERE (remote_id IS NULL AND deleted = 0)
+    OR (remote_id IS NOT NULL AND deleted = 1)
     OR is_edited = 1
   ORDER BY created_at DESC;
 
@@ -113,20 +146,64 @@ persistRemoteNote {
     modified_at = :modified_at,
     deleted = 0,
     is_edited = 0
-  WHERE remote_id = :remote_id;
+  WHERE remote_id = :remote_id
+    AND deleted = 0
+    AND is_edited = 0;
 }
+
+attachRemoteNoteIdForCreatedAck:
+  UPDATE note
+  SET remote_id = :remote_id,
+    is_edited = CASE
+      WHEN deleted = 1 THEN is_edited
+      WHEN pending_version = :pending_version THEN 0
+      ELSE 1
+    END,
+    modified_at = CASE
+      WHEN pending_version = :pending_version THEN :modified_at
+      ELSE modified_at
+    END
+  WHERE local_id = :local_id
+    AND remote_id IS NULL;
+
+attachRemoteNoteIdForSemanticReplay:
+  UPDATE note
+  SET remote_id = :remote_id,
+    is_edited = CASE
+      WHEN deleted = 1 THEN is_edited
+      ELSE 0
+    END,
+    modified_at = CASE
+      WHEN deleted = 1 THEN modified_at
+      ELSE :modified_at
+    END
+  WHERE local_id = :local_id
+    AND remote_id IS NULL;
 
 deleteRemoteNote:
   DELETE FROM note WHERE remote_id = :remote_id;
 
 clearLocalMutationFor {
-  DELETE FROM note WHERE remote_id IS NULL AND local_id = :id;
-  DELETE FROM note WHERE local_id = :id AND deleted = 1;
+  DELETE FROM note
+  WHERE remote_id IS NULL
+    AND local_id = :id
+    AND pending_version = :pending_version
+    AND :pending_op = 'CREATED';
+  DELETE FROM note
+  WHERE local_id = :id
+    AND deleted = 1
+    AND pending_version = :pending_version
+    AND :pending_op = 'DELETED';
   UPDATE note
   SET deleted = 0,
     is_edited = 0,
     modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
-  WHERE local_id = :id;
+  WHERE local_id = :id
+    AND remote_id IS NOT NULL
+    AND deleted = 0
+    AND is_edited = 1
+    AND pending_version = :pending_version
+    AND :pending_op = 'MODIFIED';
 }
 
 checkRemoteIDsExistence:
@@ -138,8 +215,17 @@ deleteAll:
 deleteUnsyncedNotes:
   DELETE FROM note WHERE remote_id IS NULL;
 
+markUnsyncedNotesDeletedForImport:
+  UPDATE note
+  SET deleted = 1,
+    modified_at = :modified_at,
+    pending_version = pending_version + 1
+  WHERE remote_id IS NULL
+    AND deleted = 0;
+
 markRemoteNotesDeleted:
   UPDATE note
   SET deleted = 1,
-    modified_at = :modified_at
+    modified_at = :modified_at,
+    pending_version = pending_version + 1
   WHERE remote_id IS NOT NULL;

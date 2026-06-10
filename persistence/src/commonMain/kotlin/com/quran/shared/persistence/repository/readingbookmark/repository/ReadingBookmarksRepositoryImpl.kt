@@ -145,6 +145,12 @@ class ReadingBookmarksRepositoryImpl(
                         local_id = row.local_id,
                         timestamp = null
                     )
+                    row.remote_id == null && row.reading_pending_op == "CREATED" &&
+                        row.reading_pending_version > 1L ->
+                        bookmarkQueries.value.markPendingReadingBookmarkDeleted(
+                            local_id = row.local_id,
+                            timestamp = null
+                        )
                     row.remote_id == null -> bookmarkQueries.value.hardDeleteBookmarkByLocalId(row.local_id)
                     else -> bookmarkQueries.value.markBookmarkDeleted(
                         local_id = row.local_id,
