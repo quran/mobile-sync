@@ -414,14 +414,14 @@ class SynchronizationClientPhasingTest {
                 "build-BOOKMARK",
                 "push-1-10",
                 "complete-BOOKMARK-1",
-                "sync-complete-11"
+                "sync-complete-10"
             ),
             events
         )
     }
 
     @Test
-    fun `single pushed plan finalizes accepted post token`() = runTest {
+    fun `single pushed plan finalizes initial get token`() = runTest {
         var completedToken: Long? = null
 
         executeDependencyAwareSync(
@@ -447,7 +447,7 @@ class SynchronizationClientPhasingTest {
             completeSync = { token -> completedToken = token }
         )
 
-        assertEquals(25L, completedToken)
+        assertEquals(10L, completedToken)
     }
 
     @Test
@@ -520,7 +520,7 @@ class SynchronizationClientPhasingTest {
                 "mutations-COLLECTION_BOOKMARK",
                 "push-1-10",
                 "complete-COLLECTION_BOOKMARK-1",
-                "sync-complete-11"
+                "sync-complete-10"
             ),
             events
         )

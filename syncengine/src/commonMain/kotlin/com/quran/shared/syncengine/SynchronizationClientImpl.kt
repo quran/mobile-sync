@@ -325,7 +325,7 @@ internal suspend fun executeDependencyAwareSync(
     }
 
     checkSyncStillValid()
-    val finalToken = if (pushedPlanCount > 1) initialGetToken else mutationToken
+    val finalToken = if (pushedPlanCount > 0) initialGetToken else mutationToken
     withContext(NonCancellable + SyncWriteBoundaryContext(checkSyncStillValid)) {
         checkSyncStillValid()
         completeSync(finalToken)
