@@ -1,7 +1,7 @@
 package com.quran.shared.demo.android.ui
 
 import androidx.lifecycle.ViewModel
-import com.quran.shared.auth.service.AuthService
+import com.quran.shared.pipeline.SyncAuthService
 import com.quran.shared.pipeline.SyncService
 import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.AyahReadingBookmark
@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
 class SyncViewModel(
-    private val authService: AuthService,
+    private val authService: SyncAuthService,
     private val service: SyncService
 ) : ViewModel() {
 
@@ -38,8 +38,8 @@ class SyncViewModel(
         authService.loginWithReauthentication()
     }
 
-    suspend fun logout(clearLocalData: Boolean = false) {
-        service.logout(clearLocalData)
+    suspend fun logout(clearLocalData: Boolean = true) {
+        authService.logout(clearLocalData)
     }
 
     suspend fun addReadingSession(sura: Int, ayah: Int): ReadingSession {

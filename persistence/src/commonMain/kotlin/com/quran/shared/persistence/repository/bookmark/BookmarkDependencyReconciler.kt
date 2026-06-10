@@ -32,6 +32,8 @@ class BookmarkDependencyReconciler(
         val bookmarkQueries = database.bookmarksQueries
         val linkQueries = database.bookmark_collectionsQueries
         val row = bookmarkQueries.getBookmarkByLocalId(bookmarkLocalId).executeAsOneOrNull() ?: return
+        linkQueries.deleteInactiveClearedLinks()
+        linkQueries.deleteRetiredInactiveClearedLinksForBookmark(bookmark_local_id = bookmarkLocalId)
         val retainedLinks = linkQueries.countRetainedForBookmark(bookmarkLocalId).executeAsOne()
         val hasPendingFacet = row.bookmark_pending_op != null ||
             row.reading_pending_op != null ||

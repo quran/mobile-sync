@@ -4,12 +4,16 @@ import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import co.touchlab.kermit.Logger
 import com.quran.shared.di.AppScope
+import com.quran.shared.mutations.LOCAL_MUTATION_ENTITY_FACET
 import com.quran.shared.mutations.LocalModelMutation
+import com.quran.shared.mutations.LocalMutationResource
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.model.Collection
+import com.quran.shared.persistence.model.DatabaseCollection
+import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
 import com.quran.shared.persistence.repository.collection.extension.toCollection
 import com.quran.shared.persistence.repository.collection.extension.toCollectionMutation
@@ -125,16 +129,20 @@ class CollectionsRepositoryImpl(
 
     override suspend fun applyRemoteChanges(
         updatesToPersist: List<RemoteModelMutation<RemoteCollection>>,
-        localMutationsToClear: List<LocalModelMutation<Collection>>
+        localMutationsToClear: List<LocalModelMutation<Collection>>,
+        writeBoundaryGuard: PersistenceWriteBoundaryGuard
     ) {
         logger.i {
             "Applying collection remote changes with ${updatesToPersist.size} updates " +
                     "and clearing ${localMutationsToClear.size} local mutations"
         }
         return withContext(Dispatchers.IO) {
+            writeBoundaryGuard.checkWriteBoundary()
             database.transaction {
                 localMutationsToClear.forEach { local ->
-                    collectionQueries.value.clearLocalMutationFor(id = local.localID.toLong())
+                    if (local.mutation != Mutation.CREATED && ackMatchesCurrentRow(local)) {
+                        clearLocalMutation(local)
+                    }
                 }
 
                 updatesToPersist.forEach { remote ->
@@ -160,6 +168,10 @@ class CollectionsRepositoryImpl(
             .executeAsOneOrNull()
 
         if (existingByRemote != null) {
+            if (existingByRemote.hasPendingLocalMutation()) {
+                logger.i { "Skipping remote collection upsert for pending local row: remoteId=${remote.remoteID}" }
+                return
+            }
             collectionQueries.value.updateRemoteCollection(
                 remote_id = remote.remoteID,
                 name = name,
@@ -168,15 +180,26 @@ class CollectionsRepositoryImpl(
             return
         }
 
+        if (remote.mutation == Mutation.CREATED) {
+            val createdAck = remote.createdAckOrNull()
+            if (createdAck != null && attachRemoteIdForCreatedAck(remote, createdAck, updatedAt)) {
+                return
+            }
+        }
+
+        if (remote.mutation == Mutation.CREATED) {
+            if (attachRemoteIdForSemanticReplay(remote, name, updatedAt)) {
+                return
+            }
+        }
+
         val existingByName = collectionQueries.value.getCollectionByName(name)
             .executeAsOneOrNull()
         if (existingByName != null) {
-            collectionQueries.value.updateRemoteCollectionByLocalId(
-                local_id = existingByName.local_id,
-                remote_id = remote.remoteID,
-                name = name,
-                modified_at = updatedAt
-            )
+            logger.i {
+                "Skipping remote collection upsert with colliding name: " +
+                    "remoteId=${remote.remoteID}, localId=${existingByName.local_id}"
+            }
         } else {
             collectionQueries.value.persistRemoteCollection(
                 remote_id = remote.remoteID,
@@ -188,6 +211,12 @@ class CollectionsRepositoryImpl(
     }
 
     private fun applyRemoteCollectionDeletion(remote: RemoteModelMutation<RemoteCollection>) {
+        val existing = collectionQueries.value.getCollectionByRemoteId(remote.remoteID)
+            .executeAsOneOrNull()
+        if (existing?.hasPendingLocalMutation() == true) {
+            logger.i { "Skipping remote collection deletion for pending local row: remoteId=${remote.remoteID}" }
+            return
+        }
         val affectedBookmarkLocalIds = bookmarkCollectionQueries.value
             .getBookmarkLocalIdsForCollectionRemoteId(remote.remoteID)
             .executeAsList()
@@ -215,4 +244,131 @@ class CollectionsRepositoryImpl(
             remoteIDs.associateWith { existentIDs.contains(it) }
         }
     }
+
+    private fun attachRemoteIdForCreatedAck(
+        remote: RemoteModelMutation<RemoteCollection>,
+        ack: CreatedCollectionAck,
+        updatedAt: Long
+    ): Boolean {
+        val row = collectionQueries.value.getCollectionByLocalId(ack.localId)
+            .executeAsOneOrNull()
+        if (row?.remote_id != null) {
+            return false
+        }
+        collectionQueries.value.attachRemoteCollectionIdForCreatedAck(
+            local_id = ack.localId,
+            remote_id = remote.remoteID,
+            pending_version = ack.pendingVersion,
+            modified_at = updatedAt
+        )
+        val attached = collectionQueries.value.getCollectionByLocalId(ack.localId)
+            .executeAsOneOrNull()
+        return attached?.remote_id == remote.remoteID
+    }
+
+    private fun attachRemoteIdForSemanticReplay(
+        remote: RemoteModelMutation<RemoteCollection>,
+        name: String,
+        updatedAt: Long
+    ): Boolean {
+        val deletedCandidates = collectionQueries.value.getPendingDeletedCreatedCollectionsByName(name)
+            .executeAsList()
+        if (deletedCandidates.size > 1) {
+            throw IllegalStateException(
+                "Ambiguous deleted collection semantic replay candidates for remoteId=${remote.remoteID}"
+            )
+        }
+        if (deletedCandidates.size == 1) {
+            return attachRemoteIdForSemanticReplay(remote, deletedCandidates.single(), updatedAt)
+        }
+
+        val activeCandidates = collectionQueries.value.getPendingActiveCreatedCollectionsByName(name)
+            .executeAsList()
+        if (activeCandidates.size != 1) {
+            return false
+        }
+        return attachRemoteIdForSemanticReplay(remote, activeCandidates.single(), updatedAt)
+    }
+
+    private fun attachRemoteIdForSemanticReplay(
+        remote: RemoteModelMutation<RemoteCollection>,
+        row: DatabaseCollection,
+        updatedAt: Long
+    ): Boolean {
+        if (row.remote_id != null || row.pendingMutation() != Mutation.CREATED) {
+            return false
+        }
+        collectionQueries.value.attachRemoteCollectionIdForSemanticReplay(
+            local_id = row.local_id,
+            remote_id = remote.remoteID,
+            modified_at = updatedAt
+        )
+        val attached = collectionQueries.value.getCollectionByLocalId(row.local_id)
+            .executeAsOneOrNull()
+        return attached?.remote_id == remote.remoteID
+    }
+
+    private fun clearLocalMutation(local: LocalModelMutation<Collection>) {
+        val ack = local.ack ?: return
+        val affectedBookmarkLocalIds = if (local.mutation == Mutation.DELETED && local.remoteID != null) {
+            bookmarkCollectionQueries.value
+                .getBookmarkLocalIdsForCollectionRemoteId(local.remoteID)
+                .executeAsList()
+        } else {
+            emptyList()
+        }
+        collectionQueries.value.clearLocalMutationFor(
+            id = local.localID.toLong(),
+            pending_version = ack.observedPendingVersion,
+            pending_op = ack.observedPendingOp.name
+        )
+        affectedBookmarkLocalIds.forEach { bookmarkLocalId ->
+            reconciler.pruneBookmarkIfOrphan(bookmarkLocalId)
+        }
+    }
+
+    private fun ackMatchesCurrentRow(local: LocalModelMutation<Collection>): Boolean {
+        val ack = local.ack ?: return false
+        if (ack.localID != local.localID ||
+            ack.resource != LocalMutationResource.COLLECTION ||
+            ack.facet != LOCAL_MUTATION_ENTITY_FACET ||
+            ack.observedPendingOp != local.mutation) {
+            return false
+        }
+        val row = collectionQueries.value.getCollectionByLocalId(local.localID.toLong())
+            .executeAsOneOrNull()
+            ?: return false
+        return row.pending_version == ack.observedPendingVersion &&
+            row.pendingMutation() == ack.observedPendingOp
+    }
+
+    private fun DatabaseCollection.pendingMutation(): Mutation? {
+        return when {
+            remote_id == null -> Mutation.CREATED
+            deleted == 1L -> Mutation.DELETED
+            is_edited == 1L -> Mutation.MODIFIED
+            else -> null
+        }
+    }
+
+    private fun RemoteModelMutation<RemoteCollection>.createdAckOrNull(): CreatedCollectionAck? {
+        val ack = ack ?: return null
+        if (mutation != Mutation.CREATED ||
+            ack.resource != LocalMutationResource.COLLECTION ||
+            ack.facet != LOCAL_MUTATION_ENTITY_FACET ||
+            ack.observedPendingOp != Mutation.CREATED) {
+            return null
+        }
+        return CreatedCollectionAck(
+            localId = ack.localID.toLong(),
+            pendingVersion = ack.observedPendingVersion
+        )
+    }
+
+    private fun DatabaseCollection.hasPendingLocalMutation(): Boolean = pendingMutation() != null
+
+    private data class CreatedCollectionAck(
+        val localId: Long,
+        val pendingVersion: Long
+    )
 }

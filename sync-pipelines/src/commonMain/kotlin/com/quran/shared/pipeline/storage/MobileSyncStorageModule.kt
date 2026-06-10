@@ -1,8 +1,11 @@
 package com.quran.shared.pipeline.storage
 
+import com.quran.shared.auth.service.AuthSessionPublicationGuard
 import com.quran.shared.di.AppScope
 import com.quran.shared.pipeline.SyncLocalModificationDateStore
 import com.quran.shared.pipeline.SyncSettingsLocalModificationDateStore
+import com.quran.shared.pipeline.SessionLifecycleStateStore
+import com.quran.shared.pipeline.SettingsSessionLifecycleStateStore
 import com.russhwolf.settings.coroutines.SuspendSettings
 import dev.zacsweers.metro.Binds
 import dev.zacsweers.metro.BindingContainer
@@ -20,6 +23,11 @@ abstract class MobileSyncStorageModule {
         impl: SyncSettingsLocalModificationDateStore
     ): SyncLocalModificationDateStore
 
+    @Binds
+    abstract fun bindSessionLifecycleStateStore(
+        impl: SettingsSessionLifecycleStateStore
+    ): SessionLifecycleStateStore
+
     companion object {
         @Provides
         @SingleIn(AppScope::class)
@@ -32,5 +40,14 @@ abstract class MobileSyncStorageModule {
         fun provideSettings(storage: MobileSyncStorage): SuspendSettings {
             return storage.settings
         }
+
+        @Provides
+        @SingleIn(AppScope::class)
+        fun provideAuthSessionPublicationGuard(
+            stateStore: SessionLifecycleStateStore
+        ): AuthSessionPublicationGuard =
+            AuthSessionPublicationGuard {
+                !stateStore.snapshot().resetInProgress
+            }
     }
 }

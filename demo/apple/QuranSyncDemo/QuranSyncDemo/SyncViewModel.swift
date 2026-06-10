@@ -11,7 +11,7 @@ import KMPNativeCoroutinesAsync
 @MainActor
 class SyncViewModel: ObservableObject {
     private let syncService: SyncService
-    private let authService: AuthService
+    private let authService: SyncAuthService
 
     @Published var authState: AuthState = AuthState.Idle()
     @Published var bookmarks: [Shared.AyahBookmark] = []
@@ -20,7 +20,7 @@ class SyncViewModel: ObservableObject {
     @Published var notes: [Shared.Note_] = []
     @Published var readingSessions: [Shared.ReadingSession] = []
 
-    init(authService: AuthService, syncService: SyncService) {
+    init(authService: SyncAuthService, syncService: SyncService) {
         self.authService = authService
         self.syncService = syncService
     }
@@ -252,8 +252,8 @@ class SyncViewModel: ObservableObject {
         }
     }
 
-    func logout(clearLocalData: Bool = false) async throws {
-        try await asyncFunction(for: syncService.logout(clearLocalData: clearLocalData))
+    func logout(clearLocalData: Bool = true) async throws {
+        try await asyncFunction(for: authService.logout(clearLocalData: clearLocalData))
     }
 
     func clearError() {

@@ -185,10 +185,10 @@ fun AuthScreen(
                                 }
                             }
                         },
-                        onLogout = { clearLocalData ->
+                        onLogout = {
                             scope.launch {
                                 try {
-                                    viewModel.logout(clearLocalData)
+                                    viewModel.logout()
                                 } catch (e: Exception) {
                                 }
                             }
@@ -254,7 +254,7 @@ private fun SuccessContent(
     onDeleteCollection: (String) -> Unit,
     onAddNote: (String) -> Unit,
     onDeleteNote: (String) -> Unit,
-    onLogout: (Boolean) -> Unit,
+    onLogout: () -> Unit,
     onAddRandomBookmarkToCollection: (String) -> Unit,
     readingSessions: List<ReadingSession>,
     onAddReadingSession: () -> Unit
@@ -348,14 +348,8 @@ private fun SuccessContent(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        var clearLocalData by remember { mutableStateOf(false) }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = clearLocalData, onCheckedChange = { clearLocalData = it })
-            Text("Clear local data on sign out", style = MaterialTheme.typography.bodySmall)
-        }
-
         TextButton(
-            onClick = { onLogout(clearLocalData) },
+            onClick = onLogout,
             colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
         ) {
             Text("Sign Out")

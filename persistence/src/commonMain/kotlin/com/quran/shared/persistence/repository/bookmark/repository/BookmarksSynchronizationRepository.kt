@@ -1,8 +1,10 @@
 package com.quran.shared.persistence.repository.bookmark.repository
 
 import com.quran.shared.mutations.LocalModelMutation
+import com.quran.shared.mutations.LocalMutationAck
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.input.RemoteBookmark
+import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 
 interface BookmarksSynchronizationRepository {
     /**
@@ -10,6 +12,10 @@ interface BookmarksSynchronizationRepository {
      * and need to be synchronized with the remote server.
      */
     suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<RemoteBookmark>>
+
+    suspend fun markMutatedBookmarksInFlight(acks: List<LocalMutationAck>): List<LocalMutationAck>
+
+    suspend fun rollbackMutatedBookmarksInFlight(acks: List<LocalMutationAck>)
 
     /**
      * Persists the remote state of bookmarks after a successful synchronization operation.
@@ -24,7 +30,8 @@ interface BookmarksSynchronizationRepository {
      */
     suspend fun applyRemoteChanges(
         updatesToPersist: List<RemoteModelMutation<RemoteBookmark>>,
-        localMutationsToClear: List<LocalModelMutation<RemoteBookmark>>
+        localMutationsToClear: List<LocalModelMutation<RemoteBookmark>>,
+        writeBoundaryGuard: PersistenceWriteBoundaryGuard = PersistenceWriteBoundaryGuard.Allow
     )
 
     suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean>

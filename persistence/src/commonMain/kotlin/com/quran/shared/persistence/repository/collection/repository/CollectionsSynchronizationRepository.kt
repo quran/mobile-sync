@@ -4,6 +4,7 @@ import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.model.Collection
+import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 
 interface CollectionsSynchronizationRepository {
     /**
@@ -25,7 +26,8 @@ interface CollectionsSynchronizationRepository {
      */
     suspend fun applyRemoteChanges(
         updatesToPersist: List<RemoteModelMutation<RemoteCollection>>,
-        localMutationsToClear: List<LocalModelMutation<Collection>>
+        localMutationsToClear: List<LocalModelMutation<Collection>>,
+        writeBoundaryGuard: PersistenceWriteBoundaryGuard = PersistenceWriteBoundaryGuard.Allow
     )
 
     suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean>

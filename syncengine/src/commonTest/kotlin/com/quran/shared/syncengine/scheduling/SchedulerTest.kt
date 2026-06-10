@@ -4,9 +4,12 @@ package com.quran.shared.syncengine.scheduling
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlin.math.pow
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -485,5 +488,390 @@ class SchedulerTest {
 
         assertEquals(0, callCount, "Task should not be called after scheduler is stopped")
         assertTrue(taskCompleted.isCompleted.not(), "Task completion should not be triggered after stop")
+    }
+
+    @Test
+    fun `cancel and join waits for running job cancellation`() = runTimeoutTest {
+        val timings = STANDARD_TEST_TIMINGS
+        val taskStarted = CompletableDeferred<Unit>()
+        val taskCancelled = CompletableDeferred<Unit>()
+        val neverComplete = CompletableDeferred<Unit>()
+
+        val scheduler = makeScheduler(timings, {
+            try {
+                taskStarted.complete(Unit)
+                neverComplete.await()
+            } finally {
+                taskCancelled.complete(Unit)
+            }
+        })
+
+        scheduler.invoke(Trigger.IMMEDIATE)
+        runNow()
+        runNow()
+        taskStarted.await()
+
+        val cancelJob = launch {
+            scheduler.cancelAndJoin()
+        }
+        runNow()
+
+        taskCancelled.await()
+        cancelJob.join()
+    }
+
+    @Test
+    fun `cancel and join drains already submitted triggers before returning`() = runTimeoutTest {
+        val timings = STANDARD_TEST_TIMINGS
+        var callCount = 0
+
+        val scheduler = makeScheduler(timings, {
+            callCount++
+        })
+
+        scheduler.invoke(Trigger.LOCAL_DATA_MODIFIED)
+        scheduler.cancelAndJoin()
+
+        runNow()
+        advanceBy(timings.localDataModifiedInterval + timings.standardInterval)
+
+        assertEquals(0, callCount, "Submitted trigger should be drained and cancelled")
+
+        scheduler.invoke(Trigger.IMMEDIATE)
+        runNow()
+        runNow()
+
+        assertEquals(1, callCount, "Triggers after the completed drain should work normally")
+        scheduler.stop()
+        runNow()
+    }
+
+    @Test
+    fun `cancel and join drains trigger submitted after drain snapshot before returning`() = runTimeoutTest {
+        val timings = STANDARD_TEST_TIMINGS
+        var callCount = 0
+        lateinit var scheduler: Scheduler
+
+        scheduler = makeScheduler(timings, {
+            callCount++
+        })
+
+        try {
+            schedulerAfterCommandDrainSnapshotHook = {
+                scheduler.invoke(Trigger.LOCAL_DATA_MODIFIED)
+            }
+
+            scheduler.cancelAndJoin()
+            runNow()
+            advanceBy(timings.localDataModifiedInterval + timings.standardInterval)
+
+            assertEquals(0, callCount, "Trigger submitted before cancelAndJoin returned should be drained")
+        } finally {
+            schedulerAfterCommandDrainSnapshotHook = null
+        }
+
+        scheduler.invoke(Trigger.IMMEDIATE)
+        runNow()
+        runNow()
+
+        assertEquals(1, callCount, "Trigger submitted after cancelAndJoin returned should work normally")
+        scheduler.stop()
+        runNow()
+    }
+
+    @Test
+    fun `cancel and join drains queued trigger scheduled from pre-return window`() = runTimeoutTest {
+        val timings = STANDARD_TEST_TIMINGS
+        var callCount = 0
+        lateinit var scheduler: Scheduler
+
+        scheduler = makeScheduler(timings, {
+            callCount++
+        })
+
+        try {
+            schedulerAfterCommandDrainSnapshotHook = {
+                launch {
+                    scheduler.invoke(Trigger.LOCAL_DATA_MODIFIED)
+                }
+            }
+
+            scheduler.cancelAndJoin()
+            runNow()
+            advanceBy(timings.localDataModifiedInterval + timings.standardInterval)
+
+            assertEquals(0, callCount, "Queued trigger before cancelAndJoin returned should be drained")
+        } finally {
+            schedulerAfterCommandDrainSnapshotHook = null
+        }
+
+        scheduler.invoke(Trigger.IMMEDIATE)
+        runNow()
+        runNow()
+
+        assertEquals(1, callCount, "Trigger submitted after cancelAndJoin returned should work normally")
+        scheduler.stop()
+        runNow()
+    }
+
+    @Test
+    fun `cancel and join drains trigger submitted at release boundary before returning`() = runTimeoutTest {
+        val timings = STANDARD_TEST_TIMINGS
+        var callCount = 0
+        lateinit var scheduler: Scheduler
+
+        scheduler = makeScheduler(timings, {
+            callCount++
+        })
+
+        try {
+            schedulerBeforeCommandDrainReleaseHook = {
+                scheduler.invoke(Trigger.LOCAL_DATA_MODIFIED)
+            }
+
+            scheduler.cancelAndJoin()
+            runNow()
+            advanceBy(timings.localDataModifiedInterval + timings.standardInterval)
+
+            assertEquals(0, callCount, "Trigger submitted before cancelAndJoin returned should be drained")
+        } finally {
+            schedulerBeforeCommandDrainReleaseHook = null
+        }
+
+        scheduler.invoke(Trigger.IMMEDIATE)
+        runNow()
+        runNow()
+
+        assertEquals(1, callCount, "Trigger submitted after cancelAndJoin returned should work normally")
+        scheduler.stop()
+        runNow()
+    }
+
+    @Test
+    fun `cancel and join releases awaited drain before accepting post-return trigger`() = runTimeoutTest {
+        val timings = STANDARD_TEST_TIMINGS
+        var callCount = 0
+
+        val scheduler = makeScheduler(timings, {
+            callCount++
+        })
+
+        scheduler.cancelAndJoin()
+        assertTrue(
+            scheduler.isCommandDrainInProgressForTest().not(),
+            "Awaited command drain should be released synchronously before cancelAndJoin returns"
+        )
+
+        scheduler.invoke(Trigger.IMMEDIATE)
+        runNow()
+        runNow()
+
+        assertEquals(1, callCount, "Trigger submitted after cancelAndJoin returned should not be drained")
+        scheduler.stop()
+        runNow()
+    }
+
+    @Test
+    fun `trigger after fire and forget cancel drain schedules normally`() = runTimeoutTest {
+        val timings = STANDARD_TEST_TIMINGS
+        var callCount = 0
+
+        val scheduler = makeScheduler(timings, {
+            callCount++
+        })
+
+        scheduler.cancel()
+        runNow()
+
+        scheduler.invoke(Trigger.IMMEDIATE)
+        runNow()
+        runNow()
+
+        assertEquals(1, callCount, "Trigger after fire-and-forget cancel drain should work normally")
+        scheduler.stop()
+        runNow()
+    }
+
+    @Test
+    fun `trigger during fire and forget cancel wait schedules after old job finishes`() = runTimeoutTest {
+        val timings = STANDARD_TEST_TIMINGS
+        val firstTaskStarted = CompletableDeferred<Unit>()
+        val firstTaskCancelling = CompletableDeferred<Unit>()
+        val firstTaskCanFinishCancellation = CompletableDeferred<Unit>()
+        val secondTaskCompleted = CompletableDeferred<Unit>()
+        val neverComplete = CompletableDeferred<Unit>()
+        var callCount = 0
+
+        val scheduler = makeScheduler(timings, {
+            callCount++
+            if (callCount == 1) {
+                try {
+                    firstTaskStarted.complete(Unit)
+                    neverComplete.await()
+                } finally {
+                    withContext(NonCancellable) {
+                        firstTaskCancelling.complete(Unit)
+                        firstTaskCanFinishCancellation.await()
+                    }
+                }
+            } else {
+                secondTaskCompleted.complete(Unit)
+            }
+        })
+
+        scheduler.invoke(Trigger.IMMEDIATE)
+        runNow()
+        runNow()
+        firstTaskStarted.await()
+
+        scheduler.cancel()
+        runNow()
+        firstTaskCancelling.await()
+
+        scheduler.invoke(Trigger.IMMEDIATE)
+        runNow()
+
+        firstTaskCanFinishCancellation.complete(Unit)
+        runNow()
+        runNow()
+
+        secondTaskCompleted.await()
+        assertEquals(2, callCount, "Later trigger should survive stale fire-and-forget cancel")
+        scheduler.stop()
+        runNow()
+    }
+
+    @Test
+    fun `cancel and join drains trigger queued while waiting for running job cancellation`() = runTimeoutTest {
+        val timings = STANDARD_TEST_TIMINGS
+        val taskStarted = CompletableDeferred<Unit>()
+        val taskCancelling = CompletableDeferred<Unit>()
+        val taskCanFinishCancellation = CompletableDeferred<Unit>()
+        val neverComplete = CompletableDeferred<Unit>()
+        var callCount = 0
+
+        val scheduler = makeScheduler(timings, {
+            callCount++
+            try {
+                taskStarted.complete(Unit)
+                neverComplete.await()
+            } finally {
+                withContext(NonCancellable) {
+                    taskCancelling.complete(Unit)
+                    taskCanFinishCancellation.await()
+                }
+            }
+        })
+
+        scheduler.invoke(Trigger.IMMEDIATE)
+        runNow()
+        runNow()
+        taskStarted.await()
+
+        val cancelJob = launch {
+            scheduler.cancelAndJoin()
+        }
+        runNow()
+        taskCancelling.await()
+
+        scheduler.invoke(Trigger.LOCAL_DATA_MODIFIED)
+        runNow()
+
+        taskCanFinishCancellation.complete(Unit)
+        cancelJob.join()
+        runNow()
+
+        advanceBy(timings.localDataModifiedInterval + timings.standardInterval)
+        assertEquals(1, callCount, "Trigger queued before cancelAndJoin returned should be drained")
+
+        scheduler.invoke(Trigger.IMMEDIATE)
+        runNow()
+        runNow()
+        assertEquals(2, callCount, "Triggers submitted after cancelAndJoin returns should work normally")
+
+        scheduler.stop()
+        runNow()
+    }
+
+    @Test
+    fun `cancel and join drains queued stop and cancel commands before returning`() = runTimeoutTest {
+        val timings = STANDARD_TEST_TIMINGS
+        val taskStarted = CompletableDeferred<Unit>()
+        val taskCancelling = CompletableDeferred<Unit>()
+        val taskCanFinishCancellation = CompletableDeferred<Unit>()
+        val neverComplete = CompletableDeferred<Unit>()
+        var callCount = 0
+
+        val scheduler = makeScheduler(timings, {
+            callCount++
+            try {
+                taskStarted.complete(Unit)
+                neverComplete.await()
+            } finally {
+                withContext(NonCancellable) {
+                    taskCancelling.complete(Unit)
+                    taskCanFinishCancellation.await()
+                }
+            }
+        })
+
+        scheduler.invoke(Trigger.IMMEDIATE)
+        runNow()
+        runNow()
+        taskStarted.await()
+
+        val cancelJob = launch {
+            scheduler.cancelAndJoin()
+        }
+        runNow()
+        taskCancelling.await()
+
+        scheduler.stop()
+        scheduler.cancel()
+        runNow()
+
+        taskCanFinishCancellation.complete(Unit)
+        cancelJob.join()
+        runNow()
+
+        scheduler.invoke(Trigger.IMMEDIATE)
+        runNow()
+        runNow()
+
+        assertEquals(2, callCount, "Queued stop/cancel before cancelAndJoin returned should not affect later triggers")
+        scheduler.stop()
+        runNow()
+    }
+
+    @Test
+    fun `cancelled running job is not retried`() = runTimeoutTest {
+        val timings = SINGLE_RETRY_TIMINGS
+        val taskStarted = CompletableDeferred<Unit>()
+        val neverComplete = CompletableDeferred<Unit>()
+        var callCount = 0
+        var maxRetriesCount = 0
+
+        val scheduler = makeScheduler(
+            timings = timings,
+            taskFunction = {
+                callCount++
+                taskStarted.complete(Unit)
+                neverComplete.await()
+            },
+            reachedMaximumFailureRetries = {
+                maxRetriesCount++
+            }
+        )
+
+        scheduler.invoke(Trigger.IMMEDIATE)
+        runNow()
+        runNow()
+        taskStarted.await()
+
+        scheduler.cancelAndJoin()
+        advanceBy(timings.failureRetryingConfig.baseDelay + timings.standardInterval)
+
+        assertEquals(1, callCount)
+        assertEquals(0, maxRetriesCount)
     }
 }

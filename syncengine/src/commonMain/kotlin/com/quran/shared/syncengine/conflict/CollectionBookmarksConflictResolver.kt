@@ -1,6 +1,5 @@
 package com.quran.shared.syncengine.conflict
 
-import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.syncengine.model.SyncCollectionBookmark
 
 /**
@@ -17,10 +16,16 @@ class CollectionBookmarksConflictResolver(
             return ConflictResolutionResult(listOf(), listOf())
         }
 
-        val mutationsToPersist = conflicts.flatMap { it.remoteMutations }
+        val results = conflicts.map { conflict ->
+            conflict.resolveLocalDeleteOverRemoteCreateEcho()
+                ?: ConflictResolutionResult(
+                    mutationsToPersist = conflict.remoteMutations,
+                    mutationsToPush = emptyList()
+                )
+        }
         return ConflictResolutionResult(
-            mutationsToPersist = mutationsToPersist,
-            mutationsToPush = emptyList<LocalModelMutation<SyncCollectionBookmark>>()
+            mutationsToPersist = results.flatMap { it.mutationsToPersist },
+            mutationsToPush = results.flatMap { it.mutationsToPush }
         )
     }
 }

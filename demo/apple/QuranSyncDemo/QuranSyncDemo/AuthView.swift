@@ -78,7 +78,6 @@ struct SuccessTabView: View {
     @ObservedObject var viewModel: SyncViewModel
     let userInfo: Shared.UserInfo?
     @State private var selectedTab = 0
-    @State private var clearLocalData = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -95,13 +94,9 @@ struct SuccessTabView: View {
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 4) {
-                    Toggle("Clear local data", isOn: $clearLocalData)
-                        .font(.caption)
-                        .toggleStyle(SwitchToggleStyle(tint: .red))
-                    
                     Button(action: {
                         Task {
-                            try? await viewModel.logout(clearLocalData: clearLocalData)
+                            try? await viewModel.logout()
                         }
                     }) {
                         HStack {

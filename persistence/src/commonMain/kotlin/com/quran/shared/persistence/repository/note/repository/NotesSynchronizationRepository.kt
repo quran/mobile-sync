@@ -4,6 +4,7 @@ import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.input.RemoteNote
 import com.quran.shared.persistence.model.Note
+import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 
 interface NotesSynchronizationRepository {
     /**
@@ -16,7 +17,8 @@ interface NotesSynchronizationRepository {
      */
     suspend fun applyRemoteChanges(
         updatesToPersist: List<RemoteModelMutation<RemoteNote>>,
-        localMutationsToClear: List<LocalModelMutation<Note>>
+        localMutationsToClear: List<LocalModelMutation<Note>>,
+        writeBoundaryGuard: PersistenceWriteBoundaryGuard = PersistenceWriteBoundaryGuard.Allow
     )
 
     suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean>

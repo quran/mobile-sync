@@ -1,13 +1,12 @@
 package com.quran.shared.syncengine.conflict
 
-import com.quran.shared.mutations.LocalModelMutation
-import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.syncengine.model.SyncCollection
 
 /**
  * Resolves conflicts between local and remote mutations for collections.
  *
- * The current strategy prefers remote mutations whenever a conflict is detected.
+ * Remote mutations normally win, except a local delete for a remote-backed collection wins over
+ * a replayed remote create echo for the same remote ID.
  */
 class CollectionsConflictResolver(
     private val conflicts: List<ResourceConflict<SyncCollection>>
@@ -18,10 +17,15 @@ class CollectionsConflictResolver(
             return ConflictResolutionResult(listOf(), listOf())
         }
 
-        val mutationsToPersist = conflicts.flatMap { it.remoteMutations }
+        val resolvedConflicts = conflicts.map { conflict ->
+            conflict.resolveLocalDeleteOverRemoteCreateEcho() ?: ConflictResolutionResult(
+                mutationsToPersist = conflict.remoteMutations,
+                mutationsToPush = emptyList()
+            )
+        }
         return ConflictResolutionResult(
-            mutationsToPersist = mutationsToPersist,
-            mutationsToPush = emptyList<LocalModelMutation<SyncCollection>>()
+            mutationsToPersist = resolvedConflicts.flatMap { it.mutationsToPersist },
+            mutationsToPush = resolvedConflicts.flatMap { it.mutationsToPush }
         )
     }
 }

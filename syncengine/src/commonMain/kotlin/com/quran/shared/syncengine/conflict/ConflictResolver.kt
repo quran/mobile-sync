@@ -58,7 +58,9 @@ class ConflictResolver(private val conflicts: List<ResourceConflict<SyncBookmark
                 "Remote mutations: ${resourceConflict.remoteMutations.map { "${it.mutation}(${it.remoteID})" }}"
             )
         }
-        
+
+        resourceConflict.resolveLocalDeleteOverRemoteCreateEcho()?.let { return it }
+
         if (resourceConflict.mustHave(Mutation.DELETED, MutationSide.LOCAL)
             .and(Mutation.CREATED, MutationSide.REMOTE)
             .only()) {
@@ -124,7 +126,8 @@ class ConflictResolver(private val conflicts: List<ResourceConflict<SyncBookmark
                             model = localMutation.model,
                             remoteID = null,
                             localID = localMutation.localID,
-                            mutation = Mutation.CREATED
+                            mutation = Mutation.CREATED,
+                            ack = localMutation.ack
                         )
                     ),
                     mutationsToPersist = listOf(remoteMutation)
@@ -142,7 +145,8 @@ class ConflictResolver(private val conflicts: List<ResourceConflict<SyncBookmark
                         model = localMutation.model,
                         remoteID = remoteIdToUpdate,
                         localID = localMutation.localID,
-                        mutation = Mutation.MODIFIED
+                        mutation = Mutation.MODIFIED,
+                        ack = localMutation.ack
                     )
                 ),
                 mutationsToPersist = listOf()

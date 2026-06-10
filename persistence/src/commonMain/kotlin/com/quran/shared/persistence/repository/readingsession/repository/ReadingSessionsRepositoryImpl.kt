@@ -4,12 +4,16 @@ import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import co.touchlab.kermit.Logger
 import com.quran.shared.di.AppScope
+import com.quran.shared.mutations.LOCAL_MUTATION_ENTITY_FACET
 import com.quran.shared.mutations.LocalModelMutation
+import com.quran.shared.mutations.LocalMutationResource
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.input.RemoteReadingSession
+import com.quran.shared.persistence.model.DatabaseReadingSession
 import com.quran.shared.persistence.model.ReadingSession
+import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.readingsession.extension.toReadingSession
 import com.quran.shared.persistence.repository.readingsession.extension.toReadingSessionMutation
 import com.quran.shared.persistence.util.PlatformDateTime
@@ -178,47 +182,46 @@ class ReadingSessionsRepositoryImpl(
 
     override suspend fun applyRemoteChanges(
         updatesToPersist: List<RemoteModelMutation<RemoteReadingSession>>,
-        localMutationIdsToClear: List<String>
+        localMutationIdsToClear: List<String>,
+        writeBoundaryGuard: PersistenceWriteBoundaryGuard
+    ) {
+        require(localMutationIdsToClear.isEmpty()) {
+            "Reading session ID-only local mutation clears are unsafe; use applyRemoteChangesForMutations."
+        }
+        applyRemoteChangesForMutations(updatesToPersist, emptyList(), writeBoundaryGuard)
+    }
+
+    override suspend fun applyRemoteChangesForMutations(
+        updatesToPersist: List<RemoteModelMutation<RemoteReadingSession>>,
+        localMutationsToClear: List<LocalModelMutation<ReadingSession>>,
+        writeBoundaryGuard: PersistenceWriteBoundaryGuard
     ) {
         logger.i {
             "Applying remote changes for reading sessions: updates=${updatesToPersist.size}, " +
-                "toClear=${localMutationIdsToClear.size}"
+                "toClear=${localMutationsToClear.size}"
         }
         return withContext(Dispatchers.IO) {
+            writeBoundaryGuard.checkWriteBoundary()
             database.transaction {
+                localMutationsToClear.forEach { local ->
+                    if (local.mutation != Mutation.CREATED && ackMatchesCurrentRow(local)) {
+                        clearLocalMutation(local)
+                    }
+                }
+
                 // Apply remote updates
                 updatesToPersist.forEach { remote ->
                     when (remote.mutation) {
                         Mutation.CREATED, Mutation.MODIFIED -> {
-                            val model = remote.model
-                            val updatedAt = model.lastUpdated.fromPlatform().toEpochMilliseconds()
-                            logger.i {
-                                "Persisting remote reading session: remoteId=${remote.remoteID}, " +
-                                    "chapter=${model.chapterNumber}, verse=${model.verseNumber}"
-                            }
-                            readingSessionsQueries.value.persistRemoteReadingSession(
-                                remote_id = remote.remoteID,
-                                chapter_number = model.chapterNumber.toLong(),
-                                verse_number = model.verseNumber.toLong(),
-                                created_at = updatedAt,
-                                modified_at = updatedAt
-                            )
+                            applyRemoteReadingSessionUpsert(remote)
                         }
                         Mutation.DELETED -> {
-                            readingSessionsQueries.value.hardDeleteReadingSessionFor(remoteID = remote.remoteID)
+                            applyRemoteReadingSessionDeletion(remote)
                         }
                     }
                 }
 
-                // Clear local mutations after remote upserts so newly-synced rows keep their remote IDs.
-                localMutationIdsToClear.forEach { localId ->
-                    readingSessionsQueries.value.clearLocalMutationFor(
-                        id = localId.toLong(),
-                        modified_at = currentTimeMillis()
-                    )
-                }
-
-                pruneOldReadingSessions()
+                pruneOldReadingSessions(incrementPendingVersion = false)
             }
         }
     }
@@ -246,10 +249,189 @@ class ReadingSessionsRepositoryImpl(
         }
     }
 
-    private fun pruneOldReadingSessions() {
-        readingSessionsQueries.value.pruneLocalReadingSessions(MAX_ACTIVE_READING_SESSIONS)
-        readingSessionsQueries.value.pruneRemoteReadingSessions(MAX_ACTIVE_READING_SESSIONS)
+    private fun applyRemoteReadingSessionUpsert(remote: RemoteModelMutation<RemoteReadingSession>) {
+        val model = remote.model
+        val existingByRemote = readingSessionsQueries.value.getReadingSessionByRemoteId(remote.remoteID)
+            .executeAsOneOrNull()
+        if (existingByRemote?.hasPendingLocalMutation() == true) {
+            logger.i { "Skipping remote reading session upsert for pending local row: remoteId=${remote.remoteID}" }
+            return
+        }
+
+        if (remote.mutation == Mutation.CREATED) {
+            val createdAck = remote.createdAckOrNull()
+            val updatedAt = model.lastUpdated.fromPlatform().toEpochMilliseconds()
+            if (createdAck != null && attachRemoteIdForCreatedAck(remote, createdAck, updatedAt)) {
+                return
+            }
+        }
+
+        val chapterNumber = model.chapterNumber.toLong()
+        val verseNumber = model.verseNumber.toLong()
+        val existingByPosition = readingSessionsQueries.value.getReadingSessionForChapterVerse(
+            chapterNumber,
+            verseNumber
+        ).executeAsOneOrNull()
+        if (remote.mutation == Mutation.CREATED) {
+            val deletedSemanticCandidates = readingSessionsQueries.value
+                .getDeletedPendingCreatedReadingSessionsForChapterVerse(chapterNumber, verseNumber)
+                .executeAsList()
+            when (deletedSemanticCandidates.size) {
+                1 -> if (attachRemoteIdForSemanticReplay(remote, deletedSemanticCandidates.single().local_id)) {
+                    return
+                }
+                in 2..Int.MAX_VALUE -> throw IllegalStateException(
+                    "Ambiguous deleted reading session semantic replay candidates for remoteId=${remote.remoteID}"
+                )
+                0 -> {
+                    val semanticCandidates = readingSessionsQueries.value
+                        .getPendingCreatedReadingSessionsForChapterVerse(chapterNumber, verseNumber)
+                        .executeAsList()
+                    if (semanticCandidates.size == 1 &&
+                        attachRemoteIdForSemanticReplay(remote, semanticCandidates.single().local_id)
+                    ) {
+                        return
+                    }
+                }
+            }
+        }
+        if (existingByPosition?.remote_id == null &&
+            existingByPosition != null) {
+            logger.i {
+                "Skipping remote reading session attach for unacknowledged local row: " +
+                    "localId=${existingByPosition.local_id}"
+            }
+            return
+        }
+        if (existingByPosition?.remote_id != null && existingByPosition.hasPendingLocalMutation()) {
+            logger.i { "Skipping remote reading session attach for pending local row: localId=${existingByPosition.local_id}" }
+            return
+        }
+
+        val updatedAt = model.lastUpdated.fromPlatform().toEpochMilliseconds()
+        logger.i {
+            "Persisting remote reading session: remoteId=${remote.remoteID}, " +
+                "chapter=${model.chapterNumber}, verse=${model.verseNumber}"
+        }
+        readingSessionsQueries.value.persistRemoteReadingSession(
+            remote_id = remote.remoteID,
+            chapter_number = model.chapterNumber.toLong(),
+            verse_number = model.verseNumber.toLong(),
+            created_at = updatedAt,
+            modified_at = updatedAt
+        )
     }
+
+    private fun applyRemoteReadingSessionDeletion(remote: RemoteModelMutation<RemoteReadingSession>) {
+        val existing = readingSessionsQueries.value.getReadingSessionByRemoteId(remote.remoteID)
+            .executeAsOneOrNull()
+        if (existing?.hasPendingLocalMutation() == true) {
+            logger.i { "Skipping remote reading session deletion for pending local row: remoteId=${remote.remoteID}" }
+            return
+        }
+        readingSessionsQueries.value.hardDeleteReadingSessionFor(remoteID = remote.remoteID)
+    }
+
+    private fun attachRemoteIdForCreatedAck(
+        remote: RemoteModelMutation<RemoteReadingSession>,
+        ack: CreatedReadingSessionAck,
+        updatedAt: Long
+    ): Boolean {
+        val row = readingSessionsQueries.value.getReadingSessionByLocalId(ack.localId)
+            .executeAsOneOrNull()
+        if (row?.remote_id != null) {
+            return false
+        }
+        readingSessionsQueries.value.attachRemoteReadingSessionIdForCreatedAck(
+            local_id = ack.localId,
+            remote_id = remote.remoteID,
+            pending_version = ack.pendingVersion,
+            modified_at = updatedAt
+        )
+        val attached = readingSessionsQueries.value.getReadingSessionByLocalId(ack.localId)
+            .executeAsOneOrNull()
+        return attached?.remote_id == remote.remoteID
+    }
+
+    private fun attachRemoteIdForSemanticReplay(
+        remote: RemoteModelMutation<RemoteReadingSession>,
+        localId: Long
+    ): Boolean {
+        val updatedAt = remote.model.lastUpdated.fromPlatform().toEpochMilliseconds()
+        readingSessionsQueries.value.attachRemoteReadingSessionIdForSemanticReplay(
+            local_id = localId,
+            remote_id = remote.remoteID,
+            modified_at = updatedAt
+        )
+        val attached = readingSessionsQueries.value.getReadingSessionByLocalId(localId)
+            .executeAsOneOrNull()
+        return attached?.remote_id == remote.remoteID
+    }
+
+    private fun clearLocalMutation(local: LocalModelMutation<ReadingSession>) {
+        val ack = local.ack ?: return
+        readingSessionsQueries.value.clearLocalMutationFor(
+            id = local.localID.toLong(),
+            modified_at = currentTimeMillis(),
+            pending_version = ack.observedPendingVersion,
+            pending_op = ack.observedPendingOp.name
+        )
+    }
+
+    private fun ackMatchesCurrentRow(local: LocalModelMutation<ReadingSession>): Boolean {
+        val ack = local.ack ?: return false
+        if (ack.localID != local.localID ||
+            ack.resource != LocalMutationResource.READING_SESSION ||
+            ack.facet != LOCAL_MUTATION_ENTITY_FACET ||
+            ack.observedPendingOp != local.mutation) {
+            return false
+        }
+        val row = readingSessionsQueries.value.getReadingSessionByLocalId(local.localID.toLong())
+            .executeAsOneOrNull()
+            ?: return false
+        return row.pending_version == ack.observedPendingVersion &&
+            row.pendingMutation() == ack.observedPendingOp
+    }
+
+    private fun DatabaseReadingSession.pendingMutation(): Mutation? {
+        return when {
+            remote_id == null -> Mutation.CREATED
+            deleted == 1L -> Mutation.DELETED
+            is_edited == 1L -> Mutation.MODIFIED
+            else -> null
+        }
+    }
+
+    private fun DatabaseReadingSession.hasPendingLocalMutation(): Boolean = pendingMutation() != null
+
+    private fun RemoteModelMutation<RemoteReadingSession>.createdAckOrNull(): CreatedReadingSessionAck? {
+        val ack = ack ?: return null
+        if (mutation != Mutation.CREATED ||
+            ack.resource != LocalMutationResource.READING_SESSION ||
+            ack.facet != LOCAL_MUTATION_ENTITY_FACET ||
+            ack.observedPendingOp != Mutation.CREATED) {
+            return null
+        }
+        return CreatedReadingSessionAck(
+            localId = ack.localID.toLong(),
+            pendingVersion = ack.observedPendingVersion
+        )
+    }
+
+    private fun pruneOldReadingSessions(incrementPendingVersion: Boolean = true) {
+        if (incrementPendingVersion) {
+            readingSessionsQueries.value.pruneLocalReadingSessions(MAX_ACTIVE_READING_SESSIONS)
+            readingSessionsQueries.value.pruneRemoteReadingSessions(MAX_ACTIVE_READING_SESSIONS)
+        } else {
+            readingSessionsQueries.value.pruneLocalReadingSessionsForRemoteApply(MAX_ACTIVE_READING_SESSIONS)
+            readingSessionsQueries.value.pruneRemoteReadingSessionsForRemoteApply(MAX_ACTIVE_READING_SESSIONS)
+        }
+    }
+
+    private data class CreatedReadingSessionAck(
+        val localId: Long,
+        val pendingVersion: Long
+    )
 }
 
 @OptIn(ExperimentalTime::class)

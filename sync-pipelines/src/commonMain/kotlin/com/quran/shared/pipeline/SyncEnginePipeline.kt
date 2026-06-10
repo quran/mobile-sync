@@ -3,6 +3,7 @@ package com.quran.shared.pipeline
 import co.touchlab.kermit.Logger
 import com.quran.shared.di.AppScope
 import com.quran.shared.mutations.LocalModelMutation
+import com.quran.shared.mutations.LocalMutationAck
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.input.RemoteBookmark
@@ -17,6 +18,7 @@ import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.Collection as PersistenceCollection
+import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksSynchronizationRepository
 import com.quran.shared.persistence.repository.collection.repository.CollectionsSynchronizationRepository
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksSynchronizationRepository
@@ -36,9 +38,12 @@ import com.quran.shared.syncengine.LocalModificationDateFetcher
 import com.quran.shared.syncengine.NotesSynchronizationConfigurations
 import com.quran.shared.syncengine.ReadingSessionsSynchronizationConfigurations
 import com.quran.shared.syncengine.ResultNotifier
+import com.quran.shared.syncengine.SyncCompletionFinalizer
+import com.quran.shared.syncengine.SyncLifecycleGate
 import com.quran.shared.syncengine.SynchronizationClient
 import com.quran.shared.syncengine.SynchronizationClientBuilder
 import com.quran.shared.syncengine.SynchronizationEnvironment
+import com.quran.shared.syncengine.checkCurrentSyncWriteBoundary
 import com.quran.shared.syncengine.model.NoteAyah
 import com.quran.shared.syncengine.model.NoteRange
 import com.quran.shared.syncengine.model.SyncBookmark
@@ -53,6 +58,21 @@ interface SyncEngineCallback {
     suspend fun synchronizationDone(newLastModificationDate: Long)
     suspend fun encounteredError(errorMsg: String)
 }
+
+fun interface SyncWriteBoundaryGuard {
+    suspend fun checkWriteBoundary()
+}
+
+private val NoOpSyncWriteBoundaryGuard = SyncWriteBoundaryGuard {}
+
+internal val CurrentSyncWriteBoundaryGuard = SyncWriteBoundaryGuard {
+    checkCurrentSyncWriteBoundary()
+}
+
+private fun SyncWriteBoundaryGuard.toPersistenceWriteBoundaryGuard(): PersistenceWriteBoundaryGuard =
+    PersistenceWriteBoundaryGuard {
+        checkWriteBoundary()
+    }
 
 @Inject
 @SingleIn(AppScope::class)
@@ -70,32 +90,42 @@ class SyncEnginePipeline(
         environment: SynchronizationEnvironment,
         localModificationDateFetcher: LocalModificationDateFetcher,
         authenticationDataFetcher: AuthenticationDataFetcher,
+        syncLifecycleGate: SyncLifecycleGate,
         callback: SyncEngineCallback
     ): SynchronizationClient {
+        val writeBoundaryGuard = CurrentSyncWriteBoundaryGuard
 
         val bookmarksConf = BookmarksSynchronizationConfigurations(
             localModificationDateFetcher = localModificationDateFetcher,
-            resultNotifier = ResultReceiver(bookmarksRepository, callback),
+            resultNotifier = ResultReceiver(bookmarksRepository, callback, writeBoundaryGuard),
             localDataFetcher = RepositoryDataFetcher(bookmarksRepository)
         )
         val collectionsConf = CollectionsSynchronizationConfigurations(
             localModificationDateFetcher = localModificationDateFetcher,
-            resultNotifier = CollectionsResultReceiver(collectionsRepository, callback),
+            resultNotifier = CollectionsResultReceiver(collectionsRepository, callback, writeBoundaryGuard),
             localDataFetcher = CollectionsRepositoryDataFetcher(collectionsRepository)
         )
         val collectionBookmarksConf = CollectionBookmarksSynchronizationConfigurations(
             localModificationDateFetcher = localModificationDateFetcher,
-            resultNotifier = CollectionBookmarksResultReceiver(collectionBookmarksRepository, callback),
+            resultNotifier = CollectionBookmarksResultReceiver(
+                collectionBookmarksRepository,
+                callback,
+                writeBoundaryGuard
+            ),
             localDataFetcher = CollectionBookmarksRepositoryDataFetcher(collectionBookmarksRepository, bookmarksRepository)
         )
         val notesConf = NotesSynchronizationConfigurations(
             localModificationDateFetcher = localModificationDateFetcher,
-            resultNotifier = NotesResultReceiver(notesRepository, callback),
+            resultNotifier = NotesResultReceiver(notesRepository, callback, writeBoundaryGuard),
             localDataFetcher = NotesRepositoryDataFetcher(notesRepository)
         )
         val readingSessionsConf = ReadingSessionsSynchronizationConfigurations(
             localModificationDateFetcher = localModificationDateFetcher,
-            resultNotifier = ReadingSessionsResultReceiver(repository = readingSessionsRepository, callback = callback),
+            resultNotifier = ReadingSessionsResultReceiver(
+                repository = readingSessionsRepository,
+                callback = callback,
+                writeBoundaryGuard = writeBoundaryGuard
+            ),
             localDataFetcher = ReadingSessionsRepositoryDataFetcher(readingSessionsRepository)
         )
         val syncClient = SynchronizationClientBuilder.build(
@@ -105,7 +135,11 @@ class SyncEnginePipeline(
             collectionsConfigurations = collectionsConf,
             collectionBookmarksConfigurations = collectionBookmarksConf,
             notesConfigurations = notesConf,
-            readingSessionsConfigurations = readingSessionsConf
+            readingSessionsConfigurations = readingSessionsConf,
+            syncLifecycleGate = syncLifecycleGate,
+            syncCompletionFinalizer = SyncCompletionFinalizer { token ->
+                callback.synchronizationDone(token)
+            }
         )
 
         this.syncClient = syncClient
@@ -128,7 +162,8 @@ private class RepositoryDataFetcher(
                 model = repoMutation.model.toSyncEngine(repoMutation.localID),
                 remoteID = repoMutation.remoteID,
                 localID = repoMutation.localID,
-                mutation = repoMutation.mutation
+                mutation = repoMutation.mutation,
+                ack = repoMutation.ack
             )
         }
             .sortedByDescending { it.model.lastModified.toEpochMilliseconds() }
@@ -140,6 +175,15 @@ private class RepositoryDataFetcher(
 
     override suspend fun fetchLocalModel(remoteId: String): SyncBookmark? {
         return bookmarksRepository.fetchBookmarkByRemoteId(remoteId)?.toSyncEngine(remoteId)
+    }
+
+    override suspend fun markLocalMutationsInFlight(
+        localMutations: List<LocalModelMutation<SyncBookmark>>
+    ): List<LocalMutationAck> =
+        bookmarksRepository.markMutatedBookmarksInFlight(localMutations.mapNotNull { it.ack })
+
+    override suspend fun rollbackLocalMutationsInFlight(acks: List<LocalMutationAck>) {
+        bookmarksRepository.rollbackMutatedBookmarksInFlight(acks)
     }
 }
 
@@ -153,7 +197,8 @@ private class CollectionsRepositoryDataFetcher(
                 model = repoMutation.model.toSyncEngine(),
                 remoteID = repoMutation.remoteID,
                 localID = repoMutation.localID,
-                mutation = repoMutation.mutation
+                mutation = repoMutation.mutation,
+                ack = repoMutation.ack
             )
         }
     }
@@ -178,7 +223,8 @@ private class CollectionBookmarksRepositoryDataFetcher(
                 model = repoMutation.model.toSyncEngine(),
                 remoteID = repoMutation.remoteID,
                 localID = repoMutation.localID,
-                mutation = repoMutation.mutation
+                mutation = repoMutation.mutation,
+                ack = repoMutation.ack
             )
         }
     }
@@ -203,6 +249,15 @@ private class CollectionBookmarksRepositoryDataFetcher(
             is RemoteBookmark.Page -> null
         }
     }
+
+    override suspend fun markLocalMutationsInFlight(
+        localMutations: List<LocalModelMutation<SyncCollectionBookmark>>
+    ): List<LocalMutationAck> =
+        collectionBookmarksRepository.markMutatedCollectionBookmarksInFlight(localMutations.mapNotNull { it.ack })
+
+    override suspend fun rollbackLocalMutationsInFlight(acks: List<LocalMutationAck>) {
+        collectionBookmarksRepository.rollbackMutatedCollectionBookmarksInFlight(acks)
+    }
 }
 
 private class NotesRepositoryDataFetcher(
@@ -221,7 +276,8 @@ private class NotesRepositoryDataFetcher(
                     model = syncNote,
                     remoteID = repoMutation.remoteID,
                     localID = repoMutation.localID,
-                    mutation = repoMutation.mutation
+                    mutation = repoMutation.mutation,
+                    ack = repoMutation.ack
                 )
             }
         }
@@ -246,7 +302,8 @@ private class ReadingSessionsRepositoryDataFetcher(
                 model = repoMutation.model.toSyncEngine(),
                 remoteID = repoMutation.remoteID,
                 localID = repoMutation.localID,
-                mutation = repoMutation.mutation
+                mutation = repoMutation.mutation,
+                ack = repoMutation.ack
             )
         }
     }
@@ -262,15 +319,12 @@ private class ReadingSessionsRepositoryDataFetcher(
 
 internal class ResultReceiver(
     val bookmarksRepository: BookmarksSynchronizationRepository,
-    val callback: SyncEngineCallback
+    val callback: SyncEngineCallback,
+    private val writeBoundaryGuard: SyncWriteBoundaryGuard = NoOpSyncWriteBoundaryGuard
 ) : ResultNotifier<SyncBookmark> {
 
     override suspend fun didFail(message: String) {
         callback.encounteredError(message)
-    }
-
-    override suspend fun didCompleteSync(newToken: Long) {
-        callback.synchronizationDone(newToken)
     }
 
     override suspend fun didSucceed(
@@ -282,7 +336,8 @@ internal class ResultReceiver(
             RemoteModelMutation<RemoteBookmark>(
                 model = remoteMutation.model.toRemoteInput(),
                 remoteID = remoteMutation.remoteID,
-                mutation = remoteMutation.mutation
+                mutation = remoteMutation.mutation,
+                ack = remoteMutation.ack
             )
         }
         val mappedLocals = processedLocalMutations.map { localMutation ->
@@ -290,7 +345,8 @@ internal class ResultReceiver(
                 model = localMutation.model.toRemoteInput(),
                 localID = localMutation.localID,
                 remoteID = localMutation.remoteID,
-                mutation = localMutation.mutation
+                mutation = localMutation.mutation,
+                ack = localMutation.ack
             )
         }
 
@@ -299,13 +355,18 @@ internal class ResultReceiver(
                 "and clearing ${mappedLocals.count()} local updates."
         }
 
-        bookmarksRepository.applyRemoteChanges(mappedRemotes, mappedLocals)
+        bookmarksRepository.applyRemoteChanges(
+            updatesToPersist = mappedRemotes,
+            localMutationsToClear = mappedLocals,
+            writeBoundaryGuard = writeBoundaryGuard.toPersistenceWriteBoundaryGuard()
+        )
     }
 }
 
 private class CollectionsResultReceiver(
     val repository: CollectionsSynchronizationRepository,
-    val callback: SyncEngineCallback
+    val callback: SyncEngineCallback,
+    private val writeBoundaryGuard: SyncWriteBoundaryGuard = NoOpSyncWriteBoundaryGuard
 ) : ResultNotifier<SyncCollection> {
 
     override suspend fun didFail(message: String) {
@@ -321,7 +382,8 @@ private class CollectionsResultReceiver(
             RemoteModelMutation(
                 model = remoteMutation.model.toRemoteInput(),
                 remoteID = remoteMutation.remoteID,
-                mutation = remoteMutation.mutation
+                mutation = remoteMutation.mutation,
+                ack = remoteMutation.ack
             )
         }
         val mappedLocals = processedLocalMutations.map { localMutation ->
@@ -329,7 +391,8 @@ private class CollectionsResultReceiver(
                 model = localMutation.model.toPersistence(),
                 localID = localMutation.localID,
                 remoteID = localMutation.remoteID,
-                mutation = localMutation.mutation
+                mutation = localMutation.mutation,
+                ack = localMutation.ack
             )
         }
 
@@ -338,13 +401,18 @@ private class CollectionsResultReceiver(
                 "and clearing ${mappedLocals.count()} local updates."
         }
 
-        repository.applyRemoteChanges(mappedRemotes, mappedLocals)
+        repository.applyRemoteChanges(
+            updatesToPersist = mappedRemotes,
+            localMutationsToClear = mappedLocals,
+            writeBoundaryGuard = writeBoundaryGuard.toPersistenceWriteBoundaryGuard()
+        )
     }
 }
 
 private class CollectionBookmarksResultReceiver(
     val repository: CollectionBookmarksSynchronizationRepository,
-    val callback: SyncEngineCallback
+    val callback: SyncEngineCallback,
+    private val writeBoundaryGuard: SyncWriteBoundaryGuard = NoOpSyncWriteBoundaryGuard
 ) : ResultNotifier<SyncCollectionBookmark> {
 
     override suspend fun didFail(message: String) {
@@ -360,7 +428,8 @@ private class CollectionBookmarksResultReceiver(
             RemoteModelMutation(
                 model = remoteMutation.model.toRemoteInput(),
                 remoteID = remoteMutation.remoteID,
-                mutation = remoteMutation.mutation
+                mutation = remoteMutation.mutation,
+                ack = remoteMutation.ack
             )
         }
         val mappedLocals = processedLocalMutations.map { localMutation ->
@@ -368,7 +437,8 @@ private class CollectionBookmarksResultReceiver(
                 model = localMutation.model.toPersistence(localMutation.localID),
                 localID = localMutation.localID,
                 remoteID = localMutation.remoteID,
-                mutation = localMutation.mutation
+                mutation = localMutation.mutation,
+                ack = localMutation.ack
             )
         }
 
@@ -377,13 +447,18 @@ private class CollectionBookmarksResultReceiver(
                 "and clearing ${mappedLocals.count()} local updates."
         }
 
-        repository.applyRemoteChanges(mappedRemotes, mappedLocals)
+        repository.applyRemoteChanges(
+            updatesToPersist = mappedRemotes,
+            localMutationsToClear = mappedLocals,
+            writeBoundaryGuard = writeBoundaryGuard.toPersistenceWriteBoundaryGuard()
+        )
     }
 }
 
 private class NotesResultReceiver(
     val repository: NotesSynchronizationRepository,
-    val callback: SyncEngineCallback
+    val callback: SyncEngineCallback,
+    private val writeBoundaryGuard: SyncWriteBoundaryGuard = NoOpSyncWriteBoundaryGuard
 ) : ResultNotifier<SyncNote> {
     private val logger = Logger.withTag("NotesResultReceiver")
 
@@ -414,7 +489,8 @@ private class NotesResultReceiver(
                 RemoteModelMutation(
                     model = remoteNote,
                     remoteID = remoteMutation.remoteID,
-                    mutation = remoteMutation.mutation
+                    mutation = remoteMutation.mutation,
+                    ack = remoteMutation.ack
                 )
             }
         }
@@ -429,7 +505,8 @@ private class NotesResultReceiver(
                     model = persistenceNote,
                     localID = localMutation.localID,
                     remoteID = localMutation.remoteID,
-                    mutation = localMutation.mutation
+                    mutation = localMutation.mutation,
+                    ack = localMutation.ack
                 )
             }
         }
@@ -439,13 +516,18 @@ private class NotesResultReceiver(
                 "and clearing ${mappedLocals.count()} local updates."
         }
 
-        repository.applyRemoteChanges(mappedRemotes, mappedLocals)
+        repository.applyRemoteChanges(
+            updatesToPersist = mappedRemotes,
+            localMutationsToClear = mappedLocals,
+            writeBoundaryGuard = writeBoundaryGuard.toPersistenceWriteBoundaryGuard()
+        )
     }
 }
 
 private class ReadingSessionsResultReceiver(
     val repository: ReadingSessionsSynchronizationRepository,
-    val callback: SyncEngineCallback
+    val callback: SyncEngineCallback,
+    private val writeBoundaryGuard: SyncWriteBoundaryGuard = NoOpSyncWriteBoundaryGuard
 ) : ResultNotifier<SyncReadingSession> {
 
     override suspend fun didFail(message: String) {
@@ -461,7 +543,8 @@ private class ReadingSessionsResultReceiver(
             RemoteModelMutation(
                 model = remoteMutation.model.toRemoteInput(),
                 remoteID = remoteMutation.remoteID,
-                mutation = remoteMutation.mutation
+                mutation = remoteMutation.mutation,
+                ack = remoteMutation.ack
             )
         }
 
@@ -470,7 +553,21 @@ private class ReadingSessionsResultReceiver(
                 "and clearing ${processedLocalMutations.count()} local updates."
         }
 
-        repository.applyRemoteChanges(mappedRemotes, processedLocalMutations.map { it.localID })
+        val mappedLocals = processedLocalMutations.map { localMutation ->
+            LocalModelMutation(
+                model = localMutation.model.toPersistence(localMutation.localID),
+                localID = localMutation.localID,
+                remoteID = localMutation.remoteID,
+                mutation = localMutation.mutation,
+                ack = localMutation.ack
+            )
+        }
+
+        repository.applyRemoteChangesForMutations(
+            updatesToPersist = mappedRemotes,
+            localMutationsToClear = mappedLocals,
+            writeBoundaryGuard = writeBoundaryGuard.toPersistenceWriteBoundaryGuard()
+        )
     }
 }
 
@@ -654,7 +751,8 @@ private fun SyncNote.toRemoteInput(): RemoteNote? {
         body = body,
         startAyahId = startId,
         endAyahId = endId,
-        lastUpdated = lastModified.toPlatform()
+        lastUpdated = lastModified.toPlatform(),
+        semanticReplayEligible = ranges.size == 1
     )
 }
 
@@ -703,6 +801,15 @@ private fun ReadingSession.toSyncEngine(): SyncReadingSession {
         chapterNumber = sura,
         verseNumber = ayah,
         lastModified = lastUpdated.fromPlatform()
+    )
+}
+
+private fun SyncReadingSession.toPersistence(localId: String): ReadingSession {
+    return ReadingSession(
+        sura = chapterNumber,
+        ayah = verseNumber,
+        lastUpdated = lastModified.toPlatform(),
+        localId = localId
     )
 }
 

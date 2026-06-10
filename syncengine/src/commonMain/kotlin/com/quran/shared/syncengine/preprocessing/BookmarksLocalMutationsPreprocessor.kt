@@ -103,7 +103,8 @@ private fun <T> LocalModelMutation<T>.mapModified(): LocalModelMutation<T> =
                 model = this.model,
                 remoteID = this.remoteID,
                 localID = this.localID,
-                mutation = Mutation.CREATED
+                mutation = Mutation.CREATED,
+                ack = this.ack
             )
         Mutation.DELETED, Mutation.CREATED -> this
     }

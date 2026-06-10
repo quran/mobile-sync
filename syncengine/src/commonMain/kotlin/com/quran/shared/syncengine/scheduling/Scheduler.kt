@@ -1,15 +1,21 @@
 package com.quran.shared.syncengine.scheduling
 
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.InternalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.internal.SynchronizedObject
+import kotlinx.coroutines.internal.synchronized
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.yield
 import kotlin.math.pow
 import kotlin.time.Clock
 import kotlin.time.Duration
@@ -62,6 +68,9 @@ private sealed class SchedulerState {
     data object Stopped: SchedulerState()
 }
 
+internal var schedulerAfterCommandDrainSnapshotHook: (() -> Unit)? = null
+internal var schedulerBeforeCommandDrainReleaseHook: (() -> Unit)? = null
+
 /**
  * A scheduler that manages the execution of a task function with configurable timing and retry logic.
  * 
@@ -87,6 +96,12 @@ class Scheduler(
     private val logger = Logger.withTag("Scheduler")
 
     private var mutex = Mutex()
+    private val commandMutex = Mutex()
+    @OptIn(InternalCoroutinesApi::class)
+    private val commandTicketLock = SynchronizedObject()
+    private var nextCommandTicketCounter = 0L
+    private var drainedCommandTicket = 0L
+    private var commandDrainInProgress = false
 
     // region: Synchronized internal state
     private var bufferedTrigger: Trigger? = null
@@ -97,34 +112,148 @@ class Scheduler(
 
     // region: Public
     fun invoke(trigger: Trigger) {
+        val commandTicket = nextCommandTicket()
         scope.launch {
-            processInvokedTrigger(trigger)
+            executeCommandIfNotDrained(commandTicket) {
+                processInvokedTrigger(trigger)
+            }
         }
     }
 
     // Entry point. Starts a critical section
     fun stop() {
+        val commandTicket = nextCommandTicket()
         scope.launch {
-            executeStop()
+            executeCommandIfNotDrained(commandTicket) {
+                executeStop()
+            }
         }
     }
 
     fun cancel() {
+        val commandTicket = nextCommandTicket()
         scope.launch {
-            executeCancel()
+            cancelAndJoinCommand(commandTicket, releaseAfterQueuedCommands = false)
         }
     }
+
+    suspend fun cancelAndJoin() {
+        cancelAndJoinCommand(nextCommandTicket(), releaseAfterQueuedCommands = true)
+    }
+
+    @OptIn(InternalCoroutinesApi::class)
+    private fun nextCommandTicket(): Long {
+        return synchronized(commandTicketLock) {
+            if (commandDrainInProgress) {
+                return@synchronized drainedCommandTicket
+            }
+            nextCommandTicketCounter += 1
+            nextCommandTicketCounter
+        }
+    }
+
+    private suspend fun executeCommandIfNotDrained(
+        commandTicket: Long,
+        command: suspend () -> Unit
+    ) {
+        commandMutex.withLock {
+            if (isCommandDrained(commandTicket)) {
+                return
+            }
+            command()
+        }
+    }
+
+    private suspend fun cancelAndJoinCommand(
+        commandTicket: Long,
+        releaseAfterQueuedCommands: Boolean
+    ) {
+        var drainStarted = false
+        try {
+            commandMutex.withLock {
+                if (!startCommandDrain(commandTicket, drainCommandsSubmittedUntilReturn = releaseAfterQueuedCommands)) {
+                    return
+                }
+                drainStarted = true
+                val jobToJoin = mutex.withLock {
+                    logger.i { "Cancelling scheduler, resetting to Idle" }
+                    resetAllState(SchedulerState.Idle)
+                }
+                if (jobToJoin != currentCoroutineContext()[Job]) {
+                    jobToJoin?.join()
+                }
+                markSubmittedCommandsDrained(commandTicket, drainCommandsSubmittedUntilReturn = releaseAfterQueuedCommands)
+            }
+            schedulerAfterCommandDrainSnapshotHook?.invoke()
+            if (releaseAfterQueuedCommands) {
+                yield()
+            }
+        } finally {
+            if (drainStarted) {
+                finishCommandDrain(releaseAfterQueuedCommands)
+            }
+        }
+    }
+
+    @OptIn(InternalCoroutinesApi::class)
+    private fun isCommandDrained(commandTicket: Long): Boolean =
+        synchronized(commandTicketLock) {
+            commandTicket <= drainedCommandTicket
+        }
+
+    @OptIn(InternalCoroutinesApi::class)
+    private fun startCommandDrain(
+        commandTicket: Long,
+        drainCommandsSubmittedUntilReturn: Boolean
+    ): Boolean =
+        synchronized(commandTicketLock) {
+            if (commandTicket <= drainedCommandTicket) {
+                false
+            } else {
+                if (drainCommandsSubmittedUntilReturn) {
+                    commandDrainInProgress = true
+                }
+                true
+            }
+        }
+
+    @OptIn(InternalCoroutinesApi::class)
+    private fun markSubmittedCommandsDrained(
+        commandTicket: Long,
+        drainCommandsSubmittedUntilReturn: Boolean
+    ) {
+        synchronized(commandTicketLock) {
+            drainedCommandTicket = if (drainCommandsSubmittedUntilReturn) {
+                nextCommandTicketCounter
+            } else {
+                maxOf(drainedCommandTicket, commandTicket)
+            }
+        }
+    }
+
+    @OptIn(InternalCoroutinesApi::class)
+    private fun finishCommandDrain(releaseAfterQueuedCommands: Boolean) {
+        if (releaseAfterQueuedCommands) {
+            schedulerBeforeCommandDrainReleaseHook?.invoke()
+        }
+        releaseCommandDrain()
+    }
+
+    @OptIn(InternalCoroutinesApi::class)
+    private fun releaseCommandDrain() {
+        synchronized(commandTicketLock) {
+            commandDrainInProgress = false
+        }
+    }
+
+    @OptIn(InternalCoroutinesApi::class)
+    internal fun isCommandDrainInProgressForTest(): Boolean =
+        synchronized(commandTicketLock) {
+            commandDrainInProgress
+        }
     // endregion:
 
     // region: Internal-state entry points
-
-    // Entry point: starts a critical section
-    private suspend fun executeCancel() {
-        mutex.withLock {
-            logger.i { "Cancelling scheduler, resetting to Idle" }
-            resetAllState(SchedulerState.Idle)
-        }
-    }
 
     // Entry point. Starts a critical section
     private suspend fun processInvokedTrigger(trigger: Trigger) {
@@ -175,6 +304,9 @@ class Scheduler(
                 processSuccess()
             }
 
+        } catch (e: CancellationException) {
+            logger.d { "Scheduled job was cancelled" }
+            throw e
         } catch (e: Exception) {
             mutex.withLock {
                 state = SchedulerState.Replied(original = startingState)
@@ -277,12 +409,14 @@ class Scheduler(
     }
 
     // Critical-section bound
-    private fun resetAllState(newState: SchedulerState) {
+    private fun resetAllState(newState: SchedulerState): Job? {
+        val job = this.currentJob
         this.state = newState
-        this.currentJob?.cancel()
+        job?.cancel()
         this.currentJob = null
         this.bufferedTrigger = null
         this.expectedExecutionTime = null
+        return job
     }
     // endregion:
 }

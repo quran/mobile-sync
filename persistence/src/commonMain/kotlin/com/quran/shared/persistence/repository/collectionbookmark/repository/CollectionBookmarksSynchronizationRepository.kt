@@ -1,9 +1,11 @@
 package com.quran.shared.persistence.repository.collectionbookmark.repository
 
 import com.quran.shared.mutations.LocalModelMutation
+import com.quran.shared.mutations.LocalMutationAck
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.model.CollectionAyahBookmark
+import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 
 interface CollectionBookmarksSynchronizationRepository {
     /**
@@ -11,6 +13,10 @@ interface CollectionBookmarksSynchronizationRepository {
      * and need to be synchronized with the remote server.
      */
     suspend fun fetchMutatedCollectionBookmarks(): List<LocalModelMutation<CollectionAyahBookmark>>
+
+    suspend fun markMutatedCollectionBookmarksInFlight(acks: List<LocalMutationAck>): List<LocalMutationAck>
+
+    suspend fun rollbackMutatedCollectionBookmarksInFlight(acks: List<LocalMutationAck>)
 
     /**
      * Persists the remote state of collection bookmarks after a successful synchronization operation.
@@ -22,7 +28,8 @@ interface CollectionBookmarksSynchronizationRepository {
      */
     suspend fun applyRemoteChanges(
         updatesToPersist: List<RemoteModelMutation<RemoteCollectionBookmark>>,
-        localMutationsToClear: List<LocalModelMutation<CollectionAyahBookmark>>
+        localMutationsToClear: List<LocalModelMutation<CollectionAyahBookmark>>,
+        writeBoundaryGuard: PersistenceWriteBoundaryGuard = PersistenceWriteBoundaryGuard.Allow
     )
 
     suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean>
