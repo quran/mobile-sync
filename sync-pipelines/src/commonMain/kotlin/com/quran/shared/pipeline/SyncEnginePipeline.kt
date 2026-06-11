@@ -49,12 +49,15 @@ import com.quran.shared.syncengine.model.SyncNote
 import com.quran.shared.syncengine.model.SyncReadingSession
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
+import kotlin.native.HiddenFromObjC
 
+@HiddenFromObjC
 interface SyncEngineCallback {
     suspend fun synchronizationDone(newLastModificationDate: Long)
     suspend fun encounteredError(errorMsg: String)
 }
 
+@HiddenFromObjC
 fun interface SyncWriteBoundaryGuard {
     suspend fun checkWriteBoundary()
 }
@@ -93,6 +96,7 @@ private inline fun <Source, Target> RemoteModelMutation<Source>.mapModel(
 
 @Inject
 @SingleIn(AppScope::class)
+@HiddenFromObjC
 class SyncEnginePipeline(
     val bookmarksRepository: BookmarksSynchronizationRepository,
     val readingBookmarksRepository: ReadingBookmarksRepository,

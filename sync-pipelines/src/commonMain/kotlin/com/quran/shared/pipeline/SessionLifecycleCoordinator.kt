@@ -6,6 +6,7 @@ import com.quran.shared.syncengine.SyncOperationInvalidatedException
 import com.russhwolf.settings.coroutines.SuspendSettings
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
+import kotlin.native.HiddenFromObjC
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -19,6 +20,7 @@ data class SessionLifecycleState(
     val resetInProgress: Boolean
 )
 
+@HiddenFromObjC
 interface SessionLifecycleStateStore {
     suspend fun snapshot(): SessionLifecycleState
     suspend fun beginReset(): SessionLifecycleState
@@ -26,6 +28,7 @@ interface SessionLifecycleStateStore {
     suspend fun finishReset(expectedEpoch: Long): SessionLifecycleState
 }
 
+@HiddenFromObjC
 @SingleIn(AppScope::class)
 class SettingsSessionLifecycleStateStore @Inject constructor(
     private val settings: SuspendSettings
@@ -77,6 +80,7 @@ class SettingsSessionLifecycleStateStore @Inject constructor(
     }
 }
 
+@HiddenFromObjC
 @SingleIn(AppScope::class)
 class SessionLifecycleCoordinator @Inject constructor(
     private val stateStore: SessionLifecycleStateStore

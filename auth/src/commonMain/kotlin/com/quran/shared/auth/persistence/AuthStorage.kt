@@ -7,6 +7,7 @@ import com.quran.shared.di.AppScope
 import com.russhwolf.settings.coroutines.SuspendSettings
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
+import kotlin.native.HiddenFromObjC
 import kotlin.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -22,6 +23,7 @@ import org.publicvalue.multiplatform.oidc.tokenstore.TokenStore
  * token store because the OIDC token-store API intentionally owns only token material.
  */
 @SingleIn(AppScope::class)
+@HiddenFromObjC
 class AuthStorage @Inject constructor(
     private val tokenStore: TokenStore,
     private val settings: SuspendSettings,

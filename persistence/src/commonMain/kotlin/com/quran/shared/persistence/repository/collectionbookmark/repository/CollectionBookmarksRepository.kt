@@ -3,7 +3,6 @@ package com.quran.shared.persistence.repository.collectionbookmark.repository
 import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.util.PlatformDateTime
-
 import kotlinx.coroutines.flow.Flow
 
 interface CollectionBookmarksRepository {

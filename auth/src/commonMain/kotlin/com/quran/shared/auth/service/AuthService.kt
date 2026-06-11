@@ -7,10 +7,8 @@ import com.quran.shared.auth.repository.LogoutTokenCaptureException
 import com.quran.shared.auth.repository.LogoutTokenMaterial
 import com.quran.shared.auth.repository.RemoteLogoutFailure
 import com.quran.shared.di.AppScope
-import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
-import com.rickclephas.kmp.nativecoroutines.NativeCoroutinesState
-import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
+import kotlin.native.HiddenFromObjC
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -39,6 +37,7 @@ import kotlinx.coroutines.withContext
  * making it easy to share across platforms while allowing native ViewModels (iOS/Android)
  * to handle platform-specific UI concerns.
  */
+@HiddenFromObjC
 fun interface AuthSessionPublicationGuard {
     suspend fun canPublishStoredSession(): Boolean
 
@@ -48,10 +47,27 @@ fun interface AuthSessionPublicationGuard {
 }
 
 @SingleIn(AppScope::class)
-class AuthService @Inject constructor(
+@HiddenFromObjC
+class AuthService private constructor(
     private val authRepository: AuthRepository,
-    private val sessionPublicationGuard: AuthSessionPublicationGuard = AuthSessionPublicationGuard.Allow
+    private val sessionPublicationGuard: AuthSessionPublicationGuard
 ) {
+    constructor(authRepository: AuthRepository) : this(authRepository, AuthSessionPublicationGuard.Allow)
+
+    companion object {
+        /**
+         * Creates an AuthService with an explicit stored-session publication guard.
+         *
+         * This is used by managed graph lifecycle code and tests to block stored-session
+         * publication while a full local reset is in progress.
+         */
+        @HiddenFromObjC
+        fun createWithSessionPublicationGuard(
+            authRepository: AuthRepository,
+            sessionPublicationGuard: AuthSessionPublicationGuard
+        ): AuthService = AuthService(authRepository, sessionPublicationGuard)
+    }
+
     private val serviceJob = SupervisorJob()
     private val scope = CoroutineScope(Dispatchers.Main + serviceJob)
 
@@ -60,7 +76,6 @@ class AuthService @Inject constructor(
     private val sessionPublicationMutex = Mutex()
     private var lifecycle: AuthPublicationLifecycle = AuthPublicationLifecycle.Idle(generation = 0)
 
-    @NativeCoroutinesState
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
     init {
@@ -77,6 +92,7 @@ class AuthService @Inject constructor(
      * startup checks and retrying error recovery; caller-owned login/logout coroutines remain
      * owned by their caller.
      */
+    @HiddenFromObjC
     suspend fun clearAndJoin() {
         serviceJob.cancelAndJoin()
     }
@@ -89,10 +105,8 @@ class AuthService @Inject constructor(
         }
     }
 
-    @NativeCoroutines
     suspend fun login(): Unit = runLogin(LoginIntent.Normal)
 
-    @NativeCoroutines
     suspend fun loginWithReauthentication(): Unit = runLogin(LoginIntent.Reauthenticate)
 
     private suspend fun runLogin(intent: LoginIntent) {
@@ -307,7 +321,6 @@ class AuthService @Inject constructor(
         }
     }
 
-    @NativeCoroutines
     suspend fun logout(): Unit {
         val tokenMaterial = try {
             captureLogoutTokenMaterialForLogout()
@@ -329,6 +342,7 @@ class AuthService @Inject constructor(
         }
     }
 
+    @HiddenFromObjC
     suspend fun captureLogoutTokenMaterial(): LogoutTokenMaterial =
         authRepository.captureLogoutTokenMaterial()
 
@@ -337,12 +351,14 @@ class AuthService @Inject constructor(
      * persisted tokens. Lazy stored-session publication remains blocked until repository clear
      * has finished and the lifecycle settles back to idle.
      */
+    @HiddenFromObjC
     suspend fun captureLogoutTokenMaterialForLogout(): LogoutTokenMaterial {
         return withClearing {
             authRepository.captureLogoutTokenMaterialAndClearLocalSession()
         }
     }
 
+    @HiddenFromObjC
     suspend fun clearLocalSession() {
         withClearing {
             authRepository.clearLocalSession()
@@ -364,10 +380,10 @@ class AuthService @Inject constructor(
         }
     }
 
+    @HiddenFromObjC
     suspend fun attemptRemoteLogout(tokenMaterial: LogoutTokenMaterial): List<RemoteLogoutFailure> =
         authRepository.attemptRemoteLogout(tokenMaterial)
 
-    @NativeCoroutines
     suspend fun refreshAccessTokenIfNeeded(): Boolean {
         return when (val current = lifecycleSnapshot()) {
             is AuthPublicationLifecycle.Idle -> {
@@ -418,7 +434,6 @@ class AuthService @Inject constructor(
 
     fun getAccessToken(): String? = cachedAccessToken
 
-    @NativeCoroutines
     suspend fun getAuthHeaders(): Map<String, String> {
         return when (val current = lifecycleSnapshot()) {
             is AuthPublicationLifecycle.Authenticated -> getAuthHeadersForAuthenticated(current.generation)

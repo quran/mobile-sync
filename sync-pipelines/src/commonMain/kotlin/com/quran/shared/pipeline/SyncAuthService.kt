@@ -1,6 +1,7 @@
 package com.quran.shared.pipeline
 
 import com.quran.shared.auth.model.AuthState
+import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.di.AppScope
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
@@ -25,6 +26,9 @@ class SyncAuthService internal constructor(
     @NativeCoroutinesState
     val authState: StateFlow<AuthState> get() = authService.authState
 
+    val loggedInUser: UserInfo?
+        get() = (authService.authState.value as? AuthState.Success)?.userInfo
+
     @NativeCoroutines
     suspend fun login() {
         sessionLifecycleCoordinator.withMutatingWrite {
@@ -38,6 +42,19 @@ class SyncAuthService internal constructor(
             authService.loginWithReauthentication()
         }
     }
+
+    @NativeCoroutines
+    suspend fun signInWithReauthentication() {
+        loginWithReauthentication()
+    }
+
+    @NativeCoroutines
+    suspend fun refreshAuthentication(): Boolean =
+        authService.refreshAccessTokenIfNeeded()
+
+    @NativeCoroutines
+    suspend fun authenticationHeaders(): Map<String, String> =
+        authService.getAuthHeaders()
 
     @NativeCoroutines
     suspend fun logout(clearLocalData: Boolean = true): LogoutResult =

@@ -96,6 +96,7 @@ kotlin {
     sourceSets.all {
         languageSettings.optIn("com.russhwolf.settings.ExperimentalSettingsApi")
         languageSettings.optIn("org.publicvalue.multiplatform.oidc.ExperimentalOpenIdConnect")
+        languageSettings.optIn("kotlin.experimental.ExperimentalObjCRefinement")
     }
 }
 

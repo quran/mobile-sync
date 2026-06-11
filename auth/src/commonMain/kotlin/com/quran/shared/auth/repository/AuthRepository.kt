@@ -1,21 +1,26 @@
 package com.quran.shared.auth.repository
 
 import com.quran.shared.auth.model.UserInfo
+import kotlin.native.HiddenFromObjC
 
+@HiddenFromObjC
 data class LogoutTokenMaterial(
     val refreshToken: String?,
     val idToken: String?
 )
 
+@HiddenFromObjC
 class LogoutTokenCaptureException(
     cause: Exception
 ) : Exception(cause.message, cause)
 
+@HiddenFromObjC
 enum class RemoteLogoutOperation {
     REVOKE_REFRESH_TOKEN,
     END_SESSION
 }
 
+@HiddenFromObjC
 data class RemoteLogoutFailure(
     val operation: RemoteLogoutOperation,
     val exception: Exception
@@ -27,6 +32,7 @@ data class RemoteLogoutFailure(
  * Separates business logic and data management from the UI layer (ViewModel).
  * Uses the OIDC library's CodeAuthFlow for browser-based authentication.
  */
+@HiddenFromObjC
 interface AuthRepository {
     /**
      * Performs the complete OAuth2 login flow.

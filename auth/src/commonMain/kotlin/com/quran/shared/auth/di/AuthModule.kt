@@ -15,6 +15,7 @@ import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logger
 import io.ktor.client.plugins.logging.Logging
 import io.ktor.serialization.kotlinx.json.json
+import kotlin.native.HiddenFromObjC
 import kotlinx.serialization.json.Json
 import org.publicvalue.multiplatform.oidc.DefaultOpenIdConnectClient
 import org.publicvalue.multiplatform.oidc.OpenIdConnectClient
@@ -24,6 +25,7 @@ import org.publicvalue.multiplatform.oidc.types.CodeChallengeMethod
 
 @ContributesTo(AppScope::class)
 @BindingContainer
+@HiddenFromObjC
 abstract class AuthModule {
 
     @Binds

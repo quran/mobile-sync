@@ -569,7 +569,7 @@ private class SyncServiceFixture(
     private val notesRepository = ServiceNotesRepository()
     private val readingSessionsRepository = ServiceReadingSessionsRepository()
     private val importRepository = ServiceImportRepository()
-    val authService = AuthService(
+    val authService = AuthService.createWithSessionPublicationGuard(
         authRepository = authRepository,
         sessionPublicationGuard = AuthSessionPublicationGuard {
             !lifecycleStore.snapshot().resetInProgress

@@ -5,10 +5,12 @@ import com.quran.shared.syncengine.LocalModificationDateFetcher
 import com.russhwolf.settings.coroutines.SuspendSettings
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
+import kotlin.native.HiddenFromObjC
 
 /**
  * Persists the shared remote sync token used to fetch incremental mutations.
  */
+@HiddenFromObjC
 interface SyncLocalModificationDateStore : LocalModificationDateFetcher {
     /**
      * Stores the newest completed remote mutation timestamp.
@@ -29,6 +31,7 @@ interface SyncLocalModificationDateStore : LocalModificationDateFetcher {
 /**
  * [SyncLocalModificationDateStore] backed by the graph-provided DataStore settings instance.
  */
+@HiddenFromObjC
 @SingleIn(AppScope::class)
 class SyncSettingsLocalModificationDateStore @Inject constructor(
     private val settings: SuspendSettings

@@ -35,6 +35,7 @@ import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutinesState
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
+import kotlin.native.HiddenFromObjC
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -78,6 +79,7 @@ class SyncService internal constructor(
         syncClient.cancelSyncing()
     }
 
+    @HiddenFromObjC
     suspend fun clearAndJoin() {
         clear()
         serviceJob.cancelAndJoin()
@@ -518,6 +520,30 @@ class SyncService internal constructor(
     ) {
         mutatingCall("Failed to add note") {
             notesRepository.addNote(body, startSura, startAyah, endSura, endAyah, timestamp)
+        }
+    }
+
+    /**
+     * Updates an existing note and schedules sync for the local mutation.
+     *
+     * @param localId the local identifier of the note to update.
+     * @param body the updated note body.
+     * @param startSura the first sura covered by the note.
+     * @param startAyah the first ayah covered by the note.
+     * @param endSura the last sura covered by the note.
+     * @param endAyah the last ayah covered by the note.
+     */
+    @NativeCoroutines
+    suspend fun updateNote(
+        localId: String,
+        body: String,
+        startSura: Int,
+        startAyah: Int,
+        endSura: Int,
+        endAyah: Int
+    ) {
+        mutatingCall("Failed to update note") {
+            notesRepository.updateNote(localId, body, startSura, startAyah, endSura, endAyah)
         }
     }
 

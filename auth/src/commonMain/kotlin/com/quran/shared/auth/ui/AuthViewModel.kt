@@ -4,9 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.quran.shared.auth.model.AuthState
 import com.quran.shared.auth.service.AuthService
+import dev.zacsweers.metro.Inject
+import kotlin.native.HiddenFromObjC
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import dev.zacsweers.metro.Inject
 
 /**
  * ViewModel for authentication UI, providing a platform-agnostic interface for login and logout operations.
@@ -21,6 +22,7 @@ import dev.zacsweers.metro.Inject
  *
  * @property authService The service handling the underlying OIDC logic and state management.
  */
+@HiddenFromObjC
 class AuthViewModel @Inject constructor(
     private val authService: AuthService
 ) : ViewModel() {
