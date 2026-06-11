@@ -1,10 +1,11 @@
 package com.quran.shared.syncengine
 
+import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
+import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.syncengine.model.collectionBookmarkRemoteId
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 internal fun validatePushedMutationResponse(
@@ -25,6 +26,39 @@ internal fun validatePushedMutationResponse(
             expectedMutation = requestMutation.mutation,
             pushedMutation = responseMutation,
             acknowledgedRemoteId = responseMutation.acknowledgedRemoteIdFor(requestMutation)
+        )
+    }
+}
+
+internal fun <Model> mapPushedModelMutations(
+    resourceName: String,
+    localMutations: List<LocalModelMutation<Model>>,
+    pushedMutations: List<SyncMutation>,
+    acknowledgedRemoteId: (LocalModelMutation<Model>, SyncMutation) -> String? = { _, pushedMutation ->
+        pushedMutation.resourceId
+    },
+    model: (LocalModelMutation<Model>, SyncMutation) -> Model = { localMutation, _ ->
+        localMutation.model
+    }
+): List<RemoteModelMutation<Model>> {
+    validatePushedMutationCount(resourceName, localMutations.size, pushedMutations.size)
+
+    return localMutations.mapIndexed { index, localMutation ->
+        val pushedMutation = pushedMutations[index]
+        val remoteId = validatePushedMutationAck(
+            resourceName = resourceName,
+            index = index,
+            expectedRemoteId = localMutation.remoteID,
+            expectedMutation = localMutation.mutation,
+            pushedMutation = pushedMutation,
+            acknowledgedRemoteId = acknowledgedRemoteId(localMutation, pushedMutation)
+        )
+
+        RemoteModelMutation(
+            model = model(localMutation, pushedMutation),
+            remoteID = remoteId,
+            mutation = pushedMutation.mutation,
+            ack = localMutation.ack
         )
     }
 }
@@ -193,15 +227,7 @@ private fun SyncMutation.validateCollectionBookmarkResponseEvidence(requestMutat
     }
 }
 
-private fun requireMatchingEvidence(label: String, local: String?, remote: String?) {
-    if (local != null && remote != null && local != remote) {
-        throw IllegalStateException(
-            "Collection bookmark ACK $label mismatch: local=$local, remote=$remote"
-        )
-    }
-}
-
-private fun requireMatchingEvidence(label: String, local: Int?, remote: Int?) {
+private fun <T> requireMatchingEvidence(label: String, local: T?, remote: T?) {
     if (local != null && remote != null && local != remote) {
         throw IllegalStateException(
             "Collection bookmark ACK $label mismatch: local=$local, remote=$remote"
@@ -321,9 +347,3 @@ private fun JsonObject?.presentStringOrNull(key: String): PresentString? {
     val value = this?.get(key) ?: return null
     return PresentString(value = value.jsonPrimitive.contentOrNull)
 }
-
-private fun JsonObject?.stringOrNull(key: String): String? =
-    this?.get(key)?.jsonPrimitive?.contentOrNull
-
-private fun JsonObject?.intOrNull(key: String): Int? =
-    this?.get(key)?.jsonPrimitive?.intOrNull

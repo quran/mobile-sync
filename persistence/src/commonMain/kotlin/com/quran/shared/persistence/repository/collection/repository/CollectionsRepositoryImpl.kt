@@ -14,11 +14,11 @@ import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.model.DatabaseCollection
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
+import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
 import com.quran.shared.persistence.repository.collection.extension.toCollection
 import com.quran.shared.persistence.repository.collection.extension.toCollectionMutation
 import com.quran.shared.persistence.util.PlatformDateTime
-import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toEpochMillisecondsOrNull
 import dev.zacsweers.metro.Inject
@@ -227,21 +227,10 @@ class CollectionsRepositoryImpl(
     }
 
     override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> {
-        if (remoteIDs.isEmpty()) {
-            return emptyMap()
-        }
-
-        return withContext(Dispatchers.IO) {
-            val existentIDs = mutableSetOf<String>()
-            remoteIDs.chunked(SQLITE_MAX_BIND_PARAMETERS).forEach { chunk ->
-                existentIDs.addAll(
-                    collectionQueries.value.checkRemoteIDsExistence(chunk)
-                        .executeAsList()
-                        .mapNotNull { it.remote_id }
-                )
-            }
-
-            remoteIDs.associateWith { existentIDs.contains(it) }
+        return buildRemoteResourceExistenceMap(remoteIDs) { chunk ->
+            collectionQueries.value.checkRemoteIDsExistence(chunk)
+                .executeAsList()
+                .mapNotNull { it.remote_id }
         }
     }
 

@@ -12,20 +12,6 @@ class CollectionBookmarksConflictResolver(
 ) {
 
     fun resolve(): ConflictResolutionResult<SyncCollectionBookmark> {
-        if (conflicts.isEmpty()) {
-            return ConflictResolutionResult(listOf(), listOf())
-        }
-
-        val results = conflicts.map { conflict ->
-            conflict.resolveLocalDeleteOverRemoteCreateEcho()
-                ?: ConflictResolutionResult(
-                    mutationsToPersist = conflict.remoteMutations,
-                    mutationsToPush = emptyList()
-                )
-        }
-        return ConflictResolutionResult(
-            mutationsToPersist = results.flatMap { it.mutationsToPersist },
-            mutationsToPush = results.flatMap { it.mutationsToPush }
-        )
+        return resolveRemoteWinsConflicts(conflicts)
     }
 }

@@ -11,6 +11,7 @@ import com.quran.shared.syncengine.model.SyncNote
 import com.quran.shared.syncengine.model.SyncReadingSession
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class SimpleResourceRemoteIdValidationTest {
@@ -64,6 +65,23 @@ class SimpleResourceRemoteIdValidationTest {
                 )
             ).buildPlan(0L, listOf(blankReplayMutation("READING_SESSION")))
         }
+    }
+
+    @Test
+    fun `simple parser validates resource id before dropping unparseable mutation`() {
+        val exception = assertFailsWith<IllegalArgumentException> {
+            listOf(
+                SyncMutation(
+                    resource = "NOTE",
+                    resourceId = null,
+                    mutation = Mutation.DELETED,
+                    data = null,
+                    timestamp = 1000L
+                )
+            ).mapSimpleRemoteModelMutations<SyncNote>("NOTE") { null }
+        }
+
+        assertEquals("Missing resourceId for remote NOTE mutation", exception.message)
     }
 }
 

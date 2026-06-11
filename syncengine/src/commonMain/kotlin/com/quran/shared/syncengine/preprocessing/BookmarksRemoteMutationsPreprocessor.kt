@@ -1,6 +1,5 @@
 package com.quran.shared.syncengine.preprocessing
 
-import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.syncengine.model.SyncBookmark
 
@@ -16,24 +15,8 @@ class BookmarksRemoteMutationsPreprocessor(
      * @return Filtered and transformed list of remote mutations
      */
     suspend fun preprocess(remoteMutations: List<RemoteModelMutation<SyncBookmark>>): List<RemoteModelMutation<SyncBookmark>> {
-        val remoteIDsToCheck = remoteMutations.filter { it.mutation == Mutation.DELETED }
-            .map { it.remoteID }
-        val existenceMap = if (remoteIDsToCheck.isNotEmpty()) checkLocalExistence(remoteIDsToCheck) else emptyMap()
-
         return remoteMutations
-            .filter { it.mutation != Mutation.DELETED || existenceMap[it.remoteID] == true }
-            .map { it.mapModified() }
+            .filterDeletesByLocalExistence(checkLocalExistence)
+            .map { it.mapModifiedToCreated() }
     }
 }
-
-private fun <T> RemoteModelMutation<T>.mapModified(): RemoteModelMutation<T> =
-    when (this.mutation) {
-        Mutation.MODIFIED ->
-            RemoteModelMutation(
-                model = this.model,
-                remoteID = this.remoteID,
-                mutation = Mutation.CREATED,
-                ack = this.ack
-            )
-        Mutation.DELETED, Mutation.CREATED -> this
-    }

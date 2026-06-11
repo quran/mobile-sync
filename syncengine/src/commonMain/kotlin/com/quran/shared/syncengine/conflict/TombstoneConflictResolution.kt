@@ -2,6 +2,17 @@ package com.quran.shared.syncengine.conflict
 
 import com.quran.shared.mutations.Mutation
 
+internal fun <Model> resolveRemoteWinsConflicts(
+    conflicts: List<ResourceConflict<Model>>
+): ConflictResolutionResult<Model> {
+    return conflicts
+        .map { conflict ->
+            conflict.resolveLocalDeleteOverRemoteCreateEcho()
+                ?: persistRemoteMutations(conflict.remoteMutations)
+        }
+        .mergeConflictResolutionResults()
+}
+
 internal fun <Model> ResourceConflict<Model>.resolveLocalDeleteOverRemoteCreateEcho(): ConflictResolutionResult<Model>? {
     val remoteCreateIds = remoteMutations
         .filter { it.mutation == Mutation.CREATED }

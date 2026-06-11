@@ -19,11 +19,11 @@ import com.quran.shared.persistence.model.DEFAULT_COLLECTION_ID
 import com.quran.shared.persistence.model.DatabaseBookmark
 import com.quran.shared.persistence.model.DatabaseBookmarkCollection
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
+import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
 import com.quran.shared.persistence.repository.bookmark.extension.toAyahBookmark
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.QuranData
-import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toEpochMillisecondsOrNull
 import com.quran.shared.persistence.util.toPlatform
@@ -540,35 +540,27 @@ class CollectionBookmarksRepositoryImpl(
     }
 
     override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> {
-        if (remoteIDs.isEmpty()) {
-            return emptyMap()
+        return buildRemoteResourceExistenceMap(remoteIDs) { chunk ->
+            bookmarkCollectionQueries.value
+                .checkRemoteIDsExistence(chunk)
+                .executeAsList()
+                .mapNotNull { it.remote_id } + chunk.mapNotNull(::defaultCollectionRemoteIdIfExists)
         }
+    }
 
-        return withContext(Dispatchers.IO) {
-            val existentIDs = mutableSetOf<String>()
-            remoteIDs.chunked(SQLITE_MAX_BIND_PARAMETERS).forEach { chunk ->
-                existentIDs.addAll(
-                    bookmarkCollectionQueries.value
-                        .checkRemoteIDsExistence(chunk)
-                        .executeAsList()
-                        .mapNotNull { it.remote_id }
-                )
-                chunk.filter { it.startsWith("$DEFAULT_COLLECTION_ID-") }
-                    .mapNotNullTo(existentIDs) { remoteId ->
-                        val bookmarkRemoteId = remoteId.removePrefix("$DEFAULT_COLLECTION_ID-")
-                        val bookmark = findBookmarkByDefaultRelationBookmarkRemoteId(bookmarkRemoteId)
-                        if (bookmark != null &&
-                            bookmark.deleted == 0L &&
-                            (bookmark.is_in_default_collection == 1L || bookmark.default_pending_op == "DELETED")
-                        ) {
-                            remoteId
-                        } else {
-                            null
-                        }
-                    }
-            }
-
-            remoteIDs.associateWith { existentIDs.contains(it) }
+    private fun defaultCollectionRemoteIdIfExists(remoteId: String): String? {
+        if (!remoteId.startsWith("$DEFAULT_COLLECTION_ID-")) {
+            return null
+        }
+        val bookmarkRemoteId = remoteId.removePrefix("$DEFAULT_COLLECTION_ID-")
+        val bookmark = findBookmarkByDefaultRelationBookmarkRemoteId(bookmarkRemoteId)
+        return if (bookmark != null &&
+            bookmark.deleted == 0L &&
+            (bookmark.is_in_default_collection == 1L || bookmark.default_pending_op == "DELETED")
+        ) {
+            remoteId
+        } else {
+            null
         }
     }
 

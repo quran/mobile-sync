@@ -1,6 +1,5 @@
 package com.quran.shared.syncengine.preprocessing
 
-import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.syncengine.model.SyncNote
 
@@ -15,15 +14,6 @@ class NotesRemoteMutationsPreprocessor(
     suspend fun preprocess(
         remoteMutations: List<RemoteModelMutation<SyncNote>>
     ): List<RemoteModelMutation<SyncNote>> {
-        val remoteIDsToCheck = remoteMutations.filter { it.mutation == Mutation.DELETED }
-            .map { it.remoteID }
-        val existenceMap = if (remoteIDsToCheck.isNotEmpty()) {
-            checkLocalExistence(remoteIDsToCheck)
-        } else {
-            emptyMap()
-        }
-
-        return remoteMutations
-            .filter { it.mutation != Mutation.DELETED || existenceMap[it.remoteID] == true }
+        return remoteMutations.filterDeletesByLocalExistence(checkLocalExistence)
     }
 }

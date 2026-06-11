@@ -18,9 +18,6 @@ import com.quran.shared.syncengine.preprocessing.BookmarksLocalMutationsPreproce
 import com.quran.shared.syncengine.preprocessing.BookmarksRemoteMutationsPreprocessor
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlin.time.Instant
 
@@ -102,16 +99,6 @@ internal class BookmarksSyncAdapter(
         }
     }
 
-    private fun toSyncMutation(localMutation: LocalModelMutation<SyncBookmark>): SyncMutation {
-        return SyncMutation(
-            resource = resourceName,
-            resourceId = localMutation.remoteID,
-            mutation = localMutation.mutation,
-            data = if (localMutation.mutation == Mutation.DELETED) null else localMutation.model.toResourceData(),
-            timestamp = localMutation.model.lastModified.toEpochMilliseconds()
-        )
-    }
-
     private fun preprocessLocalMutations(
         mutations: List<LocalModelMutation<SyncBookmark>>
     ): List<LocalModelMutation<SyncBookmark>> {
@@ -143,32 +130,6 @@ internal class BookmarksSyncAdapter(
         return resolver.resolve()
     }
 
-    private fun mapPushedMutations(
-        localMutations: List<LocalModelMutation<SyncBookmark>>,
-        pushedMutations: List<SyncMutation>
-    ): List<RemoteModelMutation<SyncBookmark>> {
-        validatePushedMutationCount(resourceName, localMutations.size, pushedMutations.size)
-
-        return localMutations.mapIndexed { index, localMutation ->
-            val pushedMutation = pushedMutations[index]
-            val remoteId = validatePushedMutationAck(
-                resourceName = resourceName,
-                index = index,
-                expectedRemoteId = localMutation.remoteID,
-                expectedMutation = localMutation.mutation,
-                pushedMutation = pushedMutation,
-                acknowledgedRemoteId = pushedMutation.resourceId
-            )
-
-            RemoteModelMutation(
-                model = localMutation.model,
-                remoteID = remoteId,
-                mutation = pushedMutation.mutation,
-                ack = localMutation.ack
-            )
-        }
-    }
-
     private inner class BookmarksResourceSyncPlan(
         private val localMutationsToClear: List<LocalModelMutation<SyncBookmark>>,
         private val remoteMutationsToPersist: List<RemoteModelMutation<SyncBookmark>>,
@@ -180,7 +141,13 @@ internal class BookmarksSyncAdapter(
         private var markedInFlightAcks: List<LocalMutationAck> = emptyList()
 
         override suspend fun mutationsToPush(): List<SyncMutation> =
-            localMutationsToPushForCompletion.map { toSyncMutation(it) }
+            localMutationsToPushForCompletion.map {
+                it.toSyncMutation(
+                    resourceName = resourceName,
+                    resourceData = SyncBookmark::toResourceData,
+                    timestamp = { model -> model.lastModified.toEpochMilliseconds() }
+                )
+            }
 
         override suspend fun markMutationsInFlight() {
             markedInFlightAcks = configurations.localDataFetcher.markLocalMutationsInFlight(localMutationsToPush)
@@ -192,10 +159,10 @@ internal class BookmarksSyncAdapter(
                 .mapNotNull { it.bookmarkReadingCreateMarkerKey() }
                 .toSet()
             localMutationsToPushForCompletion = localMutationsToPush
-                .filterPushableCreates(markedAckKeys)
+                .filterPushableCreates(markedAckKeys) { it.bookmarkReadingCreateMarkerKey() }
                 .map { it.withIncrementedAckIfMarked(markedAckKeys) }
             localMutationsToClearForCompletion = localMutationsToClear
-                .filterClearableCreates(markedAckKeys, pushedCreateAckKeys)
+                .filterClearableCreates(markedAckKeys, pushedCreateAckKeys) { it.bookmarkReadingCreateMarkerKey() }
                 .map { it.withIncrementedAckIfMarked(markedAckKeys) }
         }
 
@@ -207,11 +174,15 @@ internal class BookmarksSyncAdapter(
         }
 
         override suspend fun complete(newToken: Long, pushedMutations: List<SyncMutation>) {
-            val mappedPushed = mapPushedMutations(localMutationsToPushForCompletion, pushedMutations)
+            val mappedPushed = mapPushedModelMutations(
+                resourceName,
+                localMutationsToPushForCompletion,
+                pushedMutations
+            )
             val preprocessedPushed = preprocessRemoteMutations(mappedPushed)
             val finalRemoteMutations = preprocessedPushed + remoteMutationsToPersist
             val localMutationsMappedFromReplay = localMutationsToClearForCompletion
-                .mapReplayCreatedClears(remoteMutationsToPersist)
+                .mapReplayCreatedClears(remoteMutationsToPersist) { it.conflictKey() }
             configurations.resultNotifier.didSucceed(
                 newToken,
                 finalRemoteMutations,
@@ -226,67 +197,10 @@ private fun LocalMutationAck.isBookmarkReadingCreate(): Boolean =
         facet == LOCAL_MUTATION_BOOKMARK_READING_FACET &&
         observedPendingOp == Mutation.CREATED
 
-private fun LocalMutationAck.markerKey(): String =
-    "$localID|$resource|$facet|$observedPendingOp|$observedPendingVersion"
-
-private fun LocalMutationAck.incrementObservedVersion(): LocalMutationAck =
-    copy(observedPendingVersion = observedPendingVersion + 1)
-
 private fun LocalModelMutation<SyncBookmark>.bookmarkReadingCreateMarkerKey(): String? {
     val ack = ack ?: return null
     return if (ack.isBookmarkReadingCreate()) ack.markerKey() else null
 }
-
-private fun List<LocalModelMutation<SyncBookmark>>.filterPushableCreates(
-    markedAckKeys: Set<String>
-): List<LocalModelMutation<SyncBookmark>> =
-    filter { mutation ->
-        val createKey = mutation.bookmarkReadingCreateMarkerKey()
-        createKey == null || createKey in markedAckKeys
-    }
-
-private fun List<LocalModelMutation<SyncBookmark>>.filterClearableCreates(
-    markedAckKeys: Set<String>,
-    pushedCreateAckKeys: Set<String>
-): List<LocalModelMutation<SyncBookmark>> =
-    filter { mutation ->
-        val createKey = mutation.bookmarkReadingCreateMarkerKey()
-        createKey == null || createKey !in pushedCreateAckKeys || createKey in markedAckKeys
-    }
-
-private fun LocalModelMutation<SyncBookmark>.withIncrementedAckIfMarked(
-    markedAckKeys: Set<String>
-): LocalModelMutation<SyncBookmark> {
-    val ack = ack ?: return this
-    if (ack.markerKey() !in markedAckKeys) {
-        return this
-    }
-    return LocalModelMutation(
-        model = model,
-        remoteID = remoteID,
-        localID = localID,
-        mutation = mutation,
-        ack = ack.incrementObservedVersion()
-    )
-}
-
-private fun List<LocalModelMutation<SyncBookmark>>.mapReplayCreatedClears(
-    remoteMutationsToPersist: List<RemoteModelMutation<SyncBookmark>>
-): List<LocalModelMutation<SyncBookmark>> =
-    map { local ->
-        val replayedRemote = remoteMutationsToPersist.singleOrNull { remote ->
-            local.mutation == Mutation.CREATED &&
-                remote.mutation == Mutation.CREATED &&
-                local.model.conflictKey() == remote.model.conflictKey()
-        } ?: return@map local
-        LocalModelMutation(
-            model = replayedRemote.model,
-            remoteID = replayedRemote.remoteID,
-            localID = local.localID,
-            mutation = replayedRemote.mutation,
-            ack = local.ack
-        )
-    }
 
 private suspend fun SyncMutation.toSyncBookmark(
     logger: Logger,
@@ -357,12 +271,3 @@ private fun SyncBookmark.toResourceData(): JsonObject {
         }
     }
 }
-
-private fun JsonObject.booleanOrNull(key: String): Boolean? =
-    this[key]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull()
-
-private fun JsonObject.stringOrNull(key: String): String? =
-    this[key]?.jsonPrimitive?.contentOrNull
-
-private fun JsonObject.intOrNull(key: String): Int? =
-    this[key]?.jsonPrimitive?.intOrNull

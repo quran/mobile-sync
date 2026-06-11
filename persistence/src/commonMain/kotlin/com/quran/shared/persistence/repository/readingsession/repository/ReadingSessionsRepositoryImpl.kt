@@ -14,10 +14,10 @@ import com.quran.shared.persistence.input.RemoteReadingSession
 import com.quran.shared.persistence.model.DatabaseReadingSession
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
+import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
 import com.quran.shared.persistence.repository.readingsession.extension.toReadingSession
 import com.quran.shared.persistence.repository.readingsession.extension.toReadingSessionMutation
 import com.quran.shared.persistence.util.PlatformDateTime
-import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toEpochMillisecondsOrNull
 import dev.zacsweers.metro.Inject
@@ -227,17 +227,10 @@ class ReadingSessionsRepositoryImpl(
     }
 
     override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> {
-        if (remoteIDs.isEmpty()) return emptyMap()
-        return withContext(Dispatchers.IO) {
-            val existentIDs = mutableSetOf<String>()
-            remoteIDs.chunked(SQLITE_MAX_BIND_PARAMETERS).forEach { chunk ->
-                existentIDs.addAll(
-                    readingSessionsQueries.value.checkRemoteIDsExistence(chunk)
-                        .executeAsList()
-                        .mapNotNull { it.remote_id }
-                )
-            }
-            remoteIDs.associateWith { existentIDs.contains(it) }
+        return buildRemoteResourceExistenceMap(remoteIDs) { chunk ->
+            readingSessionsQueries.value.checkRemoteIDsExistence(chunk)
+                .executeAsList()
+                .mapNotNull { it.remote_id }
         }
     }
 
