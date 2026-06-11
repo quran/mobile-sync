@@ -52,7 +52,8 @@ class AuthService @Inject constructor(
     private val authRepository: AuthRepository,
     private val sessionPublicationGuard: AuthSessionPublicationGuard = AuthSessionPublicationGuard.Allow
 ) {
-    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private val serviceJob = SupervisorJob()
+    private val scope = CoroutineScope(Dispatchers.Main + serviceJob)
 
     private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
     private var cachedAccessToken: String? = null
@@ -66,6 +67,18 @@ class AuthService @Inject constructor(
         scope.launch {
             checkCurrentSession()
         }
+    }
+
+    /**
+     * Cancels and waits for work owned by this service's background scope.
+     *
+     * Call this when disposing the app graph or a test fixture before resetting the Main
+     * dispatcher. It only covers work launched by [AuthService] itself, such as stored-session
+     * startup checks and retrying error recovery; caller-owned login/logout coroutines remain
+     * owned by their caller.
+     */
+    suspend fun clearAndJoin() {
+        serviceJob.cancelAndJoin()
     }
 
     private suspend fun checkCurrentSession() {

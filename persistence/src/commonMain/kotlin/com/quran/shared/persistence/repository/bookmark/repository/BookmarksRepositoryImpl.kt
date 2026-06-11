@@ -17,11 +17,11 @@ import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.DEFAULT_COLLECTION_ID
 import com.quran.shared.persistence.model.DatabaseBookmark
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
+import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
 import com.quran.shared.persistence.repository.bookmark.extension.toAyahBookmark
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.QuranData
-import com.quran.shared.persistence.util.SQLITE_MAX_BIND_PARAMETERS
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toEpochMillisecondsOrNull
 import com.quran.shared.persistence.util.toPlatform
@@ -322,21 +322,10 @@ class BookmarksRepositoryImpl(
     }
 
     override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> {
-        if (remoteIDs.isEmpty()) {
-            return emptyMap()
-        }
-
-        return withContext(Dispatchers.IO) {
-            val existentIDs = mutableSetOf<String>()
-            remoteIDs.chunked(SQLITE_MAX_BIND_PARAMETERS).forEach { chunk ->
-                existentIDs.addAll(
-                    bookmarkQueries.value.checkRemoteIDsExistence(chunk)
-                        .executeAsList()
-                        .mapNotNull { it.remote_id }
-                )
-            }
-
-            remoteIDs.associateWith { existentIDs.contains(it) }
+        return buildRemoteResourceExistenceMap(remoteIDs) { chunk ->
+            bookmarkQueries.value.checkRemoteIDsExistence(chunk)
+                .executeAsList()
+                .mapNotNull { it.remote_id }
         }
     }
 

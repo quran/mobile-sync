@@ -14,8 +14,6 @@ import com.quran.shared.syncengine.preprocessing.CollectionsLocalMutationsPrepro
 import com.quran.shared.syncengine.preprocessing.CollectionsRemoteMutationsPreprocessor
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlin.time.Instant
 
@@ -83,28 +81,7 @@ internal class CollectionsSyncAdapter(
     private fun parseRemoteMutations(
         mutations: List<SyncMutation>
     ): List<RemoteModelMutation<SyncCollection>> {
-        return mutations.mapNotNull { mutation ->
-            if (!mutation.resource.equals(resourceName, ignoreCase = true)) {
-                return@mapNotNull null
-            }
-            val resourceId = mutation.requireSimpleResourceRemoteId(resourceName)
-            val collection = mutation.toSyncCollection(logger) ?: return@mapNotNull null
-            RemoteModelMutation(
-                model = collection,
-                remoteID = resourceId,
-                mutation = mutation.mutation
-            )
-        }
-    }
-
-    private fun toSyncMutation(localMutation: LocalModelMutation<SyncCollection>): SyncMutation {
-        return SyncMutation(
-            resource = resourceName,
-            resourceId = localMutation.remoteID,
-            mutation = localMutation.mutation,
-            data = if (localMutation.mutation == Mutation.DELETED) null else localMutation.model.toResourceData(),
-            timestamp = localMutation.model.lastModified.toEpochMilliseconds()
-        )
+        return mutations.mapSimpleRemoteModelMutations(resourceName) { it.toSyncCollection(logger) }
     }
 
     private fun preprocessLocalMutations(
@@ -138,32 +115,6 @@ internal class CollectionsSyncAdapter(
         return resolver.resolve()
     }
 
-    private fun mapPushedMutations(
-        localMutations: List<LocalModelMutation<SyncCollection>>,
-        pushedMutations: List<SyncMutation>
-    ): List<RemoteModelMutation<SyncCollection>> {
-        validatePushedMutationCount(resourceName, localMutations.size, pushedMutations.size)
-
-        return localMutations.mapIndexed { index, localMutation ->
-            val pushedMutation = pushedMutations[index]
-            val remoteId = validatePushedMutationAck(
-                resourceName = resourceName,
-                index = index,
-                expectedRemoteId = localMutation.remoteID,
-                expectedMutation = localMutation.mutation,
-                pushedMutation = pushedMutation,
-                acknowledgedRemoteId = pushedMutation.resourceId
-            )
-
-            RemoteModelMutation(
-                model = localMutation.model,
-                remoteID = remoteId,
-                mutation = pushedMutation.mutation,
-                ack = localMutation.ack
-            )
-        }
-    }
-
     private inner class CollectionsResourceSyncPlan(
         private val localMutationsToClear: List<LocalModelMutation<SyncCollection>>,
         private val remoteMutationsToPersist: List<RemoteModelMutation<SyncCollection>>,
@@ -172,10 +123,16 @@ internal class CollectionsSyncAdapter(
         override val resourceName: String = this@CollectionsSyncAdapter.resourceName
 
         override suspend fun mutationsToPush(): List<SyncMutation> =
-            localMutationsToPush.map { toSyncMutation(it) }
+            localMutationsToPush.map {
+                it.toSyncMutation(
+                    resourceName = resourceName,
+                    resourceData = SyncCollection::toResourceData,
+                    timestamp = { model -> model.lastModified.toEpochMilliseconds() }
+                )
+            }
 
         override suspend fun complete(newToken: Long, pushedMutations: List<SyncMutation>) {
-            val mappedPushed = mapPushedMutations(localMutationsToPush, pushedMutations)
+            val mappedPushed = mapPushedModelMutations(resourceName, localMutationsToPush, pushedMutations)
             val preprocessedPushed = preprocessRemoteMutations(mappedPushed)
             val finalRemoteMutations = remoteMutationsToPersist + preprocessedPushed
             configurations.resultNotifier.didSucceed(
@@ -219,6 +176,3 @@ private fun SyncCollection.toResourceData(): JsonObject {
         put("name", collectionName)
     }
 }
-
-private fun JsonObject.stringOrNull(key: String): String? =
-    this[key]?.jsonPrimitive?.contentOrNull

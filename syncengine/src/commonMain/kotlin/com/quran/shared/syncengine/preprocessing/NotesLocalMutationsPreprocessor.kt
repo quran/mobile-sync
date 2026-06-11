@@ -1,7 +1,6 @@
 package com.quran.shared.syncengine.preprocessing
 
 import com.quran.shared.mutations.LocalModelMutation
-import com.quran.shared.mutations.Mutation
 import com.quran.shared.syncengine.model.SyncNote
 
 class NotesLocalMutationsPreprocessor {
@@ -14,15 +13,7 @@ class NotesLocalMutationsPreprocessor {
     fun preprocess(
         localMutations: List<LocalModelMutation<SyncNote>>
     ): List<LocalModelMutation<SyncNote>> {
-        localMutations.forEach { mutation ->
-            if (mutation.mutation == Mutation.DELETED && mutation.remoteID == null) {
-                throw IllegalArgumentException(
-                    "Note deletion without remote ID is not allowed. " +
-                        "Mutation: ${mutation.mutation}(${mutation.localID})"
-                )
-            }
-        }
-
+        localMutations.requireRemoteBackedDeletes("Note")
         return localMutations
     }
 }

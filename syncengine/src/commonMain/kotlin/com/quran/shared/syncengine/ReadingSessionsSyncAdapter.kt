@@ -12,8 +12,6 @@ import com.quran.shared.syncengine.conflict.ResourceConflict
 import com.quran.shared.syncengine.model.SyncReadingSession
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlin.time.Instant
 
@@ -48,31 +46,10 @@ internal class ReadingSessionsSyncAdapter(
         configurations.resultNotifier.didFail(message)
     }
 
-    private suspend fun parseRemoteMutations(
+    private fun parseRemoteMutations(
         mutations: List<SyncMutation>
     ): List<RemoteModelMutation<SyncReadingSession>> {
-        return mutations.mapNotNull { mutation ->
-            if (!mutation.resource.equals(resourceName, ignoreCase = true)) {
-                return@mapNotNull null
-            }
-            val resourceId = mutation.requireSimpleResourceRemoteId(resourceName)
-            val session = mutation.toSyncReadingSession(logger) ?: return@mapNotNull null
-            RemoteModelMutation(
-                model = session,
-                remoteID = resourceId,
-                mutation = mutation.mutation
-            )
-        }
-    }
-
-    private fun toSyncMutation(localMutation: LocalModelMutation<SyncReadingSession>): SyncMutation {
-        return SyncMutation(
-            resource = resourceName,
-            resourceId = localMutation.remoteID,
-            mutation = localMutation.mutation,
-            data = if (localMutation.mutation == Mutation.DELETED) null else localMutation.model.toResourceData(),
-            timestamp = localMutation.model.lastModified.toEpochMilliseconds()
-        )
+        return mutations.mapSimpleRemoteModelMutations(resourceName) { it.toSyncReadingSession(logger) }
     }
 
     private fun detectConflicts(
@@ -88,32 +65,6 @@ internal class ReadingSessionsSyncAdapter(
         return ReadingSessionsConflictResolver(conflicts).resolve()
     }
 
-    private fun mapPushedMutations(
-        localMutations: List<LocalModelMutation<SyncReadingSession>>,
-        pushedMutations: List<SyncMutation>
-    ): List<RemoteModelMutation<SyncReadingSession>> {
-        validatePushedMutationCount(resourceName, localMutations.size, pushedMutations.size)
-
-        return localMutations.mapIndexed { index, localMutation ->
-            val pushedMutation = pushedMutations[index]
-            val remoteId = validatePushedMutationAck(
-                resourceName = resourceName,
-                index = index,
-                expectedRemoteId = localMutation.remoteID,
-                expectedMutation = localMutation.mutation,
-                pushedMutation = pushedMutation,
-                acknowledgedRemoteId = pushedMutation.resourceId
-            )
-
-            RemoteModelMutation(
-                model = localMutation.model,
-                remoteID = remoteId,
-                mutation = pushedMutation.mutation,
-                ack = localMutation.ack
-            )
-        }
-    }
-
     private inner class ReadingSessionsResourceSyncPlan(
         private val localMutationsToClear: List<LocalModelMutation<SyncReadingSession>>,
         private val remoteMutationsToPersist: List<RemoteModelMutation<SyncReadingSession>>,
@@ -122,10 +73,16 @@ internal class ReadingSessionsSyncAdapter(
         override val resourceName: String = this@ReadingSessionsSyncAdapter.resourceName
 
         override suspend fun mutationsToPush(): List<SyncMutation> =
-            localMutationsToPush.map { toSyncMutation(it) }
+            localMutationsToPush.map {
+                it.toSyncMutation(
+                    resourceName = resourceName,
+                    resourceData = SyncReadingSession::toResourceData,
+                    timestamp = { model -> model.lastModified.toEpochMilliseconds() }
+                )
+            }
 
         override suspend fun complete(newToken: Long, pushedMutations: List<SyncMutation>) {
-            val mappedPushed = mapPushedMutations(localMutationsToPush, pushedMutations)
+            val mappedPushed = mapPushedModelMutations(resourceName, localMutationsToPush, pushedMutations)
             val finalRemoteMutations = remoteMutationsToPersist + mappedPushed
             configurations.resultNotifier.didSucceed(
                 newToken,
@@ -170,6 +127,3 @@ private fun SyncReadingSession.toResourceData(): JsonObject {
         put("verseNumber", verseNumber)
     }
 }
-
-private fun JsonObject.intOrNull(key: String): Int? =
-    this[key]?.jsonPrimitive?.intOrNull

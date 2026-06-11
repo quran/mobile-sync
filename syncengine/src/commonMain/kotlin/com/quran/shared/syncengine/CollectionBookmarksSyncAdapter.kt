@@ -20,9 +20,6 @@ import com.quran.shared.syncengine.model.remoteIdOrNull
 import com.quran.shared.syncengine.preprocessing.CollectionBookmarksRemoteMutationsPreprocessor
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlin.time.Instant
 
@@ -154,16 +151,6 @@ internal class CollectionBookmarksSyncAdapter(
         }
     }
 
-    private fun toSyncMutation(localMutation: LocalModelMutation<SyncCollectionBookmark>): SyncMutation {
-        return SyncMutation(
-            resource = resourceName,
-            resourceId = localMutation.remoteID,
-            mutation = localMutation.mutation,
-            data = localMutation.model.toResourceData(),
-            timestamp = localMutation.model.lastModified.toEpochMilliseconds()
-        )
-    }
-
     private suspend fun preprocessRemoteMutations(
         mutations: List<RemoteModelMutation<SyncCollectionBookmark>>,
         localMutations: List<LocalModelMutation<SyncCollectionBookmark>> = emptyList()
@@ -192,34 +179,28 @@ internal class CollectionBookmarksSyncAdapter(
     private fun mapPushedMutations(
         localMutations: List<LocalModelMutation<SyncCollectionBookmark>>,
         pushedMutations: List<SyncMutation>
-    ): List<RemoteModelMutation<SyncCollectionBookmark>> {
-        validatePushedMutationCount(resourceName, localMutations.size, pushedMutations.size)
-
-        return localMutations.mapIndexed { index, localMutation ->
-            val pushedMutation = pushedMutations[index]
-            val requestMutation = toSyncMutation(localMutation)
-            val remoteId = validatePushedMutationAck(
-                resourceName = resourceName,
-                index = index,
-                expectedRemoteId = localMutation.remoteID,
-                expectedMutation = localMutation.mutation,
-                pushedMutation = pushedMutation,
-                acknowledgedRemoteId = pushedMutation.acknowledgedRemoteIdFor(requestMutation)
+    ): List<RemoteModelMutation<SyncCollectionBookmark>> =
+        mapPushedModelMutations(
+            resourceName = resourceName,
+            localMutations = localMutations,
+            pushedMutations = pushedMutations,
+            acknowledgedRemoteId = { localMutation, pushedMutation ->
+                val requestMutation = localMutation.toSyncMutation(
+                    resourceName = resourceName,
+                    resourceData = SyncCollectionBookmark::toResourceData,
+                    timestamp = { model -> model.lastModified.toEpochMilliseconds() },
+                    includeDataForDeletes = true
+                )
+                pushedMutation.acknowledgedRemoteIdFor(requestMutation)
                     ?: localMutation.model.remoteIdOrNull()
-            )
-            val model = localMutation.model.withPushedBookmarkId(
-                pushedMutation = pushedMutation,
-                isValidatedDefaultCreateAck = localMutation.isDefaultCollectionBookmarkCreate()
-            )
-
-            RemoteModelMutation(
-                model = model,
-                remoteID = remoteId,
-                mutation = pushedMutation.mutation,
-                ack = localMutation.ack
-            )
-        }
-    }
+            },
+            model = { localMutation, pushedMutation ->
+                localMutation.model.withPushedBookmarkId(
+                    pushedMutation = pushedMutation,
+                    isValidatedDefaultCreateAck = localMutation.isDefaultCollectionBookmarkCreate()
+                )
+            }
+        )
 
     private inner class CollectionBookmarksResourceSyncPlan(
         private val localMutationsToClear: List<LocalModelMutation<SyncCollectionBookmark>>,
@@ -232,7 +213,14 @@ internal class CollectionBookmarksSyncAdapter(
         private var markedInFlightAcks: List<LocalMutationAck> = emptyList()
 
         override suspend fun mutationsToPush(): List<SyncMutation> =
-            localMutationsToPushForCompletion.map { toSyncMutation(it) }
+            localMutationsToPushForCompletion.map {
+                it.toSyncMutation(
+                    resourceName = resourceName,
+                    resourceData = SyncCollectionBookmark::toResourceData,
+                    timestamp = { model -> model.lastModified.toEpochMilliseconds() },
+                    includeDataForDeletes = true
+                )
+            }
 
         override suspend fun markMutationsInFlight() {
             markedInFlightAcks = configurations.localDataFetcher.markLocalMutationsInFlight(localMutationsToPush)
@@ -244,10 +232,10 @@ internal class CollectionBookmarksSyncAdapter(
                 .mapNotNull { it.collectionBookmarkCreateMarkerKey() }
                 .toSet()
             localMutationsToPushForCompletion = localMutationsToPush
-                .filterPushableCreates(markedAckKeys)
+                .filterPushableCreates(markedAckKeys) { it.collectionBookmarkCreateMarkerKey() }
                 .map { it.withIncrementedAckIfMarked(markedAckKeys) }
             localMutationsToClearForCompletion = localMutationsToClear
-                .filterClearableCreates(markedAckKeys, pushedCreateAckKeys)
+                .filterClearableCreates(markedAckKeys, pushedCreateAckKeys) { it.collectionBookmarkCreateMarkerKey() }
                 .map { it.withIncrementedAckIfMarked(markedAckKeys) }
         }
 
@@ -263,7 +251,7 @@ internal class CollectionBookmarksSyncAdapter(
             val pushedLocalMutationsToClear = mapPushedLocalMutations(localMutationsToPushForCompletion, mappedPushed)
             val pushedLocalMutationsById = pushedLocalMutationsToClear.associateBy { it.localID }
             val finalLocalMutationsToClear = localMutationsToClearForCompletion
-                .mapReplayCreatedClears(remoteMutationsToPersist)
+                .mapReplayCreatedClears(remoteMutationsToPersist) { it.conflictKey() }
                 .map { localMutation ->
                     pushedLocalMutationsById[localMutation.localID] ?: localMutation
                 }
@@ -275,9 +263,6 @@ internal class CollectionBookmarksSyncAdapter(
         }
     }
 }
-
-private fun LocalMutationAck.markerKey(): String =
-    "$localID|$resource|$facet|$observedPendingOp|$observedPendingVersion"
 
 private fun LocalMutationAck.isCollectionBookmarkCreate(): Boolean =
     resource == LocalMutationResource.COLLECTION_BOOKMARK &&
@@ -302,39 +287,6 @@ private fun LocalModelMutation<SyncCollectionBookmark>.collectionBookmarkCreateM
 private fun LocalModelMutation<SyncCollectionBookmark>.isDefaultCollectionBookmarkCreate(): Boolean =
     mutation == Mutation.CREATED && ack?.isDefaultCollectionBookmarkCreate() == true
 
-private fun List<LocalModelMutation<SyncCollectionBookmark>>.filterPushableCreates(
-    markedAckKeys: Set<String>
-): List<LocalModelMutation<SyncCollectionBookmark>> =
-    filter { mutation ->
-        val createKey = mutation.collectionBookmarkCreateMarkerKey()
-        createKey == null || createKey in markedAckKeys
-    }
-
-private fun List<LocalModelMutation<SyncCollectionBookmark>>.filterClearableCreates(
-    markedAckKeys: Set<String>,
-    pushedCreateAckKeys: Set<String>
-): List<LocalModelMutation<SyncCollectionBookmark>> =
-    filter { mutation ->
-        val createKey = mutation.collectionBookmarkCreateMarkerKey()
-        createKey == null || createKey !in pushedCreateAckKeys || createKey in markedAckKeys
-    }
-
-private fun LocalModelMutation<SyncCollectionBookmark>.withIncrementedAckIfMarked(
-    markedAckKeys: Set<String>
-): LocalModelMutation<SyncCollectionBookmark> {
-    val ack = ack ?: return this
-    if (ack.markerKey() !in markedAckKeys) {
-        return this
-    }
-    return LocalModelMutation(
-        model = model,
-        remoteID = remoteID,
-        localID = localID,
-        mutation = mutation,
-        ack = ack.copy(observedPendingVersion = ack.observedPendingVersion + 1)
-    )
-}
-
 private fun mapPushedLocalMutations(
     localMutations: List<LocalModelMutation<SyncCollectionBookmark>>,
     pushedMutations: List<RemoteModelMutation<SyncCollectionBookmark>>
@@ -349,24 +301,6 @@ private fun mapPushedLocalMutations(
         )
     }
 }
-
-private fun List<LocalModelMutation<SyncCollectionBookmark>>.mapReplayCreatedClears(
-    remoteMutationsToPersist: List<RemoteModelMutation<SyncCollectionBookmark>>
-): List<LocalModelMutation<SyncCollectionBookmark>> =
-    map { local ->
-        val replayedRemote = remoteMutationsToPersist.singleOrNull { remote ->
-            local.mutation == Mutation.CREATED &&
-                remote.mutation == Mutation.CREATED &&
-                local.model.conflictKey() == remote.model.conflictKey()
-        } ?: return@map local
-        LocalModelMutation(
-            model = replayedRemote.model,
-            remoteID = replayedRemote.remoteID,
-            localID = local.localID,
-            mutation = replayedRemote.mutation,
-            ack = local.ack
-        )
-    }
 
 private suspend fun SyncMutation.toSyncCollectionBookmark(
     logger: Logger,
@@ -516,12 +450,6 @@ private fun parseBookmarkId(resourceId: String?, collectionId: String): String? 
         null
     }
 }
-
-private fun JsonObject.stringOrNull(key: String): String? =
-    this[key]?.jsonPrimitive?.contentOrNull
-
-private fun JsonObject.intOrNull(key: String): Int? =
-    this[key]?.jsonPrimitive?.intOrNull
 
 private data class RemoteAyahBookmarkLookup(
     val id: String,

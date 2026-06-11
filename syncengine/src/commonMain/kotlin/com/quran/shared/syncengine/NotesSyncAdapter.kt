@@ -18,9 +18,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlin.time.Instant
 
@@ -88,28 +85,7 @@ internal class NotesSyncAdapter(
     private fun parseRemoteMutations(
         mutations: List<SyncMutation>
     ): List<RemoteModelMutation<SyncNote>> {
-        return mutations.mapNotNull { mutation ->
-            if (!mutation.resource.equals(resourceName, ignoreCase = true)) {
-                return@mapNotNull null
-            }
-            val resourceId = mutation.requireSimpleResourceRemoteId(resourceName)
-            val note = mutation.toSyncNote(logger) ?: return@mapNotNull null
-            RemoteModelMutation(
-                model = note,
-                remoteID = resourceId,
-                mutation = mutation.mutation
-            )
-        }
-    }
-
-    private fun toSyncMutation(localMutation: LocalModelMutation<SyncNote>): SyncMutation {
-        return SyncMutation(
-            resource = resourceName,
-            resourceId = localMutation.remoteID,
-            mutation = localMutation.mutation,
-            data = if (localMutation.mutation == Mutation.DELETED) null else localMutation.model.toResourceData(),
-            timestamp = localMutation.model.lastModified.toEpochMilliseconds()
-        )
+        return mutations.mapSimpleRemoteModelMutations(resourceName) { it.toSyncNote(logger) }
     }
 
     private fun preprocessLocalMutations(
@@ -143,32 +119,6 @@ internal class NotesSyncAdapter(
         return resolver.resolve()
     }
 
-    private fun mapPushedMutations(
-        localMutations: List<LocalModelMutation<SyncNote>>,
-        pushedMutations: List<SyncMutation>
-    ): List<RemoteModelMutation<SyncNote>> {
-        validatePushedMutationCount(resourceName, localMutations.size, pushedMutations.size)
-
-        return localMutations.mapIndexed { index, localMutation ->
-            val pushedMutation = pushedMutations[index]
-            val remoteId = validatePushedMutationAck(
-                resourceName = resourceName,
-                index = index,
-                expectedRemoteId = localMutation.remoteID,
-                expectedMutation = localMutation.mutation,
-                pushedMutation = pushedMutation,
-                acknowledgedRemoteId = pushedMutation.resourceId
-            )
-
-            RemoteModelMutation(
-                model = localMutation.model,
-                remoteID = remoteId,
-                mutation = pushedMutation.mutation,
-                ack = localMutation.ack
-            )
-        }
-    }
-
     private inner class NotesResourceSyncPlan(
         private val localMutationsToClear: List<LocalModelMutation<SyncNote>>,
         private val remoteMutationsToPersist: List<RemoteModelMutation<SyncNote>>,
@@ -177,10 +127,16 @@ internal class NotesSyncAdapter(
         override val resourceName: String = this@NotesSyncAdapter.resourceName
 
         override suspend fun mutationsToPush(): List<SyncMutation> =
-            localMutationsToPush.map { toSyncMutation(it) }
+            localMutationsToPush.map {
+                it.toSyncMutation(
+                    resourceName = resourceName,
+                    resourceData = SyncNote::toResourceData,
+                    timestamp = { model -> model.lastModified.toEpochMilliseconds() }
+                )
+            }
 
         override suspend fun complete(newToken: Long, pushedMutations: List<SyncMutation>) {
-            val mappedPushed = mapPushedMutations(localMutationsToPush, pushedMutations)
+            val mappedPushed = mapPushedModelMutations(resourceName, localMutationsToPush, pushedMutations)
             val preprocessedPushed = preprocessRemoteMutations(mappedPushed)
             val finalRemoteMutations = remoteMutationsToPersist + preprocessedPushed
             configurations.resultNotifier.didSucceed(
@@ -254,12 +210,4 @@ private fun SyncNote.toResourceData(): JsonObject {
             }
         })
     }
-}
-
-private fun JsonObject.stringOrNull(key: String): String? =
-    this[key]?.jsonPrimitive?.contentOrNull
-
-private fun JsonObject.stringListOrNull(key: String): List<String>? {
-    val jsonArray = this[key]?.jsonArray ?: return null
-    return jsonArray.mapNotNull { element -> element.jsonPrimitive.contentOrNull }
 }

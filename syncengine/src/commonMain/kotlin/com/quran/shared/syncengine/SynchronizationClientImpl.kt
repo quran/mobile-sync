@@ -2,6 +2,7 @@ package com.quran.shared.syncengine
 
 import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.Mutation
+import com.quran.shared.syncengine.model.collectionBookmarkRemoteId
 import com.quran.shared.syncengine.network.GetMutationsRequest
 import com.quran.shared.syncengine.network.MutationsResponse
 import com.quran.shared.syncengine.network.PostMutationsRequest
@@ -13,9 +14,6 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonPrimitive
 
 internal class SynchronizationClientImpl(
     private val environment: SynchronizationEnvironment,
@@ -40,30 +38,27 @@ internal class SynchronizationClientImpl(
     )
 
     override fun localDataUpdated() {
-        if (syncLifecycleGate.canStartSync()) {
-            logger.i { "Local data updated, triggering scheduler" }
-            scheduler.invoke(Trigger.LOCAL_DATA_MODIFIED)
-        } else {
-            logger.d { "Local data updated but sync lifecycle is unavailable, skipping trigger" }
-        }
+        invokeSchedulerIfAvailable(
+            trigger = Trigger.LOCAL_DATA_MODIFIED,
+            startMessage = "Local data updated, triggering scheduler",
+            skipMessage = "Local data updated but sync lifecycle is unavailable, skipping trigger"
+        )
     }
 
     override fun applicationStarted() {
-        if (syncLifecycleGate.canStartSync()) {
-            logger.i { "Application started, triggering scheduler" }
-            scheduler.invoke(Trigger.APP_REFRESH)
-        } else {
-            logger.d { "Application started but sync lifecycle is unavailable, skipping trigger" }
-        }
+        invokeSchedulerIfAvailable(
+            trigger = Trigger.APP_REFRESH,
+            startMessage = "Application started, triggering scheduler",
+            skipMessage = "Application started but sync lifecycle is unavailable, skipping trigger"
+        )
     }
 
     override fun triggerSyncImmediately() {
-        if (syncLifecycleGate.canStartSync()) {
-            logger.i { "Triggering immediate sync" }
-            scheduler.invoke(Trigger.IMMEDIATE)
-        } else {
-            logger.d { "Immediate sync requested but sync lifecycle is unavailable, skipping trigger" }
-        }
+        invokeSchedulerIfAvailable(
+            trigger = Trigger.IMMEDIATE,
+            startMessage = "Triggering immediate sync",
+            skipMessage = "Immediate sync requested but sync lifecycle is unavailable, skipping trigger"
+        )
     }
 
     override fun cancelSyncing() {
@@ -74,6 +69,19 @@ internal class SynchronizationClientImpl(
     override suspend fun cancelSyncingAndJoin() {
         logger.i { "Cancelling and draining all scheduled operations" }
         scheduler.cancelAndJoin()
+    }
+
+    private fun invokeSchedulerIfAvailable(
+        trigger: Trigger,
+        startMessage: String,
+        skipMessage: String
+    ) {
+        if (syncLifecycleGate.canStartSync()) {
+            logger.i { startMessage }
+            scheduler.invoke(trigger)
+        } else {
+            logger.d { skipMessage }
+        }
     }
 
     private suspend fun startSyncOperation() {
@@ -341,11 +349,8 @@ private fun SyncMutation.effectiveCreatedResourceId(): String? {
     val bookmarkId = data?.stringOrNull("bookmarkId")
         ?: data?.stringOrNull("bookmark_id")
     return if (!collectionId.isNullOrEmpty() && !bookmarkId.isNullOrEmpty()) {
-        "$collectionId-$bookmarkId"
+        collectionBookmarkRemoteId(collectionId, bookmarkId)
     } else {
         null
     }
 }
-
-private fun JsonObject.stringOrNull(key: String): String? =
-    this[key]?.jsonPrimitive?.contentOrNull

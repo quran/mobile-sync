@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import com.quran.shared.auth.model.AuthState
 import com.quran.shared.auth.repository.LogoutTokenCaptureException
 import com.quran.shared.auth.repository.LogoutTokenMaterial
+import com.quran.shared.auth.repository.RemoteLogoutFailure
 import com.quran.shared.auth.repository.RemoteLogoutOperation
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.di.AppScope
@@ -207,15 +208,7 @@ class SyncService internal constructor(
                 logoutRemoteCleanupFailureWarnings(failure)
             } ?: try {
                 authService.attemptRemoteLogout(tokenMaterial!!).let { failures ->
-                    failures.map { failure ->
-                        LogoutWarning(
-                            type = when (failure.operation) {
-                                RemoteLogoutOperation.REVOKE_REFRESH_TOKEN -> LogoutWarningType.REVOKE_TOKEN_FAILED
-                                RemoteLogoutOperation.END_SESSION -> LogoutWarningType.END_SESSION_FAILED
-                            },
-                            message = failure.exception.message
-                        )
-                    }
+                    failures.map { it.toLogoutWarning() }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -250,16 +243,24 @@ class SyncService internal constructor(
     }
 
     private fun logoutRemoteCleanupFailureWarnings(failure: Throwable): List<LogoutWarning> =
-        listOf(
+        RemoteLogoutOperation.entries.map { operation ->
             LogoutWarning(
-                type = LogoutWarningType.REVOKE_TOKEN_FAILED,
-                message = failure.message
-            ),
-            LogoutWarning(
-                type = LogoutWarningType.END_SESSION_FAILED,
+                type = operation.toLogoutWarningType(),
                 message = failure.message
             )
+        }
+
+    private fun RemoteLogoutFailure.toLogoutWarning(): LogoutWarning =
+        LogoutWarning(
+            type = operation.toLogoutWarningType(),
+            message = exception.message
         )
+
+    private fun RemoteLogoutOperation.toLogoutWarningType(): LogoutWarningType =
+        when (this) {
+            RemoteLogoutOperation.REVOKE_REFRESH_TOKEN -> LogoutWarningType.REVOKE_TOKEN_FAILED
+            RemoteLogoutOperation.END_SESSION -> LogoutWarningType.END_SESSION_FAILED
+        }
 
     private suspend fun <T> mutatingCall(
         errorMessage: String,

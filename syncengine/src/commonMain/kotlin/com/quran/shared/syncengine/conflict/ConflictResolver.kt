@@ -2,23 +2,8 @@ package com.quran.shared.syncengine.conflict
 
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
-import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.syncengine.model.SyncBookmark
 import com.quran.shared.syncengine.model.conflictKey
-
-// region: Result
-data class ConflictResolutionResult<Model>(
-    val mutationsToPersist: List<RemoteModelMutation<Model>>,
-    val mutationsToPush: List<LocalModelMutation<Model>>
-)
-
-private fun <Model> ConflictResolutionResult<Model>.mergeWith(other: ConflictResolutionResult<Model>): ConflictResolutionResult<Model> {
-    return ConflictResolutionResult(
-        mutationsToPersist = this.mutationsToPersist + other.mutationsToPersist,
-        mutationsToPush = this.mutationsToPush + other.mutationsToPush
-    )
-}
-// endregion:
 
 /**
  * Resolves conflicts between local and remote mutations for bookmarks.
@@ -38,59 +23,30 @@ class ConflictResolver(private val conflicts: List<ResourceConflict<SyncBookmark
      * @throws IllegalArgumentException when illogical conflict scenarios are detected
      */
     fun resolve(): ConflictResolutionResult<SyncBookmark> {
-        return if (conflicts.isNotEmpty()) {
-            conflicts.map { processConflict(it) }
-                .reduce { one, other -> one.mergeWith(other) }
-        } else {
-            ConflictResolutionResult(listOf(), listOf())
-        }
+        return conflicts
+            .map { processConflict(it) }
+            .mergeConflictResolutionResults()
     }
 
     private fun processConflict(resourceConflict: ResourceConflict<SyncBookmark>): ConflictResolutionResult<SyncBookmark> {
         // Illogical scenarios
-        if (resourceConflict.mustHave(Mutation.CREATED, MutationSide.LOCAL)
-            .and(Mutation.DELETED, MutationSide.REMOTE)
-            .only()) {
-            throw IllegalArgumentException(
-                "Illogical scenario detected: Local creation conflicts with remote deletion. " +
-                "This indicates the two sides were not in sync. " +
-                "Local mutations: ${resourceConflict.localMutations.map { "${it.mutation}(${it.localID})" }}, " +
-                "Remote mutations: ${resourceConflict.remoteMutations.map { "${it.mutation}(${it.remoteID})" }}"
-            )
+        if (resourceConflict.hasOnly(local = listOf(Mutation.CREATED), remote = listOf(Mutation.DELETED))) {
+            throw resourceConflict.illogicalConflict("Local creation conflicts with remote deletion")
         }
 
         resourceConflict.resolveLocalDeleteOverRemoteCreateEcho()?.let { return it }
 
-        if (resourceConflict.mustHave(Mutation.DELETED, MutationSide.LOCAL)
-            .and(Mutation.CREATED, MutationSide.REMOTE)
-            .only()) {
-            throw IllegalArgumentException(
-                "Illogical scenario detected: Local deletion conflicts with remote creation. " +
-                "This indicates the two sides were not in sync. " +
-                "Local mutations: ${resourceConflict.localMutations.map { "${it.mutation}(${it.localID})" }}, " +
-                "Remote mutations: ${resourceConflict.remoteMutations.map { "${it.mutation}(${it.remoteID})" }}"
-            )
+        if (resourceConflict.hasOnly(local = listOf(Mutation.DELETED), remote = listOf(Mutation.CREATED))) {
+            throw resourceConflict.illogicalConflict("Local deletion conflicts with remote creation")
         }
         
         // Handling conflicts
         resolveReadingCreateConflict(resourceConflict)?.let { return it }
 
-        if (resourceConflict.mustHave(Mutation.CREATED, MutationSide.BOTH).only() ||
-            resourceConflict.mustHave(Mutation.DELETED, MutationSide.BOTH).only() ||
-            resourceConflict.mustHave(Mutation.DELETED, MutationSide.BOTH)
-                .and(Mutation.CREATED, MutationSide.REMOTE)
-                .only() ||
-            resourceConflict.mustHave(Mutation.CREATED, MutationSide.BOTH)
-                .and(Mutation.DELETED, MutationSide.BOTH)
-                .only()) {
-            return ConflictResolutionResult(
-                mutationsToPush = listOf(),
-                mutationsToPersist = resourceConflict.remoteMutations
-            )
+        if (resourceConflict.remoteWinsByPolicy()) {
+            return persistRemoteMutations(resourceConflict.remoteMutations)
         }
-        else if (resourceConflict.mustHave(Mutation.DELETED, MutationSide.BOTH)
-            .and(Mutation.CREATED, MutationSide.LOCAL)
-            .only()) {
+        else if (resourceConflict.localCreateAfterSharedDeleteWinsByPolicy()) {
             return ConflictResolutionResult(
                 mutationsToPush = resourceConflict.localMutations.filter { it.mutation == Mutation.CREATED },
                 mutationsToPersist = resourceConflict.remoteMutations
@@ -99,11 +55,7 @@ class ConflictResolver(private val conflicts: List<ResourceConflict<SyncBookmark
         else {
             // This shouldn't happen if ConflictDetector is working correctly
             // Throw an error instead of returning empty result as fallback
-            throw IllegalArgumentException(
-                "Unexpected conflict scenario detected. " +
-                "Local mutations: ${resourceConflict.localMutations.map { "${it.mutation}(${it.localID})" }}, " +
-                "Remote mutations: ${resourceConflict.remoteMutations.map { "${it.mutation}(${it.remoteID})" }}"
-            )
+            throw resourceConflict.unexpectedConflict()
         }
     }
 
@@ -122,13 +74,7 @@ class ConflictResolver(private val conflicts: List<ResourceConflict<SyncBookmark
             return if (localMutation.model.lastModified > remoteMutation.model.lastModified) {
                 ConflictResolutionResult(
                     mutationsToPush = listOf(
-                        LocalModelMutation(
-                            model = localMutation.model,
-                            remoteID = null,
-                            localID = localMutation.localID,
-                            mutation = Mutation.CREATED,
-                            ack = localMutation.ack
-                        )
+                        localMutation.copySyncState(remoteID = null, mutation = Mutation.CREATED)
                     ),
                     mutationsToPersist = listOf(remoteMutation)
                 )
@@ -139,97 +85,65 @@ class ConflictResolver(private val conflicts: List<ResourceConflict<SyncBookmark
 
         return if (localMutation.model.lastModified > remoteMutation.model.lastModified) {
             val remoteIdToUpdate = localMutation.remoteID ?: remoteMutation.remoteID
-            ConflictResolutionResult(
-                mutationsToPush = listOf(
-                    LocalModelMutation(
-                        model = localMutation.model,
-                        remoteID = remoteIdToUpdate,
-                        localID = localMutation.localID,
-                        mutation = Mutation.MODIFIED,
-                        ack = localMutation.ack
-                    )
-                ),
-                mutationsToPersist = listOf()
-            )
+            pushLocalMutation(localMutation.copySyncState(remoteID = remoteIdToUpdate, mutation = Mutation.MODIFIED))
         } else {
-            ConflictResolutionResult(
-                mutationsToPush = listOf(),
-                mutationsToPersist = listOf(remoteMutation)
-            )
+            persistRemoteMutation(remoteMutation)
         }
     }
 }
 
-// region: ConflictPredicate
+private fun LocalModelMutation<SyncBookmark>.copySyncState(
+    remoteID: String?,
+    mutation: Mutation
+): LocalModelMutation<SyncBookmark> =
+    LocalModelMutation(
+        model = model,
+        remoteID = remoteID,
+        localID = localID,
+        mutation = mutation,
+        ack = ack
+    )
 
-/**
- * A DSL that makes checking for specific conflicts clearer.
- */
-private class ConflictPredicate<Model>(
-    private val hasFailed: Boolean,
-    private val remainingConflicts: ResourceConflict<Model>
-) {
-
-    fun and(mutation: Mutation, side: MutationSide): ConflictPredicate<Model> {
-        if (hasFailed) {
-            return this
-        }
-        return remainingConflicts.mustHave(mutation, side)
-    }
-
-    fun only(): Boolean = !hasFailed
-            && remainingConflicts.remoteMutations.isEmpty()
-            && remainingConflicts.localMutations.isEmpty()
+private fun ResourceConflict<SyncBookmark>.remoteWinsByPolicy(): Boolean {
+    return hasOnly(local = listOf(Mutation.CREATED), remote = listOf(Mutation.CREATED)) ||
+        hasOnly(local = listOf(Mutation.DELETED), remote = listOf(Mutation.DELETED)) ||
+        hasOnly(local = listOf(Mutation.DELETED), remote = listOf(Mutation.DELETED, Mutation.CREATED)) ||
+        hasOnly(local = listOf(Mutation.CREATED, Mutation.DELETED), remote = listOf(Mutation.CREATED, Mutation.DELETED))
 }
 
-private enum class MutationSide {
-    REMOTE, LOCAL, BOTH
+private fun ResourceConflict<SyncBookmark>.localCreateAfterSharedDeleteWinsByPolicy(): Boolean {
+    return hasOnly(local = listOf(Mutation.DELETED, Mutation.CREATED), remote = listOf(Mutation.DELETED))
 }
 
-/**
- * Checks if this conflict group contains a specific mutation on the specified side.
- *
- * @return A predicate that can be chained with additional checks
- */
-private fun <Model> ResourceConflict<Model>.mustHave(
-    mutation: Mutation,
-    side: MutationSide
-): ConflictPredicate<Model> {
-    return when (side) {
-        MutationSide.REMOTE -> checkRemoteSide(mutation)
-        MutationSide.LOCAL -> checkLocalSide(mutation)
-        MutationSide.BOTH -> checkBothSides(mutation)
-    }
+private fun ResourceConflict<SyncBookmark>.illogicalConflict(reason: String): IllegalArgumentException {
+    return IllegalArgumentException(
+        "Illogical scenario detected: $reason. " +
+            "This indicates the two sides were not in sync. " +
+            mutationDetails()
+    )
 }
 
-private fun <Model> ResourceConflict<Model>.checkRemoteSide(mutation: Mutation): ConflictPredicate<Model> {
-    val matchingRemoteMutation = remoteMutations.firstOrNull { it.mutation == mutation }
-            return if (matchingRemoteMutation == null) {
-            ConflictPredicate(hasFailed = true, remainingConflicts = this)
-        } else {
-            val remainingGroup = ResourceConflict(
-                remoteMutations = remoteMutations.minus(matchingRemoteMutation),
-                localMutations = localMutations
-            )
-            ConflictPredicate(hasFailed = false, remainingConflicts = remainingGroup)
-        }
+private fun ResourceConflict<SyncBookmark>.unexpectedConflict(): IllegalArgumentException {
+    return IllegalArgumentException(
+        "Unexpected conflict scenario detected. " +
+            mutationDetails()
+    )
 }
 
-private fun <Model> ResourceConflict<Model>.checkLocalSide(mutation: Mutation): ConflictPredicate<Model> {
-    val matchingLocalMutation = localMutations.firstOrNull { it.mutation == mutation }
-            return if (matchingLocalMutation == null) {
-            ConflictPredicate(hasFailed = true, remainingConflicts = this)
-        } else {
-            val remainingGroup = ResourceConflict(
-                remoteMutations = remoteMutations,
-                localMutations = localMutations.minus(matchingLocalMutation)
-            )
-            ConflictPredicate(hasFailed = false, remainingConflicts = remainingGroup)
-        }
+private fun ResourceConflict<SyncBookmark>.mutationDetails(): String {
+    return "Local mutations: ${localMutations.map { "${it.mutation}(${it.localID})" }}, " +
+        "Remote mutations: ${remoteMutations.map { "${it.mutation}(${it.remoteID})" }}"
 }
 
-private fun <Model> ResourceConflict<Model>.checkBothSides(mutation: Mutation): ConflictPredicate<Model> {
-    return checkRemoteSide(mutation).and(mutation, MutationSide.LOCAL)
+private fun ResourceConflict<*>.hasOnly(
+    local: List<Mutation> = emptyList(),
+    remote: List<Mutation> = emptyList()
+): Boolean {
+    return localMutations.map { it.mutation }.hasSameMutationCountsAs(local) &&
+        remoteMutations.map { it.mutation }.hasSameMutationCountsAs(remote)
 }
 
-// endregion:
+private fun List<Mutation>.hasSameMutationCountsAs(expected: List<Mutation>): Boolean {
+    return size == expected.size &&
+        groupingBy { it }.eachCount() == expected.groupingBy { it }.eachCount()
+}

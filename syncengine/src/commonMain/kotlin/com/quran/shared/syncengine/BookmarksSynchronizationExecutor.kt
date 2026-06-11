@@ -86,11 +86,9 @@ class BookmarksSynchronizationExecutor {
         val preprocessedPushedMutations = preprocessRemoteMutations(pushResult.pushedMutations, checkLocalExistence)
         logger.d { "Pushed mutations preprocessed: ${pushResult.pushedMutations.size} -> ${preprocessedPushedMutations.size}" }
         
-        val finalRemoteMutations = combineRemoteMutations(
-            conflictDetectionResult.nonConflictingRemoteMutations,
-            conflictResolutionResult.mutationsToPersist,
-            preprocessedPushedMutations
-        )
+        val finalRemoteMutations = preprocessedPushedMutations +
+            conflictDetectionResult.nonConflictingRemoteMutations +
+            conflictResolutionResult.mutationsToPersist
         
         logger.i { "Synchronization completed successfully: ${finalRemoteMutations.size} remote mutations to persist, ${preprocessedLocalMutations.size} local mutations to clear" }
         return PipelineResult(
@@ -126,13 +124,5 @@ class BookmarksSynchronizationExecutor {
     private fun resolveConflicts(conflicts: List<ResourceConflict<SyncBookmark>>): ConflictResolutionResult<SyncBookmark> {
         val conflictResolver = ConflictResolver(conflicts)
         return conflictResolver.resolve()
-    }
-
-    private fun combineRemoteMutations(
-        otherRemoteMutations: List<RemoteModelMutation<SyncBookmark>>,
-        mutationsToPersist: List<RemoteModelMutation<SyncBookmark>>,
-        pushedMutations: List<RemoteModelMutation<SyncBookmark>>
-    ): List<RemoteModelMutation<SyncBookmark>> {
-        return pushedMutations + otherRemoteMutations + mutationsToPersist
     }
 } 

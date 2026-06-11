@@ -18,19 +18,14 @@ class BookmarksLocalMutationsPreprocessor {
      * @throws IllegalArgumentException if illogical scenarios are detected
      */
     fun preprocess(localMutations: List<LocalModelMutation<SyncBookmark>>): List<LocalModelMutation<SyncBookmark>> {
-        // Combine all mutations
         val allMutations = localMutations.map { it.mapModified() }
-        
-        // Group mutations by bookmark key
         val mutationsByKey = allMutations.groupBy { mutation ->
             mutation.model.conflictKey()
         }
         
-        val processedMutations = mutationsByKey.flatMap { (bookmarkKey, mutations) ->
+        return mutationsByKey.flatMap { (bookmarkKey, mutations) ->
             processBookmarkMutations(bookmarkKey, mutations)
         }
-        
-        return processedMutations
     }
     
     private fun processBookmarkMutations(
@@ -41,8 +36,8 @@ class BookmarksLocalMutationsPreprocessor {
         if (mutations.size > 2) {
             throw IllegalArgumentException(
                 "Illogical scenario detected: Bookmark $bookmarkKey has ${mutations.size} mutations, " +
-                "which exceeds logical limit of 2. Make sure to properly merge and aggregate" +
-                "the local mutations to reflect the final propert state of the data" +
+                "which exceeds logical limit of 2. Make sure to properly merge and aggregate " +
+                "the local mutations to reflect the final proper state of the data. " +
                 "Mutations: ${mutations.map { "${it.mutation}(${it.localID})" }}"
             )
         }

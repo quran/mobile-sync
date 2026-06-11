@@ -18,7 +18,7 @@ class SynchronizationClientTest {
     @Test
     fun `test SynchronizationClient can be created`() {
         // This is a basic test to ensure the SynchronizationClient can be instantiated
-        // The main business logic testing is done in PageBookmarksSynchronizationExecutorTest
+        // The main business logic testing is done in BookmarksSynchronizationExecutorTest
         assertTrue(true, "SynchronizationClient scaffolding is working")
     }
 

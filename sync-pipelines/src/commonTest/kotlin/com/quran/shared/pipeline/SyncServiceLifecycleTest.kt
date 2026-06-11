@@ -114,6 +114,31 @@ class SyncServiceLifecycleTest {
     }
 
     @Test
+    fun `clearAndJoin cancels auth startup work before returning`() = runTest(dispatcher) {
+        val fixture = syncServiceFixture(
+            authRepository = ServiceAuthRepository(
+                accessToken = "access-token",
+                blockFirstRefresh = true
+            )
+        )
+        advanceUntilIdle()
+        withContext(Dispatchers.Default) {
+            withTimeout(1_000) {
+                fixture.authRepository.firstRefreshStarted.await()
+            }
+        }
+
+        try {
+            fixture.clearAndJoin()
+
+            assertEquals(true, fixture.authRepository.firstRefreshCancelled.isCompleted)
+        } finally {
+            fixture.authRepository.firstRefreshCanFinish.complete(Unit)
+            advanceUntilIdle()
+        }
+    }
+
+    @Test
     fun `remote logout failures return warnings after local auth data and token are cleared`() = runTest(dispatcher) {
         val fixture = syncServiceFixture(
             authRepository = ServiceAuthRepository(
@@ -167,6 +192,7 @@ class SyncServiceLifecycleTest {
         try {
             advanceUntilIdle()
 
+            fixture.awaitResetInProgress()
             assertEquals(true, fixture.lifecycleStore.snapshot().resetInProgress)
             withContext(Dispatchers.Default) {
                 withTimeout(1_000) {
@@ -220,6 +246,7 @@ class SyncServiceLifecycleTest {
         }
         advanceUntilIdle()
 
+        fixture.awaitResetInProgress()
         assertEquals(true, fixture.lifecycleStore.snapshot().resetInProgress)
         withContext(Dispatchers.Default) {
             withTimeout(1_000) {
@@ -568,6 +595,17 @@ private class SyncServiceFixture(
 
     suspend fun clearAndJoin() {
         service.clearAndJoin()
+        authService.clearAndJoin()
+    }
+
+    suspend fun awaitResetInProgress() {
+        withContext(Dispatchers.Default) {
+            withTimeout(1_000) {
+                while (!lifecycleStore.snapshot().resetInProgress) {
+                    yield()
+                }
+            }
+        }
     }
 }
 
@@ -579,12 +617,16 @@ private class ServiceAuthRepository(
     private val throwOnLogoutTokenCapture: Boolean = false,
     private val throwOnClearLocalSession: Boolean = false,
     private val suspendLogoutTokenCapture: Boolean = false,
+    private val blockFirstRefresh: Boolean = false,
     private val blockFirstAuthHeaders: Boolean = false,
     private val remoteLogoutException: Throwable? = null,
     private val onAttemptRemoteLogout: suspend () -> Unit = {}
 ) : AuthRepository {
     val logoutTokenCaptureStarted = CompletableDeferred<Unit>()
     val logoutTokenCaptureCanFinish = CompletableDeferred<Unit>()
+    val firstRefreshStarted = CompletableDeferred<Unit>()
+    val firstRefreshCanFinish = CompletableDeferred<Unit>()
+    val firstRefreshCancelled = CompletableDeferred<Unit>()
     val firstAuthHeadersStarted = CompletableDeferred<Unit>()
     val firstAuthHeadersCanFinish = CompletableDeferred<Unit>()
     var remoteLogoutAttemptCount = 0
@@ -605,7 +647,18 @@ private class ServiceAuthRepository(
         accessToken = "access-token"
     }
 
-    override suspend fun refreshTokensIfNeeded(): Boolean = accessToken != null
+    override suspend fun refreshTokensIfNeeded(): Boolean {
+        if (blockFirstRefresh) {
+            firstRefreshStarted.complete(Unit)
+            try {
+                firstRefreshCanFinish.await()
+            } catch (e: CancellationException) {
+                firstRefreshCancelled.complete(Unit)
+                throw e
+            }
+        }
+        return accessToken != null
+    }
 
     override suspend fun logout() {
         val failures = attemptRemoteLogout(captureLogoutTokenMaterial())

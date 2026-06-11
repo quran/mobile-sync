@@ -18,60 +18,11 @@ class CollectionsConflictDetector(
 ) {
 
     fun getConflicts(): ConflictDetectionResult<SyncCollection> {
-        val remoteMutationsByKey = remoteMutations
-            .mapNotNull { mutation ->
-                mutation.model.conflictKeyOrNull()?.let { key -> key to mutation }
-            }
-            .groupBy({ it.first }, { it.second })
-        val remoteMutationsByRemoteID = remoteMutations.associateBy { it.remoteID }
-
-        val resourceConflicts = localMutations
-            .groupBy { mutation ->
-                mutation.model.conflictKeyOrNull() ?: SyncCollectionKey.LocalId(mutation.localID)
-            }
-            .mapNotNull { (collectionKey, localMutations) ->
-                val conflictingRemoteMutations = findConflictingRemoteMutations(
-                    collectionKey,
-                    localMutations,
-                    remoteMutationsByKey,
-                    remoteMutationsByRemoteID
-                )
-                if (conflictingRemoteMutations.isNotEmpty()) {
-                    ResourceConflict(
-                        localMutations = localMutations,
-                        remoteMutations = conflictingRemoteMutations
-                    )
-                } else {
-                    null
-                }
-            }
-
-        val conflictingRemoteIDs = resourceConflicts
-            .flatMap { it.remoteMutations }
-            .map { it.remoteID }
-            .toSet()
-
-        val conflictingLocalIDs = resourceConflicts
-            .flatMap { it.localMutations }
-            .map { it.localID }
-            .toSet()
-
-        return ConflictDetectionResult(
-            conflicts = resourceConflicts,
-            nonConflictingRemoteMutations = remoteMutations.filterNot { conflictingRemoteIDs.contains(it.remoteID) },
-            nonConflictingLocalMutations = localMutations.filterNot { conflictingLocalIDs.contains(it.localID) }
+        return detectKeyedConflicts(
+            remoteMutations = remoteMutations,
+            localMutations = localMutations,
+            remoteKey = { it.model.conflictKeyOrNull() },
+            localKey = { it.model.conflictKeyOrNull() ?: SyncCollectionKey.LocalId(it.localID) }
         )
-    }
-
-    private fun findConflictingRemoteMutations(
-        collectionKey: SyncCollectionKey,
-        localMutations: List<LocalModelMutation<SyncCollection>>,
-        remoteMutationsByKey: Map<SyncCollectionKey, List<RemoteModelMutation<SyncCollection>>>,
-        remoteMutationsByRemoteID: Map<String, RemoteModelMutation<SyncCollection>>
-    ): List<RemoteModelMutation<SyncCollection>> {
-        val remoteMutationsById = localMutations.mapNotNull { it.remoteID }
-            .mapNotNull { remoteMutationsByRemoteID[it] }
-
-        return (remoteMutationsByKey[collectionKey].orEmpty() + remoteMutationsById).distinct()
     }
 }

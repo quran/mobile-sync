@@ -68,17 +68,16 @@ class PostMutationsRequest(
         lastModificationDate: Long,
         authHeaders: Map<String, String>
     ): MutationsResponse {
-        logger.i { "Starting POST mutations request to $url" }
-
         val requestBody = PostMutationsRequestData(
             mutations = mutations.map { localMutation ->
-            PostMutationRequestData(
-                type = localMutation.mutation.toRequestType(),
-                resource = localMutation.resource,
-                resourceId = localMutation.resourceId,
-                data = localMutation.data
-            )
-        })
+                PostMutationRequestData(
+                    type = localMutation.mutation.toRequestType(),
+                    resource = localMutation.resource,
+                    resourceId = localMutation.resourceId,
+                    data = localMutation.data
+                )
+            }
+        )
 
         val fullUrl = "$url/v1/sync"
         logger.i { "Starting POST mutations request to $fullUrl" }

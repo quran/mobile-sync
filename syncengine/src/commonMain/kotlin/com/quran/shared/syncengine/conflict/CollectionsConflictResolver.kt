@@ -13,19 +13,6 @@ class CollectionsConflictResolver(
 ) {
 
     fun resolve(): ConflictResolutionResult<SyncCollection> {
-        if (conflicts.isEmpty()) {
-            return ConflictResolutionResult(listOf(), listOf())
-        }
-
-        val resolvedConflicts = conflicts.map { conflict ->
-            conflict.resolveLocalDeleteOverRemoteCreateEcho() ?: ConflictResolutionResult(
-                mutationsToPersist = conflict.remoteMutations,
-                mutationsToPush = emptyList()
-            )
-        }
-        return ConflictResolutionResult(
-            mutationsToPersist = resolvedConflicts.flatMap { it.mutationsToPersist },
-            mutationsToPush = resolvedConflicts.flatMap { it.mutationsToPush }
-        )
+        return resolveRemoteWinsConflicts(conflicts)
     }
 }
