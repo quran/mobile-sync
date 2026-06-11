@@ -58,6 +58,8 @@ kotlin {
         languageSettings.optIn("com.russhwolf.settings.ExperimentalSettingsApi")
         languageSettings.optIn("com.russhwolf.settings.ExperimentalSettingsImplementation")
         languageSettings.optIn("org.publicvalue.multiplatform.oidc.ExperimentalOpenIdConnect")
+        languageSettings.optIn("kotlin.experimental.ExperimentalObjCName")
+        languageSettings.optIn("kotlin.experimental.ExperimentalObjCRefinement")
         languageSettings.optIn("kotlin.time.ExperimentalTime")
     }
 

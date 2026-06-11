@@ -126,7 +126,7 @@ class AuthServiceTest {
             accessToken = "stale-access-token",
             currentUser = null
         )
-        val service = AuthService(
+        val service = AuthService.createWithSessionPublicationGuard(
             authRepository = repository,
             sessionPublicationGuard = AuthSessionPublicationGuard { false }
         )
@@ -147,7 +147,7 @@ class AuthServiceTest {
                 currentUser = null,
                 refreshResult = true
             )
-            val service = AuthService(
+            val service = AuthService.createWithSessionPublicationGuard(
                 authRepository = repository,
                 sessionPublicationGuard = AuthSessionPublicationGuard { false }
             )

@@ -10,8 +10,10 @@ import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.http.*
+import kotlin.native.HiddenFromObjC
 
 @SingleIn(AppScope::class)
+@HiddenFromObjC
 class AuthNetworkDataSource @Inject constructor(
     private val authConfig: AuthConfig,
     private val httpClient: HttpClient

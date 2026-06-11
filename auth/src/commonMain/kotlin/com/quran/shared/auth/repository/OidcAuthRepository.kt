@@ -14,6 +14,7 @@ import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.header
 import io.ktor.http.HttpHeaders
 import kotlin.io.encoding.Base64
+import kotlin.native.HiddenFromObjC
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
@@ -29,6 +30,7 @@ import org.publicvalue.multiplatform.oidc.types.remote.AccessTokenResponse
  * AuthRepository implementation that uses the OIDC library's CodeAuthFlow.
  */
 @SingleIn(AppScope::class)
+@HiddenFromObjC
 class OidcAuthRepository @Inject constructor(
     private val authConfig: AuthConfig,
     private val authStorage: AuthStorage,

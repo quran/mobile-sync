@@ -2,7 +2,6 @@ package com.quran.shared.persistence.repository.note.repository
 
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.util.PlatformDateTime
-
 import kotlinx.coroutines.flow.Flow
 
 interface NotesRepository {
