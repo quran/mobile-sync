@@ -1,6 +1,7 @@
 package com.quran.shared.pipeline
 
 import com.quran.shared.auth.model.AuthState
+import com.quran.shared.auth.model.AuthRuntimeConfig
 import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.di.AppScope
@@ -21,10 +22,20 @@ import kotlinx.coroutines.flow.StateFlow
 class SyncAuthService internal constructor(
     private val authService: AuthService,
     private val syncService: SyncService,
-    private val sessionLifecycleCoordinator: SessionLifecycleCoordinator
+    private val sessionLifecycleCoordinator: SessionLifecycleCoordinator,
+    private val authRuntimeConfig: AuthRuntimeConfig = AuthRuntimeConfig.Unconfigured
 ) {
     @NativeCoroutinesState
     val authState: StateFlow<AuthState> get() = authService.authState
+
+    /**
+     * True when this graph was initialized with usable authentication client metadata.
+     *
+     * When false, [SyncService] still supports local-first data operations, but interactive sign-in
+     * is not available for this build.
+     */
+    val isAuthenticationConfigured: Boolean
+        get() = authRuntimeConfig.isConfigured
 
     val loggedInUser: UserInfo?
         get() = (authService.authState.value as? AuthState.Success)?.userInfo

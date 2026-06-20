@@ -2,6 +2,7 @@ package com.quran.shared.pipeline.di
 
 import com.quran.shared.auth.di.AuthModule
 import com.quran.shared.auth.model.AuthConfig
+import com.quran.shared.auth.model.AuthRuntimeConfig
 import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.DriverFactory
 import com.quran.shared.persistence.di.PersistenceModule
@@ -43,7 +44,7 @@ interface AppGraph {
             @Provides driverFactory: DriverFactory,
             @Provides storage: MobileSyncStorage,
             @Provides environment: SynchronizationEnvironment,
-            @Provides authConfig: AuthConfig
+            @Provides authRuntimeConfig: AuthRuntimeConfig
         ): AppGraph
     }
 }
@@ -58,10 +59,10 @@ object SharedDependencyGraph {
         driverFactory: DriverFactory,
         storage: MobileSyncStorage,
         environment: SynchronizationEnvironment,
-        authConfig: AuthConfig
+        authRuntimeConfig: AuthRuntimeConfig
     ): AppGraph {
         return createGraphFactory<AppGraph.Factory>()
-            .create(driverFactory, storage, environment, authConfig)
+            .create(driverFactory, storage, environment, authRuntimeConfig)
             .also { instance = it }
     }
 
@@ -81,6 +82,13 @@ object SharedDependencyGraph {
         )
     }
 
+    /**
+     * Initializes the managed graph using app-level OIDC client metadata when available.
+     *
+     * Blank [clientId] values are treated as an uncredentialed open-source build: the graph still
+     * exposes [SyncService] for local-first data, while [SyncAuthService] reports authentication as
+     * unavailable and sign-in fails clearly. Non-blank client IDs keep the configured OIDC path.
+     */
     @OptIn(InternalCoroutinesApi::class)
     fun init(
         driverFactory: DriverFactory,
@@ -93,23 +101,70 @@ object SharedDependencyGraph {
             driverFactory = driverFactory,
             storage = storage,
             environment = appEnvironment.synchronizationEnvironment(),
-            authConfig = AuthConfig(
-                environment = appEnvironment.authEnvironment,
+            authRuntimeConfig = authRuntimeConfigForClientId(
+                appEnvironment = appEnvironment,
                 clientId = clientId,
                 clientSecret = clientSecret
             )
         )
     }
 
+    /**
+     * Initializes the managed graph with explicit OIDC credentials.
+     *
+     * Use this overload when the app has already constructed a valid [AuthConfig]. Blank client
+     * IDs still fail fast through [AuthConfig]; only the string-based convenience overloads
+     * automatically fall back to local-only managed mode.
+     */
     @OptIn(InternalCoroutinesApi::class)
     fun init(
         driverFactory: DriverFactory,
         storage: MobileSyncStorage,
         environment: SynchronizationEnvironment,
         authConfig: AuthConfig
+    ): AppGraph =
+        init(
+            driverFactory = driverFactory,
+            storage = storage,
+            environment = environment,
+            authRuntimeConfig = AuthRuntimeConfig.Configured(authConfig)
+        )
+
+    @OptIn(InternalCoroutinesApi::class)
+    private fun init(
+        driverFactory: DriverFactory,
+        storage: MobileSyncStorage,
+        environment: SynchronizationEnvironment,
+        authRuntimeConfig: AuthRuntimeConfig
     ): AppGraph {
         return instance ?: synchronized(lock) {
-            instance ?: doInit(driverFactory, storage, environment, authConfig)
+            instance ?: doInit(driverFactory, storage, environment, authRuntimeConfig)
         }
+    }
+}
+
+/**
+ * Converts app-provided client metadata into the auth mode used by the managed graph.
+ *
+ * The convenience graph API accepts blank client IDs so open-source builds can boot without
+ * credentials. The explicit [AuthConfig] path remains strict and should be used when callers want
+ * invalid OIDC metadata to fail immediately.
+ */
+internal fun authRuntimeConfigForClientId(
+    appEnvironment: AppEnvironment,
+    clientId: String,
+    clientSecret: String?
+): AuthRuntimeConfig {
+    val normalizedClientId = clientId.trim()
+    return if (normalizedClientId.isEmpty()) {
+        AuthRuntimeConfig.Unconfigured
+    } else {
+        AuthRuntimeConfig.Configured(
+            AuthConfig(
+                environment = appEnvironment.authEnvironment,
+                clientId = normalizedClientId,
+                clientSecret = clientSecret
+            )
+        )
     }
 }
