@@ -3,6 +3,8 @@
 package com.quran.shared.pipeline
 
 import com.quran.shared.auth.model.AuthState
+import com.quran.shared.auth.model.AuthConfig
+import com.quran.shared.auth.model.AuthRuntimeConfig
 import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.auth.repository.AuthRepository
 import com.quran.shared.auth.repository.LogoutTokenMaterial
@@ -67,6 +69,8 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.time.Instant
 
 class SyncServiceLifecycleTest {
@@ -314,6 +318,27 @@ class SyncServiceLifecycleTest {
         assertEquals(null, fixture.authRepository.getAccessToken())
         assertEquals(1, fixture.resetRepository.deleteCount)
         assertEquals(0L, fixture.tokenStore.localLastModificationDate())
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `sync auth facade reports whether authentication is configured`() = runTest(dispatcher) {
+        val fixture = syncServiceFixture()
+
+        val unconfiguredAuthFacade = SyncAuthService(
+            fixture.authService,
+            fixture.service,
+            fixture.lifecycleCoordinator
+        )
+        val configuredAuthFacade = SyncAuthService(
+            fixture.authService,
+            fixture.service,
+            fixture.lifecycleCoordinator,
+            AuthRuntimeConfig.Configured(AuthConfig(clientId = "client-id"))
+        )
+
+        assertFalse(unconfiguredAuthFacade.isAuthenticationConfigured)
+        assertTrue(configuredAuthFacade.isAuthenticationConfigured)
         fixture.clearAndJoin()
     }
 

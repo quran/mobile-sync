@@ -87,6 +87,10 @@ val graph = SharedDependencyGraph.init(
 )
 ```
 
+When `appClientId` is blank, the managed graph still initializes for local data usage. Sign-in is
+unavailable in that mode, and callers can check `graph.authService.isAuthenticationConfigured`
+before showing authentication UI.
+
 ### 3. 📦 Installation
 ```kotlin
 // auth/build.gradle.kts
@@ -98,7 +102,7 @@ plugins {
 implementation(project(":auth"))
 ```
 
-### 4. ⚙️ Platform Initialization
+### 4. ⚙️ Platform Login Setup
 
 #### **Android (`MainActivity.kt`)**
 
@@ -122,9 +126,15 @@ Do not declare or export
 If you override `AuthConfig.redirectUri` or `AuthConfig.postLogoutRedirectUri` on Android, keep
 the corresponding manifest placeholders aligned with those URIs.
 
+Graph construction does not require an Android `Activity`. Register the Activity-backed browser
+auth flow only before calling `graph.authService.login()`:
+
 ```kotlin
-val factory = AndroidCodeAuthFlowFactory(this)
-AuthFlowFactoryProvider.initialize(factory)
+if (graph.authService.isAuthenticationConfigured) {
+    val factory = AndroidCodeAuthFlowFactory(useWebView = false)
+    factory.registerActivity(activity)
+    AuthFlowFactoryProvider.initialize(factory)
+}
 ```
 
 #### **iOS (App Entry Point)**

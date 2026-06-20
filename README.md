@@ -131,17 +131,14 @@ Do not declare or export
 If you override `AuthConfig.redirectUri` or `AuthConfig.postLogoutRedirectUri` on Android, keep
 the corresponding manifest placeholders aligned with those URIs.
 
+Graph construction does not require an Android `Activity`. Build the graph from application
+context and runtime configuration:
+
 ```kotlin
-import com.quran.shared.auth.di.AuthFlowFactoryProvider
 import com.quran.shared.persistence.DriverFactory
 import com.quran.shared.pipeline.AppEnvironment
 import com.quran.shared.pipeline.di.SharedDependencyGraph
 import com.quran.shared.pipeline.storage.createMobileSyncStorage
-import org.publicvalue.multiplatform.oidc.appsupport.AndroidCodeAuthFlowFactory
-
-val authFactory = AndroidCodeAuthFlowFactory(useWebView = false)
-authFactory.registerActivity(activity)
-AuthFlowFactoryProvider.initialize(authFactory)
 
 val graph = SharedDependencyGraph.init(
     driverFactory = DriverFactory(context = applicationContext),
@@ -152,6 +149,29 @@ val graph = SharedDependencyGraph.init(
 
 val authService = graph.authService
 val syncService = graph.syncService
+```
+
+If `clientId` is blank, the same initializer creates a managed local-only graph. `SyncService`
+continues to read and write local data, while `SyncAuthService.isAuthenticationConfigured` is
+`false` and sign-in fails with an authentication-not-configured error. This lets open-source builds
+run without bundled OAuth credentials.
+
+Register the Android browser auth flow only before interactive sign-in. The registered `Activity`
+handles browser launch and redirect delivery; it is not needed for graph construction or local data
+operations.
+
+```kotlin
+import com.quran.shared.auth.di.AuthFlowFactoryProvider
+import org.publicvalue.multiplatform.oidc.appsupport.AndroidCodeAuthFlowFactory
+
+if (graph.authService.isAuthenticationConfigured) {
+    val authFactory = AndroidCodeAuthFlowFactory(useWebView = false)
+    authFactory.registerActivity(activity)
+    AuthFlowFactoryProvider.initialize(authFactory)
+}
+
+// Later, from the login UI:
+graph.authService.login()
 ```
 
 ### 2. Initialize managed app graph (iOS/Swift)

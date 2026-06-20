@@ -1,10 +1,13 @@
 package com.quran.shared.auth.di
 
 import com.quran.shared.auth.model.AuthConfig
+import com.quran.shared.auth.model.AuthRuntimeConfig
+import com.quran.shared.auth.persistence.AuthStorage
 import com.quran.shared.auth.repository.AuthRepository
+import com.quran.shared.auth.repository.AuthNetworkDataSource
 import com.quran.shared.auth.repository.OidcAuthRepository
+import com.quran.shared.auth.repository.UnconfiguredAuthRepository
 import com.quran.shared.di.AppScope
-import dev.zacsweers.metro.Binds
 import dev.zacsweers.metro.BindingContainer
 import dev.zacsweers.metro.ContributesTo
 import dev.zacsweers.metro.Provides
@@ -28,9 +31,6 @@ import org.publicvalue.multiplatform.oidc.types.CodeChallengeMethod
 @HiddenFromObjC
 abstract class AuthModule {
 
-    @Binds
-    abstract fun bindAuthRepository(impl: OidcAuthRepository): AuthRepository
-
     companion object {
         @Provides
         @SingleIn(AppScope::class)
@@ -43,7 +43,30 @@ abstract class AuthModule {
 
         @Provides
         @SingleIn(AppScope::class)
-        fun provideHttpClient(json: Json, config: AuthConfig): HttpClient {
+        fun provideAuthRepository(
+            runtimeConfig: AuthRuntimeConfig,
+            authStorage: AuthStorage,
+            json: Json
+        ): AuthRepository {
+            return when (runtimeConfig) {
+                is AuthRuntimeConfig.Configured -> {
+                    val httpClient = createHttpClient(json, runtimeConfig.config)
+                    val oidcClient = createOpenIdConnectClient(runtimeConfig.config, httpClient)
+                    OidcAuthRepository(
+                        authConfig = runtimeConfig.config,
+                        authStorage = authStorage,
+                        oidcClient = oidcClient,
+                        networkDataSource = AuthNetworkDataSource(
+                            authConfig = runtimeConfig.config,
+                            httpClient = httpClient
+                        )
+                    )
+                }
+                AuthRuntimeConfig.Unconfigured -> UnconfiguredAuthRepository(authStorage)
+            }
+        }
+
+        private fun createHttpClient(json: Json, config: AuthConfig): HttpClient {
             return HttpClient {
                 install(Logging) {
                     logger = object : Logger {
@@ -57,9 +80,7 @@ abstract class AuthModule {
             }
         }
 
-        @Provides
-        @SingleIn(AppScope::class)
-        fun provideOpenIdConnectClient(
+        private fun createOpenIdConnectClient(
             config: AuthConfig,
             httpClient: HttpClient
         ): OpenIdConnectClient {

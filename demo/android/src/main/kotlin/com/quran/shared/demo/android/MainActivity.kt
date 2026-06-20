@@ -16,8 +16,8 @@ import org.publicvalue.multiplatform.oidc.appsupport.AndroidCodeAuthFlowFactory
  * Main activity for the Android demo app.
  *
  * Key responsibilities:
- * - Initialize the AndroidCodeAuthFlowFactory for OAuth browser flow
- * - Register the factory with AuthFlowFactoryProvider for use by the auth module
+ * - Build the managed sync graph without requiring an Activity
+ * - Register the Activity-backed OAuth browser flow before interactive login
  * - Display the authentication screen
  * - Initialize and Start Sync Engine
  *
@@ -43,19 +43,22 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // Register this activity with the factory for browser auth
-        codeAuthFlowFactory.registerActivity(this)
-        
-        // Initialize the global factory provider so the auth module can access it
-        AuthFlowFactoryProvider.initialize(codeAuthFlowFactory)
+
+        val viewModel = mainViewModel
+
+        if (viewModel.isAuthenticationConfigured) {
+            // Graph construction above is Activity-free. The Activity-backed factory is only
+            // required for interactive browser login and redirect handling.
+            codeAuthFlowFactory.registerActivity(this)
+            AuthFlowFactoryProvider.initialize(codeAuthFlowFactory)
+        }
 
         setContent {
             AuthScreen(
-                viewModel = mainViewModel,
+                viewModel = viewModel,
                 onAuthenticationSuccess = {
                     println("Authentication successful!")
-                    mainViewModel.triggerSync()
+                    viewModel.triggerSync()
                 }
             )
         }

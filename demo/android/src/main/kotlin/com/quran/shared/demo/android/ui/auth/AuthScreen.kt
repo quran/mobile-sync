@@ -20,6 +20,7 @@ import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomAyah
 import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomPage
 import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomSura
 import com.quran.shared.demo.android.ui.SyncViewModel
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /**
@@ -36,6 +37,7 @@ fun AuthScreen(
     val collectionsWithBookmarks by viewModel.collectionsWithBookmarks.collectAsState(initial = emptyList())
     val notes by viewModel.notes.collectAsState(initial = emptyList())
     val readingSessions by viewModel.readingSessions.collectAsState(initial = emptyList())
+    val authenticationConfigured = viewModel.isAuthenticationConfigured
 
     val scope = rememberCoroutineScope()
     Box(
@@ -59,7 +61,11 @@ fun AuthScreen(
             )
 
             Text(
-                text = "Sign in with Quran Foundation",
+                text = if (authenticationConfigured) {
+                    "Sign in with Quran Foundation"
+                } else {
+                    "Local demo storage"
+                },
                 style = MaterialTheme.typography.bodyLarge,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(bottom = 32.dp),
@@ -69,24 +75,59 @@ fun AuthScreen(
             // Content based on auth state
             when (val state = authState) {
                 is AuthState.Idle -> {
-                    LoginButtonContent(
-                        onLoginClick = {
-                            scope.launch {
-                                try {
-                                    viewModel.login()
-                                } catch (e: Exception) {
+                    if (authenticationConfigured) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            LoginButtonContent(
+                                onLoginClick = {
+                                    scope.launch {
+                                        try {
+                                            viewModel.login()
+                                        } catch (e: Exception) {
+                                        }
+                                    }
+                                },
+                                onReauthenticateLoginClick = {
+                                    scope.launch {
+                                        try {
+                                            viewModel.loginWithReauthentication()
+                                        } catch (e: Exception) {
+                                        }
+                                    }
                                 }
-                            }
-                        },
-                        onReauthenticateLoginClick = {
-                            scope.launch {
-                                try {
-                                    viewModel.loginWithReauthentication()
-                                } catch (e: Exception) {
-                                }
-                            }
+                            )
+
+                            Spacer(modifier = Modifier.height(24.dp))
+
+                            LocalDataContent(
+                                eventScope = scope,
+                                viewModel = viewModel,
+                                userInfo = null,
+                                signedIn = false,
+                                statusMessage = "Signed out. Local changes are available before sign-in.",
+                                bookmarks = bookmarks,
+                                readingBookmark = readingBookmark,
+                                collectionsWithBookmarks = collectionsWithBookmarks,
+                                notes = notes,
+                                readingSessions = readingSessions
+                            )
                         }
-                    )
+                    } else {
+                        LocalDataContent(
+                            eventScope = scope,
+                            viewModel = viewModel,
+                            userInfo = null,
+                            signedIn = false,
+                            statusMessage = "OAuth credentials are not configured for this build.",
+                            bookmarks = bookmarks,
+                            readingBookmark = readingBookmark,
+                            collectionsWithBookmarks = collectionsWithBookmarks,
+                            notes = notes,
+                            readingSessions = readingSessions
+                        )
+                    }
                 }
 
                 is AuthState.Loading -> {
@@ -94,126 +135,17 @@ fun AuthScreen(
                 }
 
                 is AuthState.Success -> {
-                    SuccessContent(
+                    LocalDataContent(
+                        eventScope = scope,
+                        viewModel = viewModel,
                         userInfo = state.userInfo,
+                        signedIn = true,
+                        statusMessage = null,
                         bookmarks = bookmarks,
                         readingBookmark = readingBookmark,
                         collectionsWithBookmarks = collectionsWithBookmarks,
                         notes = notes,
-                        onAddAyahBookmark = {
-                            val sura = getRandomSura()
-                            val ayah = getRandomAyah(sura)
-                            scope.launch {
-                                try {
-                                    viewModel.addBookmark(sura, ayah)
-                                } catch (e: Exception) {
-                                }
-                            }
-                        },
-                        onAddReadingAyahBookmark = {
-                            val sura = getRandomSura()
-                            val ayah = getRandomAyah(sura)
-                            scope.launch {
-                                try {
-                                    viewModel.addAyahReadingBookmark(sura, ayah)
-                                } catch (e: Exception) {
-                                }
-                            }
-                        },
-                        onAddReadingPageBookmark = {
-                            val page = getRandomPage()
-                            scope.launch {
-                                try {
-                                    viewModel.addPageReadingBookmark(page)
-                                } catch (e: Exception) {
-                                }
-                            }
-                        },
-                        onDeleteBookmark = {
-                            scope.launch {
-                                try {
-                                    viewModel.deleteBookmark(it)
-                                } catch (e: Exception) {
-                                }
-                            }
-                        },
-                        onDeleteReadingBookmark = {
-                            scope.launch {
-                                try {
-                                    viewModel.deleteReadingBookmark()
-                                } catch (e: Exception) {
-                                }
-                            }
-                        },
-                        onAddCollection = { name ->
-                            scope.launch {
-                                try {
-                                    viewModel.addCollection(name)
-                                } catch (e: Exception) {
-                                }
-                            }
-                        },
-                        onDeleteCollection = { id ->
-                            scope.launch {
-                                try {
-                                    viewModel.deleteCollection(id)
-                                } catch (e: Exception) {
-                                }
-                            }
-                        },
-                        onAddNote = { body ->
-                            val sura = getRandomSura()
-                            val ayah = getRandomAyah(sura)
-                            scope.launch {
-                                try {
-                                    viewModel.addNote(
-                                        body,
-                                        sura,
-                                        ayah,
-                                        sura,
-                                        ayah
-                                    )
-                                } catch (e: Exception) {
-                                }
-                            } // Just dummy range for now
-                        },
-                        onDeleteNote = { id ->
-                            scope.launch {
-                                try {
-                                    viewModel.deleteNote(id)
-                                } catch (e: Exception) {
-                                }
-                            }
-                        },
-                        onLogout = {
-                            scope.launch {
-                                try {
-                                    viewModel.logout()
-                                } catch (e: Exception) {
-                                }
-                            }
-                        },
-                        onAddRandomBookmarkToCollection = { id ->
-                            scope.launch {
-                                try {
-                                    val sura = getRandomSura()
-                                    val ayah = getRandomAyah(sura)
-                                    viewModel.addAyahBookmarkToCollection(id, sura, ayah)
-                                } catch (e: Exception) {
-                                }
-                            }
-                        },
-                        readingSessions = readingSessions,
-                        onAddReadingSession = {
-                            val sura = getRandomSura()
-                            val ayah = getRandomAyah(sura)
-                            scope.launch {
-                                try {
-                                    viewModel.addReadingSession(sura, ayah)
-                                } catch (e: Exception) {
-                                }
-                            }
-                        }
+                        readingSessions = readingSessions
                     )
                 }
 
@@ -239,8 +171,148 @@ fun AuthScreen(
 }
 
 @Composable
-private fun SuccessContent(
+private fun LocalDataContent(
+    eventScope: CoroutineScope,
+    viewModel: SyncViewModel,
     userInfo: UserInfo?,
+    signedIn: Boolean,
+    statusMessage: String?,
+    bookmarks: List<AyahBookmark>,
+    readingBookmark: ReadingBookmark?,
+    collectionsWithBookmarks: List<CollectionWithAyahBookmarks>,
+    notes: List<Note>,
+    readingSessions: List<ReadingSession>
+) {
+    DataContent(
+        userInfo = userInfo,
+        signedIn = signedIn,
+        statusMessage = statusMessage,
+        bookmarks = bookmarks,
+        readingBookmark = readingBookmark,
+        collectionsWithBookmarks = collectionsWithBookmarks,
+        notes = notes,
+        onAddAyahBookmark = {
+            val sura = getRandomSura()
+            val ayah = getRandomAyah(sura)
+            eventScope.launch {
+                try {
+                    viewModel.addBookmark(sura, ayah)
+                } catch (e: Exception) {
+                }
+            }
+        },
+        onAddReadingAyahBookmark = {
+            val sura = getRandomSura()
+            val ayah = getRandomAyah(sura)
+            eventScope.launch {
+                try {
+                    viewModel.addAyahReadingBookmark(sura, ayah)
+                } catch (e: Exception) {
+                }
+            }
+        },
+        onAddReadingPageBookmark = {
+            val page = getRandomPage()
+            eventScope.launch {
+                try {
+                    viewModel.addPageReadingBookmark(page)
+                } catch (e: Exception) {
+                }
+            }
+        },
+        onDeleteBookmark = {
+            eventScope.launch {
+                try {
+                    viewModel.deleteBookmark(it)
+                } catch (e: Exception) {
+                }
+            }
+        },
+        onDeleteReadingBookmark = {
+            eventScope.launch {
+                try {
+                    viewModel.deleteReadingBookmark()
+                } catch (e: Exception) {
+                }
+            }
+        },
+        onAddCollection = { name ->
+            eventScope.launch {
+                try {
+                    viewModel.addCollection(name)
+                } catch (e: Exception) {
+                }
+            }
+        },
+        onDeleteCollection = { id ->
+            eventScope.launch {
+                try {
+                    viewModel.deleteCollection(id)
+                } catch (e: Exception) {
+                }
+            }
+        },
+        onAddNote = { body ->
+            val sura = getRandomSura()
+            val ayah = getRandomAyah(sura)
+            eventScope.launch {
+                try {
+                    viewModel.addNote(
+                        body,
+                        sura,
+                        ayah,
+                        sura,
+                        ayah
+                    )
+                } catch (e: Exception) {
+                }
+            }
+        },
+        onDeleteNote = { id ->
+            eventScope.launch {
+                try {
+                    viewModel.deleteNote(id)
+                } catch (e: Exception) {
+                }
+            }
+        },
+        onLogout = {
+            eventScope.launch {
+                try {
+                    viewModel.logout()
+                } catch (e: Exception) {
+                }
+            }
+        },
+        onAddRandomBookmarkToCollection = { id ->
+            eventScope.launch {
+                try {
+                    val sura = getRandomSura()
+                    val ayah = getRandomAyah(sura)
+                    viewModel.addAyahBookmarkToCollection(id, sura, ayah)
+                } catch (e: Exception) {
+                }
+            }
+        },
+        readingSessions = readingSessions,
+        onAddReadingSession = {
+            val sura = getRandomSura()
+            val ayah = getRandomAyah(sura)
+            eventScope.launch {
+                try {
+                    viewModel.addReadingSession(sura, ayah)
+                } catch (e: Exception) {
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun DataContent(
+    userInfo: UserInfo?,
+    signedIn: Boolean,
+    statusMessage: String?,
     bookmarks: List<AyahBookmark>,
     readingBookmark: ReadingBookmark?,
     collectionsWithBookmarks: List<CollectionWithAyahBookmarks>,
@@ -286,9 +358,22 @@ private fun SuccessContent(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
-                    text = "Welcome, ${userInfo?.displayName ?: "User"}!",
+                    text = if (signedIn) {
+                        "Welcome, ${userInfo?.displayName ?: "User"}!"
+                    } else {
+                        "Local data mode"
+                    },
                     style = MaterialTheme.typography.headlineSmall
                 )
+
+                if (!signedIn && statusMessage != null) {
+                    Text(
+                        text = statusMessage,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
+                        textAlign = TextAlign.Center
+                    )
+                }
 
                 userInfo?.email?.let {
                     Text(
@@ -348,11 +433,13 @@ private fun SuccessContent(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        TextButton(
-            onClick = onLogout,
-            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-        ) {
-            Text("Sign Out")
+        if (signedIn) {
+            TextButton(
+                onClick = onLogout,
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+            ) {
+                Text("Sign Out")
+            }
         }
     }
 }

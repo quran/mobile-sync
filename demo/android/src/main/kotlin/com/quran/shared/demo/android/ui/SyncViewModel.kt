@@ -20,6 +20,7 @@ class SyncViewModel(
 ) : ViewModel() {
 
     val authState: StateFlow<com.quran.shared.auth.model.AuthState> = service.authState
+    val isAuthenticationConfigured: Boolean = authService.isAuthenticationConfigured
     
     val bookmarks: Flow<List<AyahBookmark>> = service.bookmarks
     val readingBookmark: Flow<ReadingBookmark?> = service.readingBookmark
