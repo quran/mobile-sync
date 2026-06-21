@@ -17,7 +17,7 @@ class AuthNotConfiguredException : IllegalStateException(
 /**
  * Auth repository used when the managed graph is initialized without OIDC credentials.
  *
- * It keeps sync-capable apps on the managed [com.quran.shared.pipeline.SyncService] path while
+ * It keeps sync-capable apps on the managed [com.quran.shared.pipeline.QuranDataService] path while
  * making remote authentication unavailable. Sync attempts receive empty headers and no-op before
  * network work starts.
  */

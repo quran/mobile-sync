@@ -8,8 +8,8 @@ import com.quran.shared.persistence.DriverFactory
 import com.quran.shared.persistence.di.PersistenceModule
 import com.quran.shared.pipeline.AppEnvironment
 import com.quran.shared.pipeline.SyncAuthService
-import com.quran.shared.pipeline.SyncService
-import com.quran.shared.pipeline.SyncServiceModule
+import com.quran.shared.pipeline.QuranDataService
+import com.quran.shared.pipeline.QuranDataServiceModule
 import com.quran.shared.pipeline.defaultAppEnvironment
 import com.quran.shared.pipeline.storage.MobileSyncStorage
 import com.quran.shared.pipeline.storage.MobileSyncStorageModule
@@ -37,11 +37,11 @@ import kotlin.concurrent.Volatile
         PersistenceModule::class,
         AuthModule::class,
         MobileSyncStorageModule::class,
-        SyncServiceModule::class
+        QuranDataServiceModule::class
     ]
 )
 interface AppGraph {
-    val syncService: SyncService
+    val quranDataService: QuranDataService
     val authService: SyncAuthService
 
     @DependencyGraph.Factory
@@ -92,7 +92,7 @@ object SharedDependencyGraph {
      * Initializes the managed graph using app-level OIDC client metadata when available.
      *
      * Blank [clientId] values are treated as an uncredentialed open-source build: the graph still
-     * exposes [SyncService] for local-first data, while [SyncAuthService] reports authentication as
+     * exposes [QuranDataService] for local-first data, while [SyncAuthService] reports authentication as
      * unavailable and sign-in fails clearly. Non-blank client IDs keep the configured OIDC path.
      */
     @OptIn(InternalCoroutinesApi::class)

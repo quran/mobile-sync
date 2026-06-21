@@ -14,14 +14,14 @@ import kotlinx.coroutines.flow.StateFlow
 /**
  * Managed sync-graph authentication facade.
  *
- * Login state is delegated to the auth module, while logout is routed through [SyncService] so
+ * Login state is delegated to the auth module, while logout is routed through [QuranDataService] so
  * managed applications cannot bypass reset, sync drain, local data clear, and token reset work.
  */
 @Inject
 @SingleIn(AppScope::class)
 class SyncAuthService internal constructor(
     private val authService: AuthService,
-    private val syncService: SyncService,
+    private val quranDataService: QuranDataService,
     private val sessionLifecycleCoordinator: SessionLifecycleCoordinator,
     private val authRuntimeConfig: AuthRuntimeConfig = AuthRuntimeConfig.Unconfigured
 ) {
@@ -31,7 +31,7 @@ class SyncAuthService internal constructor(
     /**
      * True when this graph was initialized with usable authentication client metadata.
      *
-     * When false, [SyncService] still supports local-first data operations, but interactive sign-in
+     * When false, [QuranDataService] still supports local-first data operations, but interactive sign-in
      * is not available for this build.
      */
     val isAuthenticationConfigured: Boolean
@@ -69,7 +69,7 @@ class SyncAuthService internal constructor(
 
     @NativeCoroutines
     suspend fun logout(clearLocalData: Boolean = true): LogoutResult =
-        syncService.logout(clearLocalData)
+        quranDataService.logout(clearLocalData)
 
     fun clearError() {
         authService.clearError()

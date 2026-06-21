@@ -17,7 +17,7 @@ struct QuranSyncDemoApp: App {
     init() {
         let graph = AppContainer.graph
         _viewModel = StateObject(
-            wrappedValue: SyncViewModel(authService: graph.authService, syncService: graph.syncService)
+            wrappedValue: SyncViewModel(authService: graph.authService, quranDataService: graph.quranDataService)
         )
     }
 

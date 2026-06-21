@@ -84,9 +84,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
-class SyncServiceLifecycleTest {
+class QuranDataServiceLifecycleTest {
     private val dispatcher = StandardTestDispatcher()
-    private val fixtures = mutableListOf<SyncServiceFixture>()
+    private val fixtures = mutableListOf<QuranDataServiceFixture>()
 
     @BeforeTest
     fun setUp() {
@@ -103,14 +103,14 @@ class SyncServiceLifecycleTest {
         Dispatchers.resetMain()
     }
 
-    private fun syncServiceFixture(
+    private fun quranDataServiceFixture(
         authRepository: ServiceAuthRepository = ServiceAuthRepository(),
         resetRepository: ServiceResetRepository = ServiceResetRepository(),
         lifecycleStore: SettingsSessionLifecycleStateStore =
             SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings()),
         useRecordingSyncClient: Boolean = false
-    ): SyncServiceFixture =
-        SyncServiceFixture(
+    ): QuranDataServiceFixture =
+        QuranDataServiceFixture(
             authRepository = authRepository,
             resetRepository = resetRepository,
             lifecycleStore = lifecycleStore,
@@ -119,7 +119,7 @@ class SyncServiceLifecycleTest {
 
     @Test
     fun `clearLocalData false throws exact unsupported message`() = runTest(dispatcher) {
-        val fixture = syncServiceFixture()
+        val fixture = quranDataServiceFixture()
         advanceUntilIdle()
 
         val error = assertFailsWith<UnsupportedOperationException> {
@@ -132,7 +132,7 @@ class SyncServiceLifecycleTest {
 
     @Test
     fun `clearAndJoin cancels auth startup work before returning`() = runTest(dispatcher) {
-        val fixture = syncServiceFixture(
+        val fixture = quranDataServiceFixture(
             authRepository = ServiceAuthRepository(
                 accessToken = "access-token",
                 blockFirstRefresh = true
@@ -157,7 +157,7 @@ class SyncServiceLifecycleTest {
 
     @Test
     fun `remote logout failures return warnings after local auth data and token are cleared`() = runTest(dispatcher) {
-        val fixture = syncServiceFixture(
+        val fixture = quranDataServiceFixture(
             authRepository = ServiceAuthRepository(
                 refreshToken = "refresh-token",
                 idToken = "id-token",
@@ -187,7 +187,7 @@ class SyncServiceLifecycleTest {
 
     @Test
     fun `managed logout clears published auth before waiting for sync drain`() = runTest(dispatcher) {
-        val fixture = syncServiceFixture(
+        val fixture = quranDataServiceFixture(
             authRepository = ServiceAuthRepository(
                 accessToken = "access-token",
                 refreshToken = "refresh-token",
@@ -239,7 +239,7 @@ class SyncServiceLifecycleTest {
     fun `managed logout clears published auth before waiting for active mutating write drain`() = runTest(dispatcher) {
         val activeWriteCanFinish = CompletableDeferred<Unit>()
         val activeWriteStarted = CompletableDeferred<Unit>()
-        val fixture = syncServiceFixture(
+        val fixture = quranDataServiceFixture(
             authRepository = ServiceAuthRepository(
                 accessToken = "access-token",
                 refreshToken = "refresh-token",
@@ -290,8 +290,8 @@ class SyncServiceLifecycleTest {
 
     @Test
     fun `remote logout cleanup runs only after local data auth and sync token are cleared`() = runTest(dispatcher) {
-        lateinit var fixture: SyncServiceFixture
-        fixture = syncServiceFixture(
+        lateinit var fixture: QuranDataServiceFixture
+        fixture = quranDataServiceFixture(
             authRepository = ServiceAuthRepository(
                 accessToken = "access-token",
                 refreshToken = "refresh-token",
@@ -314,7 +314,7 @@ class SyncServiceLifecycleTest {
 
     @Test
     fun `sync auth facade logout uses managed reset coordinator`() = runTest(dispatcher) {
-        val fixture = syncServiceFixture(
+        val fixture = quranDataServiceFixture(
             authRepository = ServiceAuthRepository(
                 accessToken = "access-token",
                 refreshToken = "refresh-token",
@@ -336,7 +336,7 @@ class SyncServiceLifecycleTest {
 
     @Test
     fun `sync auth facade reports whether authentication is configured`() = runTest(dispatcher) {
-        val fixture = syncServiceFixture()
+        val fixture = quranDataServiceFixture()
 
         val unconfiguredAuthFacade = SyncAuthService(
             fixture.authService,
@@ -357,7 +357,7 @@ class SyncServiceLifecycleTest {
 
     @Test
     fun `sync auth facade login throws during reset before committing tokens`() = runTest(dispatcher) {
-        val fixture = syncServiceFixture()
+        val fixture = quranDataServiceFixture()
         val authFacade = SyncAuthService(fixture.authService, fixture.service, fixture.lifecycleCoordinator)
         advanceUntilIdle()
 
@@ -374,7 +374,7 @@ class SyncServiceLifecycleTest {
 
     @Test
     fun `sync auth facade reauthentication throws during reset before committing tokens`() = runTest(dispatcher) {
-        val fixture = syncServiceFixture()
+        val fixture = quranDataServiceFixture()
         val authFacade = SyncAuthService(fixture.authService, fixture.service, fixture.lifecycleCoordinator)
         advanceUntilIdle()
 
@@ -391,7 +391,7 @@ class SyncServiceLifecycleTest {
 
     @Test
     fun `remote logout cancellation propagates instead of returning warning`() = runTest(dispatcher) {
-        val fixture = syncServiceFixture(
+        val fixture = quranDataServiceFixture(
             authRepository = ServiceAuthRepository(
                 accessToken = "access-token",
                 refreshToken = "refresh-token",
@@ -414,7 +414,7 @@ class SyncServiceLifecycleTest {
 
     @Test
     fun `logout token capture failure still clears local auth data and token`() = runTest(dispatcher) {
-        val fixture = syncServiceFixture(
+        val fixture = quranDataServiceFixture(
             authRepository = ServiceAuthRepository(
                 accessToken = "access-token",
                 refreshToken = "refresh-token",
@@ -445,7 +445,7 @@ class SyncServiceLifecycleTest {
         val settings = MapSettings().toSuspendSettings()
         val lifecycleStore = SettingsSessionLifecycleStateStore(settings)
         lifecycleStore.beginReset()
-        val fixture = syncServiceFixture(lifecycleStore = lifecycleStore)
+        val fixture = quranDataServiceFixture(lifecycleStore = lifecycleStore)
 
         repeat(10) {
             advanceUntilIdle()
@@ -466,7 +466,7 @@ class SyncServiceLifecycleTest {
         val settings = MapSettings().toSuspendSettings()
         val lifecycleStore = SettingsSessionLifecycleStateStore(settings)
         lifecycleStore.beginReset()
-        val fixture = syncServiceFixture(
+        val fixture = quranDataServiceFixture(
             authRepository = ServiceAuthRepository(
                 accessToken = "stale-access-token",
                 refreshToken = "stale-refresh-token",
@@ -493,7 +493,7 @@ class SyncServiceLifecycleTest {
 
     @Test
     fun `mutating calls throw during reset and logged out writes are allowed after reset`() = runTest(dispatcher) {
-        val fixture = syncServiceFixture()
+        val fixture = quranDataServiceFixture()
         advanceUntilIdle()
 
         fixture.lifecycleCoordinator.runManagedReset {
@@ -510,7 +510,7 @@ class SyncServiceLifecycleTest {
 
     @Test
     fun `updateCollection delegates to repository and triggers local sync`() = runTest(dispatcher) {
-        val fixture = syncServiceFixture(useRecordingSyncClient = true)
+        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
         advanceUntilIdle()
 
         val result = fixture.service.updateCollection("collection-local-id", "Updated collection")
@@ -526,7 +526,7 @@ class SyncServiceLifecycleTest {
 
     @Test
     fun `updateCollection with timestamp delegates to repository and triggers local sync`() = runTest(dispatcher) {
-        val fixture = syncServiceFixture(useRecordingSyncClient = true)
+        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
         val timestamp = Instant.fromEpochMilliseconds(42).toPlatform()
         advanceUntilIdle()
 
@@ -543,7 +543,7 @@ class SyncServiceLifecycleTest {
 
     @Test
     fun `deleteReadingSession returns false without triggering sync when nothing is deleted`() = runTest(dispatcher) {
-        val fixture = syncServiceFixture(useRecordingSyncClient = true)
+        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
         fixture.readingSessionsRepository.deleteResult = false
         advanceUntilIdle()
 
@@ -557,7 +557,7 @@ class SyncServiceLifecycleTest {
 
     @Test
     fun `deleteReadingSession returns true and triggers sync when deletion succeeds`() = runTest(dispatcher) {
-        val fixture = syncServiceFixture(useRecordingSyncClient = true)
+        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
         fixture.readingSessionsRepository.deleteResult = true
         advanceUntilIdle()
 
@@ -572,7 +572,7 @@ class SyncServiceLifecycleTest {
     @Test
     fun `reset failure leaves marker active and blocks mutating writes`() = runTest(dispatcher) {
         val resetRepository = ServiceResetRepository(failDelete = true)
-        val fixture = syncServiceFixture(resetRepository = resetRepository)
+        val fixture = quranDataServiceFixture(resetRepository = resetRepository)
         advanceUntilIdle()
 
         assertFailsWith<IllegalStateException> {
@@ -588,7 +588,7 @@ class SyncServiceLifecycleTest {
 
     @Test
     fun `local auth clear failure aborts logout and leaves reset marker active`() = runTest(dispatcher) {
-        val fixture = syncServiceFixture(
+        val fixture = quranDataServiceFixture(
             authRepository = ServiceAuthRepository(
                 accessToken = "access-token",
                 refreshToken = "refresh-token",
@@ -617,7 +617,7 @@ class SyncServiceLifecycleTest {
 
     @Test
     fun `logout blocks mutating writes while token capture is suspended`() = runTest(dispatcher) {
-        val fixture = syncServiceFixture(
+        val fixture = quranDataServiceFixture(
             authRepository = ServiceAuthRepository(
                 accessToken = "access-token",
                 refreshToken = "refresh-token",
@@ -653,7 +653,7 @@ class SyncServiceLifecycleTest {
     }
 }
 
-private class SyncServiceFixture(
+private class QuranDataServiceFixture(
     val authRepository: ServiceAuthRepository = ServiceAuthRepository(),
     val resetRepository: ServiceResetRepository = ServiceResetRepository(),
     val lifecycleStore: SettingsSessionLifecycleStateStore =
@@ -684,16 +684,16 @@ private class SyncServiceFixture(
         notesRepository = notesRepository,
         readingSessionsRepository = readingSessionsRepository
     )
-    val service = createGraph(useRecordingSyncClient).syncService
+    val service = createGraph(useRecordingSyncClient).quranDataService
 
-    private fun createGraph(useRecordingSyncClient: Boolean): SyncServiceTestGraph {
+    private fun createGraph(useRecordingSyncClient: Boolean): QuranDataServiceTestGraph {
         val factory =
             if (useRecordingSyncClient) {
-                createDynamicGraphFactory<SyncServiceTestGraph.Factory>(
+                createDynamicGraphFactory<QuranDataServiceTestGraph.Factory>(
                     ServiceSynchronizationClientBindings(syncClient)
                 )
             } else {
-                createGraphFactory<SyncServiceTestGraph.Factory>()
+                createGraphFactory<QuranDataServiceTestGraph.Factory>()
             }
         return factory.create(
             authService = authService,
@@ -724,11 +724,11 @@ private class SyncServiceFixture(
 
 @DependencyGraph(
     AppScope::class,
-    bindingContainers = [SyncServiceModule::class],
+    bindingContainers = [QuranDataServiceModule::class],
     excludes = [AuthModule::class, PersistenceModule::class, MobileSyncStorageModule::class]
 )
-internal interface SyncServiceTestGraph {
-    val syncService: SyncService
+internal interface QuranDataServiceTestGraph {
+    val quranDataService: QuranDataService
 
     @DependencyGraph.Factory
     fun interface Factory {
@@ -740,7 +740,7 @@ internal interface SyncServiceTestGraph {
             @Provides persistenceImportRepository: PersistenceImportRepository,
             @Provides syncLocalModificationDateStore: SyncLocalModificationDateStore,
             @Provides sessionLifecycleCoordinator: SessionLifecycleCoordinator
-        ): SyncServiceTestGraph
+        ): QuranDataServiceTestGraph
     }
 }
 
@@ -749,8 +749,8 @@ private class ServiceSynchronizationClientBindings(
     private val syncClient: ServiceSynchronizationClient
 ) {
     @Provides
-    fun provideSyncServiceSynchronizationClientFactory(): SyncServiceSynchronizationClientFactory =
-        SyncServiceSynchronizationClientFactory { _, _, _, _, _, _ -> syncClient }
+    fun provideQuranDataServiceSynchronizationClientFactory(): QuranDataServiceSynchronizationClientFactory =
+        QuranDataServiceSynchronizationClientFactory { _, _, _, _, _, _ -> syncClient }
 }
 
 private class ServiceAuthRepository(

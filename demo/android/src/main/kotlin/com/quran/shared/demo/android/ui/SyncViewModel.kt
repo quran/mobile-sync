@@ -2,7 +2,7 @@ package com.quran.shared.demo.android.ui
 
 import androidx.lifecycle.ViewModel
 import com.quran.shared.pipeline.SyncAuthService
-import com.quran.shared.pipeline.SyncService
+import com.quran.shared.pipeline.QuranDataService
 import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.AyahReadingBookmark
 import com.quran.shared.persistence.model.CollectionAyahBookmark
@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 class SyncViewModel(
     private val authService: SyncAuthService,
-    private val service: SyncService
+    private val service: QuranDataService
 ) : ViewModel() {
 
     val authState: StateFlow<com.quran.shared.auth.model.AuthState> = service.authState

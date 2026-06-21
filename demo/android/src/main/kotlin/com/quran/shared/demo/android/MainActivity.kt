@@ -38,7 +38,7 @@ class MainActivity : ComponentActivity() {
             clientId = BuildConfig.OAUTH_CLIENT_ID
         )
         
-        SyncViewModel(graph.authService, graph.syncService)
+        SyncViewModel(graph.authService, graph.quranDataService)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

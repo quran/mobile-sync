@@ -13,7 +13,7 @@ import com.quran.shared.pipeline.SessionLifecycleCoordinator
 import com.quran.shared.pipeline.SyncEnginePipeline
 import com.quran.shared.pipeline.SyncAuthService
 import com.quran.shared.pipeline.SyncLocalModificationDateStore
-import com.quran.shared.pipeline.SyncService
+import com.quran.shared.pipeline.QuranDataService
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -30,9 +30,9 @@ class AppGraphPublicSurfaceTest {
             "AppGraph must not expose raw auth AuthService"
         )
         assertEquals(SyncAuthService::class.java, AppGraph::class.java.getMethod("getAuthService").returnType)
-        assertEquals(SyncService::class.java, AppGraph::class.java.getMethod("getSyncService").returnType)
+        assertEquals(QuranDataService::class.java, AppGraph::class.java.getMethod("getQuranDataService").returnType)
         assertEquals(
-            setOf("getAuthService", "getSyncService"),
+            setOf("getAuthService", "getQuranDataService"),
             declaredNoArgMethods.map { method -> method.name }.toSet()
         )
     }
@@ -62,7 +62,7 @@ class AppGraphPublicSurfaceTest {
     @Test
     fun `managed facades do not expose sync pipeline or write capable repositories`() {
         val hiddenTypes = managedInternalTypes
-        val facadeMethods = listOf(SyncService::class.java, SyncAuthService::class.java).flatMap { facade ->
+        val facadeMethods = listOf(QuranDataService::class.java, SyncAuthService::class.java).flatMap { facade ->
             facade.methods.filter { method -> method.parameterCount == 0 }
         }
 

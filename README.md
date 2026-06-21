@@ -6,7 +6,7 @@ This repository contains shared modules used by Android and iOS apps for:
 - Authentication (OIDC)
 - Local persistence (SQLDelight)
 - Sync engine orchestration
-- A unified app-level service API (`SyncService`)
+- A unified managed data API (`QuranDataService`)
 
 ## Table of Contents
 - [Architecture](#architecture)
@@ -25,7 +25,7 @@ This repository contains shared modules used by Android and iOS apps for:
 ```mermaid
 flowchart LR
   UI[Android/iOS UI] --> G[AppGraph]
-  G --> S[SyncService]
+  G --> S[QuranDataService]
   G --> F[SyncAuthService]
   F --> A[Auth Module]
   S --> A
@@ -41,7 +41,7 @@ flowchart LR
 | `:auth` | OIDC login/logout, auth state, token handling |
 | `:persistence` | SQLDelight DB, repositories for bookmarks/collections/notes/reading sessions |
 | `:syncengine` | Core sync engine and scheduling |
-| `:sync-pipelines` | DI graph and `SyncService` orchestration API |
+| `:sync-pipelines` | DI graph and `QuranDataService` managed data API |
 | `:umbrella` | iOS XCFramework export (`Shared.xcframework`) |
 | `:demo:android` | Android sample app (Compose) |
 | `:demo:common` | Shared demo helpers/models |
@@ -93,13 +93,13 @@ local integrity and mutation tracking, but consumers must not mutate SQL tables 
 mode only when the database is not managed by `:sync-pipelines`.
 
 Managed sync-capable mode uses `:sync-pipelines` through `AppGraph`. In this mode, all
-user-visible data reads and writes go through `SyncService`, and authentication goes through
+user-visible data reads and writes go through `QuranDataService`, and authentication goes through
 `SyncAuthService`. Do not mix direct persistence writes with the managed sync graph. If sync may be
 enabled later for the same app data, use managed mode from day one, even while logged out.
 Logged-out managed-service writes are local-first; sync triggers no-op until the user is
 authenticated.
 
-`AppGraph` exposes only managed facades: `syncService: SyncService` and
+`AppGraph` exposes only managed facades: `quranDataService: QuranDataService` and
 `authService: SyncAuthService`. Raw write-capable persistence repositories are no longer exposed
 from `:sync-pipelines` `AppGraph`; they remain public in `:persistence` for persistence-only
 consumers. The raw `:auth` `AuthService` is hidden from `AppGraph` and wrapped by
@@ -148,10 +148,10 @@ val graph = SharedDependencyGraph.init(
 )
 
 val authService = graph.authService
-val syncService = graph.syncService
+val quranDataService = graph.quranDataService
 ```
 
-If `clientId` is blank, the same initializer creates a managed local-only graph. `SyncService`
+If `clientId` is blank, the same initializer creates a managed local-only graph. `QuranDataService`
 continues to read and write local data, while `SyncAuthService.isAuthenticationConfigured` is
 `false` and sign-in fails with an authentication-not-configured error. This lets open-source builds
 run without bundled OAuth credentials.
@@ -242,8 +242,8 @@ Core API examples:
 - Auth: use `SyncAuthService.login()`, `loginWithReauthentication()`, `logout()`, and `clearError()`
 
 Lifecycle note:
-- `SyncService` is app-scoped. Initialize once via `SharedDependencyGraph.init(...)`.
-- Prefer `SyncAuthService.logout()` for managed apps. `SyncService.logout()` remains as a compatibility delegate.
+- `QuranDataService` is app-scoped. Initialize once via `SharedDependencyGraph.init(...)`.
+- Prefer `SyncAuthService.logout()` for managed apps. `QuranDataService.logout()` remains available for callers that route auth and data lifecycle through one facade.
 - Do not clear app-scoped services from UI/view-model teardown.
 
 ### 4. App environment selection
