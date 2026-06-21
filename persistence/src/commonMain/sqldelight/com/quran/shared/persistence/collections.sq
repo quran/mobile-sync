@@ -149,7 +149,8 @@ updateCollectionName:
     is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
     modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
     pending_version = pending_version + 1
-  WHERE local_id = :id;
+  WHERE local_id = :id
+    AND deleted = 0;
 
 deleteCollection {
   DELETE FROM bookmark_collection

@@ -10,6 +10,7 @@ import com.quran.shared.auth.service.AuthService
 import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.AyahReadingBookmark
+import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.model.CollectionWithAyahBookmarks
 import com.quran.shared.persistence.model.DEFAULT_COLLECTION_ID
@@ -29,6 +30,8 @@ import com.quran.shared.persistence.repository.note.repository.NotesRepository
 import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksRepository
 import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepository
 import com.quran.shared.syncengine.AuthenticationDataFetcher
+import com.quran.shared.syncengine.LocalModificationDateFetcher
+import com.quran.shared.syncengine.SyncLifecycleGate
 import com.quran.shared.syncengine.SynchronizationClient
 import com.quran.shared.syncengine.SynchronizationEnvironment
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
@@ -51,6 +54,58 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
+ * Creates the scheduler-backed synchronization client used by [SyncService].
+ *
+ * Keeping this as a graph binding lets tests replace only the sync client creation path while
+ * leaving the service and repository dependencies wired through Metro.
+ */
+@HiddenFromObjC
+internal fun interface SyncServiceSynchronizationClientFactory {
+    /**
+     * Builds a synchronization client for the service lifecycle.
+     *
+     * @param pipeline the sync pipeline that owns resource adapters and repository bridges.
+     * @param environment the remote sync environment.
+     * @param localModificationDateFetcher reads the current local sync token.
+     * @param authenticationDataFetcher supplies fresh authentication headers for sync requests.
+     * @param syncLifecycleGate guards sync work during managed session resets.
+     * @param callback receives sync completion and error events.
+     * @return the synchronization client used for app-start, local-mutation, and immediate sync triggers.
+     */
+    fun create(
+        pipeline: SyncEnginePipeline,
+        environment: SynchronizationEnvironment,
+        localModificationDateFetcher: LocalModificationDateFetcher,
+        authenticationDataFetcher: AuthenticationDataFetcher,
+        syncLifecycleGate: SyncLifecycleGate,
+        callback: SyncEngineCallback
+    ): SynchronizationClient
+}
+
+/**
+ * Production sync client factory that delegates to [SyncEnginePipeline.setup].
+ */
+@HiddenFromObjC
+internal class DefaultSyncServiceSynchronizationClientFactory @Inject constructor() :
+    SyncServiceSynchronizationClientFactory {
+    override fun create(
+        pipeline: SyncEnginePipeline,
+        environment: SynchronizationEnvironment,
+        localModificationDateFetcher: LocalModificationDateFetcher,
+        authenticationDataFetcher: AuthenticationDataFetcher,
+        syncLifecycleGate: SyncLifecycleGate,
+        callback: SyncEngineCallback
+    ): SynchronizationClient =
+        pipeline.setup(
+            environment = environment,
+            localModificationDateFetcher = localModificationDateFetcher,
+            authenticationDataFetcher = authenticationDataFetcher,
+            syncLifecycleGate = syncLifecycleGate,
+            callback = callback
+        )
+}
+
+/**
  * Orchestrates synchronization and provides a unified data layer for the UI.
  *
  * This class must be obtained from the [com.quran.shared.pipeline.di.AppGraph] DI graph
@@ -65,7 +120,8 @@ class SyncService internal constructor(
     private val persistenceResetRepository: PersistenceResetRepository,
     private val persistenceImportRepository: PersistenceImportRepository,
     private val syncLocalModificationDateStore: SyncLocalModificationDateStore,
-    private val sessionLifecycleCoordinator: SessionLifecycleCoordinator
+    private val sessionLifecycleCoordinator: SessionLifecycleCoordinator,
+    private val syncClientFactory: SyncServiceSynchronizationClientFactory
 ) {
     val defaultCollectionId: String = DEFAULT_COLLECTION_ID
 
@@ -152,7 +208,8 @@ class SyncService internal constructor(
             }
         }
 
-        syncClient = pipeline.setup(
+        syncClient = syncClientFactory.create(
+            pipeline = pipeline,
             environment = environment,
             localModificationDateFetcher = syncLocalModificationDateStore,
             authenticationDataFetcher = authFetcher,
@@ -408,6 +465,24 @@ class SyncService internal constructor(
         }
     }
 
+    /**
+     * Deletes the reading session at the given ayah and schedules sync only when a row was removed.
+     *
+     * @param sura the sura number of the reading session to delete.
+     * @param ayah the ayah number of the reading session to delete.
+     * @return `true` when a reading session was deleted, or `false` when no matching session existed.
+     */
+    @NativeCoroutines
+    suspend fun deleteReadingSession(sura: Int, ayah: Int): Boolean {
+        return mutatingCall("Failed to delete reading session", triggerAfter = false) {
+            val deleted = readingSessionsRepository.deleteReadingSession(sura, ayah)
+            if (deleted) {
+                triggerSync()
+            }
+            deleted
+        }
+    }
+
     @NativeCoroutines
     suspend fun deleteReadingBookmark(): Boolean {
         return mutatingCall("Failed to delete current reading bookmark", triggerAfter = false) {
@@ -437,6 +512,37 @@ class SyncService internal constructor(
     suspend fun addCollection(name: String, timestamp: PlatformDateTime) {
         mutatingCall("Failed to add collection") {
             collectionsRepository.addCollection(name, timestamp)
+        }
+    }
+
+    /**
+     * Updates a collection name and schedules sync for the local mutation.
+     *
+     * @param localId the local identifier of the collection to update.
+     * @param name the new collection name.
+     * @return the updated collection.
+     * @throws IllegalArgumentException when [localId] does not identify an active collection.
+     */
+    @NativeCoroutines
+    suspend fun updateCollection(localId: String, name: String): Collection {
+        return mutatingCall("Failed to update collection") {
+            collectionsRepository.updateCollection(localId, name)
+        }
+    }
+
+    /**
+     * Updates a collection name with an explicit mutation timestamp and schedules sync.
+     *
+     * @param localId the local identifier of the collection to update.
+     * @param name the new collection name.
+     * @param timestamp the timestamp to persist for the mutation.
+     * @return the updated collection.
+     * @throws IllegalArgumentException when [localId] does not identify an active collection.
+     */
+    @NativeCoroutines
+    suspend fun updateCollection(localId: String, name: String, timestamp: PlatformDateTime): Collection {
+        return mutatingCall("Failed to update collection") {
+            collectionsRepository.updateCollection(localId, name, timestamp)
         }
     }
 

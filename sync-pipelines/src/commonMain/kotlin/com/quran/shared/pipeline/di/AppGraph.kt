@@ -9,6 +9,7 @@ import com.quran.shared.persistence.di.PersistenceModule
 import com.quran.shared.pipeline.AppEnvironment
 import com.quran.shared.pipeline.SyncAuthService
 import com.quran.shared.pipeline.SyncService
+import com.quran.shared.pipeline.SyncServiceModule
 import com.quran.shared.pipeline.defaultAppEnvironment
 import com.quran.shared.pipeline.storage.MobileSyncStorage
 import com.quran.shared.pipeline.storage.MobileSyncStorageModule
@@ -32,7 +33,12 @@ import kotlin.concurrent.Volatile
  */
 @DependencyGraph(
     AppScope::class,
-    bindingContainers = [PersistenceModule::class, AuthModule::class, MobileSyncStorageModule::class]
+    bindingContainers = [
+        PersistenceModule::class,
+        AuthModule::class,
+        MobileSyncStorageModule::class,
+        SyncServiceModule::class
+    ]
 )
 interface AppGraph {
     val syncService: SyncService

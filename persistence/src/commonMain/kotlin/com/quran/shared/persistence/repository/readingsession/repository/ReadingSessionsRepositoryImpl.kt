@@ -133,7 +133,9 @@ class ReadingSessionsRepositoryImpl(
             database.transaction {
                 val existing = readingSessionsQueries.value.getReadingSessionByLocalId(id)
                     .executeAsOneOrNull()
-                requireNotNull(existing) { "Expected reading session localId=$localId before update." }
+                require(existing?.deleted == 0L) {
+                    "Expected active reading session localId=$localId before update."
+                }
 
                 val conflicting = readingSessionsQueries.value.getReadingSessionForChapterVerse(
                     sura.toLong(),
@@ -154,6 +156,7 @@ class ReadingSessionsRepositoryImpl(
                 val record = readingSessionsQueries.value.getReadingSessionByLocalId(id)
                     .executeAsOneOrNull()
                 requireNotNull(record) { "Expected reading session localId=$localId after update." }
+                require(record.deleted == 0L) { "Expected active reading session localId=$localId after update." }
                 updatedSession = record.toReadingSession()
             }
 
@@ -163,13 +166,23 @@ class ReadingSessionsRepositoryImpl(
 
     override suspend fun deleteReadingSession(sura: Int, ayah: Int): Boolean {
         logger.i { "Deleting reading session for $sura:$ayah" }
-        withContext(Dispatchers.IO) {
-            readingSessionsQueries.value.deleteReadingSession(
-                chapter_number = sura.toLong(),
-                verse_number = ayah.toLong()
-            )
+        return withContext(Dispatchers.IO) {
+            var deleted = false
+            database.transaction {
+                val existing = readingSessionsQueries.value.getReadingSessionForChapterVerse(
+                    sura.toLong(),
+                    ayah.toLong()
+                ).executeAsOneOrNull()
+                if (existing != null) {
+                    readingSessionsQueries.value.deleteReadingSession(
+                        chapter_number = sura.toLong(),
+                        verse_number = ayah.toLong()
+                    )
+                    deleted = true
+                }
+            }
+            deleted
         }
-        return true
     }
 
     override suspend fun fetchMutatedReadingSessions(): List<LocalModelMutation<ReadingSession>> {

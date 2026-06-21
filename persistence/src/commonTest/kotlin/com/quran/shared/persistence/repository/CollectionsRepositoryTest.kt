@@ -65,6 +65,47 @@ class CollectionsRepositoryTest {
     }
 
     @Test
+    fun `updateCollection rejects deleted collection without renaming tombstone`() = runTest {
+        val collection = repository.addCollection("Favorites", timestamp(1000L))
+        repository.deleteCollection(collection.localId)
+
+        assertFailsWith<IllegalArgumentException> {
+            repository.updateCollection(collection.localId, "Renamed", timestamp(2000L))
+        }
+
+        val tombstone = database.collectionsQueries.getCollectionByLocalId(collection.localId.toLong()).executeAsOne()
+        assertEquals("Favorites", tombstone.name)
+        assertEquals(1L, tombstone.deleted)
+        assertEquals(emptyList(), repository.getAllCollections())
+        assertEquals(emptyList(), repository.fetchMutatedCollections())
+    }
+
+    @Test
+    fun `updateCollection rejects pending remote delete without advancing mutation`() = runTest {
+        database.collectionsQueries.persistRemoteCollection(
+            remote_id = "remote-collection-id",
+            name = "Favorites",
+            created_at = 1000L,
+            modified_at = 1000L
+        )
+        val collection = database.collectionsQueries.getCollectionByRemoteId("remote-collection-id").executeAsOne()
+        repository.deleteCollection(collection.local_id.toString())
+        val firstTombstone = database.collectionsQueries.getCollectionByRemoteId("remote-collection-id").executeAsOne()
+
+        assertFailsWith<IllegalArgumentException> {
+            repository.updateCollection(collection.local_id.toString(), "Renamed", timestamp(2000L))
+        }
+
+        val secondTombstone = database.collectionsQueries.getCollectionByRemoteId("remote-collection-id").executeAsOne()
+        val mutation = repository.fetchMutatedCollections().single()
+        assertEquals("Favorites", secondTombstone.name)
+        assertEquals(1L, secondTombstone.deleted)
+        assertEquals(firstTombstone.pending_version, secondTombstone.pending_version)
+        assertEquals(firstTombstone.modified_at, secondTombstone.modified_at)
+        assertEquals(Mutation.DELETED, mutation.mutation)
+    }
+
+    @Test
     fun `deleteCollection preserves timestamp for remote rows`() = runTest {
         database.collectionsQueries.persistRemoteCollection(
             remote_id = "remote-collection-id",
