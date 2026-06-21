@@ -54,13 +54,13 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
- * Creates the scheduler-backed synchronization client used by [SyncService].
+ * Creates the scheduler-backed synchronization client used by [QuranDataService].
  *
  * Keeping this as a graph binding lets tests replace only the sync client creation path while
  * leaving the service and repository dependencies wired through Metro.
  */
 @HiddenFromObjC
-internal fun interface SyncServiceSynchronizationClientFactory {
+internal fun interface QuranDataServiceSynchronizationClientFactory {
     /**
      * Builds a synchronization client for the service lifecycle.
      *
@@ -86,8 +86,8 @@ internal fun interface SyncServiceSynchronizationClientFactory {
  * Production sync client factory that delegates to [SyncEnginePipeline.setup].
  */
 @HiddenFromObjC
-internal class DefaultSyncServiceSynchronizationClientFactory @Inject constructor() :
-    SyncServiceSynchronizationClientFactory {
+internal class DefaultQuranDataServiceSynchronizationClientFactory @Inject constructor() :
+    QuranDataServiceSynchronizationClientFactory {
     override fun create(
         pipeline: SyncEnginePipeline,
         environment: SynchronizationEnvironment,
@@ -106,14 +106,16 @@ internal class DefaultSyncServiceSynchronizationClientFactory @Inject constructo
 }
 
 /**
- * Orchestrates synchronization and provides a unified data layer for the UI.
+ * Managed app-facing data facade for Quran user data.
  *
- * This class must be obtained from the [com.quran.shared.pipeline.di.AppGraph] DI graph
- * via [com.quran.shared.pipeline.di.SharedDependencyGraph]. Direct construction is not supported.
+ * Sync-capable clients use this facade for reads and writes so local persistence mutations,
+ * sync scheduling, session reset safety, and cross-resource reconciliation stay coordinated.
+ * This class must be obtained from the [com.quran.shared.pipeline.di.AppGraph] DI graph via
+ * [com.quran.shared.pipeline.di.SharedDependencyGraph]. Direct construction is not supported.
  */
 @Inject
 @SingleIn(AppScope::class)
-class SyncService internal constructor(
+class QuranDataService internal constructor(
     private val authService: AuthService,
     private val pipeline: SyncEnginePipeline,
     private val environment: SynchronizationEnvironment,
@@ -121,7 +123,7 @@ class SyncService internal constructor(
     private val persistenceImportRepository: PersistenceImportRepository,
     private val syncLocalModificationDateStore: SyncLocalModificationDateStore,
     private val sessionLifecycleCoordinator: SessionLifecycleCoordinator,
-    private val syncClientFactory: SyncServiceSynchronizationClientFactory
+    private val syncClientFactory: QuranDataServiceSynchronizationClientFactory
 ) {
     val defaultCollectionId: String = DEFAULT_COLLECTION_ID
 
@@ -145,8 +147,8 @@ class SyncService internal constructor(
     @NativeCoroutinesState
     val authState: StateFlow<AuthState> get() = authService.authState
 
-    // Cast the synchronization repository to the transactional repository
-    // This allows the Service to be the single entry point for UI
+    // Cast the synchronization repository to the transactional repository.
+    // This keeps QuranDataService as the single app-facing data entry point.
     private val bookmarksRepository = pipeline.bookmarksRepository as BookmarksRepository
     private val readingBookmarksRepository = pipeline.readingBookmarksRepository
     private val collectionsRepository = pipeline.collectionsRepository as CollectionsRepository

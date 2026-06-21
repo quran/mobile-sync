@@ -12,20 +12,20 @@ import Combine
 @MainActor
 class AuthViewModel: ObservableObject {
     private let authService: SyncAuthService
-    private let syncService: SyncService
+    private let quranDataService: QuranDataService
 
     @Published var authState: AuthState = AuthState.Idle()
 
     init(
         authService: SyncAuthService,
-        syncService: SyncService
+        quranDataService: QuranDataService
     ) {
         self.authService = authService
-        self.syncService = syncService
+        self.quranDataService = quranDataService
     }
 
     func bookmarksSequence() -> any AsyncSequence<[AyahBookmark], Error> {
-        return asyncSequence(for: syncService.bookmarks)
+        return asyncSequence(for: quranDataService.bookmarks)
     }
 
     func observeAuthState() async {

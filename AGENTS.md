@@ -10,14 +10,14 @@ Use `README.md` as the source of truth for public architecture, setup, and usage
 - OIDC authentication
 - SQLDelight-backed local persistence
 - Resource-based sync orchestration
-- A unified app-facing API through `SyncService`
+- A unified app-facing API through `QuranDataService`
 
 Core modules:
 
 - `:auth`: OIDC login/logout, auth state, token handling.
 - `:persistence`: SQLDelight DB and repositories for bookmarks, collections, notes, and reading sessions.
 - `:syncengine`: sync business logic, resource adapters, conflict resolution, Ktor networking, and scheduling.
-- `:sync-pipelines`: DI graph, storage wiring, repository adapters, and `SyncService`.
+- `:sync-pipelines`: DI graph, storage wiring, repository adapters, and `QuranDataService`.
 - `:umbrella`: iOS `Shared` XCFramework export.
 - `:demo:android`: Android Compose demo.
 - `:demo:common`: shared demo helpers/models.
@@ -61,7 +61,7 @@ Command notes:
 
 - Keep `syncengine` independent from persistence, auth, platform storage, and app UI.
 - Put integration code in `sync-pipelines`; this module bridges repositories, auth, storage, and `syncengine`.
-- Treat `SyncService` as the app-facing API. It should be obtained through `SharedDependencyGraph` / `AppGraph`, not constructed directly.
+- Treat `QuranDataService` as the app-facing API. It should be obtained through `SharedDependencyGraph` / `AppGraph`, not constructed directly.
 - Keep SQLDelight schema and mutation tracking inside `persistence`.
 - Keep public iOS exports coordinated through `umbrella`.
 
@@ -90,7 +90,7 @@ Default timings:
 ## Development Notes
 
 - Use `kotlinx.coroutines.test` and virtual time for timing-sensitive tests.
-- When adding a sync resource, update the sync model, adapter, serialization/network mapping, persistence schema/repository, `SyncEnginePipeline`, `SyncService` surface if needed, and tests.
+- When adding a sync resource, update the sync model, adapter, serialization/network mapping, persistence schema/repository, `SyncEnginePipeline`, `QuranDataService` surface if needed, and tests.
 - When changing auth or environment behavior, check `AuthConfig`, `AppEnvironment`, `SharedDependencyGraph`, storage factories, and Android manifest placeholders.
 - Android demo OAuth configuration comes from `local.properties` via `OAUTH_CLIENT_ID`.
 - Android backup exclusions for DataStore/token state are documented in `README.md`.
