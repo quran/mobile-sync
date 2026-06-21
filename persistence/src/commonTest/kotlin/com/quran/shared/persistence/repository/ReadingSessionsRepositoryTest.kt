@@ -27,6 +27,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
@@ -119,6 +120,40 @@ class ReadingSessionsRepositoryTest {
         assertEquals(Mutation.DELETED, localMutation.mutation)
         assertEquals(1L, localMutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
         assertEquals(1L, record.modified_at)
+    }
+
+    @Test
+    fun `deleteReadingSession returns false when no active row exists`() = runTest {
+        val deleted = repository.deleteReadingSession(2, 255)
+
+        assertFalse(deleted)
+        assertEquals(emptyList(), repository.getReadingSessions())
+        assertEquals(emptyList(), repository.fetchMutatedReadingSessions())
+    }
+
+    @Test
+    fun `deleteReadingSession returns false for already deleted row without advancing mutation`() = runTest {
+        database.reading_sessionsQueries.persistRemoteReadingSession(
+            remote_id = "remote-reading-session-id",
+            chapter_number = 2L,
+            verse_number = 255L,
+            created_at = 1L,
+            modified_at = 1L
+        )
+        assertTrue(repository.deleteReadingSession(2, 255))
+        val firstTombstone = database.reading_sessionsQueries
+            .getReadingSessionByRemoteId("remote-reading-session-id")
+            .executeAsOne()
+
+        val deletedAgain = repository.deleteReadingSession(2, 255)
+
+        val secondTombstone = database.reading_sessionsQueries
+            .getReadingSessionByRemoteId("remote-reading-session-id")
+            .executeAsOne()
+        assertFalse(deletedAgain)
+        assertEquals(firstTombstone.pending_version, secondTombstone.pending_version)
+        assertEquals(firstTombstone.modified_at, secondTombstone.modified_at)
+        assertEquals(1, repository.fetchMutatedReadingSessions().size)
     }
 
     @Test
@@ -232,6 +267,65 @@ class ReadingSessionsRepositoryTest {
         assertEquals(2L, sourceRecord.chapter_number)
         assertEquals(255L, sourceRecord.verse_number)
         assertEquals(target.localId.toLong(), targetRecord.local_id)
+    }
+
+    @Test
+    fun `updateReadingSession rejects deleted tombstones without resurrecting them`() = runTest {
+        database.reading_sessionsQueries.persistRemoteReadingSession(
+            remote_id = "remote-reading-session-id",
+            chapter_number = 2L,
+            verse_number = 255L,
+            created_at = 1000L,
+            modified_at = 1000L
+        )
+        val original = database.reading_sessionsQueries.getReadingSessionForChapterVerse(2L, 255L)
+            .executeAsOne()
+        assertTrue(repository.deleteReadingSession(2, 255))
+        val tombstone = database.reading_sessionsQueries
+            .getReadingSessionByRemoteId("remote-reading-session-id")
+            .executeAsOne()
+
+        assertFailsWith<IllegalArgumentException> {
+            repository.updateReadingSession(original.local_id.toString(), 3, 10)
+        }
+
+        val unchanged = database.reading_sessionsQueries
+            .getReadingSessionByRemoteId("remote-reading-session-id")
+            .executeAsOne()
+        assertEquals(1L, unchanged.deleted)
+        assertEquals(1L, unchanged.is_edited)
+        assertEquals(2L, unchanged.chapter_number)
+        assertEquals(255L, unchanged.verse_number)
+        assertEquals(tombstone.pending_version, unchanged.pending_version)
+        assertEquals(tombstone.modified_at, unchanged.modified_at)
+
+        val localMutation = repository.fetchMutatedReadingSessions().single()
+        assertEquals(Mutation.DELETED, localMutation.mutation)
+        assertEquals("remote-reading-session-id", localMutation.remoteID)
+    }
+
+    @Test
+    fun `updateReadingSession rejects deleted local-created tombstones without resurrecting them`() = runTest {
+        val created = repository.addReadingSession(2, 255)
+        assertTrue(repository.deleteReadingSession(2, 255))
+        val tombstone = database.reading_sessionsQueries
+            .getReadingSessionByLocalId(created.localId.toLong())
+            .executeAsOne()
+
+        assertFailsWith<IllegalArgumentException> {
+            repository.updateReadingSession(created.localId, 3, 10)
+        }
+
+        val unchanged = database.reading_sessionsQueries
+            .getReadingSessionByLocalId(created.localId.toLong())
+            .executeAsOne()
+        assertEquals(1L, unchanged.deleted)
+        assertEquals(0L, unchanged.is_edited)
+        assertEquals(2L, unchanged.chapter_number)
+        assertEquals(255L, unchanged.verse_number)
+        assertEquals(tombstone.pending_version, unchanged.pending_version)
+        assertEquals(tombstone.modified_at, unchanged.modified_at)
+        assertEquals(emptyList(), repository.fetchMutatedReadingSessions())
     }
 
     @Test

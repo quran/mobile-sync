@@ -12,6 +12,8 @@ import com.quran.shared.auth.repository.RemoteLogoutFailure
 import com.quran.shared.auth.repository.RemoteLogoutOperation
 import com.quran.shared.auth.service.AuthSessionPublicationGuard
 import com.quran.shared.auth.service.AuthService
+import com.quran.shared.auth.di.AuthModule
+import com.quran.shared.di.AppScope
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.LocalMutationAck
 import com.quran.shared.mutations.RemoteModelMutation
@@ -22,6 +24,7 @@ import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.input.RemoteNote
 import com.quran.shared.persistence.input.RemoteReadingSession
+import com.quran.shared.persistence.di.PersistenceModule
 import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.AyahReadingBookmark
 import com.quran.shared.persistence.model.Collection
@@ -44,10 +47,18 @@ import com.quran.shared.persistence.repository.note.repository.NotesSynchronizat
 import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksRepository
 import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepository
 import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsSynchronizationRepository
+import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.toPlatform
+import com.quran.shared.syncengine.SynchronizationClient
 import com.quran.shared.syncengine.SynchronizationEnvironment
 import com.russhwolf.settings.MapSettings
 import com.russhwolf.settings.coroutines.toSuspendSettings
+import com.quran.shared.pipeline.storage.MobileSyncStorageModule
+import dev.zacsweers.metro.BindingContainer
+import dev.zacsweers.metro.DependencyGraph
+import dev.zacsweers.metro.Provides
+import dev.zacsweers.metro.createDynamicGraphFactory
+import dev.zacsweers.metro.createGraphFactory
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -96,12 +107,14 @@ class SyncServiceLifecycleTest {
         authRepository: ServiceAuthRepository = ServiceAuthRepository(),
         resetRepository: ServiceResetRepository = ServiceResetRepository(),
         lifecycleStore: SettingsSessionLifecycleStateStore =
-            SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings())
+            SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings()),
+        useRecordingSyncClient: Boolean = false
     ): SyncServiceFixture =
         SyncServiceFixture(
             authRepository = authRepository,
             resetRepository = resetRepository,
-            lifecycleStore = lifecycleStore
+            lifecycleStore = lifecycleStore,
+            useRecordingSyncClient = useRecordingSyncClient
         ).also { fixtures += it }
 
     @Test
@@ -496,6 +509,67 @@ class SyncServiceLifecycleTest {
     }
 
     @Test
+    fun `updateCollection delegates to repository and triggers local sync`() = runTest(dispatcher) {
+        val fixture = syncServiceFixture(useRecordingSyncClient = true)
+        advanceUntilIdle()
+
+        val result = fixture.service.updateCollection("collection-local-id", "Updated collection")
+
+        assertEquals(Collection("Updated collection", testTimestamp(), "collection-local-id"), result)
+        assertEquals(
+            listOf(CollectionUpdateCall("collection-local-id", "Updated collection", null)),
+            fixture.collectionsRepository.updateCalls
+        )
+        assertEquals(1, fixture.syncClient.localDataUpdatedCount)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `updateCollection with timestamp delegates to repository and triggers local sync`() = runTest(dispatcher) {
+        val fixture = syncServiceFixture(useRecordingSyncClient = true)
+        val timestamp = Instant.fromEpochMilliseconds(42).toPlatform()
+        advanceUntilIdle()
+
+        val result = fixture.service.updateCollection("collection-local-id", "Updated collection", timestamp)
+
+        assertEquals(Collection("Updated collection", timestamp, "collection-local-id"), result)
+        assertEquals(
+            listOf(CollectionUpdateCall("collection-local-id", "Updated collection", timestamp)),
+            fixture.collectionsRepository.updateCalls
+        )
+        assertEquals(1, fixture.syncClient.localDataUpdatedCount)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `deleteReadingSession returns false without triggering sync when nothing is deleted`() = runTest(dispatcher) {
+        val fixture = syncServiceFixture(useRecordingSyncClient = true)
+        fixture.readingSessionsRepository.deleteResult = false
+        advanceUntilIdle()
+
+        val result = fixture.service.deleteReadingSession(2, 255)
+
+        assertFalse(result)
+        assertEquals(listOf(ReadingSessionDeleteCall(2, 255)), fixture.readingSessionsRepository.deleteCalls)
+        assertEquals(0, fixture.syncClient.localDataUpdatedCount)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `deleteReadingSession returns true and triggers sync when deletion succeeds`() = runTest(dispatcher) {
+        val fixture = syncServiceFixture(useRecordingSyncClient = true)
+        fixture.readingSessionsRepository.deleteResult = true
+        advanceUntilIdle()
+
+        val result = fixture.service.deleteReadingSession(2, 255)
+
+        assertTrue(result)
+        assertEquals(listOf(ReadingSessionDeleteCall(2, 255)), fixture.readingSessionsRepository.deleteCalls)
+        assertEquals(1, fixture.syncClient.localDataUpdatedCount)
+        fixture.clearAndJoin()
+    }
+
+    @Test
     fun `reset failure leaves marker active and blocks mutating writes`() = runTest(dispatcher) {
         val resetRepository = ServiceResetRepository(failDelete = true)
         val fixture = syncServiceFixture(resetRepository = resetRepository)
@@ -583,17 +657,19 @@ private class SyncServiceFixture(
     val authRepository: ServiceAuthRepository = ServiceAuthRepository(),
     val resetRepository: ServiceResetRepository = ServiceResetRepository(),
     val lifecycleStore: SettingsSessionLifecycleStateStore =
-        SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings())
+        SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings()),
+    useRecordingSyncClient: Boolean = false
 ) {
     val tokenStore = SyncSettingsLocalModificationDateStore(MapSettings().toSuspendSettings())
     val lifecycleCoordinator = SessionLifecycleCoordinator(lifecycleStore)
     val bookmarksRepository = ServiceBookmarksRepository()
     private val readingBookmarksRepository = ServiceReadingBookmarksRepository()
-    private val collectionsRepository = ServiceCollectionsRepository()
+    val collectionsRepository = ServiceCollectionsRepository()
     private val collectionBookmarksRepository = ServiceCollectionBookmarksRepository()
     private val notesRepository = ServiceNotesRepository()
-    private val readingSessionsRepository = ServiceReadingSessionsRepository()
+    val readingSessionsRepository = ServiceReadingSessionsRepository()
     private val importRepository = ServiceImportRepository()
+    val syncClient = ServiceSynchronizationClient()
     val authService = AuthService.createWithSessionPublicationGuard(
         authRepository = authRepository,
         sessionPublicationGuard = AuthSessionPublicationGuard {
@@ -608,15 +684,27 @@ private class SyncServiceFixture(
         notesRepository = notesRepository,
         readingSessionsRepository = readingSessionsRepository
     )
-    val service = SyncService(
-        authService = authService,
-        pipeline = pipeline,
-        environment = SynchronizationEnvironment("https://example.invalid"),
-        persistenceResetRepository = resetRepository,
-        persistenceImportRepository = importRepository,
-        syncLocalModificationDateStore = tokenStore,
-        sessionLifecycleCoordinator = lifecycleCoordinator
-    )
+    val service = createGraph(useRecordingSyncClient).syncService
+
+    private fun createGraph(useRecordingSyncClient: Boolean): SyncServiceTestGraph {
+        val factory =
+            if (useRecordingSyncClient) {
+                createDynamicGraphFactory<SyncServiceTestGraph.Factory>(
+                    ServiceSynchronizationClientBindings(syncClient)
+                )
+            } else {
+                createGraphFactory<SyncServiceTestGraph.Factory>()
+            }
+        return factory.create(
+            authService = authService,
+            pipeline = pipeline,
+            environment = SynchronizationEnvironment("https://example.invalid"),
+            persistenceResetRepository = resetRepository,
+            persistenceImportRepository = importRepository,
+            syncLocalModificationDateStore = tokenStore,
+            sessionLifecycleCoordinator = lifecycleCoordinator
+        )
+    }
 
     suspend fun clearAndJoin() {
         service.clearAndJoin()
@@ -632,6 +720,37 @@ private class SyncServiceFixture(
             }
         }
     }
+}
+
+@DependencyGraph(
+    AppScope::class,
+    bindingContainers = [SyncServiceModule::class],
+    excludes = [AuthModule::class, PersistenceModule::class, MobileSyncStorageModule::class]
+)
+internal interface SyncServiceTestGraph {
+    val syncService: SyncService
+
+    @DependencyGraph.Factory
+    fun interface Factory {
+        fun create(
+            @Provides authService: AuthService,
+            @Provides pipeline: SyncEnginePipeline,
+            @Provides environment: SynchronizationEnvironment,
+            @Provides persistenceResetRepository: PersistenceResetRepository,
+            @Provides persistenceImportRepository: PersistenceImportRepository,
+            @Provides syncLocalModificationDateStore: SyncLocalModificationDateStore,
+            @Provides sessionLifecycleCoordinator: SessionLifecycleCoordinator
+        ): SyncServiceTestGraph
+    }
+}
+
+@BindingContainer
+private class ServiceSynchronizationClientBindings(
+    private val syncClient: ServiceSynchronizationClient
+) {
+    @Provides
+    fun provideSyncServiceSynchronizationClientFactory(): SyncServiceSynchronizationClientFactory =
+        SyncServiceSynchronizationClientFactory { _, _, _, _, _, _ -> syncClient }
 }
 
 private class ServiceAuthRepository(
@@ -738,6 +857,39 @@ private class ServiceAuthRepository(
     }
 }
 
+private class ServiceSynchronizationClient : SynchronizationClient {
+    var localDataUpdatedCount = 0
+        private set
+    var applicationStartedCount = 0
+        private set
+    var triggerSyncImmediatelyCount = 0
+        private set
+    var cancelSyncingCount = 0
+        private set
+    var cancelSyncingAndJoinCount = 0
+        private set
+
+    override fun localDataUpdated() {
+        localDataUpdatedCount += 1
+    }
+
+    override fun applicationStarted() {
+        applicationStartedCount += 1
+    }
+
+    override fun triggerSyncImmediately() {
+        triggerSyncImmediatelyCount += 1
+    }
+
+    override fun cancelSyncing() {
+        cancelSyncingCount += 1
+    }
+
+    override suspend fun cancelSyncingAndJoin() {
+        cancelSyncingAndJoinCount += 1
+    }
+}
+
 private class ServiceResetRepository(
     private val failDelete: Boolean = false
 ) : PersistenceResetRepository {
@@ -823,7 +975,15 @@ private class ServiceReadingBookmarksRepository : ReadingBookmarksRepository {
     override suspend fun deleteReadingBookmark(): Boolean = true
 }
 
+private data class CollectionUpdateCall(
+    val localId: String,
+    val name: String,
+    val timestamp: PlatformDateTime?
+)
+
 private class ServiceCollectionsRepository : CollectionsRepository, CollectionsSynchronizationRepository {
+    val updateCalls = mutableListOf<CollectionUpdateCall>()
+
     override suspend fun getAllCollections(): List<Collection> = emptyList()
     override suspend fun addCollection(name: String): Collection =
         Collection(name, testTimestamp(), "collection")
@@ -831,12 +991,18 @@ private class ServiceCollectionsRepository : CollectionsRepository, CollectionsS
         name: String,
         timestamp: com.quran.shared.persistence.util.PlatformDateTime
     ): Collection = addCollection(name)
-    override suspend fun updateCollection(localId: String, name: String): Collection = addCollection(name)
+    override suspend fun updateCollection(localId: String, name: String): Collection {
+        updateCalls += CollectionUpdateCall(localId, name, null)
+        return Collection(name, testTimestamp(), localId)
+    }
     override suspend fun updateCollection(
         localId: String,
         name: String,
         timestamp: com.quran.shared.persistence.util.PlatformDateTime
-    ): Collection = addCollection(name)
+    ): Collection {
+        updateCalls += CollectionUpdateCall(localId, name, timestamp)
+        return Collection(name, timestamp, localId)
+    }
     override suspend fun deleteCollection(localId: String): Boolean = true
     override fun getCollectionsFlow(): Flow<List<Collection>> = MutableStateFlow(emptyList())
     override suspend fun fetchMutatedCollections(): List<LocalModelMutation<Collection>> = emptyList()
@@ -933,7 +1099,15 @@ private class ServiceNotesRepository : NotesRepository, NotesSynchronizationRepo
         remoteIDs.associateWith { false }
 }
 
+private data class ReadingSessionDeleteCall(
+    val sura: Int,
+    val ayah: Int
+)
+
 private class ServiceReadingSessionsRepository : ReadingSessionsRepository, ReadingSessionsSynchronizationRepository {
+    val deleteCalls = mutableListOf<ReadingSessionDeleteCall>()
+    var deleteResult = true
+
     override suspend fun getReadingSessions(): List<ReadingSession> = emptyList()
     override suspend fun addReadingSession(sura: Int, ayah: Int): ReadingSession =
         ReadingSession(sura, ayah, testTimestamp(), "reading-session")
@@ -951,7 +1125,10 @@ private class ServiceReadingSessionsRepository : ReadingSessionsRepository, Read
         timestamp: com.quran.shared.persistence.util.PlatformDateTime
     ): ReadingSession = addReadingSession(sura, ayah)
     override fun getReadingSessionsFlow(): Flow<List<ReadingSession>> = MutableStateFlow(emptyList())
-    override suspend fun deleteReadingSession(sura: Int, ayah: Int): Boolean = true
+    override suspend fun deleteReadingSession(sura: Int, ayah: Int): Boolean {
+        deleteCalls += ReadingSessionDeleteCall(sura, ayah)
+        return deleteResult
+    }
     override suspend fun fetchMutatedReadingSessions(): List<LocalModelMutation<ReadingSession>> = emptyList()
     override suspend fun applyRemoteChanges(
         updatesToPersist: List<RemoteModelMutation<RemoteReadingSession>>,

@@ -29,7 +29,7 @@ interface ReadingSessionsRepository {
     suspend fun addReadingSession(sura: Int, ayah: Int, timestamp: PlatformDateTime): ReadingSession
 
     /**
-     * Update an existing reading session by local ID.
+     * Update an existing active reading session by local ID.
      *
      * @param localId the local ID of the session to update
      * @param sura the new sura number of the session
@@ -56,7 +56,7 @@ interface ReadingSessionsRepository {
     /**
      * Delete a reading session from the list.
      *
-     * @return a boolean denoting success
+     * @return `true` when an active reading session was deleted, or `false` when no matching active session existed.
      */
     @NativeCoroutines
     suspend fun deleteReadingSession(sura: Int, ayah: Int): Boolean

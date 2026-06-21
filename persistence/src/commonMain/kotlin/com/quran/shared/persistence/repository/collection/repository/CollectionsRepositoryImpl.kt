@@ -94,15 +94,30 @@ class CollectionsRepositoryImpl(
     ): Collection {
         logger.i { "Updating collection localId=$localId with name=$name" }
         return withContext(Dispatchers.IO) {
-            collectionQueries.value.updateCollectionName(
-                name = name,
-                id = localId.toLong(),
-                timestamp = timestampMillis
-            )
-            val record = collectionQueries.value.getCollectionByLocalId(localId.toLong())
-                .executeAsOneOrNull()
-            requireNotNull(record) { "Expected collection localId=$localId after update." }
-            record.toCollection()
+            val id = localId.toLong()
+            var updatedCollection: Collection? = null
+
+            database.transaction {
+                val existing = collectionQueries.value.getCollectionByLocalId(id)
+                    .executeAsOneOrNull()
+                require(existing?.deleted == 0L) {
+                    "Expected active collection localId=$localId before update."
+                }
+
+                collectionQueries.value.updateCollectionName(
+                    name = name,
+                    id = id,
+                    timestamp = timestampMillis
+                )
+                val record = requireNotNull(
+                    collectionQueries.value.getCollectionByLocalId(id)
+                        .executeAsOneOrNull()
+                ) { "Expected collection localId=$localId after update." }
+                require(record.deleted == 0L) { "Expected active collection localId=$localId after update." }
+                updatedCollection = record.toCollection()
+            }
+
+            requireNotNull(updatedCollection)
         }
     }
 

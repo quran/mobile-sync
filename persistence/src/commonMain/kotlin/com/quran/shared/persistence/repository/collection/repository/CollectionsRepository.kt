@@ -21,9 +21,16 @@ interface CollectionsRepository {
 
     /**
      * Update the name of a collection identified by its local ID.
+     *
+     * @throws IllegalArgumentException when [localId] does not identify an active collection.
      */
     suspend fun updateCollection(localId: String, name: String): Collection
 
+    /**
+     * Update the name of a collection identified by its local ID using an explicit mutation timestamp.
+     *
+     * @throws IllegalArgumentException when [localId] does not identify an active collection.
+     */
     suspend fun updateCollection(localId: String, name: String, timestamp: PlatformDateTime): Collection
 
     /**
