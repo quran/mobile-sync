@@ -164,6 +164,7 @@ class SessionLifecycleCoordinatorTest {
         val coordinator = SessionLifecycleCoordinator(store)
         val activeWriteStarted = CompletableDeferred<Unit>()
         val allowActiveWriteToFinish = CompletableDeferred<Unit>()
+        val resetRequestStarted = CompletableDeferred<Unit>()
         val resetBlockStarted = CompletableDeferred<Unit>()
         var secondWriteRan = false
 
@@ -177,11 +178,13 @@ class SessionLifecycleCoordinatorTest {
         activeWriteStarted.await()
 
         val resetJob = async {
-            coordinator.runManagedReset {
+            coordinator.runManagedReset(
+                beforeWriteDrain = { resetRequestStarted.complete(Unit) }
+            ) {
                 resetBlockStarted.complete(Unit)
             }
         }
-        runCurrent()
+        resetRequestStarted.await()
 
         val secondWrite = async {
             assertFailsWith<SessionResetInProgressException> {
@@ -213,6 +216,7 @@ class SessionLifecycleCoordinatorTest {
         val coordinator = SessionLifecycleCoordinator(store)
         val activeWriteStarted = CompletableDeferred<Unit>()
         val allowActiveWriteToFinish = CompletableDeferred<Unit>()
+        val resetRequestStarted = CompletableDeferred<Unit>()
         val resetBlockStarted = CompletableDeferred<Unit>()
         var recoveryBlockRan = false
 
@@ -226,11 +230,13 @@ class SessionLifecycleCoordinatorTest {
         activeWriteStarted.await()
 
         val reset = async {
-            coordinator.runManagedReset {
+            coordinator.runManagedReset(
+                beforeWriteDrain = { resetRequestStarted.complete(Unit) }
+            ) {
                 resetBlockStarted.complete(Unit)
             }
         }
-        runCurrent()
+        resetRequestStarted.await()
 
         assertEquals(true, store.snapshot().resetInProgress)
         assertEquals(false, resetBlockStarted.isCompleted)
@@ -347,6 +353,7 @@ class SessionLifecycleCoordinatorTest {
         val epoch = coordinator.captureSyncEpoch()
         val completionStarted = CompletableDeferred<Unit>()
         val completionCanFinish = CompletableDeferred<Unit>()
+        val resetRequestStarted = CompletableDeferred<Unit>()
         val resetCanFinish = CompletableDeferred<Unit>()
         var writeBlockRan = false
 
@@ -359,11 +366,13 @@ class SessionLifecycleCoordinatorTest {
         completionStarted.await()
 
         val reset = async {
-            coordinator.runManagedReset {
+            coordinator.runManagedReset(
+                beforeWriteDrain = { resetRequestStarted.complete(Unit) }
+            ) {
                 resetCanFinish.await()
             }
         }
-        runCurrent()
+        resetRequestStarted.await()
 
         val write = async {
             assertFailsWith<SessionResetInProgressException> {
@@ -443,6 +452,7 @@ class SessionLifecycleCoordinatorTest {
         val coordinator = SessionLifecycleCoordinator(store)
         val activeWriteStarted = CompletableDeferred<Unit>()
         val activeWriteCanFinish = CompletableDeferred<Unit>()
+        val resetRequestStarted = CompletableDeferred<Unit>()
         val resetCanFinish = CompletableDeferred<Unit>()
         var recoveryBlockRan = false
 
@@ -455,11 +465,13 @@ class SessionLifecycleCoordinatorTest {
         activeWriteStarted.await()
 
         val reset = async {
-            coordinator.runManagedReset {
+            coordinator.runManagedReset(
+                beforeWriteDrain = { resetRequestStarted.complete(Unit) }
+            ) {
                 resetCanFinish.await()
             }
         }
-        runCurrent()
+        resetRequestStarted.await()
 
         assertEquals(true, store.snapshot().resetInProgress)
 
