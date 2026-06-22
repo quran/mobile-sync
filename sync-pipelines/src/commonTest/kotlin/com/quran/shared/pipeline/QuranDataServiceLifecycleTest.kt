@@ -74,6 +74,7 @@ import kotlinx.coroutines.yield
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -121,6 +122,23 @@ class QuranDataServiceLifecycleTest {
             lifecycleStore = lifecycleStore,
             useRecordingSyncClient = useRecordingSyncClient
         ).also { fixtures += it }
+
+    private suspend fun TestScope.advanceUntilResetCleared(
+        lifecycleStore: SettingsSessionLifecycleStateStore
+    ): SessionLifecycleState {
+        repeat(100) {
+            advanceUntilIdle()
+            val state = lifecycleStore.snapshot()
+            if (!state.resetInProgress) {
+                return state
+            }
+            yield()
+        }
+        throw AssertionError(
+            "Timed out waiting for startup reset recovery to finish; " +
+                "last state=${lifecycleStore.snapshot()}"
+        )
+    }
 
     @Test
     fun `clearLocalData false throws exact unsupported message`() = runTest(dispatcher) {
@@ -450,15 +468,15 @@ class QuranDataServiceLifecycleTest {
         val settings = MapSettings().toSuspendSettings()
         val lifecycleStore = SettingsSessionLifecycleStateStore(settings)
         lifecycleStore.beginReset()
-        val fixture = quranDataServiceFixture(lifecycleStore = lifecycleStore)
+        val fixture = quranDataServiceFixture(
+            lifecycleStore = lifecycleStore,
+            useRecordingSyncClient = true
+        )
 
-        repeat(10) {
-            advanceUntilIdle()
-            if (!lifecycleStore.snapshot().resetInProgress) {
-                return@repeat
-            }
-            yield()
-        }
+        assertEquals(
+            SessionLifecycleState(epoch = 1L, resetInProgress = false),
+            advanceUntilResetCleared(lifecycleStore)
+        )
 
         assertEquals(SessionLifecycleState(epoch = 1L, resetInProgress = false), lifecycleStore.snapshot())
         assertEquals(1, fixture.resetRepository.deleteCount)
@@ -477,16 +495,14 @@ class QuranDataServiceLifecycleTest {
                 refreshToken = "stale-refresh-token",
                 idToken = "stale-id-token"
             ),
-            lifecycleStore = lifecycleStore
+            lifecycleStore = lifecycleStore,
+            useRecordingSyncClient = true
         )
 
-        repeat(10) {
-            advanceUntilIdle()
-            if (!lifecycleStore.snapshot().resetInProgress) {
-                return@repeat
-            }
-            yield()
-        }
+        assertEquals(
+            SessionLifecycleState(epoch = 1L, resetInProgress = false),
+            advanceUntilResetCleared(lifecycleStore)
+        )
 
         assertEquals(AuthState.Idle, fixture.service.authState.value)
         assertEquals(false, fixture.authService.isLoggedIn())
