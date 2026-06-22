@@ -19,7 +19,6 @@ import com.quran.shared.syncengine.preprocessing.BookmarksRemoteMutationsPreproc
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import kotlin.time.Instant
 
 internal class BookmarksSyncAdapter(
     private val configurations: BookmarksSynchronizationConfigurations
@@ -209,7 +208,8 @@ private suspend fun SyncMutation.toSyncBookmark(
 ): SyncBookmark? {
     val id = resourceId ?: return null
     val normalizedType = data?.stringOrNull("bookmarkType") ?: data?.stringOrNull("type")
-    val lastModified = Instant.fromEpochMilliseconds(timestamp ?: 0)
+    val lastModified = clientUpdatedAtInstant()
+    val createdAt = clientCreatedAtInstant()
     return when (normalizedType?.lowercase()) {
         "ayah" -> {
             val sura = data?.intOrNull("key")
@@ -220,7 +220,8 @@ private suspend fun SyncMutation.toSyncBookmark(
                     sura = sura,
                     ayah = ayah,
                     isReading = data.booleanOrNull("isReading") ?: false,
-                    lastModified = lastModified
+                    lastModified = lastModified,
+                    createdAt = createdAt
                 )
             } else {
                 null
@@ -233,7 +234,8 @@ private suspend fun SyncMutation.toSyncBookmark(
                     id = id,
                     page = page,
                     isReading = data.booleanOrNull("isReading") ?: false,
-                    lastModified = lastModified
+                    lastModified = lastModified,
+                    createdAt = createdAt
                 )
             } else {
                 null
@@ -244,8 +246,14 @@ private suspend fun SyncMutation.toSyncBookmark(
             if (localModel != null) {
                 logger.d { "Mapped unknown bookmark type using local data: resourceId=$id" }
                 when (localModel) {
-                    is SyncBookmark.AyahBookmark -> localModel.copy(lastModified = lastModified)
-                    is SyncBookmark.PageBookmark -> localModel.copy(lastModified = lastModified)
+                    is SyncBookmark.AyahBookmark -> localModel.copy(
+                        lastModified = lastModified,
+                        createdAt = createdAt ?: localModel.createdAt
+                    )
+                    is SyncBookmark.PageBookmark -> localModel.copy(
+                        lastModified = lastModified,
+                        createdAt = createdAt ?: localModel.createdAt
+                    )
                 }
             } else {
                 logger.w { "Skipping bookmark mutation with unsupported type=$normalizedType: resourceId=$resourceId" }

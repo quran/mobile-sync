@@ -13,7 +13,6 @@ import com.quran.shared.syncengine.model.SyncReadingSession
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import kotlin.time.Instant
 
 internal class ReadingSessionsSyncAdapter(
     private val configurations: ReadingSessionsSynchronizationConfigurations
@@ -96,7 +95,7 @@ internal class ReadingSessionsSyncAdapter(
 
 private fun SyncMutation.toSyncReadingSession(logger: Logger): SyncReadingSession? {
     val id = resourceId ?: return null
-    val lastModified = Instant.fromEpochMilliseconds(timestamp ?: 0)
+    val lastModified = clientUpdatedAtInstant()
     if (mutation == Mutation.DELETED) {
         return SyncReadingSession(
             id = id,
@@ -118,7 +117,8 @@ private fun SyncMutation.toSyncReadingSession(logger: Logger): SyncReadingSessio
         id = id,
         chapterNumber = sura,
         verseNumber = ayah,
-        lastModified = lastModified
+        lastModified = lastModified,
+        createdAt = clientCreatedAtInstant()
     )
 }
 

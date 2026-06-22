@@ -19,7 +19,6 @@ import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import kotlin.time.Instant
 
 internal class NotesSyncAdapter(
     private val configurations: NotesSynchronizationConfigurations
@@ -151,7 +150,7 @@ internal class NotesSyncAdapter(
 
 private fun SyncMutation.toSyncNote(logger: Logger): SyncNote? {
     val id = resourceId ?: return null
-    val lastModified = Instant.fromEpochMilliseconds(timestamp ?: 0)
+    val lastModified = clientUpdatedAtInstant()
     if (mutation == Mutation.DELETED) {
         return SyncNote(
             id = id,
@@ -196,7 +195,8 @@ private fun SyncMutation.toSyncNote(logger: Logger): SyncNote? {
         id = id,
         body = body,
         ranges = parsedRanges,
-        lastModified = lastModified
+        lastModified = lastModified,
+        createdAt = clientCreatedAtInstant()
     )
 }
 

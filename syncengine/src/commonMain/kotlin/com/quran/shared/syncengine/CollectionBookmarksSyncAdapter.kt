@@ -21,7 +21,6 @@ import com.quran.shared.syncengine.preprocessing.CollectionBookmarksRemoteMutati
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import kotlin.time.Instant
 
 internal class CollectionBookmarksSyncAdapter(
     private val configurations: CollectionBookmarksSynchronizationConfigurations
@@ -309,7 +308,8 @@ private suspend fun SyncMutation.toSyncCollectionBookmark(
     localDataFetcher: LocalDataFetcher<SyncCollectionBookmark>,
     remoteAyahBookmarksById: Map<String, RemoteAyahBookmarkLookup>
 ): SyncCollectionBookmark? {
-    val lastModified = Instant.fromEpochMilliseconds(timestamp ?: 0)
+    val lastModified = clientUpdatedAtInstant()
+    val createdAt = clientCreatedAtInstant()
     val data = data
     if (data == null) {
         if (mutation == Mutation.DELETED && !resourceId.isNullOrEmpty()) {
@@ -347,7 +347,8 @@ private suspend fun SyncMutation.toSyncCollectionBookmark(
                         sura = sura,
                         ayah = ayah,
                         lastModified = lastModified,
-                        bookmarkId = bookmarkId
+                        bookmarkId = bookmarkId,
+                        createdAt = createdAt
                 )
             } else {
                 null
@@ -363,7 +364,8 @@ private suspend fun SyncMutation.toSyncCollectionBookmark(
                         sura = localModel.sura,
                         ayah = localModel.ayah,
                         lastModified = lastModified,
-                        bookmarkId = bookmarkId
+                        bookmarkId = bookmarkId,
+                        createdAt = createdAt ?: localModel.createdAt
                     )
                 }
             } else {
@@ -377,7 +379,8 @@ private suspend fun SyncMutation.toSyncCollectionBookmark(
                         sura = remoteBookmark.sura,
                         ayah = remoteBookmark.ayah,
                         lastModified = lastModified,
-                        bookmarkId = bookmarkId
+                        bookmarkId = bookmarkId,
+                        createdAt = createdAt
                     )
                 } else {
                     logger.w {

@@ -16,8 +16,13 @@ import com.quran.shared.syncengine.model.SyncCollectionBookmark
 import com.quran.shared.syncengine.model.SyncNote
 import com.quran.shared.syncengine.model.SyncReadingSession
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonObjectBuilder
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -178,6 +183,272 @@ class SyncMutationTimestampTest {
     }
 
     @Test
+    fun `inbound bookmark create parses client timestamps`() = runTest {
+        var capturedRemote = emptyList<RemoteModelMutation<SyncBookmark>>()
+        val adapter = BookmarksSyncAdapter(
+            BookmarksSynchronizationConfigurations(
+                localDataFetcher = localFetcher(emptyList()),
+                resultNotifier = capturingNotifier { capturedRemote = it },
+                localModificationDateFetcher = zeroModificationDateFetcher()
+            )
+        )
+
+        adapter.buildPlan(
+            lastModificationDate = 0L,
+            remoteMutations = listOf(
+                SyncMutation(
+                    resource = "BOOKMARK",
+                    resourceId = "remote-bookmark",
+                    mutation = Mutation.CREATED,
+                    data = clientTimestampData(createdAt = 1_000, updatedAt = 2_345) {
+                        put("type", "ayah")
+                        put("key", 2)
+                        put("verseNumber", 255)
+                        put("isReading", false)
+                    },
+                    timestamp = 9_999
+                )
+            )
+        ).complete(newToken = 10L, pushedMutations = emptyList())
+
+        val model = capturedRemote.single().model as SyncBookmark.AyahBookmark
+        assertEquals(instant(1_000), model.createdAt)
+        assertEquals(instant(2_345), model.lastModified)
+    }
+
+    @Test
+    fun `inbound collection update parses client timestamps`() = runTest {
+        var capturedRemote = emptyList<RemoteModelMutation<SyncCollection>>()
+        val adapter = CollectionsSyncAdapter(
+            CollectionsSynchronizationConfigurations(
+                localDataFetcher = localFetcher(emptyList()),
+                resultNotifier = capturingNotifier { capturedRemote = it },
+                localModificationDateFetcher = zeroModificationDateFetcher()
+            )
+        )
+
+        adapter.buildPlan(
+            lastModificationDate = 0L,
+            remoteMutations = listOf(
+                SyncMutation(
+                    resource = "COLLECTION",
+                    resourceId = "remote-collection",
+                    mutation = Mutation.MODIFIED,
+                    data = clientTimestampData(createdAt = 1_000, updatedAt = 2_345) {
+                        put("name", "Favorites")
+                    },
+                    timestamp = 9_999
+                )
+            )
+        ).complete(newToken = 10L, pushedMutations = emptyList())
+
+        val model = capturedRemote.single().model
+        assertEquals(instant(1_000), model.createdAt)
+        assertEquals(instant(2_345), model.lastModified)
+    }
+
+    @Test
+    fun `inbound collection timestamps fall back to server timestamp when client fields are invalid or absent`() = runTest {
+        var capturedRemote = emptyList<RemoteModelMutation<SyncCollection>>()
+        val adapter = CollectionsSyncAdapter(
+            CollectionsSynchronizationConfigurations(
+                localDataFetcher = localFetcher(emptyList()),
+                resultNotifier = capturingNotifier { capturedRemote = it },
+                localModificationDateFetcher = zeroModificationDateFetcher()
+            )
+        )
+
+        adapter.buildPlan(
+            lastModificationDate = 0L,
+            remoteMutations = listOf(
+                SyncMutation(
+                    resource = "COLLECTION",
+                    resourceId = "remote-collection",
+                    mutation = Mutation.CREATED,
+                    data = buildJsonObject {
+                        put("name", "Favorites")
+                        put("clientCreatedAt", "not-a-date")
+                    },
+                    timestamp = 9_999
+                )
+            )
+        ).complete(newToken = 10L, pushedMutations = emptyList())
+
+        val model = capturedRemote.single().model
+        assertEquals(instant(9_999), model.createdAt)
+        assertEquals(instant(9_999), model.lastModified)
+    }
+
+    @Test
+    fun `inbound collection timestamps fall back to server timestamp when client fields are non primitive`() = runTest {
+        var capturedRemote = emptyList<RemoteModelMutation<SyncCollection>>()
+        val adapter = CollectionsSyncAdapter(
+            CollectionsSynchronizationConfigurations(
+                localDataFetcher = localFetcher(emptyList()),
+                resultNotifier = capturingNotifier { capturedRemote = it },
+                localModificationDateFetcher = zeroModificationDateFetcher()
+            )
+        )
+
+        adapter.buildPlan(
+            lastModificationDate = 0L,
+            remoteMutations = listOf(
+                SyncMutation(
+                    resource = "COLLECTION",
+                    resourceId = "remote-collection",
+                    mutation = Mutation.CREATED,
+                    data = buildJsonObject {
+                        put("name", "Favorites")
+                        put("clientCreatedAt", buildJsonObject {
+                            put("value", instant(1_000).toString())
+                        })
+                        put("clientUpdatedAt", buildJsonArray {
+                            add(instant(2_345).toString())
+                        })
+                    },
+                    timestamp = 9_999
+                )
+            )
+        ).complete(newToken = 10L, pushedMutations = emptyList())
+
+        val model = capturedRemote.single().model
+        assertEquals(instant(9_999), model.createdAt)
+        assertEquals(instant(9_999), model.lastModified)
+    }
+
+    @Test
+    fun `inbound collection delete ignores client timestamps`() = runTest {
+        var capturedRemote = emptyList<RemoteModelMutation<SyncCollection>>()
+        val adapter = CollectionsSyncAdapter(
+            CollectionsSynchronizationConfigurations(
+                localDataFetcher = localFetcher(emptyList()),
+                resultNotifier = capturingNotifier { capturedRemote = it },
+                localModificationDateFetcher = zeroModificationDateFetcher()
+            )
+        )
+
+        adapter.buildPlan(
+            lastModificationDate = 0L,
+            remoteMutations = listOf(
+                SyncMutation(
+                    resource = "COLLECTION",
+                    resourceId = "remote-collection",
+                    mutation = Mutation.DELETED,
+                    data = clientTimestampData(createdAt = 1_000, updatedAt = 2_345) {
+                        put("name", "Favorites")
+                    },
+                    timestamp = 9_999
+                )
+            )
+        ).complete(newToken = 10L, pushedMutations = emptyList())
+
+        val model = capturedRemote.single().model
+        assertNull(model.createdAt)
+        assertEquals(instant(9_999), model.lastModified)
+    }
+
+    @Test
+    fun `inbound collection bookmark create parses client timestamps`() = runTest {
+        var capturedRemote = emptyList<RemoteModelMutation<SyncCollectionBookmark>>()
+        val adapter = CollectionBookmarksSyncAdapter(
+            CollectionBookmarksSynchronizationConfigurations(
+                localDataFetcher = localFetcher(emptyList()),
+                resultNotifier = capturingNotifier { capturedRemote = it },
+                localModificationDateFetcher = zeroModificationDateFetcher()
+            )
+        )
+
+        adapter.buildPlan(
+            lastModificationDate = 0L,
+            remoteMutations = listOf(
+                SyncMutation(
+                    resource = "COLLECTION_BOOKMARK",
+                    resourceId = "remote-collection-remote-bookmark",
+                    mutation = Mutation.CREATED,
+                    data = clientTimestampData(createdAt = 1_000, updatedAt = 2_345) {
+                        put("collectionId", "remote-collection")
+                        put("bookmarkId", "remote-bookmark")
+                        put("type", "ayah")
+                        put("key", 2)
+                        put("verseNumber", 255)
+                    },
+                    timestamp = 9_999
+                )
+            )
+        ).complete(newToken = 10L, pushedMutations = emptyList())
+
+        val model = capturedRemote.single().model as SyncCollectionBookmark.AyahBookmark
+        assertEquals(instant(1_000), model.createdAt)
+        assertEquals(instant(2_345), model.lastModified)
+    }
+
+    @Test
+    fun `inbound note create parses client timestamps`() = runTest {
+        var capturedRemote = emptyList<RemoteModelMutation<SyncNote>>()
+        val adapter = NotesSyncAdapter(
+            NotesSynchronizationConfigurations(
+                localDataFetcher = localFetcher(emptyList()),
+                resultNotifier = capturingNotifier { capturedRemote = it },
+                localModificationDateFetcher = zeroModificationDateFetcher()
+            )
+        )
+
+        adapter.buildPlan(
+            lastModificationDate = 0L,
+            remoteMutations = listOf(
+                SyncMutation(
+                    resource = "NOTE",
+                    resourceId = "remote-note",
+                    mutation = Mutation.CREATED,
+                    data = clientTimestampData(createdAt = 1_000, updatedAt = 2_345) {
+                        put("body", "Note")
+                        put("ranges", buildJsonArray {
+                            add("2:255-2:255")
+                        })
+                    },
+                    timestamp = 9_999
+                )
+            )
+        ).complete(newToken = 10L, pushedMutations = emptyList())
+
+        val model = capturedRemote.single().model
+        assertEquals(instant(1_000), model.createdAt)
+        assertEquals(instant(2_345), model.lastModified)
+    }
+
+    @Test
+    fun `inbound reading session update parses client timestamps`() = runTest {
+        var capturedRemote = emptyList<RemoteModelMutation<SyncReadingSession>>()
+        val adapter = ReadingSessionsSyncAdapter(
+            ReadingSessionsSynchronizationConfigurations(
+                localDataFetcher = localFetcher(emptyList()),
+                resultNotifier = capturingNotifier { capturedRemote = it },
+                localModificationDateFetcher = zeroModificationDateFetcher()
+            )
+        )
+
+        adapter.buildPlan(
+            lastModificationDate = 0L,
+            remoteMutations = listOf(
+                SyncMutation(
+                    resource = "READING_SESSION",
+                    resourceId = "remote-reading-session",
+                    mutation = Mutation.MODIFIED,
+                    data = clientTimestampData(createdAt = 1_000, updatedAt = 2_345) {
+                        put("chapterNumber", 2)
+                        put("verseNumber", 255)
+                    },
+                    timestamp = 9_999
+                )
+            )
+        ).complete(newToken = 10L, pushedMutations = emptyList())
+
+        val model = capturedRemote.single().model
+        assertEquals(instant(1_000), model.createdAt)
+        assertEquals(instant(2_345), model.lastModified)
+    }
+
+    @Test
     fun `note mutations carry local model timestamp`() = runTest {
         val localMutation = LocalModelMutation(
             model = SyncNote(
@@ -272,14 +543,29 @@ class SyncMutationTimestampTest {
 
     private fun assertClientTimestamps(data: JsonObject, createdAt: Long, updatedAt: Long) {
         assertEquals(
-            Instant.fromEpochMilliseconds(createdAt).toString(),
+            instant(createdAt).toString(),
             data["clientCreatedAt"]?.jsonPrimitive?.content
         )
         assertEquals(
-            Instant.fromEpochMilliseconds(updatedAt).toString(),
+            instant(updatedAt).toString(),
             data["clientUpdatedAt"]?.jsonPrimitive?.content
         )
     }
+
+    private fun clientTimestampData(
+        createdAt: Long,
+        updatedAt: Long,
+        content: JsonObjectBuilder.() -> Unit
+    ): JsonObject {
+        return buildJsonObject {
+            content()
+            put("clientCreatedAt", instant(createdAt).toString())
+            put("clientUpdatedAt", instant(updatedAt).toString())
+        }
+    }
+
+    private fun instant(epochMilliseconds: Long): Instant =
+        Instant.fromEpochMilliseconds(epochMilliseconds)
 
     private fun <Model> localFetcher(
         localMutations: List<LocalModelMutation<Model>>
@@ -304,6 +590,24 @@ class SyncMutationTimestampTest {
                 newRemoteMutations: List<RemoteModelMutation<Model>>,
                 processedLocalMutations: List<LocalModelMutation<Model>>
             ) = Unit
+
+            override suspend fun didFail(message: String) {
+                fail("didFail called: $message")
+            }
+        }
+    }
+
+    private fun <Model> capturingNotifier(
+        captureRemoteMutations: (List<RemoteModelMutation<Model>>) -> Unit
+    ): ResultNotifier<Model> {
+        return object : ResultNotifier<Model> {
+            override suspend fun didSucceed(
+                newToken: Long,
+                newRemoteMutations: List<RemoteModelMutation<Model>>,
+                processedLocalMutations: List<LocalModelMutation<Model>>
+            ) {
+                captureRemoteMutations(newRemoteMutations)
+            }
 
             override suspend fun didFail(message: String) {
                 fail("didFail called: $message")
