@@ -127,7 +127,8 @@ internal class CollectionsSyncAdapter(
                 it.toSyncMutation(
                     resourceName = resourceName,
                     resourceData = SyncCollection::toResourceData,
-                    timestamp = { model -> model.lastModified.toEpochMilliseconds() }
+                    timestamp = { model -> model.lastModified.toEpochMilliseconds() },
+                    createdTimestamp = { model -> model.createdAt?.toEpochMilliseconds() }
                 )
             }
 

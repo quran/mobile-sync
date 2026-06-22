@@ -131,7 +131,8 @@ internal class NotesSyncAdapter(
                 it.toSyncMutation(
                     resourceName = resourceName,
                     resourceData = SyncNote::toResourceData,
-                    timestamp = { model -> model.lastModified.toEpochMilliseconds() }
+                    timestamp = { model -> model.lastModified.toEpochMilliseconds() },
+                    createdTimestamp = { model -> model.createdAt?.toEpochMilliseconds() }
                 )
             }
 

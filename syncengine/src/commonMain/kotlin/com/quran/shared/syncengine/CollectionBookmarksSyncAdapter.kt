@@ -189,6 +189,7 @@ internal class CollectionBookmarksSyncAdapter(
                     resourceName = resourceName,
                     resourceData = SyncCollectionBookmark::toResourceData,
                     timestamp = { model -> model.lastModified.toEpochMilliseconds() },
+                    createdTimestamp = { model -> model.createdAt?.toEpochMilliseconds() },
                     includeDataForDeletes = true
                 )
                 pushedMutation.acknowledgedRemoteIdFor(requestMutation)
@@ -218,6 +219,7 @@ internal class CollectionBookmarksSyncAdapter(
                     resourceName = resourceName,
                     resourceData = SyncCollectionBookmark::toResourceData,
                     timestamp = { model -> model.lastModified.toEpochMilliseconds() },
+                    createdTimestamp = { model -> model.createdAt?.toEpochMilliseconds() },
                     includeDataForDeletes = true
                 )
             }
