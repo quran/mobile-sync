@@ -7,6 +7,7 @@ import com.quran.shared.mutations.LOCAL_MUTATION_ENTITY_FACET
 import com.quran.shared.mutations.LocalMutationAck
 import com.quran.shared.mutations.LocalMutationResource
 import com.quran.shared.mutations.Mutation
+import com.quran.shared.persistence.input.LocalSyncReadingSession
 import com.quran.shared.persistence.model.DatabaseReadingSession
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.util.toPlatform
@@ -22,15 +23,22 @@ internal fun DatabaseReadingSession.toReadingSession(): ReadingSession {
     )
 }
 
-internal fun DatabaseReadingSession.toReadingSessionMutation(): LocalModelMutation<ReadingSession> {
+internal fun DatabaseReadingSession.toReadingSessionMutation(): LocalModelMutation<LocalSyncReadingSession> {
     val mutation = when {
         deleted == 1L -> Mutation.DELETED
         is_edited == 1L -> Mutation.MODIFIED
         else -> Mutation.CREATED
     }
+    val readingSession = LocalSyncReadingSession(
+        sura = chapter_number.toInt(),
+        ayah = verse_number.toInt(),
+        lastUpdated = Instant.fromEpochMilliseconds(modified_at).toPlatform(),
+        localId = local_id.toString(),
+        createdAt = Instant.fromEpochMilliseconds(created_at).toPlatform()
+    )
     return LocalModelMutation(
         mutation = mutation,
-        model = toReadingSession(),
+        model = readingSession,
         remoteID = remote_id,
         localID = local_id.toString(),
         ack = LocalMutationAck(

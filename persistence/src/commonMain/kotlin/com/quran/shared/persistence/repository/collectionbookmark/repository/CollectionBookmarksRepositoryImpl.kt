@@ -12,6 +12,7 @@ import com.quran.shared.mutations.LocalMutationResource
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
+import com.quran.shared.persistence.input.LocalSyncCollectionAyahBookmark
 import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.CollectionAyahBookmark
@@ -317,7 +318,7 @@ class CollectionBookmarksRepositoryImpl(
         }
     }
 
-    override suspend fun fetchMutatedCollectionBookmarks(): List<LocalModelMutation<CollectionAyahBookmark>> {
+    override suspend fun fetchMutatedCollectionBookmarks(): List<LocalModelMutation<LocalSyncCollectionAyahBookmark>> {
         return withContext(Dispatchers.IO) {
             val defaultMutations = bookmarkQueries.value.getDefaultPendingBookmarks()
                 .executeAsList()
@@ -330,12 +331,13 @@ class CollectionBookmarksRepositoryImpl(
                     }
                     LocalModelMutation(
                         mutation = mutation,
-                        model = defaultCollectionBookmark(
+                        model = defaultLocalSyncCollectionBookmark(
                             bookmarkLocalId = row.local_id,
                             bookmarkRemoteId = relationBookmarkRemoteId,
                             sura = row.sura,
                             ayah = row.ayah,
-                            modifiedAt = row.default_modified_at ?: row.modified_at
+                            modifiedAt = row.default_modified_at ?: row.modified_at,
+                            createdAt = row.created_at
                         ),
                         remoteID = relationBookmarkRemoteId?.let {
                             collectionBookmarkRemoteId(DEFAULT_COLLECTION_ID, it)
@@ -368,7 +370,7 @@ class CollectionBookmarksRepositoryImpl(
                     } else {
                         record.bookmark_remote_id
                     }
-                    val collectionBookmark = toCollectionBookmark(
+                    val collectionBookmark = toLocalSyncCollectionBookmark(
                         bookmarkLocalId = record.bookmark_local_id,
                         bookmarkRemoteId = bookmarkRemoteId,
                         sura = record.sura,
@@ -376,6 +378,7 @@ class CollectionBookmarksRepositoryImpl(
                         collectionLocalId = record.collection_local_id,
                         collectionRemoteId = collectionRemoteId,
                         modifiedAt = record.modified_at,
+                        createdAt = record.created_at,
                         localId = record.local_id,
                         logMissingBookmark = true
                     ) ?: return@mapNotNull null
@@ -512,7 +515,7 @@ class CollectionBookmarksRepositoryImpl(
 
     override suspend fun applyRemoteChanges(
         updatesToPersist: List<RemoteModelMutation<RemoteCollectionBookmark>>,
-        localMutationsToClear: List<LocalModelMutation<CollectionAyahBookmark>>,
+        localMutationsToClear: List<LocalModelMutation<LocalSyncCollectionAyahBookmark>>,
         writeBoundaryGuard: PersistenceWriteBoundaryGuard
     ) {
         logger.i {
@@ -610,7 +613,7 @@ class CollectionBookmarksRepositoryImpl(
         }
     }
 
-    private fun clearLocalMutation(local: LocalModelMutation<CollectionAyahBookmark>) {
+    private fun clearLocalMutation(local: LocalModelMutation<LocalSyncCollectionAyahBookmark>) {
         val updatedAt = local.model.lastUpdated.fromPlatform().toEpochMilliseconds()
         if (local.localID.startsWith(DEFAULT_LOCAL_ID_PREFIX)) {
             val bookmarkLocalId = local.localID.removePrefix(DEFAULT_LOCAL_ID_PREFIX).toLongOrNull() ?: return
@@ -661,7 +664,7 @@ class CollectionBookmarksRepositoryImpl(
     }
 
     private fun clearDefaultLocalMutation(
-        local: LocalModelMutation<CollectionAyahBookmark>,
+        local: LocalModelMutation<LocalSyncCollectionAyahBookmark>,
         bookmarkLocalId: Long,
         updatedAt: Long
     ) {
@@ -746,7 +749,7 @@ class CollectionBookmarksRepositoryImpl(
     }
 
     private fun bindCustomCreatedAckToPendingDelete(
-        local: LocalModelMutation<CollectionAyahBookmark>,
+        local: LocalModelMutation<LocalSyncCollectionAyahBookmark>,
         relationRow: DatabaseBookmarkCollection,
         updatedAt: Long
     ) {
@@ -778,7 +781,7 @@ class CollectionBookmarksRepositoryImpl(
         }
     }
 
-    private fun LocalModelMutation<CollectionAyahBookmark>.relationBookmarkRemoteId(): String? {
+    private fun LocalModelMutation<LocalSyncCollectionAyahBookmark>.relationBookmarkRemoteId(): String? {
         model.bookmarkRemoteId
             ?.takeIf { it.isNotEmpty() }
             ?.let { return it }
@@ -800,7 +803,7 @@ class CollectionBookmarksRepositoryImpl(
     }
 
     private fun clearCustomDeleteMutation(
-        local: LocalModelMutation<CollectionAyahBookmark>,
+        local: LocalModelMutation<LocalSyncCollectionAyahBookmark>,
         relationRow: DatabaseBookmarkCollection?,
         updatedAt: Long
     ) {
@@ -833,13 +836,13 @@ class CollectionBookmarksRepositoryImpl(
         }
     }
 
-    private fun DatabaseBookmarkCollection.matchesSyncedSnapshot(bookmark: CollectionAyahBookmark): Boolean {
+    private fun DatabaseBookmarkCollection.matchesSyncedSnapshot(bookmark: LocalSyncCollectionAyahBookmark): Boolean {
         return last_synced_bookmark_remote_id == bookmark.bookmarkRemoteId &&
             last_synced_collection_remote_id == bookmark.collectionRemoteId
     }
 
     private fun ackMatches(
-        local: LocalModelMutation<CollectionAyahBookmark>,
+        local: LocalModelMutation<LocalSyncCollectionAyahBookmark>,
         facet: String
     ): Boolean {
         val ack = local.ack ?: return false
@@ -1089,7 +1092,7 @@ class CollectionBookmarksRepositoryImpl(
     }
 
     private fun upsertRelationBookmarkRemoteId(
-        bookmark: CollectionAyahBookmark,
+        bookmark: LocalSyncCollectionAyahBookmark,
         bookmarkLocalId: Long,
         updatedAt: Long
     ) {
@@ -1171,6 +1174,57 @@ class CollectionBookmarksRepositoryImpl(
         localId: Long,
         logMissingBookmark: Boolean
     ): CollectionAyahBookmark? {
+        return collectionBookmarkFields(
+            bookmarkLocalId = bookmarkLocalId,
+            bookmarkRemoteId = bookmarkRemoteId,
+            sura = sura,
+            ayah = ayah,
+            collectionLocalId = collectionLocalId,
+            collectionRemoteId = collectionRemoteId,
+            modifiedAt = modifiedAt,
+            localId = localId,
+            logMissingBookmark = logMissingBookmark
+        )?.toCollectionBookmark()
+    }
+
+    private fun toLocalSyncCollectionBookmark(
+        bookmarkLocalId: Long,
+        bookmarkRemoteId: String?,
+        sura: Long?,
+        ayah: Long?,
+        collectionLocalId: Long,
+        collectionRemoteId: String?,
+        modifiedAt: Long,
+        createdAt: Long?,
+        localId: Long,
+        logMissingBookmark: Boolean
+    ): LocalSyncCollectionAyahBookmark? {
+        return collectionBookmarkFields(
+            bookmarkLocalId = bookmarkLocalId,
+            bookmarkRemoteId = bookmarkRemoteId,
+            sura = sura,
+            ayah = ayah,
+            collectionLocalId = collectionLocalId,
+            collectionRemoteId = collectionRemoteId,
+            modifiedAt = modifiedAt,
+            localId = localId,
+            logMissingBookmark = logMissingBookmark
+        )?.toLocalSyncCollectionBookmark(
+            createdAt = createdAt?.let { Instant.fromEpochMilliseconds(it).toPlatform() }
+        )
+    }
+
+    private fun collectionBookmarkFields(
+        bookmarkLocalId: Long,
+        bookmarkRemoteId: String?,
+        sura: Long?,
+        ayah: Long?,
+        collectionLocalId: Long,
+        collectionRemoteId: String?,
+        modifiedAt: Long,
+        localId: Long,
+        logMissingBookmark: Boolean
+    ): CollectionBookmarkFields? {
         val updatedAt = Instant.fromEpochMilliseconds(modifiedAt).toPlatform()
         val suraValue = sura?.toInt()
         val ayahValue = ayah?.toInt()
@@ -1180,7 +1234,7 @@ class CollectionBookmarksRepositoryImpl(
             }
             return null
         }
-        return CollectionAyahBookmark(
+        return CollectionBookmarkFields(
             collectionLocalId = collectionLocalId.toString(),
             collectionRemoteId = collectionRemoteId,
             bookmarkLocalId = bookmarkLocalId.toString(),
@@ -1204,6 +1258,25 @@ class CollectionBookmarksRepositoryImpl(
         )
     }
 
+    private fun defaultLocalSyncCollectionBookmark(
+        bookmarkLocalId: Long,
+        bookmarkRemoteId: String?,
+        sura: Long?,
+        ayah: Long?,
+        modifiedAt: Long,
+        createdAt: Long
+    ): LocalSyncCollectionAyahBookmark {
+        return defaultCollectionBookmarkFields(
+            bookmarkLocalId = bookmarkLocalId,
+            bookmarkRemoteId = bookmarkRemoteId,
+            sura = sura,
+            ayah = ayah,
+            modifiedAt = modifiedAt
+        ).toLocalSyncCollectionBookmark(
+            createdAt = Instant.fromEpochMilliseconds(createdAt).toPlatform()
+        )
+    }
+
     private fun defaultCollectionBookmark(
         bookmarkLocalId: Long,
         bookmarkRemoteId: String?,
@@ -1211,8 +1284,24 @@ class CollectionBookmarksRepositoryImpl(
         ayah: Long?,
         modifiedAt: Long
     ): CollectionAyahBookmark {
+        return defaultCollectionBookmarkFields(
+            bookmarkLocalId = bookmarkLocalId,
+            bookmarkRemoteId = bookmarkRemoteId,
+            sura = sura,
+            ayah = ayah,
+            modifiedAt = modifiedAt
+        ).toCollectionBookmark()
+    }
+
+    private fun defaultCollectionBookmarkFields(
+        bookmarkLocalId: Long,
+        bookmarkRemoteId: String?,
+        sura: Long?,
+        ayah: Long?,
+        modifiedAt: Long
+    ): CollectionBookmarkFields {
         val updatedAt = Instant.fromEpochMilliseconds(modifiedAt).toPlatform()
-        return CollectionAyahBookmark(
+        return CollectionBookmarkFields(
             collectionLocalId = DEFAULT_COLLECTION_ID,
             collectionRemoteId = DEFAULT_COLLECTION_ID,
             bookmarkLocalId = bookmarkLocalId.toString(),
@@ -1224,10 +1313,50 @@ class CollectionBookmarksRepositoryImpl(
         )
     }
 
+    private fun CollectionBookmarkFields.toCollectionBookmark(): CollectionAyahBookmark {
+        return CollectionAyahBookmark(
+            collectionLocalId = collectionLocalId,
+            collectionRemoteId = collectionRemoteId,
+            bookmarkLocalId = bookmarkLocalId,
+            bookmarkRemoteId = bookmarkRemoteId,
+            sura = sura,
+            ayah = ayah,
+            lastUpdated = lastUpdated,
+            localId = localId
+        )
+    }
+
+    private fun CollectionBookmarkFields.toLocalSyncCollectionBookmark(
+        createdAt: PlatformDateTime?
+    ): LocalSyncCollectionAyahBookmark {
+        return LocalSyncCollectionAyahBookmark(
+            collectionLocalId = collectionLocalId,
+            collectionRemoteId = collectionRemoteId,
+            bookmarkLocalId = bookmarkLocalId,
+            bookmarkRemoteId = bookmarkRemoteId,
+            sura = sura,
+            ayah = ayah,
+            lastUpdated = lastUpdated,
+            localId = localId,
+            createdAt = createdAt
+        )
+    }
+
     private fun getAyahId(sura: Int, ayah: Int): Int {
         return QuranData.getAyahId(sura, ayah)
     }
 }
+
+private data class CollectionBookmarkFields(
+    val collectionLocalId: String,
+    val collectionRemoteId: String?,
+    val bookmarkLocalId: String,
+    val bookmarkRemoteId: String?,
+    val sura: Int,
+    val ayah: Int,
+    val lastUpdated: PlatformDateTime,
+    val localId: String
+)
 
 private const val DEFAULT_LOCAL_ID_PREFIX = "default:"
 

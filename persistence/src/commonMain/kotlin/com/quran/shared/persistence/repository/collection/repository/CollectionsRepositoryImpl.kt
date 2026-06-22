@@ -10,6 +10,7 @@ import com.quran.shared.mutations.LocalMutationResource
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
+import com.quran.shared.persistence.input.LocalSyncCollection
 import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.model.DatabaseCollection
@@ -141,7 +142,7 @@ class CollectionsRepositoryImpl(
         }
     }
 
-    override suspend fun fetchMutatedCollections(): List<LocalModelMutation<Collection>> {
+    override suspend fun fetchMutatedCollections(): List<LocalModelMutation<LocalSyncCollection>> {
         return withContext(Dispatchers.IO) {
             collectionQueries.value.getUnsyncedCollections()
                 .executeAsList()
@@ -151,7 +152,7 @@ class CollectionsRepositoryImpl(
 
     override suspend fun applyRemoteChanges(
         updatesToPersist: List<RemoteModelMutation<RemoteCollection>>,
-        localMutationsToClear: List<LocalModelMutation<Collection>>,
+        localMutationsToClear: List<LocalModelMutation<LocalSyncCollection>>,
         writeBoundaryGuard: PersistenceWriteBoundaryGuard
     ) {
         logger.i {
@@ -319,7 +320,7 @@ class CollectionsRepositoryImpl(
         return attached?.remote_id == remote.remoteID
     }
 
-    private fun clearLocalMutation(local: LocalModelMutation<Collection>) {
+    private fun clearLocalMutation(local: LocalModelMutation<LocalSyncCollection>) {
         val ack = local.ack ?: return
         val affectedBookmarkLocalIds = if (local.mutation == Mutation.DELETED && local.remoteID != null) {
             bookmarkCollectionQueries.value
@@ -338,7 +339,7 @@ class CollectionsRepositoryImpl(
         }
     }
 
-    private fun ackMatchesCurrentRow(local: LocalModelMutation<Collection>): Boolean {
+    private fun ackMatchesCurrentRow(local: LocalModelMutation<LocalSyncCollection>): Boolean {
         val ack = local.ack ?: return false
         if (ack.localID != local.localID ||
             ack.resource != LocalMutationResource.COLLECTION ||

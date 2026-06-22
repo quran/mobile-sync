@@ -7,6 +7,7 @@ import com.quran.shared.mutations.LOCAL_MUTATION_ENTITY_FACET
 import com.quran.shared.mutations.LocalMutationAck
 import com.quran.shared.mutations.LocalMutationResource
 import com.quran.shared.mutations.Mutation
+import com.quran.shared.persistence.input.LocalSyncNote
 import com.quran.shared.persistence.model.DatabaseNote
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.util.QuranData
@@ -33,16 +34,34 @@ internal fun DatabaseNote.toNote(): Note {
     )
 }
 
-internal fun DatabaseNote.toNoteMutation(): LocalModelMutation<Note> {
+internal fun DatabaseNote.toNoteMutation(): LocalModelMutation<LocalSyncNote> {
     val mutation = when {
         deleted == 1L -> Mutation.DELETED
         remote_id == null -> Mutation.CREATED
         else -> Mutation.MODIFIED
     }
+    val normalizedModifiedAt = normalizeEpochMillis(modified_at)
+    val normalizedCreatedAt = normalizeEpochMillis(created_at)
+    val start = requireNotNull(QuranData.getSuraAyahOrNull(start_ayah_id)) {
+        "Invalid start ayah id for note local_id=$local_id: $start_ayah_id"
+    }
+    val end = requireNotNull(QuranData.getSuraAyahOrNull(end_ayah_id)) {
+        "Invalid end ayah id for note local_id=$local_id: $end_ayah_id"
+    }
+    val note = LocalSyncNote(
+        body = note,
+        startSura = start.first,
+        startAyah = start.second,
+        endSura = end.first,
+        endAyah = end.second,
+        lastUpdated = Instant.fromEpochMilliseconds(normalizedModifiedAt).toPlatform(),
+        localId = local_id.toString(),
+        createdAt = Instant.fromEpochMilliseconds(normalizedCreatedAt).toPlatform()
+    )
 
     return LocalModelMutation(
         mutation = mutation,
-        model = toNote(),
+        model = note,
         remoteID = remote_id,
         localID = local_id.toString(),
         ack = LocalMutationAck(

@@ -84,6 +84,25 @@ class NotesRepositoryTest {
     }
 
     @Test
+    fun `fetchMutatedNotes carries created_at separately from modified_at`() = runTest {
+        val note = repository.addNote("test note", 2, 13, 2, 13, timestamp(1_700_000_001_000L))
+        repository.updateNote(
+            note.localId,
+            "updated note",
+            2,
+            14,
+            2,
+            14,
+            timestamp(1_700_000_002_345L)
+        )
+
+        val mutation = repository.fetchMutatedNotes(0).single()
+
+        assertEquals(1_700_000_001_000L, mutation.model.createdAt.fromPlatform().toEpochMilliseconds())
+        assertEquals(1_700_000_002_345L, mutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
+    }
+
+    @Test
     fun `deleteNote preserves timestamp for remote rows`() = runTest {
         database.notesQueries.persistRemoteNote(
             remote_id = "remote-note-id",
