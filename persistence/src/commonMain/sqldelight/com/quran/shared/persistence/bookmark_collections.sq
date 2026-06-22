@@ -38,6 +38,10 @@ countActiveForBookmark:
   SELECT COUNT(*) FROM bookmark_collection
   WHERE bookmark_local_id = ? AND is_active = 1;
 
+getActiveCollectionLocalIdsForBookmark:
+  SELECT collection_local_id FROM bookmark_collection
+  WHERE bookmark_local_id = ? AND is_active = 1;
+
 countRetainedForBookmark:
   SELECT COUNT(*) FROM bookmark_collection
   WHERE bookmark_local_id = ?
