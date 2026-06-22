@@ -247,7 +247,8 @@ private class CollectionBookmarksRepositoryDataFetcher(
                 sura = bookmark.sura,
                 ayah = bookmark.ayah,
                 lastModified = bookmark.lastUpdated.fromPlatform(),
-                bookmarkId = remoteId
+                bookmarkId = remoteId,
+                createdAt = bookmark.createdAt?.fromPlatform()
             )
             is RemoteBookmark.Page -> null
         }
@@ -429,7 +430,8 @@ private class NotesResultReceiver(
                     body = null,
                     startAyahId = null,
                     endAyahId = null,
-                    lastUpdated = remoteMutation.model.lastModified.toPlatform()
+                    lastUpdated = remoteMutation.model.lastModified.toPlatform(),
+                    createdAt = remoteMutation.model.createdAt?.toPlatform()
                 )
                 Mutation.CREATED, Mutation.MODIFIED -> remoteMutation.model.toRemoteInput()
             }
@@ -498,13 +500,15 @@ private fun RemoteBookmark.toSyncEngine(id: String): SyncBookmark {
             sura = this.sura,
             ayah = this.ayah,
             lastModified = this.lastUpdated.fromPlatform(),
-            isReading = this.isReading
+            isReading = this.isReading,
+            createdAt = this.createdAt?.fromPlatform()
         )
         is RemoteBookmark.Page -> SyncBookmark.PageBookmark(
             id = id,
             page = this.page,
             lastModified = this.lastUpdated.fromPlatform(),
-            isReading = this.isReading
+            isReading = this.isReading,
+            createdAt = this.createdAt?.fromPlatform()
         )
     }
 }
@@ -532,13 +536,15 @@ private fun SyncBookmark.toRemoteInput(): RemoteBookmark {
                 sura = this.sura,
                 ayah = this.ayah,
                 lastUpdated = this.lastModified.toPlatform(),
-                isReading = this.isReading
+                isReading = this.isReading,
+                createdAt = this.createdAt?.toPlatform()
             )
         is SyncBookmark.PageBookmark ->
             RemoteBookmark.Page(
                 page = this.page,
                 lastUpdated = this.lastModified.toPlatform(),
-                isReading = this.isReading
+                isReading = this.isReading,
+                createdAt = this.createdAt?.toPlatform()
             )
     }
 }
@@ -546,7 +552,8 @@ private fun SyncBookmark.toRemoteInput(): RemoteBookmark {
 private fun SyncCollection.toRemoteInput(): RemoteCollection {
     return RemoteCollection(
         name = this.name,
-        lastUpdated = this.lastModified.toPlatform()
+        lastUpdated = this.lastModified.toPlatform(),
+        createdAt = this.createdAt?.toPlatform()
     )
 }
 
@@ -587,7 +594,8 @@ private fun SyncCollectionBookmark.toRemoteInput(): RemoteCollectionBookmark {
                 sura = sura,
                 ayah = ayah,
                 lastUpdated = updatedAt,
-                bookmarkId = bookmarkId
+                bookmarkId = bookmarkId,
+                createdAt = createdAt?.toPlatform()
             )
     }
 }
@@ -631,7 +639,8 @@ private fun SyncNote.toRemoteInput(): RemoteNote? {
         startAyahId = startId,
         endAyahId = endId,
         lastUpdated = lastModified.toPlatform(),
-        semanticReplayEligible = ranges.size == 1
+        semanticReplayEligible = ranges.size == 1,
+        createdAt = createdAt?.toPlatform()
     )
 }
 
@@ -696,6 +705,7 @@ private fun SyncReadingSession.toRemoteInput(): RemoteReadingSession {
     return RemoteReadingSession(
         chapterNumber = chapterNumber,
         verseNumber = verseNumber,
-        lastUpdated = lastModified.toPlatform()
+        lastUpdated = lastModified.toPlatform(),
+        createdAt = createdAt?.toPlatform()
     )
 }

@@ -6,7 +6,8 @@ data class SyncNote(
     val id: String,
     val body: String?,
     val ranges: List<NoteRange>,
-    val lastModified: Instant
+    val lastModified: Instant,
+    val createdAt: Instant? = null
 )
 
 data class NoteAyah(

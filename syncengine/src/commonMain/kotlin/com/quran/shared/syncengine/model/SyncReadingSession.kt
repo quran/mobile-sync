@@ -6,5 +6,6 @@ data class SyncReadingSession(
     val id: String,
     val chapterNumber: Int,
     val verseNumber: Int,
-    val lastModified: Instant
+    val lastModified: Instant,
+    val createdAt: Instant? = null
 )

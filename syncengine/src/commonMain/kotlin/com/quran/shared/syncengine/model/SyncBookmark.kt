@@ -4,6 +4,7 @@ import kotlin.time.Instant
 
 sealed class SyncBookmark {
     abstract val lastModified: Instant
+    abstract val createdAt: Instant?
     abstract val isReading: Boolean
 
     data class AyahBookmark(
@@ -11,14 +12,16 @@ sealed class SyncBookmark {
         val sura: Int,
         val ayah: Int,
         override val isReading: Boolean,
-        override val lastModified: Instant
+        override val lastModified: Instant,
+        override val createdAt: Instant? = null
     ) : SyncBookmark()
 
     data class PageBookmark(
         val id: String,
         val page: Int,
         override val isReading: Boolean,
-        override val lastModified: Instant
+        override val lastModified: Instant,
+        override val createdAt: Instant? = null
     ) : SyncBookmark()
 }
 

@@ -4,5 +4,6 @@ import com.quran.shared.persistence.util.PlatformDateTime
 
 data class RemoteCollection(
     val name: String?,
-    val lastUpdated: PlatformDateTime
+    val lastUpdated: PlatformDateTime,
+    val createdAt: PlatformDateTime? = null
 )

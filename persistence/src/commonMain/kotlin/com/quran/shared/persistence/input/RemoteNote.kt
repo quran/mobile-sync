@@ -7,5 +7,6 @@ data class RemoteNote(
     val startAyahId: Long?,
     val endAyahId: Long?,
     val lastUpdated: PlatformDateTime,
-    val semanticReplayEligible: Boolean = true
+    val semanticReplayEligible: Boolean = true,
+    val createdAt: PlatformDateTime? = null
 )

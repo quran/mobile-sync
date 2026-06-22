@@ -5,7 +5,8 @@ import kotlin.time.Instant
 data class SyncCollection(
     val id: String,
     val name: String?,
-    val lastModified: Instant
+    val lastModified: Instant,
+    val createdAt: Instant? = null
 )
 
 internal sealed class SyncCollectionKey {

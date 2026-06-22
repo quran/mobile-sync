@@ -5,6 +5,7 @@ package com.quran.shared.pipeline
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.input.RemoteBookmark
+import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksSynchronizationRepository
 import com.quran.shared.syncengine.SyncOperationInvalidatedException
@@ -61,6 +62,7 @@ class ResultReceiverTest {
             }
         )
 
+        val createdAt = Instant.fromEpochMilliseconds(500)
         receiver.didSucceed(
             newToken = 11L,
             newRemoteMutations = listOf(
@@ -69,7 +71,8 @@ class ResultReceiverTest {
                         id = "remote-page-reading",
                         page = 42,
                         isReading = true,
-                        lastModified = Instant.fromEpochMilliseconds(1000)
+                        lastModified = Instant.fromEpochMilliseconds(1000),
+                        createdAt = createdAt
                     ),
                     remoteID = "remote-page-reading",
                     mutation = com.quran.shared.mutations.Mutation.CREATED
@@ -81,6 +84,7 @@ class ResultReceiverTest {
         val model = readingUpdates.single().model as RemoteBookmark.Page
         assertEquals(42, model.page)
         assertEquals(true, model.isReading)
+        assertEquals(createdAt, model.createdAt?.fromPlatform())
     }
 
     @Test
