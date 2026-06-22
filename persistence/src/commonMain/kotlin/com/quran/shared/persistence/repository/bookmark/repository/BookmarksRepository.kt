@@ -1,6 +1,7 @@
 package com.quran.shared.persistence.repository.bookmark.repository
 
 import com.quran.shared.persistence.model.AyahBookmark
+import com.quran.shared.persistence.model.BookmarkCollectionsReplacementResult
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
 import kotlinx.coroutines.flow.Flow
@@ -51,6 +52,61 @@ interface BookmarksRepository {
         collectionLocalIds: List<String>?,
         timestamp: PlatformDateTime
     ): AyahBookmark
+
+    /**
+     * Replaces the saved collection memberships for an existing ayah bookmark.
+     *
+     * Null or empty memberships normalize to the virtual default collection. Use [deleteBookmark]
+     * when a saved bookmark should be removed from every collection.
+     *
+     * @return `true` when memberships changed, or `false` when the bookmark is missing, deleted,
+     * or already has exactly the requested memberships.
+     */
+    @NativeCoroutines
+    suspend fun replaceBookmarkCollections(localId: String, collectionLocalIds: List<String>?): Boolean
+
+    /**
+     * Replaces the saved collection memberships for an existing ayah bookmark with an explicit
+     * mutation timestamp.
+     *
+     * Null or empty memberships normalize to the virtual default collection. Use [deleteBookmark]
+     * when a saved bookmark should be removed from every collection.
+     *
+     * @return `true` when memberships changed, or `false` when the bookmark is missing, deleted,
+     * or already has exactly the requested memberships.
+     */
+    @NativeCoroutines
+    suspend fun replaceBookmarkCollections(
+        localId: String,
+        collectionLocalIds: List<String>?,
+        timestamp: PlatformDateTime
+    ): Boolean
+
+    /**
+     * Creates an ayah bookmark if needed, then replaces its saved collection memberships exactly.
+     *
+     * Null or empty memberships normalize to the virtual default collection.
+     */
+    @NativeCoroutines
+    suspend fun replaceAyahBookmarkCollections(
+        sura: Int,
+        ayah: Int,
+        collectionLocalIds: List<String>?
+    ): BookmarkCollectionsReplacementResult
+
+    /**
+     * Creates an ayah bookmark if needed, then replaces its saved collection memberships exactly
+     * with an explicit mutation timestamp.
+     *
+     * Null or empty memberships normalize to the virtual default collection.
+     */
+    @NativeCoroutines
+    suspend fun replaceAyahBookmarkCollections(
+        sura: Int,
+        ayah: Int,
+        collectionLocalIds: List<String>?,
+        timestamp: PlatformDateTime
+    ): BookmarkCollectionsReplacementResult
 
     /**
      * Delete a bookmark for a specific sura and ayah, including any collection links.

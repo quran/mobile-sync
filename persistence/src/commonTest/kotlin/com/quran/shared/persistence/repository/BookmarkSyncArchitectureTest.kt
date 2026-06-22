@@ -216,6 +216,188 @@ class BookmarkSyncArchitectureTest {
     }
 
     @Test
+    fun `replaceBookmarkCollections replaces default and custom memberships exactly`() = runTest {
+        val keptCollectionId = createCollection("ReplaceKeep", "remote-replace-keep")
+        val removedCollectionId = createCollection("ReplaceRemove", "remote-replace-remove")
+        val addedCollectionId = createCollection("ReplaceAdd", "remote-replace-add")
+        val bookmark = bookmarksRepository.addBookmark(
+            sura = 2,
+            ayah = 6,
+            collectionLocalIds = listOf(DEFAULT_COLLECTION_ID, keptCollectionId, removedCollectionId)
+        )
+
+        val changed = bookmarksRepository.replaceBookmarkCollections(
+            localId = bookmark.localId,
+            collectionLocalIds = listOf(keptCollectionId, addedCollectionId)
+        )
+
+        val row = database.bookmarksQueries.getBookmarkByLocalId(bookmark.localId.toLong()).executeAsOne()
+        val removedLink = database.bookmark_collectionsQueries
+            .getCollectionBookmarkFor(bookmark.localId.toLong(), removedCollectionId.toLong())
+            .executeAsOneOrNull()
+        assertTrue(changed)
+        assertEquals(0L, row.is_in_default_collection)
+        assertEquals(setOf(keptCollectionId, addedCollectionId), activeCustomCollectionIds(bookmark.localId))
+        assertEquals(0L, removedLink?.is_active ?: 0L)
+    }
+
+    @Test
+    fun `replaceBookmarkCollections normalizes empty memberships to default`() = runTest {
+        val collectionId = createCollection("ReplaceEmpty", "remote-replace-empty")
+        val bookmark = bookmarksRepository.addBookmark(2, 7, listOf(collectionId))
+
+        val changed = bookmarksRepository.replaceBookmarkCollections(bookmark.localId, emptyList())
+
+        val row = database.bookmarksQueries.getBookmarkByLocalId(bookmark.localId.toLong()).executeAsOne()
+        assertTrue(changed)
+        assertEquals(1L, row.is_in_default_collection)
+        assertEquals(emptySet(), activeCustomCollectionIds(bookmark.localId))
+    }
+
+    @Test
+    fun `replaceBookmarkCollections returns false when memberships are unchanged`() = runTest {
+        val collectionId = createCollection("ReplaceUnchanged", "remote-replace-unchanged")
+        val bookmark = bookmarksRepository.addBookmark(2, 8, listOf(DEFAULT_COLLECTION_ID, collectionId))
+        val rowBefore = database.bookmarksQueries.getBookmarkByLocalId(bookmark.localId.toLong()).executeAsOne()
+        val linkBefore = database.bookmark_collectionsQueries
+            .getCollectionBookmarkFor(bookmark.localId.toLong(), collectionId.toLong())
+            .executeAsOne()
+
+        val changed = bookmarksRepository.replaceBookmarkCollections(
+            localId = bookmark.localId,
+            collectionLocalIds = listOf(collectionId, DEFAULT_COLLECTION_ID)
+        )
+
+        val rowAfter = database.bookmarksQueries.getBookmarkByLocalId(bookmark.localId.toLong()).executeAsOne()
+        val linkAfter = database.bookmark_collectionsQueries
+            .getCollectionBookmarkFor(bookmark.localId.toLong(), collectionId.toLong())
+            .executeAsOne()
+        assertFalse(changed)
+        assertEquals(rowBefore, rowAfter)
+        assertEquals(linkBefore, linkAfter)
+    }
+
+    @Test
+    fun `replaceBookmarkCollections with timestamp applies timestamp to membership mutations`() = runTest {
+        val collectionId = createCollection("ReplaceTimestamp", "remote-replace-timestamp")
+        val bookmark = bookmarksRepository.addBookmark(2, 13)
+        val timestamp = at(4200)
+
+        val changed = bookmarksRepository.replaceBookmarkCollections(
+            localId = bookmark.localId,
+            collectionLocalIds = listOf(collectionId),
+            timestamp = timestamp
+        )
+
+        val row = database.bookmarksQueries.getBookmarkByLocalId(bookmark.localId.toLong()).executeAsOne()
+        val link = database.bookmark_collectionsQueries
+            .getCollectionBookmarkFor(bookmark.localId.toLong(), collectionId.toLong())
+            .executeAsOne()
+        assertTrue(changed)
+        assertEquals(4200L, row.modified_at)
+        assertEquals(4200L, row.default_modified_at)
+        assertEquals(4200L, link.created_at)
+        assertEquals(4200L, link.modified_at)
+    }
+
+    @Test
+    fun `replaceAyahBookmarkCollections creates missing ayah bookmark with exact memberships`() = runTest {
+        val firstCollectionId = createCollection("ReplaceAyahFirst", "remote-replace-ayah-first")
+        val secondCollectionId = createCollection("ReplaceAyahSecond", "remote-replace-ayah-second")
+
+        val result = bookmarksRepository.replaceAyahBookmarkCollections(
+            sura = 2,
+            ayah = 9,
+            collectionLocalIds = listOf(firstCollectionId, secondCollectionId)
+        )
+
+        val row = database.bookmarksQueries.getBookmarkByLocalId(result.bookmark.localId.toLong()).executeAsOne()
+        assertTrue(result.changed)
+        assertEquals(2, result.bookmark.sura)
+        assertEquals(9, result.bookmark.ayah)
+        assertEquals(0L, row.is_in_default_collection)
+        assertEquals(setOf(firstCollectionId, secondCollectionId), activeCustomCollectionIds(result.bookmark.localId))
+    }
+
+    @Test
+    fun `replaceAyahBookmarkCollections with timestamp applies timestamp when creating missing bookmark`() = runTest {
+        val collectionId = createCollection("ReplaceAyahTimestamp", "remote-replace-ayah-timestamp")
+        val timestamp = at(4300)
+
+        val result = bookmarksRepository.replaceAyahBookmarkCollections(
+            sura = 2,
+            ayah = 14,
+            collectionLocalIds = listOf(collectionId),
+            timestamp = timestamp
+        )
+
+        val row = database.bookmarksQueries.getBookmarkByLocalId(result.bookmark.localId.toLong()).executeAsOne()
+        val link = database.bookmark_collectionsQueries
+            .getCollectionBookmarkFor(result.bookmark.localId.toLong(), collectionId.toLong())
+            .executeAsOne()
+        assertTrue(result.changed)
+        assertEquals(4300L, row.created_at)
+        assertEquals(4300L, row.modified_at)
+        assertEquals(4300L, row.bookmark_modified_at)
+        assertEquals(4300L, link.created_at)
+        assertEquals(4300L, link.modified_at)
+    }
+
+    @Test
+    fun `replaceAyahBookmarkCollections replaces existing memberships exactly`() = runTest {
+        val removedCollectionId = createCollection("ReplaceAyahRemove", "remote-replace-ayah-remove")
+        val addedCollectionId = createCollection("ReplaceAyahAdd", "remote-replace-ayah-add")
+        val bookmark = bookmarksRepository.addBookmark(2, 10, listOf(DEFAULT_COLLECTION_ID, removedCollectionId))
+
+        val result = bookmarksRepository.replaceAyahBookmarkCollections(
+            sura = 2,
+            ayah = 10,
+            collectionLocalIds = listOf(addedCollectionId)
+        )
+
+        val row = database.bookmarksQueries.getBookmarkByLocalId(bookmark.localId.toLong()).executeAsOne()
+        assertTrue(result.changed)
+        assertEquals(bookmark.localId, result.bookmark.localId)
+        assertEquals(0L, row.is_in_default_collection)
+        assertEquals(setOf(addedCollectionId), activeCustomCollectionIds(bookmark.localId))
+    }
+
+    @Test
+    fun `replaceAyahBookmarkCollections reports unchanged exact memberships`() = runTest {
+        val collectionId = createCollection("ReplaceAyahUnchanged", "remote-replace-ayah-unchanged")
+        val bookmark = bookmarksRepository.addBookmark(2, 11, listOf(DEFAULT_COLLECTION_ID, collectionId))
+
+        val result = bookmarksRepository.replaceAyahBookmarkCollections(
+            sura = 2,
+            ayah = 11,
+            collectionLocalIds = listOf(collectionId, DEFAULT_COLLECTION_ID)
+        )
+
+        assertFalse(result.changed)
+        assertEquals(bookmark.localId, result.bookmark.localId)
+        assertEquals(setOf(DEFAULT_COLLECTION_ID, collectionId), activeCollectionIds(bookmark.localId))
+    }
+
+    @Test
+    fun `replaceAyahBookmarkCollections promotes reading-only bookmark to exact saved memberships`() = runTest {
+        val collectionId = createCollection("ReplaceAyahReadingOnly", "remote-replace-ayah-reading-only")
+        val readingBookmark = readingRepository.addAyahReadingBookmark(2, 12, at(100))
+
+        val result = bookmarksRepository.replaceAyahBookmarkCollections(
+            sura = 2,
+            ayah = 12,
+            collectionLocalIds = listOf(collectionId)
+        )
+
+        val row = database.bookmarksQueries.getBookmarkByLocalId(readingBookmark.localId.toLong()).executeAsOne()
+        assertTrue(result.changed)
+        assertEquals(readingBookmark.localId, result.bookmark.localId)
+        assertEquals(1L, row.is_reading)
+        assertEquals(0L, row.is_in_default_collection)
+        assertEquals(setOf(collectionId), activeCustomCollectionIds(readingBookmark.localId))
+    }
+
+    @Test
     fun `remove default-only local ayah bookmark prunes it`() = runTest {
         val bookmark = bookmarksRepository.addBookmark(2, 4)
 
@@ -3370,6 +3552,23 @@ class BookmarkSyncArchitectureTest {
             remoteID = "$collectionId-$bookmarkId",
             mutation = mutation
         )
+    }
+
+    private fun activeCustomCollectionIds(bookmarkLocalId: String): Set<String> =
+        database.bookmark_collectionsQueries
+            .getActiveCollectionLocalIdsForBookmark(bookmarkLocalId.toLong())
+            .executeAsList()
+            .map { it.toString() }
+            .toSet()
+
+    private fun activeCollectionIds(bookmarkLocalId: String): Set<String> {
+        val row = database.bookmarksQueries.getBookmarkByLocalId(bookmarkLocalId.toLong()).executeAsOne()
+        return buildSet {
+            if (row.is_in_default_collection == 1L) {
+                add(DEFAULT_COLLECTION_ID)
+            }
+            addAll(activeCustomCollectionIds(bookmarkLocalId))
+        }
     }
 
     private fun at(timestamp: Long) = Instant.fromEpochMilliseconds(timestamp).toPlatform()

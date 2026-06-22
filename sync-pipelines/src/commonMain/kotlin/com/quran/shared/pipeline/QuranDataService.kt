@@ -397,6 +397,71 @@ class QuranDataService internal constructor(
     }
 
     @NativeCoroutines
+    suspend fun replaceBookmarkCollections(localId: String, collectionLocalIds: List<String>?): Boolean {
+        return mutatingCall("Failed to replace bookmark collection memberships", triggerAfter = false) {
+            val changed = bookmarksRepository.replaceBookmarkCollections(localId, collectionLocalIds)
+            if (changed) {
+                triggerSync()
+            }
+            changed
+        }
+    }
+
+    /**
+     * Replaces the saved collection memberships for an existing ayah bookmark with an explicit
+     * mutation timestamp and schedules sync only when memberships changed.
+     */
+    @NativeCoroutines
+    suspend fun replaceBookmarkCollections(
+        localId: String,
+        collectionLocalIds: List<String>?,
+        timestamp: PlatformDateTime
+    ): Boolean {
+        return mutatingCall("Failed to replace bookmark collection memberships", triggerAfter = false) {
+            val changed = bookmarksRepository.replaceBookmarkCollections(localId, collectionLocalIds, timestamp)
+            if (changed) {
+                triggerSync()
+            }
+            changed
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun replaceAyahBookmarkCollections(
+        sura: Int,
+        ayah: Int,
+        collectionLocalIds: List<String>?
+    ): AyahBookmark {
+        return mutatingCall("Failed to replace ayah bookmark collection memberships", triggerAfter = false) {
+            val result = bookmarksRepository.replaceAyahBookmarkCollections(sura, ayah, collectionLocalIds)
+            if (result.changed) {
+                triggerSync()
+            }
+            result.bookmark
+        }
+    }
+
+    /**
+     * Creates an ayah bookmark if needed, then replaces its saved collection memberships with an
+     * explicit mutation timestamp and schedules sync only when memberships changed.
+     */
+    @NativeCoroutines
+    suspend fun replaceAyahBookmarkCollections(
+        sura: Int,
+        ayah: Int,
+        collectionLocalIds: List<String>?,
+        timestamp: PlatformDateTime
+    ): AyahBookmark {
+        return mutatingCall("Failed to replace ayah bookmark collection memberships", triggerAfter = false) {
+            val result = bookmarksRepository.replaceAyahBookmarkCollections(sura, ayah, collectionLocalIds, timestamp)
+            if (result.changed) {
+                triggerSync()
+            }
+            result.bookmark
+        }
+    }
+
+    @NativeCoroutines
     suspend fun addReadingBookmark(sura: Int, ayah: Int): AyahReadingBookmark {
         return addAyahReadingBookmark(sura, ayah)
     }
