@@ -6,12 +6,14 @@ sealed class RemoteCollectionBookmark {
     abstract val collectionId: String
     abstract val lastUpdated: PlatformDateTime
     abstract val bookmarkId: String?
+    abstract val createdAt: PlatformDateTime?
 
     data class Page(
         override val collectionId: String,
         val page: Int,
         override val lastUpdated: PlatformDateTime,
-        override val bookmarkId: String? = null
+        override val bookmarkId: String? = null,
+        override val createdAt: PlatformDateTime? = null
     ) : RemoteCollectionBookmark()
 
     data class Ayah(
@@ -19,6 +21,7 @@ sealed class RemoteCollectionBookmark {
         val sura: Int,
         val ayah: Int,
         override val lastUpdated: PlatformDateTime,
-        override val bookmarkId: String? = null
+        override val bookmarkId: String? = null,
+        override val createdAt: PlatformDateTime? = null
     ) : RemoteCollectionBookmark()
 }

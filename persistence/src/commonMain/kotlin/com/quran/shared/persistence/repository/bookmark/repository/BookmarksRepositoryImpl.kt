@@ -777,6 +777,7 @@ class BookmarksRepositoryImpl(
     }
 
     private fun DatabaseBookmark.toRemoteBookmark(): RemoteBookmark {
+        val createdAt = Instant.fromEpochMilliseconds(created_at).toPlatform()
         val updatedAt = Instant.fromEpochMilliseconds(
             if (deleted == 1L || bookmark_pending_op == "DELETED") {
                 modified_at
@@ -789,12 +790,14 @@ class BookmarksRepositoryImpl(
                 sura = requireNotNull(sura).toInt(),
                 ayah = requireNotNull(ayah).toInt(),
                 isReading = is_reading == 1L,
-                lastUpdated = updatedAt
+                lastUpdated = updatedAt,
+                createdAt = createdAt
             )
             "PAGE" -> RemoteBookmark.Page(
                 page = requireNotNull(page).toInt(),
                 isReading = is_reading == 1L,
-                lastUpdated = updatedAt
+                lastUpdated = updatedAt,
+                createdAt = createdAt
             )
             else -> error("Unsupported bookmark type: $bookmark_type")
         }

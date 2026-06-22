@@ -5,13 +5,15 @@ import kotlin.time.Instant
 sealed class SyncCollectionBookmark {
     abstract val collectionId: String
     abstract val lastModified: Instant
+    abstract val createdAt: Instant?
 
     data class AyahBookmark(
         override val collectionId: String,
         val sura: Int,
         val ayah: Int,
         override val lastModified: Instant,
-        val bookmarkId: String? = null
+        val bookmarkId: String? = null,
+        override val createdAt: Instant? = null
     ) : SyncCollectionBookmark()
 }
 
