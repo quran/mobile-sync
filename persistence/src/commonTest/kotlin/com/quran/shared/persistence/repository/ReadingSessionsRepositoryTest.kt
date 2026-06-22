@@ -92,6 +92,66 @@ class ReadingSessionsRepositoryTest {
     }
 
     @Test
+    fun `remote created reading session persists created_at separately from modified_at`() = runTest {
+        repository.applyRemoteChangesForMutations(
+            updatesToPersist = listOf(
+                RemoteModelMutation(
+                    model = RemoteReadingSession(
+                        chapterNumber = 2,
+                        verseNumber = 255,
+                        lastUpdated = timestamp(2345L),
+                        createdAt = timestamp(1000L)
+                    ),
+                    remoteID = "remote-created-at-reading-session",
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        val record = database.reading_sessionsQueries
+            .getReadingSessionByRemoteId("remote-created-at-reading-session")
+            .executeAsOne()
+        assertEquals(1000L, record.created_at)
+        assertEquals(2345L, record.modified_at)
+    }
+
+    @Test
+    fun `remote updated reading session preserves created_at`() = runTest {
+        database.reading_sessionsQueries.persistRemoteReadingSession(
+            remote_id = "remote-reading-session-id",
+            chapter_number = 2L,
+            verse_number = 255L,
+            created_at = 1000L,
+            modified_at = 1000L
+        )
+
+        repository.applyRemoteChangesForMutations(
+            updatesToPersist = listOf(
+                RemoteModelMutation(
+                    model = RemoteReadingSession(
+                        chapterNumber = 3,
+                        verseNumber = 10,
+                        lastUpdated = timestamp(2345L),
+                        createdAt = timestamp(9999L)
+                    ),
+                    remoteID = "remote-reading-session-id",
+                    mutation = Mutation.MODIFIED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        val record = database.reading_sessionsQueries
+            .getReadingSessionByRemoteId("remote-reading-session-id")
+            .executeAsOne()
+        assertEquals(1000L, record.created_at)
+        assertEquals(2345L, record.modified_at)
+        assertEquals(3L, record.chapter_number)
+        assertEquals(10L, record.verse_number)
+    }
+
+    @Test
     fun `deleteReadingSession does not update remote row timestamp`() = runTest {
         repository = ReadingSessionsRepositoryImpl(database) { 1234567890123L }
         database.reading_sessionsQueries.persistRemoteReadingSession(

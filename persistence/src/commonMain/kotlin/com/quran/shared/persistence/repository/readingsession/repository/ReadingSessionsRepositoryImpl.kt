@@ -316,6 +316,7 @@ class ReadingSessionsRepositoryImpl(
         }
 
         val updatedAt = model.lastUpdated.fromPlatform().toEpochMilliseconds()
+        val createdAt = model.createdAt?.fromPlatform()?.toEpochMilliseconds() ?: updatedAt
         logger.i {
             "Persisting remote reading session: remoteId=${remote.remoteID}, " +
                 "chapter=${model.chapterNumber}, verse=${model.verseNumber}"
@@ -324,7 +325,7 @@ class ReadingSessionsRepositoryImpl(
             remote_id = remote.remoteID,
             chapter_number = model.chapterNumber.toLong(),
             verse_number = model.verseNumber.toLong(),
-            created_at = updatedAt,
+            created_at = createdAt,
             modified_at = updatedAt
         )
     }

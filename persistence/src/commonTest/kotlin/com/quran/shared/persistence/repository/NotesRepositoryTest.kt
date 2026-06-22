@@ -103,6 +103,30 @@ class NotesRepositoryTest {
     }
 
     @Test
+    fun `remote created note persists created_at separately from modified_at`() = runTest {
+        repository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                RemoteModelMutation(
+                    model = RemoteNote(
+                        body = "test note",
+                        startAyahId = QuranData.getAyahId(2, 13).toLong(),
+                        endAyahId = QuranData.getAyahId(2, 14).toLong(),
+                        lastUpdated = timestamp(1_700_000_002_345L),
+                        createdAt = timestamp(1_700_000_001_000L)
+                    ),
+                    remoteID = "remote-created-at-note",
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        val record = database.notesQueries.getNoteByRemoteId("remote-created-at-note").executeAsOne()
+        assertEquals(1_700_000_001_000L, record.created_at)
+        assertEquals(1_700_000_002_345L, record.modified_at)
+    }
+
+    @Test
     fun `deleteNote preserves timestamp for remote rows`() = runTest {
         database.notesQueries.persistRemoteNote(
             remote_id = "remote-note-id",

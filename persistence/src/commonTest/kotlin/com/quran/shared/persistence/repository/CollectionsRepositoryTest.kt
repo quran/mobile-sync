@@ -77,6 +77,28 @@ class CollectionsRepositoryTest {
     }
 
     @Test
+    fun `remote created collection persists created_at separately from modified_at`() = runTest {
+        repository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                RemoteModelMutation(
+                    model = RemoteCollection(
+                        name = "Favorites",
+                        lastUpdated = timestamp(2345L),
+                        createdAt = timestamp(1000L)
+                    ),
+                    remoteID = "remote-created-at-collection",
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        val record = database.collectionsQueries.getCollectionByRemoteId("remote-created-at-collection").executeAsOne()
+        assertEquals(1000L, record.created_at)
+        assertEquals(2345L, record.modified_at)
+    }
+
+    @Test
     fun `updateCollection rejects deleted collection without renaming tombstone`() = runTest {
         val collection = repository.addCollection("Favorites", timestamp(1000L))
         repository.deleteCollection(collection.localId)

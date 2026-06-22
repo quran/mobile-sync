@@ -100,6 +100,107 @@ class BookmarkSyncArchitectureTest {
     }
 
     @Test
+    fun `remote created ayah bookmark persists created_at separately from modified_at`() = runTest {
+        bookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                RemoteModelMutation(
+                    model = RemoteBookmark.Ayah(
+                        sura = 2,
+                        ayah = 255,
+                        isReading = false,
+                        lastUpdated = at(2345),
+                        createdAt = at(1000)
+                    ),
+                    remoteID = "remote-ayah-created-at",
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        val row = database.bookmarksQueries.getBookmarkByRemoteId("remote-ayah-created-at").executeAsOne()
+        assertEquals(1000L, row.created_at)
+        assertEquals(2345L, row.modified_at)
+        assertEquals(2345L, row.bookmark_modified_at)
+    }
+
+    @Test
+    fun `remote created page bookmark persists created_at separately from modified_at`() = runTest {
+        bookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                RemoteModelMutation(
+                    model = RemoteBookmark.Page(
+                        page = 22,
+                        isReading = false,
+                        lastUpdated = at(2345),
+                        createdAt = at(1000)
+                    ),
+                    remoteID = "remote-page-created-at",
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        val row = database.bookmarksQueries.getBookmarkByRemoteId("remote-page-created-at").executeAsOne()
+        assertEquals(1000L, row.created_at)
+        assertEquals(2345L, row.modified_at)
+        assertEquals(2345L, row.bookmark_modified_at)
+    }
+
+    @Test
+    fun `remote created custom collection bookmark persists created_at separately from modified_at`() = runTest {
+        database.collectionsQueries.persistRemoteCollection(
+            remote_id = "remote-custom-created-at",
+            name = "Favorites",
+            created_at = 500,
+            modified_at = 500
+        )
+        bookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                RemoteModelMutation(
+                    model = RemoteBookmark.Ayah(
+                        sura = 2,
+                        ayah = 255,
+                        isReading = false,
+                        lastUpdated = at(1500),
+                        createdAt = at(1500)
+                    ),
+                    remoteID = "remote-bookmark-created-at",
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        collectionBookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                RemoteModelMutation(
+                    model = RemoteCollectionBookmark.Ayah(
+                        collectionId = "remote-custom-created-at",
+                        sura = 2,
+                        ayah = 255,
+                        lastUpdated = at(2345),
+                        bookmarkId = "remote-bookmark-created-at",
+                        createdAt = at(1000)
+                    ),
+                    remoteID = "remote-custom-created-at-remote-bookmark-created-at",
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        val bookmark = database.bookmarksQueries.getBookmarkByRemoteId("remote-bookmark-created-at").executeAsOne()
+        val collection = database.collectionsQueries.getCollectionByRemoteId("remote-custom-created-at").executeAsOne()
+        val row = database.bookmark_collectionsQueries
+            .getCollectionBookmarkFor(bookmark.local_id, collection.local_id)
+            .executeAsOne()
+        assertEquals(1000L, row.created_at)
+        assertEquals(2345L, row.modified_at)
+    }
+
+    @Test
     fun `deleteBookmark by ayah returns false for missing bookmark without mutation`() = runTest {
         val deleted = bookmarksRepository.deleteBookmark(2, 255)
 
@@ -1793,7 +1894,8 @@ class BookmarkSyncArchitectureTest {
             ayah_id = 1L,
             sura = 5L,
             ayah = 17L,
-            timestamp = 100L
+            created_at = 100L,
+            modified_at = 100L
         )
         val localMutation = bookmarksRepository.fetchMutatedBookmarks().single {
             it.remoteID == "remote-reading-stale"

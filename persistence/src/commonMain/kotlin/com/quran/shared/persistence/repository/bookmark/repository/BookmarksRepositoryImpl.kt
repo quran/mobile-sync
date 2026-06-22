@@ -120,7 +120,8 @@ class BookmarksRepositoryImpl(
                     ayah_id = ayahId,
                     sura = sura.toLong(),
                     ayah = ayah.toLong(),
-                    timestamp = timestampMillis
+                    created_at = timestampMillis,
+                    modified_at = timestampMillis
                 )
 
                 if (DEFAULT_COLLECTION_ID in normalizedCollectionIds) {
@@ -253,7 +254,8 @@ class BookmarksRepositoryImpl(
                         ayah_id = getAyahId(sura, ayah).toLong(),
                         sura = sura.toLong(),
                         ayah = ayah.toLong(),
-                        timestamp = timestampMillis
+                        created_at = timestampMillis,
+                        modified_at = timestampMillis
                     )
                     bookmark = requireNotNull(
                         bookmarkQueries.value.getBookmarkForAyah(sura.toLong(), ayah.toLong()).executeAsOneOrNull()
@@ -360,7 +362,8 @@ class BookmarksRepositoryImpl(
                 ayah_id = getAyahId(sura, ayah).toLong(),
                 sura = sura.toLong(),
                 ayah = ayah.toLong(),
-                timestamp = timestampMillis
+                created_at = timestampMillis,
+                modified_at = timestampMillis
             )
         }
         if (DEFAULT_COLLECTION_ID in desiredCollectionIds && DEFAULT_COLLECTION_ID !in currentCollectionIds) {
@@ -643,6 +646,7 @@ class BookmarksRepositoryImpl(
 
     private fun applyRemoteBookmarkUpsert(remote: RemoteModelMutation<RemoteBookmark>) {
         val updatedAt = remote.model.lastUpdated.fromPlatform().toEpochMilliseconds()
+        val createdAt = remote.model.createdAt?.fromPlatform()?.toEpochMilliseconds() ?: updatedAt
         // Backend bookmark IDs are stable canonical row IDs and are not reused or moved between locations.
         val existingByRemoteId = bookmarkQueries.value.getBookmarkByRemoteId(remote.remoteID).executeAsOneOrNull()
         if (existingByRemoteId != null && !existingByRemoteId.matches(remote.model)) {
@@ -667,7 +671,8 @@ class BookmarksRepositoryImpl(
                     ayah_id = getAyahId(model.sura, model.ayah).toLong(),
                     sura = model.sura.toLong(),
                     ayah = model.ayah.toLong(),
-                    timestamp = updatedAt
+                    created_at = createdAt,
+                    modified_at = updatedAt
                 )
                 bookmarkQueries.value.getBookmarkForAyah(model.sura.toLong(), model.ayah.toLong())
                     .executeAsOne()
@@ -676,7 +681,8 @@ class BookmarksRepositoryImpl(
                 bookmarkQueries.value.upsertPageBookmark(
                     remote_id = remote.remoteID,
                     page = model.page.toLong(),
-                    timestamp = updatedAt
+                    created_at = createdAt,
+                    modified_at = updatedAt
                 )
                 bookmarkQueries.value.getBookmarkForPage(model.page.toLong())
                     .executeAsOne()

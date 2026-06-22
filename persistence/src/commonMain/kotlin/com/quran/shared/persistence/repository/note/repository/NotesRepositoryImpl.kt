@@ -231,6 +231,7 @@ class NotesRepositoryImpl(
         }
 
         val updatedAt = model.lastUpdated.fromPlatform().toEpochMilliseconds()
+        val createdAt = model.createdAt?.fromPlatform()?.toEpochMilliseconds() ?: updatedAt
         val existing = notesQueries.value.getNoteByRemoteId(remote.remoteID)
             .executeAsOneOrNull()
         if (existing?.hasPendingLocalMutation() == true) {
@@ -251,7 +252,7 @@ class NotesRepositoryImpl(
             note = body,
             start_ayah_id = startAyahId,
             end_ayah_id = endAyahId,
-            created_at = updatedAt,
+            created_at = createdAt,
             modified_at = updatedAt
         )
     }
