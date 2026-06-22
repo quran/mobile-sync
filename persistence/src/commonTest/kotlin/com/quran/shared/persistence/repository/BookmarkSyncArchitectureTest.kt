@@ -29,6 +29,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -58,6 +59,60 @@ class BookmarkSyncArchitectureTest {
         assertEquals(bookmark.localId.toLong(), row.local_id)
         assertEquals(1L, row.is_in_default_collection)
         assertEquals("CREATED", row.default_pending_op)
+        assertEquals(0L, database.bookmark_collectionsQueries.countAll().executeAsOne())
+    }
+
+    @Test
+    fun `deleteBookmark by ayah returns false for missing bookmark without mutation`() = runTest {
+        val deleted = bookmarksRepository.deleteBookmark(2, 255)
+
+        assertFalse(deleted)
+        assertEquals(emptyList(), bookmarksRepository.fetchMutatedBookmarks())
+    }
+
+    @Test
+    fun `deleteBookmark by local id returns false for missing bookmark without mutation`() = runTest {
+        val deleted = bookmarksRepository.deleteBookmark("999")
+
+        assertFalse(deleted)
+        assertEquals(emptyList(), bookmarksRepository.fetchMutatedBookmarks())
+    }
+
+    @Test
+    fun `deleteBookmark by ayah returns false for reading-only bookmark without saved mutation`() = runTest {
+        readingRepository.addAyahReadingBookmark(2, 255, at(100))
+        val before = database.bookmarksQueries.getBookmarkForAyah(2L, 255L).executeAsOne()
+        val mutationsBefore = bookmarksRepository.fetchMutatedBookmarks()
+
+        val deleted = bookmarksRepository.deleteBookmark(2, 255)
+
+        val after = database.bookmarksQueries.getBookmarkForAyah(2L, 255L).executeAsOne()
+        val mutationsAfter = bookmarksRepository.fetchMutatedBookmarks()
+        assertFalse(deleted)
+        assertEquals(before, after)
+        assertEquals(mutationsBefore.size, mutationsAfter.size)
+        assertEquals(mutationsBefore.single().localID, mutationsAfter.single().localID)
+        assertEquals(mutationsBefore.single().mutation, mutationsAfter.single().mutation)
+        assertEquals(mutationsBefore.single().ack, mutationsAfter.single().ack)
+        assertEquals(0L, database.bookmark_collectionsQueries.countAll().executeAsOne())
+    }
+
+    @Test
+    fun `deleteBookmark by local id returns false for reading-only bookmark without saved mutation`() = runTest {
+        val readingBookmark = readingRepository.addAyahReadingBookmark(2, 255, at(100))
+        val before = database.bookmarksQueries.getBookmarkByLocalId(readingBookmark.localId.toLong()).executeAsOne()
+        val mutationsBefore = bookmarksRepository.fetchMutatedBookmarks()
+
+        val deleted = bookmarksRepository.deleteBookmark(readingBookmark.localId)
+
+        val after = database.bookmarksQueries.getBookmarkByLocalId(readingBookmark.localId.toLong()).executeAsOne()
+        val mutationsAfter = bookmarksRepository.fetchMutatedBookmarks()
+        assertFalse(deleted)
+        assertEquals(before, after)
+        assertEquals(mutationsBefore.size, mutationsAfter.size)
+        assertEquals(mutationsBefore.single().localID, mutationsAfter.single().localID)
+        assertEquals(mutationsBefore.single().mutation, mutationsAfter.single().mutation)
+        assertEquals(mutationsBefore.single().ack, mutationsAfter.single().ack)
         assertEquals(0L, database.bookmark_collectionsQueries.countAll().executeAsOne())
     }
 

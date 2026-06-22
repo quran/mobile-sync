@@ -123,15 +123,22 @@ class CollectionsRepositoryImpl(
 
     override suspend fun deleteCollection(localId: String): Boolean {
         logger.i { "Deleting collection localId=$localId" }
-        withContext(Dispatchers.IO) {
+        return withContext(Dispatchers.IO) {
+            var deleted = false
             database.transaction {
+                val id = localId.toLong()
+                val collection = collectionQueries.value.getCollectionByLocalId(id).executeAsOneOrNull()
+                if (collection?.deleted != 0L) {
+                    return@transaction
+                }
                 collectionQueries.value.deleteCollection(
-                    id = localId.toLong()
+                    id = id
                 )
                 reconciler.reconcile()
+                deleted = true
             }
+            deleted
         }
-        return true
     }
 
     override suspend fun fetchMutatedCollections(): List<LocalModelMutation<Collection>> {

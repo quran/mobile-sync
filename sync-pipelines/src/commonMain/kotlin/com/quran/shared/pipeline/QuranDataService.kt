@@ -497,22 +497,49 @@ class QuranDataService internal constructor(
     }
 
     @NativeCoroutines
-    suspend fun deleteBookmark(bookmark: AyahBookmark) {
-        mutatingCall("Failed to delete bookmark") {
+    suspend fun deleteBookmark(bookmark: AyahBookmark): Boolean {
+        return deleteBookmarkResult("Failed to delete bookmark") {
             bookmarksRepository.deleteBookmark(bookmark)
         }
     }
 
     @NativeCoroutines
-    suspend fun addCollection(name: String) {
-        mutatingCall("Failed to add collection") {
+    suspend fun deleteBookmark(localId: String): Boolean {
+        return deleteBookmarkResult("Failed to delete bookmark") {
+            bookmarksRepository.deleteBookmark(localId)
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun deleteBookmark(sura: Int, ayah: Int): Boolean {
+        return deleteBookmarkResult("Failed to delete bookmark") {
+            bookmarksRepository.deleteBookmark(sura, ayah)
+        }
+    }
+
+    private suspend fun deleteBookmarkResult(
+        errorMessage: String,
+        block: suspend () -> Boolean
+    ): Boolean {
+        return mutatingCall(errorMessage, triggerAfter = false) {
+            val deleted = block()
+            if (deleted) {
+                triggerSync()
+            }
+            deleted
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun addCollection(name: String): Collection {
+        return mutatingCall("Failed to add collection") {
             collectionsRepository.addCollection(name)
         }
     }
 
     @NativeCoroutines
-    suspend fun addCollection(name: String, timestamp: PlatformDateTime) {
-        mutatingCall("Failed to add collection") {
+    suspend fun addCollection(name: String, timestamp: PlatformDateTime): Collection {
+        return mutatingCall("Failed to add collection") {
             collectionsRepository.addCollection(name, timestamp)
         }
     }
@@ -549,9 +576,13 @@ class QuranDataService internal constructor(
     }
 
     @NativeCoroutines
-    suspend fun deleteCollection(localId: String) {
-        mutatingCall("Failed to delete collection") {
-            collectionsRepository.deleteCollection(localId)
+    suspend fun deleteCollection(localId: String): Boolean {
+        return mutatingCall("Failed to delete collection", triggerAfter = false) {
+            val deleted = collectionsRepository.deleteCollection(localId)
+            if (deleted) {
+                triggerSync()
+            }
+            deleted
         }
     }
 
