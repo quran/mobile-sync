@@ -77,7 +77,8 @@ internal class ReadingSessionsSyncAdapter(
                 it.toSyncMutation(
                     resourceName = resourceName,
                     resourceData = SyncReadingSession::toResourceData,
-                    timestamp = { model -> model.lastModified.toEpochMilliseconds() }
+                    timestamp = { model -> model.lastModified.toEpochMilliseconds() },
+                    createdTimestamp = { model -> model.createdAt?.toEpochMilliseconds() }
                 )
             }
 

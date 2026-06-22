@@ -145,7 +145,8 @@ internal class BookmarksSyncAdapter(
                 it.toSyncMutation(
                     resourceName = resourceName,
                     resourceData = SyncBookmark::toResourceData,
-                    timestamp = { model -> model.lastModified.toEpochMilliseconds() }
+                    timestamp = { model -> model.lastModified.toEpochMilliseconds() },
+                    createdTimestamp = { model -> model.createdAt?.toEpochMilliseconds() }
                 )
             }
 
