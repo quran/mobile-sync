@@ -187,6 +187,7 @@ class CollectionsRepositoryImpl(
         }
 
         val updatedAt = remote.model.lastUpdated.fromPlatform().toEpochMilliseconds()
+        val createdAt = remote.model.createdAt?.fromPlatform()?.toEpochMilliseconds() ?: updatedAt
         val existingByRemote = collectionQueries.value.getCollectionByRemoteId(remote.remoteID)
             .executeAsOneOrNull()
 
@@ -227,7 +228,7 @@ class CollectionsRepositoryImpl(
             collectionQueries.value.persistRemoteCollection(
                 remote_id = remote.remoteID,
                 name = name,
-                created_at = updatedAt,
+                created_at = createdAt,
                 modified_at = updatedAt
             )
         }

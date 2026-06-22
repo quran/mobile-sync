@@ -237,7 +237,8 @@ class CollectionBookmarksRepositoryImpl(
                     ayah_id = ayahId,
                     sura = sura.toLong(),
                     ayah = ayah.toLong(),
-                    timestamp = timestampMillis
+                    created_at = timestampMillis,
+                    modified_at = timestampMillis
                 )
                 val bookmark = requireNotNull(
                     bookmarkQueries.value.getBookmarkForAyah(sura.toLong(), ayah.toLong()).executeAsOneOrNull()
@@ -870,6 +871,7 @@ class CollectionBookmarksRepositoryImpl(
             return
         }
         val updatedAt = remote.model.lastUpdated.fromPlatform().toEpochMilliseconds()
+        val createdAt = remote.model.createdAt?.fromPlatform()?.toEpochMilliseconds() ?: updatedAt
         val bookmarkRemoteId = remote.model.bookmarkId
             ?: bookmarkQueries.value.getBookmarkByLocalId(bookmarkLocalId).executeAsOneOrNull()?.remote_id
         bookmarkCollectionQueries.value.persistRemoteBookmarkCollection(
@@ -877,7 +879,7 @@ class CollectionBookmarksRepositoryImpl(
             collection_local_id = collection.local_id,
             bookmark_remote_id = bookmarkRemoteId,
             collection_remote_id = remote.model.collectionId,
-            created_at = updatedAt,
+            created_at = createdAt,
             modified_at = updatedAt
         )
     }
@@ -1048,7 +1050,8 @@ class CollectionBookmarksRepositoryImpl(
                     ayah_id = getAyahId(bookmark.sura, bookmark.ayah).toLong(),
                     sura = bookmark.sura.toLong(),
                     ayah = bookmark.ayah.toLong(),
-                    timestamp = updatedAt
+                    created_at = updatedAt,
+                    modified_at = updatedAt
                 )
                 bookmarkQueries.value.getBookmarkForAyah(bookmark.sura.toLong(), bookmark.ayah.toLong())
                     .executeAsOneOrNull()
@@ -1083,7 +1086,8 @@ class CollectionBookmarksRepositoryImpl(
             ayah_id = getAyahId(bookmark.sura, bookmark.ayah).toLong(),
             sura = bookmark.sura.toLong(),
             ayah = bookmark.ayah.toLong(),
-            timestamp = updatedAt
+            created_at = updatedAt,
+            modified_at = updatedAt
         )
         bookmarkQueries.value.markDefaultRelationForRecreation(
             local_id = bookmarkLocalId,
@@ -1101,7 +1105,8 @@ class CollectionBookmarksRepositoryImpl(
             ayah_id = getAyahId(bookmark.sura, bookmark.ayah).toLong(),
             sura = bookmark.sura.toLong(),
             ayah = bookmark.ayah.toLong(),
-            timestamp = updatedAt
+            created_at = updatedAt,
+            modified_at = updatedAt
         )
         bookmarkQueries.value.markDefaultRelationForRecreation(
             local_id = bookmarkLocalId,
@@ -1125,7 +1130,8 @@ class CollectionBookmarksRepositoryImpl(
             ayah_id = getAyahId(bookmark.sura, bookmark.ayah).toLong(),
             sura = bookmark.sura.toLong(),
             ayah = bookmark.ayah.toLong(),
-            timestamp = bookmark.lastUpdated.fromPlatform().toEpochMilliseconds()
+            created_at = bookmark.lastUpdated.fromPlatform().toEpochMilliseconds(),
+            modified_at = bookmark.lastUpdated.fromPlatform().toEpochMilliseconds()
         )
     }
 
