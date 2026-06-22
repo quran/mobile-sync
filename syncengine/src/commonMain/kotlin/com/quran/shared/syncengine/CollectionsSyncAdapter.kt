@@ -15,7 +15,6 @@ import com.quran.shared.syncengine.preprocessing.CollectionsRemoteMutationsPrepr
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import kotlin.time.Instant
 
 internal class CollectionsSyncAdapter(
     private val configurations: CollectionsSynchronizationConfigurations
@@ -147,7 +146,7 @@ internal class CollectionsSyncAdapter(
 
 private fun SyncMutation.toSyncCollection(logger: Logger): SyncCollection? {
     val id = resourceId ?: return null
-    val lastModified = Instant.fromEpochMilliseconds(timestamp ?: 0)
+    val lastModified = clientUpdatedAtInstant()
     return when (mutation) {
         Mutation.DELETED -> SyncCollection(
             id = id,
@@ -164,7 +163,8 @@ private fun SyncMutation.toSyncCollection(logger: Logger): SyncCollection? {
                 SyncCollection(
                     id = id,
                     name = name,
-                    lastModified = lastModified
+                    lastModified = lastModified,
+                    createdAt = clientCreatedAtInstant()
                 )
             }
         }
