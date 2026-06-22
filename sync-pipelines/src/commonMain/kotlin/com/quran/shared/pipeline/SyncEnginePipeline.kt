@@ -6,14 +6,17 @@ import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.LocalMutationAck
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
+import com.quran.shared.persistence.input.LocalSyncCollection
+import com.quran.shared.persistence.input.LocalSyncCollectionAyahBookmark
+import com.quran.shared.persistence.input.LocalSyncNote
+import com.quran.shared.persistence.input.LocalSyncReadingSession
 import com.quran.shared.persistence.input.RemoteBookmark
 import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.input.RemoteNote
 import com.quran.shared.persistence.input.RemoteReadingSession
 import com.quran.shared.persistence.model.CollectionAyahBookmark
-import com.quran.shared.persistence.model.Note
-import com.quran.shared.persistence.model.Collection as PersistenceCollection
+import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksSynchronizationRepository
 import com.quran.shared.persistence.repository.collection.repository.CollectionsSynchronizationRepository
@@ -21,7 +24,6 @@ import com.quran.shared.persistence.repository.collectionbookmark.repository.Col
 import com.quran.shared.persistence.repository.note.repository.NotesSynchronizationRepository
 import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksRepository
 import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsSynchronizationRepository
-import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toPlatform
@@ -371,7 +373,7 @@ private class CollectionsResultReceiver(
             remoteMutation.mapModel { it.model.toRemoteInput() }
         }
         val mappedLocals = processedLocalMutations.map { localMutation ->
-            localMutation.mapModel { it.model.toPersistence() }
+            localMutation.mapModel { it.model.toLocalSyncCollection() }
         }
 
         logPersistingSyncChanges("collection", mappedRemotes.size, mappedLocals.size)
@@ -399,7 +401,7 @@ private class CollectionBookmarksResultReceiver(
             remoteMutation.mapModel { it.model.toRemoteInput() }
         }
         val mappedLocals = processedLocalMutations.map { localMutation ->
-            localMutation.mapModel { it.model.toPersistence(it.localID) }
+            localMutation.mapModel { it.model.toLocalSyncCollectionBookmark(it.localID) }
         }
 
         logPersistingSyncChanges("collection bookmark", mappedRemotes.size, mappedLocals.size)
@@ -445,12 +447,12 @@ private class NotesResultReceiver(
         }
 
         val mappedLocals = processedLocalMutations.mapNotNull { localMutation ->
-            val persistenceNote = localMutation.model.toPersistence(localMutation.localID)
-            if (persistenceNote == null) {
+            val localSyncNote = localMutation.model.toLocalSyncNote(localMutation.localID)
+            if (localSyncNote == null) {
                 logger.w { "Skipping local note mutation without valid ranges: localId=${localMutation.localID}" }
                 null
             } else {
-                localMutation.mapModel { persistenceNote }
+                localMutation.mapModel { localSyncNote }
             }
         }
 
@@ -480,7 +482,7 @@ private class ReadingSessionsResultReceiver(
         }
 
         val mappedLocals = processedLocalMutations.map { localMutation ->
-            localMutation.mapModel { it.model.toPersistence(it.localID) }
+            localMutation.mapModel { it.model.toLocalSyncReadingSession(it.localID) }
         }
 
         logPersistingSyncChanges("reading session", mappedRemotes.size, mappedLocals.size)
@@ -513,19 +515,22 @@ private fun RemoteBookmark.toSyncEngine(id: String): SyncBookmark {
     }
 }
 
-private fun PersistenceCollection.toSyncEngine(): SyncCollection {
+private fun LocalSyncCollection.toSyncEngine(): SyncCollection {
     return SyncCollection(
         id = this.localId,
         name = this.name,
-        lastModified = this.lastUpdated.fromPlatform()
+        lastModified = this.lastUpdated.fromPlatform(),
+        createdAt = this.createdAt.fromPlatform()
     )
 }
 
-private fun SyncCollection.toPersistence(): PersistenceCollection {
-    return PersistenceCollection(
+private fun SyncCollection.toLocalSyncCollection(): LocalSyncCollection {
+    val updatedAt = lastModified.toPlatform()
+    return LocalSyncCollection(
         name = requireNotNull(this.name) { "Transforming a collection without a name." },
-        lastUpdated = this.lastModified.toPlatform(),
-        localId = this.id
+        lastUpdated = updatedAt,
+        localId = this.id,
+        createdAt = this.createdAt?.toPlatform() ?: updatedAt
     )
 }
 
@@ -568,11 +573,23 @@ private fun CollectionAyahBookmark.toSyncEngine(): SyncCollectionBookmark {
     )
 }
 
-private fun SyncCollectionBookmark.toPersistence(localId: String): CollectionAyahBookmark {
+private fun LocalSyncCollectionAyahBookmark.toSyncEngine(): SyncCollectionBookmark {
+    val collectionId = requireNotNull(collectionRemoteId) { "Collection remote ID is required for sync." }
+    return SyncCollectionBookmark.AyahBookmark(
+        collectionId = collectionId,
+        sura = sura,
+        ayah = ayah,
+        lastModified = lastUpdated.fromPlatform(),
+        bookmarkId = bookmarkRemoteId,
+        createdAt = createdAt?.fromPlatform()
+    )
+}
+
+private fun SyncCollectionBookmark.toLocalSyncCollectionBookmark(localId: String): LocalSyncCollectionAyahBookmark {
     val updatedAt = lastModified.toPlatform()
     return when (this) {
         is SyncCollectionBookmark.AyahBookmark ->
-            CollectionAyahBookmark(
+            LocalSyncCollectionAyahBookmark(
                 collectionLocalId = "",
                 collectionRemoteId = collectionId,
                 bookmarkLocalId = "",
@@ -580,7 +597,8 @@ private fun SyncCollectionBookmark.toPersistence(localId: String): CollectionAya
                 sura = sura,
                 ayah = ayah,
                 lastUpdated = updatedAt,
-                localId = localId
+                localId = localId,
+                createdAt = createdAt?.toPlatform()
             )
     }
 }
@@ -600,7 +618,7 @@ private fun SyncCollectionBookmark.toRemoteInput(): RemoteCollectionBookmark {
     }
 }
 
-private fun Note.toSyncEngine(): SyncNote? {
+private fun LocalSyncNote.toSyncEngine(): SyncNote? {
     return SyncNote(
         id = localId,
         body = body,
@@ -610,23 +628,26 @@ private fun Note.toSyncEngine(): SyncNote? {
                 end = NoteAyah(sura = endSura, ayah = endAyah)
             )
         ),
-        lastModified = lastUpdated.fromPlatform()
+        lastModified = lastUpdated.fromPlatform(),
+        createdAt = createdAt.fromPlatform()
     )
 }
 
-private fun SyncNote.toPersistence(localId: String): Note? {
+private fun SyncNote.toLocalSyncNote(localId: String): LocalSyncNote? {
     val range = primaryRangeOrNull() ?: return null
     suraAyahToAyahId(range.start.sura, range.start.ayah) ?: return null
     suraAyahToAyahId(range.end.sura, range.end.ayah) ?: return null
     val noteBody = requireNotNull(body) { "Transforming a note without a body." }
-    return Note(
+    val updatedAt = lastModified.toPlatform()
+    return LocalSyncNote(
         body = noteBody,
         startSura = range.start.sura,
         startAyah = range.start.ayah,
         endSura = range.end.sura,
         endAyah = range.end.ayah,
-        lastUpdated = lastModified.toPlatform(),
-        localId = localId
+        lastUpdated = updatedAt,
+        localId = localId,
+        createdAt = createdAt?.toPlatform() ?: updatedAt
     )
 }
 
@@ -692,12 +713,24 @@ private fun ReadingSession.toSyncEngine(): SyncReadingSession {
     )
 }
 
-private fun SyncReadingSession.toPersistence(localId: String): ReadingSession {
-    return ReadingSession(
+private fun LocalSyncReadingSession.toSyncEngine(): SyncReadingSession {
+    return SyncReadingSession(
+        id = localId,
+        chapterNumber = sura,
+        verseNumber = ayah,
+        lastModified = lastUpdated.fromPlatform(),
+        createdAt = createdAt.fromPlatform()
+    )
+}
+
+private fun SyncReadingSession.toLocalSyncReadingSession(localId: String): LocalSyncReadingSession {
+    val updatedAt = lastModified.toPlatform()
+    return LocalSyncReadingSession(
         sura = chapterNumber,
         ayah = verseNumber,
-        lastUpdated = lastModified.toPlatform(),
-        localId = localId
+        lastUpdated = updatedAt,
+        localId = localId,
+        createdAt = createdAt?.toPlatform() ?: updatedAt
     )
 }
 

@@ -19,6 +19,10 @@ import com.quran.shared.mutations.LocalMutationAck
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.PersistenceImportResult
+import com.quran.shared.persistence.input.LocalSyncCollection
+import com.quran.shared.persistence.input.LocalSyncCollectionAyahBookmark
+import com.quran.shared.persistence.input.LocalSyncNote
+import com.quran.shared.persistence.input.LocalSyncReadingSession
 import com.quran.shared.persistence.input.RemoteBookmark
 import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.input.RemoteCollectionBookmark
@@ -1317,10 +1321,10 @@ private class ServiceCollectionsRepository : CollectionsRepository, CollectionsS
         return deleteResult
     }
     override fun getCollectionsFlow(): Flow<List<Collection>> = MutableStateFlow(emptyList())
-    override suspend fun fetchMutatedCollections(): List<LocalModelMutation<Collection>> = emptyList()
+    override suspend fun fetchMutatedCollections(): List<LocalModelMutation<LocalSyncCollection>> = emptyList()
     override suspend fun applyRemoteChanges(
         updatesToPersist: List<RemoteModelMutation<RemoteCollection>>,
-        localMutationsToClear: List<LocalModelMutation<Collection>>,
+        localMutationsToClear: List<LocalModelMutation<LocalSyncCollection>>,
         writeBoundaryGuard: PersistenceWriteBoundaryGuard
     ) = writeBoundaryGuard.checkWriteBoundary()
     override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
@@ -1355,14 +1359,14 @@ private class ServiceCollectionBookmarksRepository :
     override suspend fun removeAyahBookmarkFromCollection(collectionAyahBookmark: CollectionAyahBookmark): Boolean = true
     override fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<CollectionAyahBookmark>> =
         MutableStateFlow(emptyList())
-    override suspend fun fetchMutatedCollectionBookmarks(): List<LocalModelMutation<CollectionAyahBookmark>> =
+    override suspend fun fetchMutatedCollectionBookmarks(): List<LocalModelMutation<LocalSyncCollectionAyahBookmark>> =
         emptyList()
     override suspend fun markMutatedCollectionBookmarksInFlight(acks: List<LocalMutationAck>): List<LocalMutationAck> =
         emptyList()
     override suspend fun rollbackMutatedCollectionBookmarksInFlight(acks: List<LocalMutationAck>) = Unit
     override suspend fun applyRemoteChanges(
         updatesToPersist: List<RemoteModelMutation<RemoteCollectionBookmark>>,
-        localMutationsToClear: List<LocalModelMutation<CollectionAyahBookmark>>,
+        localMutationsToClear: List<LocalModelMutation<LocalSyncCollectionAyahBookmark>>,
         writeBoundaryGuard: PersistenceWriteBoundaryGuard
     ) = writeBoundaryGuard.checkWriteBoundary()
     override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
@@ -1401,10 +1405,10 @@ private class ServiceNotesRepository : NotesRepository, NotesSynchronizationRepo
     ): Note = addNote(body, startSura, startAyah, endSura, endAyah)
     override suspend fun deleteNote(localId: String): Boolean = true
     override fun getNotesFlow(): Flow<List<Note>> = MutableStateFlow(emptyList())
-    override suspend fun fetchMutatedNotes(lastModified: Long): List<LocalModelMutation<Note>> = emptyList()
+    override suspend fun fetchMutatedNotes(lastModified: Long): List<LocalModelMutation<LocalSyncNote>> = emptyList()
     override suspend fun applyRemoteChanges(
         updatesToPersist: List<RemoteModelMutation<RemoteNote>>,
-        localMutationsToClear: List<LocalModelMutation<Note>>,
+        localMutationsToClear: List<LocalModelMutation<LocalSyncNote>>,
         writeBoundaryGuard: PersistenceWriteBoundaryGuard
     ) = writeBoundaryGuard.checkWriteBoundary()
     override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
@@ -1441,7 +1445,7 @@ private class ServiceReadingSessionsRepository : ReadingSessionsRepository, Read
         deleteCalls += ReadingSessionDeleteCall(sura, ayah)
         return deleteResult
     }
-    override suspend fun fetchMutatedReadingSessions(): List<LocalModelMutation<ReadingSession>> = emptyList()
+    override suspend fun fetchMutatedReadingSessions(): List<LocalModelMutation<LocalSyncReadingSession>> = emptyList()
     override suspend fun applyRemoteChanges(
         updatesToPersist: List<RemoteModelMutation<RemoteReadingSession>>,
         localMutationIdsToClear: List<String>,
@@ -1449,7 +1453,7 @@ private class ServiceReadingSessionsRepository : ReadingSessionsRepository, Read
     ) = writeBoundaryGuard.checkWriteBoundary()
     override suspend fun applyRemoteChangesForMutations(
         updatesToPersist: List<RemoteModelMutation<RemoteReadingSession>>,
-        localMutationsToClear: List<LocalModelMutation<ReadingSession>>,
+        localMutationsToClear: List<LocalModelMutation<LocalSyncReadingSession>>,
         writeBoundaryGuard: PersistenceWriteBoundaryGuard
     ) = writeBoundaryGuard.checkWriteBoundary()
     override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =

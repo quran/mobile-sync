@@ -10,6 +10,7 @@ import com.quran.shared.mutations.LocalMutationResource
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
+import com.quran.shared.persistence.input.LocalSyncReadingSession
 import com.quran.shared.persistence.input.RemoteReadingSession
 import com.quran.shared.persistence.model.DatabaseReadingSession
 import com.quran.shared.persistence.model.ReadingSession
@@ -185,7 +186,7 @@ class ReadingSessionsRepositoryImpl(
         }
     }
 
-    override suspend fun fetchMutatedReadingSessions(): List<LocalModelMutation<ReadingSession>> {
+    override suspend fun fetchMutatedReadingSessions(): List<LocalModelMutation<LocalSyncReadingSession>> {
         return withContext(Dispatchers.IO) {
             readingSessionsQueries.value.getUnsyncedReadingSessions()
                 .executeAsList()
@@ -206,7 +207,7 @@ class ReadingSessionsRepositoryImpl(
 
     override suspend fun applyRemoteChangesForMutations(
         updatesToPersist: List<RemoteModelMutation<RemoteReadingSession>>,
-        localMutationsToClear: List<LocalModelMutation<ReadingSession>>,
+        localMutationsToClear: List<LocalModelMutation<LocalSyncReadingSession>>,
         writeBoundaryGuard: PersistenceWriteBoundaryGuard
     ) {
         logger.i {
@@ -374,7 +375,7 @@ class ReadingSessionsRepositoryImpl(
         return attached?.remote_id == remote.remoteID
     }
 
-    private fun clearLocalMutation(local: LocalModelMutation<ReadingSession>) {
+    private fun clearLocalMutation(local: LocalModelMutation<LocalSyncReadingSession>) {
         val ack = local.ack ?: return
         readingSessionsQueries.value.clearLocalMutationFor(
             id = local.localID.toLong(),
@@ -384,7 +385,7 @@ class ReadingSessionsRepositoryImpl(
         )
     }
 
-    private fun ackMatchesCurrentRow(local: LocalModelMutation<ReadingSession>): Boolean {
+    private fun ackMatchesCurrentRow(local: LocalModelMutation<LocalSyncReadingSession>): Boolean {
         val ack = local.ack ?: return false
         if (ack.localID != local.localID ||
             ack.resource != LocalMutationResource.READING_SESSION ||

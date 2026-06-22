@@ -63,6 +63,43 @@ class BookmarkSyncArchitectureTest {
     }
 
     @Test
+    fun `fetchMutatedCollectionBookmarks carries custom relation created_at`() = runTest {
+        val bookmark = bookmarksRepository.addBookmark(2, 255, at(100))
+        database.collectionsQueries.persistRemoteCollection(
+            remote_id = "remote-custom-created-at-collection",
+            name = "Favorites",
+            created_at = 500,
+            modified_at = 500
+        )
+        val collection = database.collectionsQueries
+            .getCollectionByRemoteId("remote-custom-created-at-collection")
+            .executeAsOne()
+
+        collectionBookmarksRepository.addBookmarkToCollection(collection.local_id.toString(), bookmark, at(2000))
+        collectionBookmarksRepository.addBookmarkToCollection(collection.local_id.toString(), bookmark, at(3000))
+
+        val mutation = collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single {
+            it.localID.toLongOrNull() != null
+        }
+
+        assertEquals(2000L, mutation.model.createdAt?.fromPlatform()?.toEpochMilliseconds())
+        assertEquals(3000L, mutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
+    }
+
+    @Test
+    fun `fetchMutatedCollectionBookmarks carries default relation created_at`() = runTest {
+        bookmarksRepository.addBookmark(2, 256, listOf(DEFAULT_COLLECTION_ID), at(1000))
+        bookmarksRepository.addBookmark(2, 256, listOf(DEFAULT_COLLECTION_ID), at(2345))
+
+        val mutation = collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single {
+            it.model.collectionRemoteId == DEFAULT_COLLECTION_ID
+        }
+
+        assertEquals(1000L, mutation.model.createdAt?.fromPlatform()?.toEpochMilliseconds())
+        assertEquals(2345L, mutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
+    }
+
+    @Test
     fun `deleteBookmark by ayah returns false for missing bookmark without mutation`() = runTest {
         val deleted = bookmarksRepository.deleteBookmark(2, 255)
 

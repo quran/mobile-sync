@@ -10,6 +10,7 @@ import com.quran.shared.mutations.LocalMutationResource
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
+import com.quran.shared.persistence.input.LocalSyncNote
 import com.quran.shared.persistence.input.RemoteNote
 import com.quran.shared.persistence.model.DatabaseNote
 import com.quran.shared.persistence.model.Note
@@ -181,7 +182,7 @@ class NotesRepositoryImpl(
         return true
     }
 
-    override suspend fun fetchMutatedNotes(lastModified: Long): List<LocalModelMutation<Note>> {
+    override suspend fun fetchMutatedNotes(lastModified: Long): List<LocalModelMutation<LocalSyncNote>> {
         return withContext(Dispatchers.IO) {
             notesQueries.value.getUnsyncedNotes()
                 .executeAsList()
@@ -191,7 +192,7 @@ class NotesRepositoryImpl(
 
     override suspend fun applyRemoteChanges(
         updatesToPersist: List<RemoteModelMutation<RemoteNote>>,
-        localMutationsToClear: List<LocalModelMutation<Note>>,
+        localMutationsToClear: List<LocalModelMutation<LocalSyncNote>>,
         writeBoundaryGuard: PersistenceWriteBoundaryGuard
     ) {
         logger.i {
@@ -346,7 +347,7 @@ class NotesRepositoryImpl(
         return attached?.remote_id == remote.remoteID
     }
 
-    private fun clearLocalMutation(local: LocalModelMutation<Note>) {
+    private fun clearLocalMutation(local: LocalModelMutation<LocalSyncNote>) {
         val ack = local.ack ?: return
         notesQueries.value.clearLocalMutationFor(
             id = local.localID.toLong(),
@@ -355,7 +356,7 @@ class NotesRepositoryImpl(
         )
     }
 
-    private fun ackMatchesCurrentRow(local: LocalModelMutation<Note>): Boolean {
+    private fun ackMatchesCurrentRow(local: LocalModelMutation<LocalSyncNote>): Boolean {
         val ack = local.ack ?: return false
         if (ack.localID != local.localID ||
             ack.resource != LocalMutationResource.NOTE ||

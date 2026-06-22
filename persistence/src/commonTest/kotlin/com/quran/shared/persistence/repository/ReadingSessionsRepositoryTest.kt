@@ -81,6 +81,17 @@ class ReadingSessionsRepositoryTest {
     }
 
     @Test
+    fun `fetchMutatedReadingSessions carries created_at separately from modified_at`() = runTest {
+        val readingSession = repository.addReadingSession(2, 255, timestamp(1000L))
+        repository.updateReadingSession(readingSession.localId, 3, 10, timestamp(2345L))
+
+        val mutation = repository.fetchMutatedReadingSessions().single()
+
+        assertEquals(1000L, mutation.model.createdAt.fromPlatform().toEpochMilliseconds())
+        assertEquals(2345L, mutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
+    }
+
+    @Test
     fun `deleteReadingSession does not update remote row timestamp`() = runTest {
         repository = ReadingSessionsRepositoryImpl(database) { 1234567890123L }
         database.reading_sessionsQueries.persistRemoteReadingSession(

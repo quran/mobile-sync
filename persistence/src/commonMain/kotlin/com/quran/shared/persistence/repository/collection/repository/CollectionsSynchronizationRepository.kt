@@ -2,8 +2,8 @@ package com.quran.shared.persistence.repository.collection.repository
 
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
+import com.quran.shared.persistence.input.LocalSyncCollection
 import com.quran.shared.persistence.input.RemoteCollection
-import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 
 interface CollectionsSynchronizationRepository {
@@ -11,7 +11,7 @@ interface CollectionsSynchronizationRepository {
      * Returns a list of collections that have been mutated locally (created, modified, or deleted)
      * and need to be synchronized with the remote server.
      */
-    suspend fun fetchMutatedCollections(): List<LocalModelMutation<Collection>>
+    suspend fun fetchMutatedCollections(): List<LocalModelMutation<LocalSyncCollection>>
 
     /**
      * Persists the remote state of collections after a successful synchronization operation.
@@ -26,7 +26,7 @@ interface CollectionsSynchronizationRepository {
      */
     suspend fun applyRemoteChanges(
         updatesToPersist: List<RemoteModelMutation<RemoteCollection>>,
-        localMutationsToClear: List<LocalModelMutation<Collection>>,
+        localMutationsToClear: List<LocalModelMutation<LocalSyncCollection>>,
         writeBoundaryGuard: PersistenceWriteBoundaryGuard = PersistenceWriteBoundaryGuard.Allow
     )
 

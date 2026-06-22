@@ -2,12 +2,13 @@ package com.quran.shared.persistence.repository.readingsession.repository
 
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
+import com.quran.shared.persistence.input.LocalSyncReadingSession
 import com.quran.shared.persistence.input.RemoteReadingSession
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 
 interface ReadingSessionsSynchronizationRepository {
-    suspend fun fetchMutatedReadingSessions(): List<LocalModelMutation<ReadingSession>>
+    suspend fun fetchMutatedReadingSessions(): List<LocalModelMutation<LocalSyncReadingSession>>
 
     suspend fun applyRemoteChanges(
         updatesToPersist: List<RemoteModelMutation<RemoteReadingSession>>,
@@ -17,7 +18,7 @@ interface ReadingSessionsSynchronizationRepository {
 
     suspend fun applyRemoteChangesForMutations(
         updatesToPersist: List<RemoteModelMutation<RemoteReadingSession>>,
-        localMutationsToClear: List<LocalModelMutation<ReadingSession>>,
+        localMutationsToClear: List<LocalModelMutation<LocalSyncReadingSession>>,
         writeBoundaryGuard: PersistenceWriteBoundaryGuard = PersistenceWriteBoundaryGuard.Allow
     )
 

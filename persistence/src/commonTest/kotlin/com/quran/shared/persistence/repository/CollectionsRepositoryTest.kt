@@ -66,6 +66,17 @@ class CollectionsRepositoryTest {
     }
 
     @Test
+    fun `fetchMutatedCollections carries created_at separately from modified_at`() = runTest {
+        val collection = repository.addCollection("Favorites", timestamp(1000L))
+        repository.updateCollection(collection.localId, "Updated", timestamp(2345L))
+
+        val mutation = repository.fetchMutatedCollections().single()
+
+        assertEquals(1000L, mutation.model.createdAt.fromPlatform().toEpochMilliseconds())
+        assertEquals(2345L, mutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
+    }
+
+    @Test
     fun `updateCollection rejects deleted collection without renaming tombstone`() = runTest {
         val collection = repository.addCollection("Favorites", timestamp(1000L))
         repository.deleteCollection(collection.localId)
