@@ -18,6 +18,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.time.Instant
 
@@ -122,6 +123,41 @@ class CollectionsRepositoryTest {
         assertEquals(Mutation.DELETED, mutation.mutation)
         assertEquals(1000L, mutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
         assertEquals(1000L, record.modified_at)
+    }
+
+    @Test
+    fun `deleteCollection returns false for missing collection without mutation`() = runTest {
+        val deleted = repository.deleteCollection("999")
+
+        assertFalse(deleted)
+        assertEquals(emptyList(), repository.fetchMutatedCollections())
+    }
+
+    @Test
+    fun `deleteCollection returns false for retained deleted collection without advancing mutation`() = runTest {
+        database.collectionsQueries.persistRemoteCollection(
+            remote_id = "remote-collection-id",
+            name = "Favorites",
+            created_at = 1000L,
+            modified_at = 1000L
+        )
+        val collection = database.collectionsQueries.getCollectionByRemoteId("remote-collection-id").executeAsOne()
+        assertEquals(true, repository.deleteCollection(collection.local_id.toString()))
+        val firstTombstone = database.collectionsQueries.getCollectionByRemoteId("remote-collection-id").executeAsOne()
+        val firstMutation = repository.fetchMutatedCollections().single()
+
+        val deletedAgain = repository.deleteCollection(collection.local_id.toString())
+
+        val secondTombstone = database.collectionsQueries.getCollectionByRemoteId("remote-collection-id").executeAsOne()
+        assertFalse(deletedAgain)
+        assertEquals(firstTombstone.pending_version, secondTombstone.pending_version)
+        assertEquals(firstTombstone.modified_at, secondTombstone.modified_at)
+        val secondMutation = repository.fetchMutatedCollections().single()
+        assertEquals(firstMutation.model, secondMutation.model)
+        assertEquals(firstMutation.remoteID, secondMutation.remoteID)
+        assertEquals(firstMutation.localID, secondMutation.localID)
+        assertEquals(firstMutation.mutation, secondMutation.mutation)
+        assertEquals(firstMutation.ack, secondMutation.ack)
     }
 
     @Test

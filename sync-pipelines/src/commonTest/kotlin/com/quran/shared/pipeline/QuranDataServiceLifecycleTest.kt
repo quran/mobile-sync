@@ -570,6 +570,97 @@ class QuranDataServiceLifecycleTest {
     }
 
     @Test
+    fun `addCollection returns repository collection and triggers local sync`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+        advanceUntilIdle()
+
+        val result = fixture.service.addCollection("Favorites")
+
+        assertEquals(Collection("Favorites", testTimestamp(), "collection-1"), result)
+        assertEquals(listOf(CollectionAddCall("Favorites", null)), fixture.collectionsRepository.addCalls)
+        assertEquals(1, fixture.syncClient.localDataUpdatedCount)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `addCollection with timestamp returns repository collection and triggers local sync`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+        val timestamp = Instant.fromEpochMilliseconds(42).toPlatform()
+        advanceUntilIdle()
+
+        val result = fixture.service.addCollection("Favorites", timestamp)
+
+        assertEquals(Collection("Favorites", timestamp, "collection-1"), result)
+        assertEquals(listOf(CollectionAddCall("Favorites", timestamp)), fixture.collectionsRepository.addCalls)
+        assertEquals(1, fixture.syncClient.localDataUpdatedCount)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `deleteBookmark by local id returns false without triggering sync when nothing is deleted`() =
+        runTest(dispatcher) {
+            val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+            fixture.bookmarksRepository.deleteResult = false
+            advanceUntilIdle()
+
+            val result = fixture.service.deleteBookmark("bookmark-local-id")
+
+            assertFalse(result)
+            assertEquals(
+                listOf<BookmarkDeleteCall>(BookmarkLocalIdDeleteCall("bookmark-local-id")),
+                fixture.bookmarksRepository.deleteCalls
+            )
+            assertEquals(0, fixture.syncClient.localDataUpdatedCount)
+            fixture.clearAndJoin()
+        }
+
+    @Test
+    fun `deleteBookmark by sura and ayah returns true and triggers sync when deletion succeeds`() =
+        runTest(dispatcher) {
+            val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+            fixture.bookmarksRepository.deleteResult = true
+            advanceUntilIdle()
+
+            val result = fixture.service.deleteBookmark(2, 255)
+
+            assertTrue(result)
+            assertEquals(
+                listOf<BookmarkDeleteCall>(BookmarkAyahDeleteCall(2, 255)),
+                fixture.bookmarksRepository.deleteCalls
+            )
+            assertEquals(1, fixture.syncClient.localDataUpdatedCount)
+            fixture.clearAndJoin()
+        }
+
+    @Test
+    fun `deleteCollection returns false without triggering sync when nothing is deleted`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+        fixture.collectionsRepository.deleteResult = false
+        advanceUntilIdle()
+
+        val result = fixture.service.deleteCollection("collection-local-id")
+
+        assertFalse(result)
+        assertEquals(listOf(CollectionDeleteCall("collection-local-id")), fixture.collectionsRepository.deleteCalls)
+        assertEquals(0, fixture.syncClient.localDataUpdatedCount)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `deleteCollection returns true and triggers sync when deletion succeeds`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+        fixture.collectionsRepository.deleteResult = true
+        advanceUntilIdle()
+
+        val result = fixture.service.deleteCollection("collection-local-id")
+
+        assertTrue(result)
+        assertEquals(listOf(CollectionDeleteCall("collection-local-id")), fixture.collectionsRepository.deleteCalls)
+        assertEquals(1, fixture.syncClient.localDataUpdatedCount)
+        fixture.clearAndJoin()
+    }
+
+    @Test
     fun `reset failure leaves marker active and blocks mutating writes`() = runTest(dispatcher) {
         val resetRepository = ServiceResetRepository(failDelete = true)
         val fixture = quranDataServiceFixture(resetRepository = resetRepository)
@@ -920,6 +1011,8 @@ private class ServiceImportRepository : PersistenceImportRepository {
 
 private class ServiceBookmarksRepository : BookmarksRepository, BookmarksSynchronizationRepository {
     var addCount = 0
+    val deleteCalls = mutableListOf<BookmarkDeleteCall>()
+    var deleteResult = true
     private val bookmarks = MutableStateFlow<List<AyahBookmark>>(emptyList())
 
     override suspend fun getAllBookmarks(): List<AyahBookmark> = bookmarks.value
@@ -940,9 +1033,18 @@ private class ServiceBookmarksRepository : BookmarksRepository, BookmarksSynchro
         timestamp: com.quran.shared.persistence.util.PlatformDateTime
     ): AyahBookmark = addBookmark(sura, ayah)
 
-    override suspend fun deleteBookmark(sura: Int, ayah: Int): Boolean = true
-    override suspend fun deleteBookmark(bookmark: AyahBookmark): Boolean = true
-    override suspend fun deleteBookmark(localId: String): Boolean = true
+    override suspend fun deleteBookmark(sura: Int, ayah: Int): Boolean {
+        deleteCalls += BookmarkAyahDeleteCall(sura, ayah)
+        return deleteResult
+    }
+    override suspend fun deleteBookmark(bookmark: AyahBookmark): Boolean {
+        deleteCalls += BookmarkModelDeleteCall(bookmark)
+        return deleteResult
+    }
+    override suspend fun deleteBookmark(localId: String): Boolean {
+        deleteCalls += BookmarkLocalIdDeleteCall(localId)
+        return deleteResult
+    }
     override suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<RemoteBookmark>> = emptyList()
     override suspend fun markMutatedBookmarksInFlight(acks: List<LocalMutationAck>): List<LocalMutationAck> = emptyList()
     override suspend fun rollbackMutatedBookmarksInFlight(acks: List<LocalMutationAck>) = Unit
@@ -955,6 +1057,21 @@ private class ServiceBookmarksRepository : BookmarksRepository, BookmarksSynchro
         remoteIDs.associateWith { false }
     override suspend fun fetchBookmarkByRemoteId(remoteId: String): RemoteBookmark? = null
 }
+
+private sealed interface BookmarkDeleteCall
+
+private data class BookmarkAyahDeleteCall(
+    val sura: Int,
+    val ayah: Int
+) : BookmarkDeleteCall
+
+private data class BookmarkLocalIdDeleteCall(
+    val localId: String
+) : BookmarkDeleteCall
+
+private data class BookmarkModelDeleteCall(
+    val bookmark: AyahBookmark
+) : BookmarkDeleteCall
 
 private class ServiceReadingBookmarksRepository : ReadingBookmarksRepository {
     override suspend fun getReadingBookmark(): ReadingBookmark? = null
@@ -981,16 +1098,33 @@ private data class CollectionUpdateCall(
     val timestamp: PlatformDateTime?
 )
 
+private data class CollectionAddCall(
+    val name: String,
+    val timestamp: PlatformDateTime?
+)
+
+private data class CollectionDeleteCall(
+    val localId: String
+)
+
 private class ServiceCollectionsRepository : CollectionsRepository, CollectionsSynchronizationRepository {
+    val addCalls = mutableListOf<CollectionAddCall>()
     val updateCalls = mutableListOf<CollectionUpdateCall>()
+    val deleteCalls = mutableListOf<CollectionDeleteCall>()
+    var deleteResult = true
 
     override suspend fun getAllCollections(): List<Collection> = emptyList()
-    override suspend fun addCollection(name: String): Collection =
-        Collection(name, testTimestamp(), "collection")
+    override suspend fun addCollection(name: String): Collection {
+        addCalls += CollectionAddCall(name, null)
+        return Collection(name, testTimestamp(), "collection-${addCalls.size}")
+    }
     override suspend fun addCollection(
         name: String,
         timestamp: com.quran.shared.persistence.util.PlatformDateTime
-    ): Collection = addCollection(name)
+    ): Collection {
+        addCalls += CollectionAddCall(name, timestamp)
+        return Collection(name, timestamp, "collection-${addCalls.size}")
+    }
     override suspend fun updateCollection(localId: String, name: String): Collection {
         updateCalls += CollectionUpdateCall(localId, name, null)
         return Collection(name, testTimestamp(), localId)
@@ -1003,7 +1137,10 @@ private class ServiceCollectionsRepository : CollectionsRepository, CollectionsS
         updateCalls += CollectionUpdateCall(localId, name, timestamp)
         return Collection(name, timestamp, localId)
     }
-    override suspend fun deleteCollection(localId: String): Boolean = true
+    override suspend fun deleteCollection(localId: String): Boolean {
+        deleteCalls += CollectionDeleteCall(localId)
+        return deleteResult
+    }
     override fun getCollectionsFlow(): Flow<List<Collection>> = MutableStateFlow(emptyList())
     override suspend fun fetchMutatedCollections(): List<LocalModelMutation<Collection>> = emptyList()
     override suspend fun applyRemoteChanges(

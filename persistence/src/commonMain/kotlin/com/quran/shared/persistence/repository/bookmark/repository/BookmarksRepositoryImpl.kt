@@ -161,17 +161,19 @@ class BookmarksRepositoryImpl(
 
     override suspend fun deleteBookmark(sura: Int, ayah: Int): Boolean {
         logger.i { "Deleting ayah bookmark for $sura:$ayah" }
-        withContext(Dispatchers.IO) {
+        return withContext(Dispatchers.IO) {
+            var deleted = false
             database.transaction {
                 val bookmark = bookmarkQueries.value
                     .getBookmarkForAyah(sura.toLong(), ayah.toLong())
                     .executeAsOneOrNull()
-                if (bookmark != null) {
+                if (bookmark?.hasSavedBookmarkMembership() == true) {
                     deleteSavedBookmarkByLocalIdInTransaction(bookmark.local_id, null)
+                    deleted = true
                 }
             }
+            deleted
         }
-        return true
     }
 
     override suspend fun deleteBookmark(bookmark: AyahBookmark): Boolean {
@@ -185,13 +187,24 @@ class BookmarksRepositoryImpl(
     }
 
     private suspend fun deleteBookmarkWithLocalId(localId: String): Boolean {
-        withContext(Dispatchers.IO) {
+        return withContext(Dispatchers.IO) {
+            var deleted = false
             database.transaction {
-                deleteSavedBookmarkByLocalIdInTransaction(localId.toLong(), null)
+                val id = localId.toLong()
+                val bookmark = bookmarkQueries.value.getBookmarkByLocalId(id).executeAsOneOrNull()
+                if (bookmark?.hasSavedBookmarkMembership() == true) {
+                    deleteSavedBookmarkByLocalIdInTransaction(id, null)
+                    deleted = true
+                }
             }
+            deleted
         }
-        return true
     }
+
+    private fun DatabaseBookmark.hasSavedBookmarkMembership(): Boolean =
+        deleted == 0L &&
+            (is_in_default_collection == 1L ||
+                bookmarkCollectionQueries.value.countActiveForBookmark(local_id).executeAsOne() > 0)
 
     private fun deleteSavedBookmarkByLocalIdInTransaction(localId: Long, timestampMillis: Long?) {
         bookmarkQueries.value.clearDefaultCollection(
