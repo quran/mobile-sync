@@ -34,6 +34,7 @@ import com.quran.shared.persistence.model.AyahReadingBookmark
 import com.quran.shared.persistence.model.BookmarkCollectionsReplacementResult
 import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.model.CollectionAyahBookmark
+import com.quran.shared.persistence.model.DEFAULT_COLLECTION_ID
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
@@ -73,6 +74,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.yield
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -563,6 +565,117 @@ class QuranDataServiceLifecycleTest {
     }
 
     @Test
+    fun `updateCollection returns virtual default collection without repository write`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+        val defaultBookmark = bookmarkLink(
+            DEFAULT_COLLECTION_ID,
+            lastUpdated = Instant.fromEpochMilliseconds(77).toPlatform()
+        )
+        fixture.collectionBookmarksRepository.setBookmarksForCollection(
+            DEFAULT_COLLECTION_ID,
+            listOf(defaultBookmark)
+        )
+        advanceUntilIdle()
+
+        val result = fixture.service.updateCollection(DEFAULT_COLLECTION_ID, "Renamed default")
+
+        assertEquals(DEFAULT_COLLECTION_ID, result.localId)
+        assertEquals(true, result.isDefault)
+        assertEquals(defaultBookmark.lastUpdated, result.lastUpdated)
+        assertEquals(emptyList(), fixture.collectionsRepository.updateCalls)
+        assertEquals(0, fixture.syncClient.localDataUpdatedCount)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `updateCollection with timestamp returns virtual default collection without repository write`() =
+        runTest(dispatcher) {
+            val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+            val timestamp = Instant.fromEpochMilliseconds(42).toPlatform()
+            val defaultBookmark = bookmarkLink(
+                DEFAULT_COLLECTION_ID,
+                lastUpdated = Instant.fromEpochMilliseconds(88).toPlatform()
+            )
+            fixture.collectionBookmarksRepository.setBookmarksForCollection(
+                DEFAULT_COLLECTION_ID,
+                listOf(defaultBookmark)
+            )
+            advanceUntilIdle()
+
+            val result = fixture.service.updateCollection(DEFAULT_COLLECTION_ID, "Renamed default", timestamp)
+
+            assertEquals(DEFAULT_COLLECTION_ID, result.localId)
+            assertEquals(true, result.isDefault)
+            assertEquals(defaultBookmark.lastUpdated, result.lastUpdated)
+            assertEquals(emptyList(), fixture.collectionsRepository.updateCalls)
+            assertEquals(0, fixture.syncClient.localDataUpdatedCount)
+            fixture.clearAndJoin()
+        }
+
+    @Test
+    fun `default collection management is rejected during reset without repository writes`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+        advanceUntilIdle()
+
+        fixture.lifecycleCoordinator.runManagedReset {
+            assertFailsWith<SessionResetInProgressException> {
+                fixture.service.updateCollection(DEFAULT_COLLECTION_ID, "Renamed default")
+            }
+            assertFailsWith<SessionResetInProgressException> {
+                fixture.service.deleteCollection(DEFAULT_COLLECTION_ID)
+            }
+        }
+
+        assertEquals(emptyList(), fixture.collectionsRepository.updateCalls)
+        assertEquals(emptyList(), fixture.collectionsRepository.deleteCalls)
+        assertEquals(0, fixture.syncClient.localDataUpdatedCount)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `collectionsWithBookmarks includes virtual default collection with default bookmarks`() =
+        runTest(dispatcher) {
+            val fixture = quranDataServiceFixture()
+            val defaultBookmark = bookmarkLink(DEFAULT_COLLECTION_ID, bookmarkLocalId = "default-bookmark")
+            fixture.collectionBookmarksRepository.setBookmarksForCollection(
+                DEFAULT_COLLECTION_ID,
+                listOf(defaultBookmark)
+            )
+            advanceUntilIdle()
+
+            val result = fixture.service.collectionsWithBookmarks.first()
+
+            assertEquals(listOf(DEFAULT_COLLECTION_ID), result.map { it.collection.localId })
+            assertEquals(true, result.single().collection.isDefault)
+            assertEquals(listOf(defaultBookmark), result.single().bookmarks)
+            assertEquals(listOf(DEFAULT_COLLECTION_ID), fixture.collectionBookmarksRepository.flowRequests)
+            fixture.clearAndJoin()
+        }
+
+    @Test
+    fun `collectionsWithBookmarks keeps custom collections alongside virtual default collection`() =
+        runTest(dispatcher) {
+            val fixture = quranDataServiceFixture()
+            val customCollection = Collection("Favorites", testTimestamp(), "7")
+            val defaultBookmark = bookmarkLink(DEFAULT_COLLECTION_ID, bookmarkLocalId = "default-bookmark")
+            val customBookmark = bookmarkLink("7", bookmarkLocalId = "custom-bookmark")
+            fixture.collectionsRepository.collections.value = listOf(customCollection)
+            fixture.collectionBookmarksRepository.setBookmarksForCollection(
+                DEFAULT_COLLECTION_ID,
+                listOf(defaultBookmark)
+            )
+            fixture.collectionBookmarksRepository.setBookmarksForCollection("7", listOf(customBookmark))
+            advanceUntilIdle()
+
+            val result = fixture.service.collectionsWithBookmarks.first()
+
+            assertEquals(listOf(DEFAULT_COLLECTION_ID, "7"), result.map { it.collection.localId })
+            assertEquals(listOf(defaultBookmark), result.first { it.collection.isDefault }.bookmarks)
+            assertEquals(listOf(customBookmark), result.first { it.collection.localId == "7" }.bookmarks)
+            fixture.clearAndJoin()
+        }
+
+    @Test
     fun `deleteReadingSession returns false without triggering sync when nothing is deleted`() = runTest(dispatcher) {
         val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
         fixture.readingSessionsRepository.deleteResult = false
@@ -678,6 +791,19 @@ class QuranDataServiceLifecycleTest {
         assertTrue(result)
         assertEquals(listOf(CollectionDeleteCall("collection-local-id")), fixture.collectionsRepository.deleteCalls)
         assertEquals(1, fixture.syncClient.localDataUpdatedCount)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `deleteCollection returns false for virtual default collection without repository write`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+        advanceUntilIdle()
+
+        val result = fixture.service.deleteCollection(DEFAULT_COLLECTION_ID)
+
+        assertFalse(result)
+        assertEquals(emptyList(), fixture.collectionsRepository.deleteCalls)
+        assertEquals(0, fixture.syncClient.localDataUpdatedCount)
         fixture.clearAndJoin()
     }
 
@@ -892,7 +1018,7 @@ private class QuranDataServiceFixture(
     val bookmarksRepository = ServiceBookmarksRepository()
     private val readingBookmarksRepository = ServiceReadingBookmarksRepository()
     val collectionsRepository = ServiceCollectionsRepository()
-    private val collectionBookmarksRepository = ServiceCollectionBookmarksRepository()
+    val collectionBookmarksRepository = ServiceCollectionBookmarksRepository()
     private val notesRepository = ServiceNotesRepository()
     val readingSessionsRepository = ServiceReadingSessionsRepository()
     private val importRepository = ServiceImportRepository()
@@ -1306,9 +1432,10 @@ private class ServiceCollectionsRepository : CollectionsRepository, CollectionsS
     val addCalls = mutableListOf<CollectionAddCall>()
     val updateCalls = mutableListOf<CollectionUpdateCall>()
     val deleteCalls = mutableListOf<CollectionDeleteCall>()
+    val collections = MutableStateFlow<List<Collection>>(emptyList())
     var deleteResult = true
 
-    override suspend fun getAllCollections(): List<Collection> = emptyList()
+    override suspend fun getAllCollections(): List<Collection> = collections.value
     override suspend fun addCollection(name: String): Collection {
         addCalls += CollectionAddCall(name, null)
         return Collection(name, testTimestamp(), "collection-${addCalls.size}")
@@ -1336,7 +1463,7 @@ private class ServiceCollectionsRepository : CollectionsRepository, CollectionsS
         deleteCalls += CollectionDeleteCall(localId)
         return deleteResult
     }
-    override fun getCollectionsFlow(): Flow<List<Collection>> = MutableStateFlow(emptyList())
+    override fun getCollectionsFlow(): Flow<List<Collection>> = collections
     override suspend fun fetchMutatedCollections(): List<LocalModelMutation<LocalSyncCollection>> = emptyList()
     override suspend fun applyRemoteChanges(
         updatesToPersist: List<RemoteModelMutation<RemoteCollection>>,
@@ -1350,7 +1477,15 @@ private class ServiceCollectionsRepository : CollectionsRepository, CollectionsS
 private class ServiceCollectionBookmarksRepository :
     CollectionBookmarksRepository,
     CollectionBookmarksSynchronizationRepository {
-    override suspend fun getBookmarksForCollection(collectionLocalId: String): List<CollectionAyahBookmark> = emptyList()
+    val flowRequests = mutableListOf<String>()
+    private val bookmarksByCollectionId = mutableMapOf<String, MutableStateFlow<List<CollectionAyahBookmark>>>()
+
+    fun setBookmarksForCollection(collectionLocalId: String, bookmarks: List<CollectionAyahBookmark>) {
+        bookmarksFlow(collectionLocalId).value = bookmarks
+    }
+
+    override suspend fun getBookmarksForCollection(collectionLocalId: String): List<CollectionAyahBookmark> =
+        bookmarksFlow(collectionLocalId).value
     override suspend fun addBookmarkToCollection(
         collectionLocalId: String,
         bookmark: AyahBookmark
@@ -1373,8 +1508,10 @@ private class ServiceCollectionBookmarksRepository :
     ): CollectionAyahBookmark = bookmarkLink(collectionLocalId)
     override suspend fun removeBookmarkFromCollection(collectionLocalId: String, bookmark: AyahBookmark): Boolean = true
     override suspend fun removeAyahBookmarkFromCollection(collectionAyahBookmark: CollectionAyahBookmark): Boolean = true
-    override fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<CollectionAyahBookmark>> =
-        MutableStateFlow(emptyList())
+    override fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<CollectionAyahBookmark>> {
+        flowRequests += collectionLocalId
+        return bookmarksFlow(collectionLocalId)
+    }
     override suspend fun fetchMutatedCollectionBookmarks(): List<LocalModelMutation<LocalSyncCollectionAyahBookmark>> =
         emptyList()
     override suspend fun markMutatedCollectionBookmarksInFlight(acks: List<LocalMutationAck>): List<LocalMutationAck> =
@@ -1388,6 +1525,9 @@ private class ServiceCollectionBookmarksRepository :
     override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
         remoteIDs.associateWith { false }
     override suspend fun fetchCollectionBookmarkByRemoteId(remoteId: String): CollectionAyahBookmark? = null
+
+    private fun bookmarksFlow(collectionLocalId: String): MutableStateFlow<List<CollectionAyahBookmark>> =
+        bookmarksByCollectionId.getOrPut(collectionLocalId) { MutableStateFlow(emptyList()) }
 }
 
 private class ServiceNotesRepository : NotesRepository, NotesSynchronizationRepository {
@@ -1477,15 +1617,19 @@ private class ServiceReadingSessionsRepository : ReadingSessionsRepository, Read
     override suspend fun fetchReadingSessionByRemoteId(remoteId: String): ReadingSession? = null
 }
 
-private fun bookmarkLink(collectionLocalId: String): CollectionAyahBookmark =
+private fun bookmarkLink(
+    collectionLocalId: String,
+    bookmarkLocalId: String = "bookmark",
+    lastUpdated: PlatformDateTime = testTimestamp()
+): CollectionAyahBookmark =
     CollectionAyahBookmark(
         collectionLocalId = collectionLocalId,
         collectionRemoteId = null,
-        bookmarkLocalId = "bookmark",
+        bookmarkLocalId = bookmarkLocalId,
         bookmarkRemoteId = null,
         sura = 2,
         ayah = 255,
-        lastUpdated = testTimestamp(),
+        lastUpdated = lastUpdated,
         localId = "collection-bookmark"
     )
 

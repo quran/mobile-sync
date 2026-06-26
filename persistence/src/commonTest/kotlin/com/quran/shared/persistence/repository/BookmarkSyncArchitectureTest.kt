@@ -323,6 +323,20 @@ class BookmarkSyncArchitectureTest {
     }
 
     @Test
+    fun `default collection query returns only default memberships in default timestamp order`() = runTest {
+        val customCollectionId = createCollection("CustomOnly", "remote-custom-only")
+        bookmarksRepository.addBookmark(2, 10, listOf(customCollectionId), at(500))
+        bookmarksRepository.addBookmark(2, 11, listOf(DEFAULT_COLLECTION_ID), at(100))
+        bookmarksRepository.addBookmark(2, 12, listOf(DEFAULT_COLLECTION_ID), at(300))
+
+        val defaults = collectionBookmarksRepository.getBookmarksForCollection(DEFAULT_COLLECTION_ID)
+
+        assertEquals(listOf(12, 11), defaults.map { it.ayah })
+        assertEquals(listOf(300L, 100L), defaults.map { it.lastUpdated.fromPlatform().toEpochMilliseconds() })
+        assertTrue(defaults.all { it.collectionLocalId == DEFAULT_COLLECTION_ID })
+    }
+
+    @Test
     fun `addBookmark supports default and custom membership together`() = runTest {
         val collectionId = createCollection("Both", "remote-both")
 

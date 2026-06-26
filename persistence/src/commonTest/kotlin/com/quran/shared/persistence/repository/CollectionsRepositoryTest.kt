@@ -9,6 +9,8 @@ import com.quran.shared.persistence.TestDatabaseDriver
 import com.quran.shared.persistence.input.ImportCollection
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.RemoteCollection
+import com.quran.shared.persistence.model.Collection
+import com.quran.shared.persistence.model.DEFAULT_COLLECTION_ID
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepositoryImpl
 import com.quran.shared.persistence.repository.importdata.PersistenceImportRepositoryImpl
 import com.quran.shared.persistence.util.fromPlatform
@@ -20,6 +22,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlin.time.Instant
 
 class CollectionsRepositoryTest {
@@ -30,6 +33,12 @@ class CollectionsRepositoryTest {
     fun setup() {
         database = QuranDatabase(TestDatabaseDriver().createDriver())
         repository = CollectionsRepositoryImpl(database)
+    }
+
+    @Test
+    fun `collection isDefault is derived from the virtual default local id`() {
+        assertTrue(Collection("Default", timestamp(1L), DEFAULT_COLLECTION_ID).isDefault)
+        assertFalse(Collection("Favorites", timestamp(1L), "1").isDefault)
     }
 
     @Test
