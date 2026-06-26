@@ -66,6 +66,13 @@ getSavedAyahBookmarks:
     )
   ORDER BY b.modified_at DESC;
 
+getDefaultCollectionAyahBookmarks:
+  SELECT b.* FROM bookmark b
+  WHERE b.deleted = 0
+    AND b.bookmark_type = 'AYAH'
+    AND b.is_in_default_collection = 1
+  ORDER BY COALESCE(b.default_modified_at, b.modified_at) DESC;
+
 getReadingBookmarks:
   SELECT * FROM bookmark
   WHERE deleted = 0 AND is_reading = 1

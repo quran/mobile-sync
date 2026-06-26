@@ -52,9 +52,8 @@ class CollectionBookmarksRepositoryImpl(
     override suspend fun getBookmarksForCollection(collectionLocalId: String): List<CollectionAyahBookmark> {
         if (collectionLocalId == DEFAULT_COLLECTION_ID) {
             return withContext(Dispatchers.IO) {
-                bookmarkQueries.value.getSavedAyahBookmarks()
+                bookmarkQueries.value.getDefaultCollectionAyahBookmarks()
                     .executeAsList()
-                    .filter { it.is_in_default_collection == 1L }
                     .map { it.toDefaultCollectionBookmark() }
             }
         }
@@ -80,13 +79,10 @@ class CollectionBookmarksRepositoryImpl(
 
     override fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<CollectionAyahBookmark>> {
         return if (collectionLocalId == DEFAULT_COLLECTION_ID) {
-            bookmarkQueries.value.getSavedAyahBookmarks()
+            bookmarkQueries.value.getDefaultCollectionAyahBookmarks()
                 .asFlow()
                 .mapToList(Dispatchers.IO)
-                .map { list ->
-                    list.filter { it.is_in_default_collection == 1L }
-                        .map { it.toDefaultCollectionBookmark() }
-                }
+                .map { list -> list.map { it.toDefaultCollectionBookmark() } }
         } else {
             bookmarkCollectionQueries.value
                 .getCollectionBookmarksForCollectionWithDetails(collection_local_id = collectionLocalId.toLong())
