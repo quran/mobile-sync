@@ -9,15 +9,15 @@ interface CollectionBookmarksRepository {
     /**
      * Returns all bookmarks linked to a collection.
      */
-    suspend fun getBookmarksForCollection(collectionLocalId: String): List<CollectionAyahBookmark>
+    suspend fun getBookmarksForCollection(collectionId: String): List<CollectionAyahBookmark>
 
     /**
      * Adds a bookmark to a collection locally.
      */
-    suspend fun addBookmarkToCollection(collectionLocalId: String, bookmark: AyahBookmark): CollectionAyahBookmark
+    suspend fun addBookmarkToCollection(collectionId: String, bookmark: AyahBookmark): CollectionAyahBookmark
 
     suspend fun addBookmarkToCollection(
-        collectionLocalId: String,
+        collectionId: String,
         bookmark: AyahBookmark,
         timestamp: PlatformDateTime
     ): CollectionAyahBookmark
@@ -27,13 +27,13 @@ interface CollectionBookmarksRepository {
      * This operation must not leave partial state if linking fails.
      */
     suspend fun addAyahBookmarkToCollection(
-        collectionLocalId: String,
+        collectionId: String,
         sura: Int,
         ayah: Int
     ): CollectionAyahBookmark
 
     suspend fun addAyahBookmarkToCollection(
-        collectionLocalId: String,
+        collectionId: String,
         sura: Int,
         ayah: Int,
         timestamp: PlatformDateTime
@@ -42,12 +42,12 @@ interface CollectionBookmarksRepository {
     /**
      * Removes a bookmark from a collection locally.
      */
-    suspend fun removeBookmarkFromCollection(collectionLocalId: String, bookmark: AyahBookmark): Boolean
+    suspend fun removeBookmarkFromCollection(collectionId: String, bookmark: AyahBookmark): Boolean
 
     suspend fun removeAyahBookmarkFromCollection(collectionAyahBookmark: CollectionAyahBookmark): Boolean
 
     /**
      * Observe the bookmarks for a collection as a Flow.
      */
-    fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<CollectionAyahBookmark>>
+    fun getBookmarksForCollectionFlow(collectionId: String): Flow<List<CollectionAyahBookmark>>
 }

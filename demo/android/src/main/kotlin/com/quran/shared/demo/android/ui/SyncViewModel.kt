@@ -103,7 +103,7 @@ class SyncViewModel(
         service.deleteNote(noteId)
     }
 
-    fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<com.quran.shared.persistence.model.CollectionAyahBookmark>> =
-        service.getBookmarksForCollectionFlow(collectionLocalId)
+    fun getBookmarksForCollectionFlow(collectionId: String): Flow<List<com.quran.shared.persistence.model.CollectionAyahBookmark>> =
+        service.getBookmarksForCollectionFlow(collectionId)
 
 }

@@ -56,7 +56,7 @@ class BookmarkSyncArchitectureTest {
         val bookmark = bookmarksRepository.addBookmark(2, 255)
 
         val row = database.bookmarksQueries.getBookmarkForAyah(2L, 255L).executeAsOne()
-        assertEquals(bookmark.localId.toLong(), row.local_id)
+        assertEquals(bookmark.id.toLong(), row.local_id)
         assertEquals(1L, row.is_in_default_collection)
         assertEquals("CREATED", row.default_pending_op)
         assertEquals(0L, database.bookmark_collectionsQueries.countAll().executeAsOne())
@@ -238,12 +238,12 @@ class BookmarkSyncArchitectureTest {
     @Test
     fun `deleteBookmark by local id returns false for reading-only bookmark without saved mutation`() = runTest {
         val readingBookmark = readingRepository.addAyahReadingBookmark(2, 255, at(100))
-        val before = database.bookmarksQueries.getBookmarkByLocalId(readingBookmark.localId.toLong()).executeAsOne()
+        val before = database.bookmarksQueries.getBookmarkByLocalId(readingBookmark.id.toLong()).executeAsOne()
         val mutationsBefore = bookmarksRepository.fetchMutatedBookmarks()
 
-        val deleted = bookmarksRepository.deleteBookmark(readingBookmark.localId)
+        val deleted = bookmarksRepository.deleteBookmark(readingBookmark.id)
 
-        val after = database.bookmarksQueries.getBookmarkByLocalId(readingBookmark.localId.toLong()).executeAsOne()
+        val after = database.bookmarksQueries.getBookmarkByLocalId(readingBookmark.id.toLong()).executeAsOne()
         val mutationsAfter = bookmarksRepository.fetchMutatedBookmarks()
         assertFalse(deleted)
         assertEquals(before, after)
@@ -332,8 +332,26 @@ class BookmarkSyncArchitectureTest {
         val defaults = collectionBookmarksRepository.getBookmarksForCollection(DEFAULT_COLLECTION_ID)
 
         assertEquals(listOf(12, 11), defaults.map { it.ayah })
-        assertEquals(listOf(300L, 100L), defaults.map { it.lastUpdated.fromPlatform().toEpochMilliseconds() })
-        assertTrue(defaults.all { it.collectionLocalId == DEFAULT_COLLECTION_ID })
+        assertEquals(listOf(300L, 100L), defaults.map { it.bookmarkLastUpdated.fromPlatform().toEpochMilliseconds() })
+        assertEquals(listOf(300L, 100L), defaults.map { it.bookmarkAddedDate.fromPlatform().toEpochMilliseconds() })
+        assertTrue(defaults.all { it.collectionId == DEFAULT_COLLECTION_ID })
+    }
+
+    @Test
+    fun `custom collection bookmark exposes bookmark timestamps instead of membership timestamp`() = runTest {
+        val collectionId = createCollection("TimestampedLink", "remote-timestamped-link")
+        val bookmark = bookmarksRepository.addBookmark(2, 21, listOf(DEFAULT_COLLECTION_ID), at(100))
+
+        val linked = collectionBookmarksRepository.addBookmarkToCollection(collectionId, bookmark, at(300))
+        val queried = collectionBookmarksRepository.getBookmarksForCollection(collectionId).single()
+        val linkRow = database.bookmark_collectionsQueries
+            .getCollectionBookmarkFor(bookmark.id.toLong(), collectionId.toLong())
+            .executeAsOne()
+
+        assertEquals(300L, linkRow.modified_at)
+        assertEquals(100L, linked.bookmarkLastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(100L, linked.bookmarkAddedDate.fromPlatform().toEpochMilliseconds())
+        assertEquals(linked, queried)
     }
 
     @Test
@@ -386,21 +404,21 @@ class BookmarkSyncArchitectureTest {
         val bookmark = bookmarksRepository.addBookmark(
             sura = 2,
             ayah = 6,
-            collectionLocalIds = listOf(DEFAULT_COLLECTION_ID, keptCollectionId, removedCollectionId)
+            collectionIds = listOf(DEFAULT_COLLECTION_ID, keptCollectionId, removedCollectionId)
         )
 
         val changed = bookmarksRepository.replaceBookmarkCollections(
-            localId = bookmark.localId,
-            collectionLocalIds = listOf(keptCollectionId, addedCollectionId)
+            id = bookmark.id,
+            collectionIds = listOf(keptCollectionId, addedCollectionId)
         )
 
-        val row = database.bookmarksQueries.getBookmarkByLocalId(bookmark.localId.toLong()).executeAsOne()
+        val row = database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOne()
         val removedLink = database.bookmark_collectionsQueries
-            .getCollectionBookmarkFor(bookmark.localId.toLong(), removedCollectionId.toLong())
+            .getCollectionBookmarkFor(bookmark.id.toLong(), removedCollectionId.toLong())
             .executeAsOneOrNull()
         assertTrue(changed)
         assertEquals(0L, row.is_in_default_collection)
-        assertEquals(setOf(keptCollectionId, addedCollectionId), activeCustomCollectionIds(bookmark.localId))
+        assertEquals(setOf(keptCollectionId, addedCollectionId), activeCustomCollectionIds(bookmark.id))
         assertEquals(0L, removedLink?.is_active ?: 0L)
     }
 
@@ -409,31 +427,31 @@ class BookmarkSyncArchitectureTest {
         val collectionId = createCollection("ReplaceEmpty", "remote-replace-empty")
         val bookmark = bookmarksRepository.addBookmark(2, 7, listOf(collectionId))
 
-        val changed = bookmarksRepository.replaceBookmarkCollections(bookmark.localId, emptyList())
+        val changed = bookmarksRepository.replaceBookmarkCollections(bookmark.id, emptyList())
 
-        val row = database.bookmarksQueries.getBookmarkByLocalId(bookmark.localId.toLong()).executeAsOne()
+        val row = database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOne()
         assertTrue(changed)
         assertEquals(1L, row.is_in_default_collection)
-        assertEquals(emptySet(), activeCustomCollectionIds(bookmark.localId))
+        assertEquals(emptySet(), activeCustomCollectionIds(bookmark.id))
     }
 
     @Test
     fun `replaceBookmarkCollections returns false when memberships are unchanged`() = runTest {
         val collectionId = createCollection("ReplaceUnchanged", "remote-replace-unchanged")
         val bookmark = bookmarksRepository.addBookmark(2, 8, listOf(DEFAULT_COLLECTION_ID, collectionId))
-        val rowBefore = database.bookmarksQueries.getBookmarkByLocalId(bookmark.localId.toLong()).executeAsOne()
+        val rowBefore = database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOne()
         val linkBefore = database.bookmark_collectionsQueries
-            .getCollectionBookmarkFor(bookmark.localId.toLong(), collectionId.toLong())
+            .getCollectionBookmarkFor(bookmark.id.toLong(), collectionId.toLong())
             .executeAsOne()
 
         val changed = bookmarksRepository.replaceBookmarkCollections(
-            localId = bookmark.localId,
-            collectionLocalIds = listOf(collectionId, DEFAULT_COLLECTION_ID)
+            id = bookmark.id,
+            collectionIds = listOf(collectionId, DEFAULT_COLLECTION_ID)
         )
 
-        val rowAfter = database.bookmarksQueries.getBookmarkByLocalId(bookmark.localId.toLong()).executeAsOne()
+        val rowAfter = database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOne()
         val linkAfter = database.bookmark_collectionsQueries
-            .getCollectionBookmarkFor(bookmark.localId.toLong(), collectionId.toLong())
+            .getCollectionBookmarkFor(bookmark.id.toLong(), collectionId.toLong())
             .executeAsOne()
         assertFalse(changed)
         assertEquals(rowBefore, rowAfter)
@@ -447,14 +465,14 @@ class BookmarkSyncArchitectureTest {
         val timestamp = at(4200)
 
         val changed = bookmarksRepository.replaceBookmarkCollections(
-            localId = bookmark.localId,
-            collectionLocalIds = listOf(collectionId),
+            id = bookmark.id,
+            collectionIds = listOf(collectionId),
             timestamp = timestamp
         )
 
-        val row = database.bookmarksQueries.getBookmarkByLocalId(bookmark.localId.toLong()).executeAsOne()
+        val row = database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOne()
         val link = database.bookmark_collectionsQueries
-            .getCollectionBookmarkFor(bookmark.localId.toLong(), collectionId.toLong())
+            .getCollectionBookmarkFor(bookmark.id.toLong(), collectionId.toLong())
             .executeAsOne()
         assertTrue(changed)
         assertEquals(4200L, row.modified_at)
@@ -471,15 +489,15 @@ class BookmarkSyncArchitectureTest {
         val result = bookmarksRepository.replaceAyahBookmarkCollections(
             sura = 2,
             ayah = 9,
-            collectionLocalIds = listOf(firstCollectionId, secondCollectionId)
+            collectionIds = listOf(firstCollectionId, secondCollectionId)
         )
 
-        val row = database.bookmarksQueries.getBookmarkByLocalId(result.bookmark.localId.toLong()).executeAsOne()
+        val row = database.bookmarksQueries.getBookmarkByLocalId(result.bookmark.id.toLong()).executeAsOne()
         assertTrue(result.changed)
         assertEquals(2, result.bookmark.sura)
         assertEquals(9, result.bookmark.ayah)
         assertEquals(0L, row.is_in_default_collection)
-        assertEquals(setOf(firstCollectionId, secondCollectionId), activeCustomCollectionIds(result.bookmark.localId))
+        assertEquals(setOf(firstCollectionId, secondCollectionId), activeCustomCollectionIds(result.bookmark.id))
     }
 
     @Test
@@ -490,13 +508,13 @@ class BookmarkSyncArchitectureTest {
         val result = bookmarksRepository.replaceAyahBookmarkCollections(
             sura = 2,
             ayah = 14,
-            collectionLocalIds = listOf(collectionId),
+            collectionIds = listOf(collectionId),
             timestamp = timestamp
         )
 
-        val row = database.bookmarksQueries.getBookmarkByLocalId(result.bookmark.localId.toLong()).executeAsOne()
+        val row = database.bookmarksQueries.getBookmarkByLocalId(result.bookmark.id.toLong()).executeAsOne()
         val link = database.bookmark_collectionsQueries
-            .getCollectionBookmarkFor(result.bookmark.localId.toLong(), collectionId.toLong())
+            .getCollectionBookmarkFor(result.bookmark.id.toLong(), collectionId.toLong())
             .executeAsOne()
         assertTrue(result.changed)
         assertEquals(4300L, row.created_at)
@@ -515,14 +533,14 @@ class BookmarkSyncArchitectureTest {
         val result = bookmarksRepository.replaceAyahBookmarkCollections(
             sura = 2,
             ayah = 10,
-            collectionLocalIds = listOf(addedCollectionId)
+            collectionIds = listOf(addedCollectionId)
         )
 
-        val row = database.bookmarksQueries.getBookmarkByLocalId(bookmark.localId.toLong()).executeAsOne()
+        val row = database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOne()
         assertTrue(result.changed)
-        assertEquals(bookmark.localId, result.bookmark.localId)
+        assertEquals(bookmark.id, result.bookmark.id)
         assertEquals(0L, row.is_in_default_collection)
-        assertEquals(setOf(addedCollectionId), activeCustomCollectionIds(bookmark.localId))
+        assertEquals(setOf(addedCollectionId), activeCustomCollectionIds(bookmark.id))
     }
 
     @Test
@@ -533,12 +551,12 @@ class BookmarkSyncArchitectureTest {
         val result = bookmarksRepository.replaceAyahBookmarkCollections(
             sura = 2,
             ayah = 11,
-            collectionLocalIds = listOf(collectionId, DEFAULT_COLLECTION_ID)
+            collectionIds = listOf(collectionId, DEFAULT_COLLECTION_ID)
         )
 
         assertFalse(result.changed)
-        assertEquals(bookmark.localId, result.bookmark.localId)
-        assertEquals(setOf(DEFAULT_COLLECTION_ID, collectionId), activeCollectionIds(bookmark.localId))
+        assertEquals(bookmark.id, result.bookmark.id)
+        assertEquals(setOf(DEFAULT_COLLECTION_ID, collectionId), activeCollectionIds(bookmark.id))
     }
 
     @Test
@@ -549,15 +567,15 @@ class BookmarkSyncArchitectureTest {
         val result = bookmarksRepository.replaceAyahBookmarkCollections(
             sura = 2,
             ayah = 12,
-            collectionLocalIds = listOf(collectionId)
+            collectionIds = listOf(collectionId)
         )
 
-        val row = database.bookmarksQueries.getBookmarkByLocalId(readingBookmark.localId.toLong()).executeAsOne()
+        val row = database.bookmarksQueries.getBookmarkByLocalId(readingBookmark.id.toLong()).executeAsOne()
         assertTrue(result.changed)
-        assertEquals(readingBookmark.localId, result.bookmark.localId)
+        assertEquals(readingBookmark.id, result.bookmark.id)
         assertEquals(1L, row.is_reading)
         assertEquals(0L, row.is_in_default_collection)
-        assertEquals(setOf(collectionId), activeCustomCollectionIds(readingBookmark.localId))
+        assertEquals(setOf(collectionId), activeCustomCollectionIds(readingBookmark.id))
     }
 
     @Test
@@ -687,7 +705,7 @@ class BookmarkSyncArchitectureTest {
         assertEquals(1L, row.is_reading)
         assertEquals(200L, row.reading_modified_at)
         assertNull(row.reading_pending_op)
-        assertEquals(row.local_id.toString(), readingRepository.getReadingBookmark()?.localId)
+        assertEquals(row.local_id.toString(), readingRepository.getReadingBookmark()?.id)
     }
 
     @Test
@@ -775,7 +793,7 @@ class BookmarkSyncArchitectureTest {
         )
 
         val row = database.bookmarksQueries.getBookmarkForAyah(4L, 1L).executeAsOne()
-        assertEquals(bookmark.localId.toLong(), row.local_id)
+        assertEquals(bookmark.id.toLong(), row.local_id)
         assertEquals("remote-bookmark-4-1", row.remote_id)
         assertNull(row.default_pending_op)
     }
@@ -797,7 +815,7 @@ class BookmarkSyncArchitectureTest {
             localMutationsToClear = listOf(unprovenRelationAck)
         )
 
-        val row = database.bookmarksQueries.getBookmarkByLocalId(bookmark.localId.toLong()).executeAsOne()
+        val row = database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOne()
         assertNull(row.remote_id)
         assertNull(row.default_pending_op)
         assertNotNull(
@@ -826,7 +844,7 @@ class BookmarkSyncArchitectureTest {
             localMutationsToClear = listOf(unprovenRelationAck)
         )
 
-        val bookmarkRow = database.bookmarksQueries.getBookmarkByLocalId(bookmark.localId.toLong()).executeAsOne()
+        val bookmarkRow = database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOne()
         val link = database.bookmark_collectionsQueries
             .getCollectionBookmarkByLocalId(localMutation.localID.toLong())
             .executeAsOne()
@@ -857,7 +875,7 @@ class BookmarkSyncArchitectureTest {
             localMutationsToClear = listOf(unprovenRelationAck)
         )
 
-        val bookmarkRow = database.bookmarksQueries.getBookmarkByLocalId(bookmark.localId.toLong()).executeAsOne()
+        val bookmarkRow = database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOne()
         val link = database.bookmark_collectionsQueries
             .getCollectionBookmarkByLocalId(createMutation.localID.toLong())
             .executeAsOne()
@@ -2456,7 +2474,7 @@ class BookmarkSyncArchitectureTest {
             localMutationsToClear = listOf(staleReadingClear)
         )
 
-        val row = database.bookmarksQueries.getBookmarkByLocalId(bookmark.localId.toLong()).executeAsOne()
+        val row = database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOne()
         assertEquals(1L, row.is_reading)
         assertEquals("CREATED", row.reading_pending_op)
         assertEquals(Mutation.CREATED, bookmarksRepository.fetchMutatedBookmarks().single().mutation)
@@ -2743,7 +2761,7 @@ class BookmarkSyncArchitectureTest {
         PersistenceImportRepositoryImpl(database).importData(PersistenceImportData(), deleteExisting = true)
 
         val tombstoneBeforeAck = database.bookmarksQueries
-            .getBookmarkByLocalId(bookmark.localId.toLong())
+            .getBookmarkByLocalId(bookmark.id.toLong())
             .executeAsOne()
         assertEquals(1L, tombstoneBeforeAck.deleted)
         assertEquals(0L, tombstoneBeforeAck.is_reading)
@@ -2764,7 +2782,7 @@ class BookmarkSyncArchitectureTest {
         )
 
         val tombstoneAfterAck = database.bookmarksQueries
-            .getBookmarkByLocalId(bookmark.localId.toLong())
+            .getBookmarkByLocalId(bookmark.id.toLong())
             .executeAsOne()
         assertEquals("remote-import-reading-create", tombstoneAfterAck.remote_id)
         assertEquals(1L, tombstoneAfterAck.deleted)
@@ -2782,7 +2800,7 @@ class BookmarkSyncArchitectureTest {
         PersistenceImportRepositoryImpl(database).importData(PersistenceImportData(), deleteExisting = true)
 
         val tombstoneBeforeAck = database.bookmarksQueries
-            .getBookmarkByLocalId(bookmark.localId.toLong())
+            .getBookmarkByLocalId(bookmark.id.toLong())
             .executeAsOne()
         assertEquals(1L, tombstoneBeforeAck.deleted)
         assertEquals(0L, tombstoneBeforeAck.is_in_default_collection)
@@ -2803,7 +2821,7 @@ class BookmarkSyncArchitectureTest {
         )
 
         val tombstoneAfterAck = database.bookmarksQueries
-            .getBookmarkByLocalId(bookmark.localId.toLong())
+            .getBookmarkByLocalId(bookmark.id.toLong())
             .executeAsOne()
         assertEquals("remote-import-default-create", tombstoneAfterAck.remote_id)
         assertEquals("DELETED", tombstoneAfterAck.default_pending_op)
@@ -2896,7 +2914,7 @@ class BookmarkSyncArchitectureTest {
         val collectionId = createCollection("NeverPushedCustomDeleteCollection", "remote-never-pushed-delete-collection")
         val bookmark = bookmarksRepository.addBookmark(8, 16, listOf(collectionId), at(100))
         val bookmarkRow = database.bookmarksQueries
-            .getBookmarkByLocalId(bookmark.localId.toLong())
+            .getBookmarkByLocalId(bookmark.id.toLong())
             .executeAsOne()
         val linkBeforeDelete = database.bookmark_collectionsQueries
             .getCollectionBookmarkFor(bookmarkRow.local_id, collectionId.toLong())
@@ -3000,7 +3018,7 @@ class BookmarkSyncArchitectureTest {
 
         collectionBookmarksRepository.removeBookmarkFromCollection(DEFAULT_COLLECTION_ID, bookmark)
 
-        assertNull(database.bookmarksQueries.getBookmarkByLocalId(bookmark.localId.toLong()).executeAsOneOrNull())
+        assertNull(database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOneOrNull())
         assertTrue(collectionBookmarksRepository.fetchMutatedCollectionBookmarks().none())
     }
 
@@ -3029,7 +3047,7 @@ class BookmarkSyncArchitectureTest {
 
         collectionBookmarksRepository.removeBookmarkFromCollection(DEFAULT_COLLECTION_ID, bookmark)
 
-        assertNull(database.bookmarksQueries.getBookmarkByLocalId(bookmark.localId.toLong()).executeAsOneOrNull())
+        assertNull(database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOneOrNull())
         assertTrue(collectionBookmarksRepository.fetchMutatedCollectionBookmarks().none())
     }
 
@@ -3044,14 +3062,14 @@ class BookmarkSyncArchitectureTest {
         collectionBookmarksRepository.rollbackMutatedCollectionBookmarksInFlight(marked)
 
         val rowAfterRollback = database.bookmarksQueries
-            .getBookmarkByLocalId(bookmark.localId.toLong())
+            .getBookmarkByLocalId(bookmark.id.toLong())
             .executeAsOne()
         assertEquals("CREATED", rowAfterRollback.default_pending_op)
         assertEquals(1L, rowAfterRollback.default_pending_version)
 
         collectionBookmarksRepository.removeBookmarkFromCollection(DEFAULT_COLLECTION_ID, bookmark)
 
-        assertNull(database.bookmarksQueries.getBookmarkByLocalId(bookmark.localId.toLong()).executeAsOneOrNull())
+        assertNull(database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOneOrNull())
         assertTrue(collectionBookmarksRepository.fetchMutatedCollectionBookmarks().none())
     }
 
@@ -3066,7 +3084,7 @@ class BookmarkSyncArchitectureTest {
         collectionBookmarksRepository.removeBookmarkFromCollection(DEFAULT_COLLECTION_ID, bookmark)
         collectionBookmarksRepository.rollbackMutatedCollectionBookmarksInFlight(marked)
 
-        assertNull(database.bookmarksQueries.getBookmarkByLocalId(bookmark.localId.toLong()).executeAsOneOrNull())
+        assertNull(database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOneOrNull())
         assertTrue(collectionBookmarksRepository.fetchMutatedCollectionBookmarks().none())
     }
 
@@ -3131,7 +3149,7 @@ class BookmarkSyncArchitectureTest {
                 .getCollectionBookmarkByLocalId(linkCreate.localID.toLong())
                 .executeAsOneOrNull()
         )
-        assertNull(database.bookmarksQueries.getBookmarkByLocalId(bookmark.localId.toLong()).executeAsOneOrNull())
+        assertNull(database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOneOrNull())
         assertTrue(collectionBookmarksRepository.fetchMutatedCollectionBookmarks().none())
     }
 
@@ -3144,7 +3162,7 @@ class BookmarkSyncArchitectureTest {
             at(100)
         )
         val row = database.bookmarksQueries
-            .getBookmarkByLocalId(defaultBookmark.bookmarkLocalId.toLong())
+            .getBookmarkByLocalId(defaultBookmark.bookmarkId.toLong())
             .executeAsOne()
         assertEquals("CREATED", row.default_pending_op)
         assertEquals(1L, row.default_pending_version)
@@ -3153,7 +3171,7 @@ class BookmarkSyncArchitectureTest {
 
         assertNull(
             database.bookmarksQueries
-                .getBookmarkByLocalId(defaultBookmark.bookmarkLocalId.toLong())
+                .getBookmarkByLocalId(defaultBookmark.bookmarkId.toLong())
                 .executeAsOneOrNull()
         )
         assertTrue(collectionBookmarksRepository.fetchMutatedCollectionBookmarks().none())
@@ -3169,7 +3187,7 @@ class BookmarkSyncArchitectureTest {
         bookmarksRepository.addBookmark(9, 19, listOf(DEFAULT_COLLECTION_ID), at(150))
 
         val beforeAck = database.bookmarksQueries
-            .getBookmarkByLocalId(bookmark.localId.toLong())
+            .getBookmarkByLocalId(bookmark.id.toLong())
             .executeAsOne()
         assertEquals(1L, beforeAck.is_in_default_collection)
         assertEquals("DELETED", beforeAck.default_pending_op)
@@ -3188,7 +3206,7 @@ class BookmarkSyncArchitectureTest {
         )
 
         val afterAck = database.bookmarksQueries
-            .getBookmarkByLocalId(bookmark.localId.toLong())
+            .getBookmarkByLocalId(bookmark.id.toLong())
             .executeAsOne()
         assertEquals(1L, afterAck.is_in_default_collection)
         assertEquals("remote-default-readd", afterAck.remote_id)
@@ -3207,7 +3225,7 @@ class BookmarkSyncArchitectureTest {
         collectionBookmarksRepository.removeBookmarkFromCollection(DEFAULT_COLLECTION_ID, bookmark)
 
         val beforeAck = database.bookmarksQueries
-            .getBookmarkByLocalId(bookmark.localId.toLong())
+            .getBookmarkByLocalId(bookmark.id.toLong())
             .executeAsOne()
         assertEquals(0L, beforeAck.is_in_default_collection)
         assertEquals("DELETED", beforeAck.default_pending_op)
@@ -3227,7 +3245,7 @@ class BookmarkSyncArchitectureTest {
         )
 
         val afterAck = database.bookmarksQueries
-            .getBookmarkByLocalId(bookmark.localId.toLong())
+            .getBookmarkByLocalId(bookmark.id.toLong())
             .executeAsOne()
         assertEquals("remote-default-readd-remove", afterAck.remote_id)
         assertEquals("DELETED", afterAck.default_pending_op)
@@ -3257,7 +3275,7 @@ class BookmarkSyncArchitectureTest {
         )
 
         val afterAck = database.bookmarksQueries
-            .getBookmarkByLocalId(bookmark.localId.toLong())
+            .getBookmarkByLocalId(bookmark.id.toLong())
             .executeAsOne()
         assertNull(afterAck.remote_id)
         assertNull(afterAck.default_pending_op)
@@ -3276,7 +3294,7 @@ class BookmarkSyncArchitectureTest {
         assertEquals("remote-composite-default-bookmark", deleteMutation.model.bookmarkRemoteId)
         assertNull(
             database.bookmarksQueries
-                .getBookmarkByLocalId(bookmark.localId.toLong())
+                .getBookmarkByLocalId(bookmark.id.toLong())
                 .executeAsOne()
                 .remote_id
         )
@@ -3291,7 +3309,7 @@ class BookmarkSyncArchitectureTest {
         collectionBookmarksRepository.removeBookmarkFromCollection(DEFAULT_COLLECTION_ID, localOnlyBookmark)
 
         val localOnlyBeforeAck = database.bookmarksQueries
-            .getBookmarkByLocalId(localOnlyBookmark.localId.toLong())
+            .getBookmarkByLocalId(localOnlyBookmark.id.toLong())
             .executeAsOne()
         assertEquals(0L, localOnlyBeforeAck.is_in_default_collection)
         assertEquals("DELETED", localOnlyBeforeAck.default_pending_op)
@@ -3326,7 +3344,7 @@ class BookmarkSyncArchitectureTest {
         )
         val remoteBackedBookmark = bookmarksRepository.addBookmark(9, 4, listOf(DEFAULT_COLLECTION_ID), at(150))
         val remoteBackedCreate = collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single {
-            it.localID == "default:${remoteBackedBookmark.localId}"
+            it.localID == "default:${remoteBackedBookmark.id}"
         }
         collectionBookmarksRepository.markMutatedCollectionBookmarksInFlight(listOf(assertNotNull(remoteBackedCreate.ack)))
 
@@ -3337,12 +3355,12 @@ class BookmarkSyncArchitectureTest {
         )
 
         val remoteBackedRow = database.bookmarksQueries
-            .getBookmarkByLocalId(remoteBackedBookmark.localId.toLong())
+            .getBookmarkByLocalId(remoteBackedBookmark.id.toLong())
             .executeAsOne()
         assertEquals("remote-pending-default-backed", remoteBackedRow.remote_id)
         assertEquals("DELETED", remoteBackedRow.default_pending_op)
         val remoteBackedDelete = collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single {
-            it.localID == "default:${remoteBackedBookmark.localId}"
+            it.localID == "default:${remoteBackedBookmark.id}"
         }
         assertEquals(Mutation.DELETED, remoteBackedDelete.mutation)
         assertEquals("remote-pending-default-backed", remoteBackedDelete.model.bookmarkRemoteId)
@@ -3357,7 +3375,7 @@ class BookmarkSyncArchitectureTest {
         assertTrue(readingRepository.deleteReadingBookmark())
 
         val tombstoneBeforeAck = database.bookmarksQueries
-            .getBookmarkByLocalId(bookmark.localId.toLong())
+            .getBookmarkByLocalId(bookmark.id.toLong())
             .executeAsOne()
         assertEquals(1L, tombstoneBeforeAck.deleted)
         assertEquals(0L, tombstoneBeforeAck.is_reading)
@@ -3379,7 +3397,7 @@ class BookmarkSyncArchitectureTest {
         )
 
         val tombstoneAfterAck = database.bookmarksQueries
-            .getBookmarkByLocalId(bookmark.localId.toLong())
+            .getBookmarkByLocalId(bookmark.id.toLong())
             .executeAsOne()
         assertEquals("remote-pending-reading-create", tombstoneAfterAck.remote_id)
         assertEquals(1L, tombstoneAfterAck.deleted)
@@ -3397,7 +3415,7 @@ class BookmarkSyncArchitectureTest {
         assertTrue(readingRepository.deleteReadingBookmark())
 
         val readingClear = bookmarksRepository.fetchMutatedBookmarks().single {
-            it.localID == bookmark.localId
+            it.localID == bookmark.id
         }
         val ack = assertNotNull(readingClear.ack)
         assertEquals(Mutation.CREATED, readingClear.mutation)
@@ -3427,7 +3445,7 @@ class BookmarkSyncArchitectureTest {
         )
 
         val row = database.bookmarksQueries
-            .getBookmarkByLocalId(bookmark.localId.toLong())
+            .getBookmarkByLocalId(bookmark.id.toLong())
             .executeAsOne()
         assertEquals("remote-cleared-saved-reading", row.remote_id)
         assertEquals(0L, row.is_reading)
@@ -3435,7 +3453,7 @@ class BookmarkSyncArchitectureTest {
         assertNull(row.reading_pending_op)
         assertEquals(markedAck.observedPendingVersion, row.reading_pending_version)
         assertTrue(bookmarksRepository.fetchMutatedBookmarks().none {
-            it.localID == bookmark.localId
+            it.localID == bookmark.id
         })
     }
 
@@ -3444,7 +3462,7 @@ class BookmarkSyncArchitectureTest {
         val bookmark = readingRepository.addAyahReadingBookmark(9, 22, at(100))
         bookmarksRepository.addBookmark(9, 22, at(125))
         val readingCreate = bookmarksRepository.fetchMutatedBookmarks().single {
-            it.localID == bookmark.localId
+            it.localID == bookmark.id
         }
         val ack = assertNotNull(readingCreate.ack)
 
@@ -3473,7 +3491,7 @@ class BookmarkSyncArchitectureTest {
         )
 
         val row = database.bookmarksQueries
-            .getBookmarkByLocalId(bookmark.localId.toLong())
+            .getBookmarkByLocalId(bookmark.id.toLong())
             .executeAsOne()
         assertEquals("remote-inflight-saved-reading", row.remote_id)
         assertEquals(0L, row.is_reading)
@@ -3481,7 +3499,7 @@ class BookmarkSyncArchitectureTest {
         assertEquals(markedAck.observedPendingVersion + 1, row.reading_pending_version)
 
         val finalReadingState = bookmarksRepository.fetchMutatedBookmarks().single {
-            it.localID == bookmark.localId
+            it.localID == bookmark.id
         }
         assertEquals(Mutation.CREATED, finalReadingState.mutation)
         assertEquals(false, finalReadingState.model.isReading)
@@ -3497,7 +3515,7 @@ class BookmarkSyncArchitectureTest {
         assertTrue(readingRepository.deleteReadingBookmark())
         bookmarksRepository.rollbackMutatedBookmarksInFlight(marked)
 
-        assertNull(database.bookmarksQueries.getBookmarkByLocalId(bookmark.localId.toLong()).executeAsOneOrNull())
+        assertNull(database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOneOrNull())
         assertTrue(bookmarksRepository.fetchMutatedBookmarks().none())
     }
 
@@ -3509,7 +3527,7 @@ class BookmarkSyncArchitectureTest {
 
         assertTrue(readingRepository.deleteReadingBookmark())
 
-        assertNull(database.bookmarksQueries.getBookmarkByLocalId(bookmark.localId.toLong()).executeAsOneOrNull())
+        assertNull(database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOneOrNull())
         assertTrue(bookmarksRepository.fetchMutatedBookmarks().none())
     }
 
@@ -3584,7 +3602,7 @@ class BookmarkSyncArchitectureTest {
         )
 
         val row = database.bookmarksQueries
-            .getBookmarkByLocalId(bookmark.localId.toLong())
+            .getBookmarkByLocalId(bookmark.id.toLong())
             .executeAsOne()
         val deleteMutation = bookmarksRepository.fetchMutatedBookmarks().single()
         assertEquals("remote-replayed-reading-bookmark", row.remote_id)
@@ -3617,7 +3635,7 @@ class BookmarkSyncArchitectureTest {
         )
 
         val row = database.bookmarksQueries
-            .getBookmarkByLocalId(bookmark.localId.toLong())
+            .getBookmarkByLocalId(bookmark.id.toLong())
             .executeAsOne()
         val deleteMutation = collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single()
         assertEquals("remote-replayed-default-bookmark", row.remote_id)
@@ -3651,7 +3669,7 @@ class BookmarkSyncArchitectureTest {
         )
 
         val row = database.bookmarksQueries
-            .getBookmarkByLocalId(bookmark.localId.toLong())
+            .getBookmarkByLocalId(bookmark.id.toLong())
             .executeAsOne()
         val link = database.bookmark_collectionsQueries
             .getCollectionBookmarkByLocalId(customCreate.localID.toLong())

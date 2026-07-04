@@ -20,23 +20,23 @@ interface CollectionsRepository {
     suspend fun addCollection(name: String, timestamp: PlatformDateTime): Collection
 
     /**
-     * Update the name of a collection identified by its local ID.
+     * Update the name of a collection identified by its mobile-sync ID.
      *
-     * @throws IllegalArgumentException when [localId] does not identify an active collection.
+     * @throws IllegalArgumentException when [id] does not identify an active collection.
      */
-    suspend fun updateCollection(localId: String, name: String): Collection
+    suspend fun updateCollection(id: String, name: String): Collection
 
     /**
-     * Update the name of a collection identified by its local ID using an explicit mutation timestamp.
+     * Update the name of a collection identified by its mobile-sync ID using an explicit mutation timestamp.
      *
-     * @throws IllegalArgumentException when [localId] does not identify an active collection.
+     * @throws IllegalArgumentException when [id] does not identify an active collection.
      */
-    suspend fun updateCollection(localId: String, name: String, timestamp: PlatformDateTime): Collection
+    suspend fun updateCollection(id: String, name: String, timestamp: PlatformDateTime): Collection
 
     /**
-     * Delete a collection identified by its local ID.
+     * Delete a collection identified by its mobile-sync ID.
      */
-    suspend fun deleteCollection(localId: String): Boolean
+    suspend fun deleteCollection(id: String): Boolean
 
     /**
      * Observe the collections list as a Flow.

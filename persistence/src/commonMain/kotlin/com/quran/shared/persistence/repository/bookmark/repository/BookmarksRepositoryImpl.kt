@@ -63,14 +63,14 @@ class BookmarksRepositoryImpl(
     }
 
     override suspend fun addBookmark(sura: Int, ayah: Int): AyahBookmark {
-        return addBookmark(sura = sura, ayah = ayah, collectionLocalIds = emptyList())
+        return addBookmark(sura = sura, ayah = ayah, collectionIds = emptyList())
     }
 
     override suspend fun addBookmark(sura: Int, ayah: Int, timestamp: PlatformDateTime): AyahBookmark {
         return addBookmark(
             sura = sura,
             ayah = ayah,
-            collectionLocalIds = emptyList(),
+            collectionIds = emptyList(),
             timestamp = timestamp
         )
     }
@@ -78,12 +78,12 @@ class BookmarksRepositoryImpl(
     override suspend fun addBookmark(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>
+        collectionIds: List<String>
     ): AyahBookmark {
         return addBookmarkWithTimestampMillis(
             sura = sura,
             ayah = ayah,
-            collectionLocalIds = collectionLocalIds,
+            collectionLocalIds = collectionIds,
             timestampMillis = null
         )
     }
@@ -91,13 +91,13 @@ class BookmarksRepositoryImpl(
     override suspend fun addBookmark(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>,
+        collectionIds: List<String>,
         timestamp: PlatformDateTime
     ): AyahBookmark {
         return addBookmarkWithTimestampMillis(
             sura = sura,
             ayah = ayah,
-            collectionLocalIds = collectionLocalIds,
+            collectionLocalIds = collectionIds,
             timestampMillis = timestamp.toEpochMillisecondsOrNull()
         )
     }
@@ -162,24 +162,24 @@ class BookmarksRepositoryImpl(
     }
 
     override suspend fun replaceBookmarkCollections(
-        localId: String,
-        collectionLocalIds: List<String>
+        id: String,
+        collectionIds: List<String>
     ): Boolean {
         return replaceBookmarkCollectionsWithTimestampMillis(
-            localId = localId,
-            collectionLocalIds = collectionLocalIds,
+            localId = id,
+            collectionLocalIds = collectionIds,
             timestampMillis = null
         )
     }
 
     override suspend fun replaceBookmarkCollections(
-        localId: String,
-        collectionLocalIds: List<String>,
+        id: String,
+        collectionIds: List<String>,
         timestamp: PlatformDateTime
     ): Boolean {
         return replaceBookmarkCollectionsWithTimestampMillis(
-            localId = localId,
-            collectionLocalIds = collectionLocalIds,
+            localId = id,
+            collectionLocalIds = collectionIds,
             timestampMillis = timestamp.toEpochMillisecondsOrNull()
         )
     }
@@ -210,12 +210,12 @@ class BookmarksRepositoryImpl(
     override suspend fun replaceAyahBookmarkCollections(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>
+        collectionIds: List<String>
     ): BookmarkCollectionsReplacementResult {
         return replaceAyahBookmarkCollectionsWithTimestampMillis(
             sura = sura,
             ayah = ayah,
-            collectionLocalIds = collectionLocalIds,
+            collectionLocalIds = collectionIds,
             timestampMillis = null
         )
     }
@@ -223,13 +223,13 @@ class BookmarksRepositoryImpl(
     override suspend fun replaceAyahBookmarkCollections(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>,
+        collectionIds: List<String>,
         timestamp: PlatformDateTime
     ): BookmarkCollectionsReplacementResult {
         return replaceAyahBookmarkCollectionsWithTimestampMillis(
             sura = sura,
             ayah = ayah,
-            collectionLocalIds = collectionLocalIds,
+            collectionLocalIds = collectionIds,
             timestampMillis = timestamp.toEpochMillisecondsOrNull()
         )
     }
@@ -296,12 +296,12 @@ class BookmarksRepositoryImpl(
 
     override suspend fun deleteBookmark(bookmark: AyahBookmark): Boolean {
         logger.i { "Deleting ayah bookmark for ${bookmark.sura}:${bookmark.ayah}" }
-        return deleteBookmarkWithLocalId(bookmark.localId)
+        return deleteBookmarkWithLocalId(bookmark.id)
     }
 
-    override suspend fun deleteBookmark(localId: String): Boolean {
-        logger.i { "Deleting ayah bookmark localId=$localId" }
-        return deleteBookmarkWithLocalId(localId)
+    override suspend fun deleteBookmark(id: String): Boolean {
+        logger.i { "Deleting ayah bookmark id=$id" }
+        return deleteBookmarkWithLocalId(id)
     }
 
     private suspend fun deleteBookmarkWithLocalId(localId: String): Boolean {

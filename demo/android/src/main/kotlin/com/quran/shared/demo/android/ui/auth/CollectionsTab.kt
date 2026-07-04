@@ -68,7 +68,7 @@ fun CollectionsTab(
                         ListItem(
                             headlineContent = { Text(item.collection.name) },
                             modifier = Modifier.clickable {
-                                onAddRandomBookmarkToCollection(item.collection.localId)
+                                onAddRandomBookmarkToCollection(item.collection.id)
                                 showSelectCollectionDialog = false
                             }
                         )
@@ -117,7 +117,7 @@ fun CollectionsTab(
                 items(collectionsWithBookmarks) { collectionWithBookmarks ->
                     CollectionItem(
                         collectionWithBookmarks = collectionWithBookmarks,
-                        onDelete = { onDeleteCollection(collectionWithBookmarks.collection.localId) }
+                        onDelete = { onDeleteCollection(collectionWithBookmarks.collection.id) }
                     )
                 }
             }

@@ -569,7 +569,7 @@ class QuranDataServiceLifecycleTest {
         val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
         val defaultBookmark = bookmarkLink(
             DEFAULT_COLLECTION_ID,
-            lastUpdated = Instant.fromEpochMilliseconds(77).toPlatform()
+            bookmarkLastUpdated = Instant.fromEpochMilliseconds(77).toPlatform()
         )
         fixture.collectionBookmarksRepository.setBookmarksForCollection(
             DEFAULT_COLLECTION_ID,
@@ -579,9 +579,9 @@ class QuranDataServiceLifecycleTest {
 
         val result = fixture.service.updateCollection(DEFAULT_COLLECTION_ID, "Renamed default")
 
-        assertEquals(DEFAULT_COLLECTION_ID, result.localId)
+        assertEquals(DEFAULT_COLLECTION_ID, result.id)
         assertEquals(true, result.isDefault)
-        assertEquals(defaultBookmark.lastUpdated, result.lastUpdated)
+        assertEquals(defaultBookmark.bookmarkLastUpdated, result.lastUpdated)
         assertEquals(emptyList(), fixture.collectionsRepository.updateCalls)
         assertEquals(0, fixture.syncClient.localDataUpdatedCount)
         fixture.clearAndJoin()
@@ -594,7 +594,7 @@ class QuranDataServiceLifecycleTest {
             val timestamp = Instant.fromEpochMilliseconds(42).toPlatform()
             val defaultBookmark = bookmarkLink(
                 DEFAULT_COLLECTION_ID,
-                lastUpdated = Instant.fromEpochMilliseconds(88).toPlatform()
+                bookmarkLastUpdated = Instant.fromEpochMilliseconds(88).toPlatform()
             )
             fixture.collectionBookmarksRepository.setBookmarksForCollection(
                 DEFAULT_COLLECTION_ID,
@@ -604,9 +604,9 @@ class QuranDataServiceLifecycleTest {
 
             val result = fixture.service.updateCollection(DEFAULT_COLLECTION_ID, "Renamed default", timestamp)
 
-            assertEquals(DEFAULT_COLLECTION_ID, result.localId)
+            assertEquals(DEFAULT_COLLECTION_ID, result.id)
             assertEquals(true, result.isDefault)
-            assertEquals(defaultBookmark.lastUpdated, result.lastUpdated)
+            assertEquals(defaultBookmark.bookmarkLastUpdated, result.lastUpdated)
             assertEquals(emptyList(), fixture.collectionsRepository.updateCalls)
             assertEquals(0, fixture.syncClient.localDataUpdatedCount)
             fixture.clearAndJoin()
@@ -636,7 +636,7 @@ class QuranDataServiceLifecycleTest {
     fun `collectionsWithBookmarks includes virtual default collection with default bookmarks`() =
         runTest(dispatcher) {
             val fixture = quranDataServiceFixture()
-            val defaultBookmark = bookmarkLink(DEFAULT_COLLECTION_ID, bookmarkLocalId = "default-bookmark")
+            val defaultBookmark = bookmarkLink(DEFAULT_COLLECTION_ID, bookmarkId = "default-bookmark")
             fixture.collectionBookmarksRepository.setBookmarksForCollection(
                 DEFAULT_COLLECTION_ID,
                 listOf(defaultBookmark)
@@ -645,7 +645,7 @@ class QuranDataServiceLifecycleTest {
 
             val result = fixture.service.collectionsWithBookmarks.first()
 
-            assertEquals(listOf(DEFAULT_COLLECTION_ID), result.map { it.collection.localId })
+            assertEquals(listOf(DEFAULT_COLLECTION_ID), result.map { it.collection.id })
             assertEquals(true, result.single().collection.isDefault)
             assertEquals(listOf(defaultBookmark), result.single().bookmarks)
             assertEquals(listOf(DEFAULT_COLLECTION_ID), fixture.collectionBookmarksRepository.flowRequests)
@@ -657,8 +657,8 @@ class QuranDataServiceLifecycleTest {
         runTest(dispatcher) {
             val fixture = quranDataServiceFixture()
             val customCollection = Collection("Favorites", testTimestamp(), "7")
-            val defaultBookmark = bookmarkLink(DEFAULT_COLLECTION_ID, bookmarkLocalId = "default-bookmark")
-            val customBookmark = bookmarkLink("7", bookmarkLocalId = "custom-bookmark")
+            val defaultBookmark = bookmarkLink(DEFAULT_COLLECTION_ID, bookmarkId = "default-bookmark")
+            val customBookmark = bookmarkLink("7", bookmarkId = "custom-bookmark")
             fixture.collectionsRepository.collections.value = listOf(customCollection)
             fixture.collectionBookmarksRepository.setBookmarksForCollection(
                 DEFAULT_COLLECTION_ID,
@@ -669,9 +669,9 @@ class QuranDataServiceLifecycleTest {
 
             val result = fixture.service.collectionsWithBookmarks.first()
 
-            assertEquals(listOf(DEFAULT_COLLECTION_ID, "7"), result.map { it.collection.localId })
+            assertEquals(listOf(DEFAULT_COLLECTION_ID, "7"), result.map { it.collection.id })
             assertEquals(listOf(defaultBookmark), result.first { it.collection.isDefault }.bookmarks)
-            assertEquals(listOf(customBookmark), result.first { it.collection.localId == "7" }.bookmarks)
+            assertEquals(listOf(customBookmark), result.first { it.collection.id == "7" }.bookmarks)
             fixture.clearAndJoin()
         }
 
@@ -741,7 +741,7 @@ class QuranDataServiceLifecycleTest {
 
             assertFalse(result)
             assertEquals(
-                listOf<BookmarkDeleteCall>(BookmarkLocalIdDeleteCall("bookmark-local-id")),
+                listOf<BookmarkDeleteCall>(BookmarkIdDeleteCall("bookmark-local-id")),
                 fixture.bookmarksRepository.deleteCalls
             )
             assertEquals(0, fixture.syncClient.localDataUpdatedCount)
@@ -852,8 +852,8 @@ class QuranDataServiceLifecycleTest {
             advanceUntilIdle()
 
             val result = fixture.service.replaceBookmarkCollections(
-                localId = "bookmark-local-id",
-                collectionLocalIds = listOf("collection-a"),
+                id = "bookmark-local-id",
+                collectionIds = listOf("collection-a"),
                 timestamp = timestamp
             )
 
@@ -879,7 +879,7 @@ class QuranDataServiceLifecycleTest {
                 AyahBookmark(
                     sura = 2,
                     ayah = 255,
-                    localId = "bookmark-replaced",
+                    id = "bookmark-replaced",
                     lastUpdated = testTimestamp()
                 ),
                 result
@@ -905,7 +905,7 @@ class QuranDataServiceLifecycleTest {
                 AyahBookmark(
                     sura = 2,
                     ayah = 255,
-                    localId = "bookmark-replaced",
+                    id = "bookmark-replaced",
                     lastUpdated = testTimestamp()
                 ),
                 result
@@ -925,7 +925,7 @@ class QuranDataServiceLifecycleTest {
             val result = fixture.service.replaceAyahBookmarkCollections(
                 sura = 2,
                 ayah = 255,
-                collectionLocalIds = listOf("collection-a"),
+                collectionIds = listOf("collection-a"),
                 timestamp = timestamp
             )
 
@@ -933,7 +933,7 @@ class QuranDataServiceLifecycleTest {
                 AyahBookmark(
                     sura = 2,
                     ayah = 255,
-                    localId = "bookmark-replaced",
+                    id = "bookmark-replaced",
                     lastUpdated = timestamp
                 ),
                 result
@@ -1311,51 +1311,51 @@ private class ServiceBookmarksRepository : BookmarksRepository, BookmarksSynchro
         AyahBookmark(
             sura = sura,
             ayah = ayah,
-            localId = "bookmark-${++addCount}",
+            id = "bookmark-${++addCount}",
             lastUpdated = testTimestamp()
         )
 
     override suspend fun addBookmark(sura: Int, ayah: Int, timestamp: com.quran.shared.persistence.util.PlatformDateTime): AyahBookmark =
         addBookmark(sura, ayah)
 
-    override suspend fun addBookmark(sura: Int, ayah: Int, collectionLocalIds: List<String>): AyahBookmark =
+    override suspend fun addBookmark(sura: Int, ayah: Int, collectionIds: List<String>): AyahBookmark =
         addBookmark(sura, ayah)
 
     override suspend fun addBookmark(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>,
+        collectionIds: List<String>,
         timestamp: com.quran.shared.persistence.util.PlatformDateTime
     ): AyahBookmark = addBookmark(sura, ayah)
 
     override suspend fun replaceBookmarkCollections(
-        localId: String,
-        collectionLocalIds: List<String>
+        id: String,
+        collectionIds: List<String>
     ): Boolean {
-        replaceCalls += BookmarkCollectionsReplaceCall(localId, collectionLocalIds)
+        replaceCalls += BookmarkCollectionsReplaceCall(id, collectionIds)
         return replaceResult
     }
 
     override suspend fun replaceBookmarkCollections(
-        localId: String,
-        collectionLocalIds: List<String>,
+        id: String,
+        collectionIds: List<String>,
         timestamp: com.quran.shared.persistence.util.PlatformDateTime
     ): Boolean {
-        replaceCalls += BookmarkCollectionsReplaceCall(localId, collectionLocalIds, timestamp)
+        replaceCalls += BookmarkCollectionsReplaceCall(id, collectionIds, timestamp)
         return replaceResult
     }
 
     override suspend fun replaceAyahBookmarkCollections(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>
+        collectionIds: List<String>
     ): BookmarkCollectionsReplacementResult {
-        replaceAyahCalls += BookmarkAyahCollectionsReplaceCall(sura, ayah, collectionLocalIds)
+        replaceAyahCalls += BookmarkAyahCollectionsReplaceCall(sura, ayah, collectionIds)
         return BookmarkCollectionsReplacementResult(
             bookmark = AyahBookmark(
                 sura = sura,
                 ayah = ayah,
-                localId = "bookmark-replaced",
+                id = "bookmark-replaced",
                 lastUpdated = testTimestamp()
             ),
             changed = replaceAyahResultChanged
@@ -1365,15 +1365,15 @@ private class ServiceBookmarksRepository : BookmarksRepository, BookmarksSynchro
     override suspend fun replaceAyahBookmarkCollections(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>,
+        collectionIds: List<String>,
         timestamp: com.quran.shared.persistence.util.PlatformDateTime
     ): BookmarkCollectionsReplacementResult {
-        replaceAyahCalls += BookmarkAyahCollectionsReplaceCall(sura, ayah, collectionLocalIds, timestamp)
+        replaceAyahCalls += BookmarkAyahCollectionsReplaceCall(sura, ayah, collectionIds, timestamp)
         return BookmarkCollectionsReplacementResult(
             bookmark = AyahBookmark(
                 sura = sura,
                 ayah = ayah,
-                localId = "bookmark-replaced",
+                id = "bookmark-replaced",
                 lastUpdated = timestamp
             ),
             changed = replaceAyahResultChanged
@@ -1388,8 +1388,8 @@ private class ServiceBookmarksRepository : BookmarksRepository, BookmarksSynchro
         deleteCalls += BookmarkModelDeleteCall(bookmark)
         return deleteResult
     }
-    override suspend fun deleteBookmark(localId: String): Boolean {
-        deleteCalls += BookmarkLocalIdDeleteCall(localId)
+    override suspend fun deleteBookmark(id: String): Boolean {
+        deleteCalls += BookmarkIdDeleteCall(id)
         return deleteResult
     }
     override suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<RemoteBookmark>> = emptyList()
@@ -1406,15 +1406,15 @@ private class ServiceBookmarksRepository : BookmarksRepository, BookmarksSynchro
 }
 
 private data class BookmarkCollectionsReplaceCall(
-    val localId: String,
-    val collectionLocalIds: List<String>,
+    val id: String,
+    val collectionIds: List<String>,
     val timestamp: PlatformDateTime? = null
 )
 
 private data class BookmarkAyahCollectionsReplaceCall(
     val sura: Int,
     val ayah: Int,
-    val collectionLocalIds: List<String>,
+    val collectionIds: List<String>,
     val timestamp: PlatformDateTime? = null
 )
 
@@ -1425,8 +1425,8 @@ private data class BookmarkAyahDeleteCall(
     val ayah: Int
 ) : BookmarkDeleteCall
 
-private data class BookmarkLocalIdDeleteCall(
-    val localId: String
+private data class BookmarkIdDeleteCall(
+    val id: String
 ) : BookmarkDeleteCall
 
 private data class BookmarkModelDeleteCall(
@@ -1453,7 +1453,7 @@ private class ServiceReadingBookmarksRepository : ReadingBookmarksRepository {
 }
 
 private data class CollectionUpdateCall(
-    val localId: String,
+    val id: String,
     val name: String,
     val timestamp: PlatformDateTime?
 )
@@ -1464,7 +1464,7 @@ private data class CollectionAddCall(
 )
 
 private data class CollectionDeleteCall(
-    val localId: String
+    val id: String
 )
 
 private class ServiceCollectionsRepository : CollectionsRepository, CollectionsSynchronizationRepository {
@@ -1486,20 +1486,20 @@ private class ServiceCollectionsRepository : CollectionsRepository, CollectionsS
         addCalls += CollectionAddCall(name, timestamp)
         return Collection(name, timestamp, "collection-${addCalls.size}")
     }
-    override suspend fun updateCollection(localId: String, name: String): Collection {
-        updateCalls += CollectionUpdateCall(localId, name, null)
-        return Collection(name, testTimestamp(), localId)
+    override suspend fun updateCollection(id: String, name: String): Collection {
+        updateCalls += CollectionUpdateCall(id, name, null)
+        return Collection(name, testTimestamp(), id)
     }
     override suspend fun updateCollection(
-        localId: String,
+        id: String,
         name: String,
         timestamp: com.quran.shared.persistence.util.PlatformDateTime
     ): Collection {
-        updateCalls += CollectionUpdateCall(localId, name, timestamp)
-        return Collection(name, timestamp, localId)
+        updateCalls += CollectionUpdateCall(id, name, timestamp)
+        return Collection(name, timestamp, id)
     }
-    override suspend fun deleteCollection(localId: String): Boolean {
-        deleteCalls += CollectionDeleteCall(localId)
+    override suspend fun deleteCollection(id: String): Boolean {
+        deleteCalls += CollectionDeleteCall(id)
         return deleteResult
     }
     override fun getCollectionsFlow(): Flow<List<Collection>> = collections
@@ -1519,37 +1519,37 @@ private class ServiceCollectionBookmarksRepository :
     val flowRequests = mutableListOf<String>()
     private val bookmarksByCollectionId = mutableMapOf<String, MutableStateFlow<List<CollectionAyahBookmark>>>()
 
-    fun setBookmarksForCollection(collectionLocalId: String, bookmarks: List<CollectionAyahBookmark>) {
-        bookmarksFlow(collectionLocalId).value = bookmarks
+    fun setBookmarksForCollection(collectionId: String, bookmarks: List<CollectionAyahBookmark>) {
+        bookmarksFlow(collectionId).value = bookmarks
     }
 
-    override suspend fun getBookmarksForCollection(collectionLocalId: String): List<CollectionAyahBookmark> =
-        bookmarksFlow(collectionLocalId).value
+    override suspend fun getBookmarksForCollection(collectionId: String): List<CollectionAyahBookmark> =
+        bookmarksFlow(collectionId).value
     override suspend fun addBookmarkToCollection(
-        collectionLocalId: String,
+        collectionId: String,
         bookmark: AyahBookmark
-    ): CollectionAyahBookmark = bookmarkLink(collectionLocalId)
+    ): CollectionAyahBookmark = bookmarkLink(collectionId)
     override suspend fun addBookmarkToCollection(
-        collectionLocalId: String,
+        collectionId: String,
         bookmark: AyahBookmark,
         timestamp: com.quran.shared.persistence.util.PlatformDateTime
-    ): CollectionAyahBookmark = bookmarkLink(collectionLocalId)
+    ): CollectionAyahBookmark = bookmarkLink(collectionId)
     override suspend fun addAyahBookmarkToCollection(
-        collectionLocalId: String,
+        collectionId: String,
         sura: Int,
         ayah: Int
-    ): CollectionAyahBookmark = bookmarkLink(collectionLocalId)
+    ): CollectionAyahBookmark = bookmarkLink(collectionId)
     override suspend fun addAyahBookmarkToCollection(
-        collectionLocalId: String,
+        collectionId: String,
         sura: Int,
         ayah: Int,
         timestamp: com.quran.shared.persistence.util.PlatformDateTime
-    ): CollectionAyahBookmark = bookmarkLink(collectionLocalId)
-    override suspend fun removeBookmarkFromCollection(collectionLocalId: String, bookmark: AyahBookmark): Boolean = true
+    ): CollectionAyahBookmark = bookmarkLink(collectionId)
+    override suspend fun removeBookmarkFromCollection(collectionId: String, bookmark: AyahBookmark): Boolean = true
     override suspend fun removeAyahBookmarkFromCollection(collectionAyahBookmark: CollectionAyahBookmark): Boolean = true
-    override fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<CollectionAyahBookmark>> {
-        flowRequests += collectionLocalId
-        return bookmarksFlow(collectionLocalId)
+    override fun getBookmarksForCollectionFlow(collectionId: String): Flow<List<CollectionAyahBookmark>> {
+        flowRequests += collectionId
+        return bookmarksFlow(collectionId)
     }
     override suspend fun fetchMutatedCollectionBookmarks(): List<LocalModelMutation<LocalSyncCollectionAyahBookmark>> =
         emptyList()
@@ -1563,10 +1563,10 @@ private class ServiceCollectionBookmarksRepository :
     ) = writeBoundaryGuard.checkWriteBoundary()
     override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
         remoteIDs.associateWith { false }
-    override suspend fun fetchCollectionBookmarkByRemoteId(remoteId: String): CollectionAyahBookmark? = null
+    override suspend fun fetchCollectionBookmarkByRemoteId(remoteId: String): LocalSyncCollectionAyahBookmark? = null
 
-    private fun bookmarksFlow(collectionLocalId: String): MutableStateFlow<List<CollectionAyahBookmark>> =
-        bookmarksByCollectionId.getOrPut(collectionLocalId) { MutableStateFlow(emptyList()) }
+    private fun bookmarksFlow(collectionId: String): MutableStateFlow<List<CollectionAyahBookmark>> =
+        bookmarksByCollectionId.getOrPut(collectionId) { MutableStateFlow(emptyList()) }
 }
 
 private class ServiceNotesRepository : NotesRepository, NotesSynchronizationRepository {
@@ -1582,7 +1582,7 @@ private class ServiceNotesRepository : NotesRepository, NotesSynchronizationRepo
         timestamp: com.quran.shared.persistence.util.PlatformDateTime
     ): Note = addNote(body, startSura, startAyah, endSura, endAyah)
     override suspend fun updateNote(
-        localId: String,
+        id: String,
         body: String,
         startSura: Int,
         startAyah: Int,
@@ -1590,7 +1590,7 @@ private class ServiceNotesRepository : NotesRepository, NotesSynchronizationRepo
         endAyah: Int
     ): Note = addNote(body, startSura, startAyah, endSura, endAyah)
     override suspend fun updateNote(
-        localId: String,
+        id: String,
         body: String,
         startSura: Int,
         startAyah: Int,
@@ -1598,7 +1598,7 @@ private class ServiceNotesRepository : NotesRepository, NotesSynchronizationRepo
         endAyah: Int,
         timestamp: com.quran.shared.persistence.util.PlatformDateTime
     ): Note = addNote(body, startSura, startAyah, endSura, endAyah)
-    override suspend fun deleteNote(localId: String): Boolean = true
+    override suspend fun deleteNote(id: String): Boolean = true
     override fun getNotesFlow(): Flow<List<Note>> = MutableStateFlow(emptyList())
     override suspend fun fetchMutatedNotes(lastModified: Long): List<LocalModelMutation<LocalSyncNote>> = emptyList()
     override suspend fun applyRemoteChanges(
@@ -1627,10 +1627,10 @@ private class ServiceReadingSessionsRepository : ReadingSessionsRepository, Read
         ayah: Int,
         timestamp: com.quran.shared.persistence.util.PlatformDateTime
     ): ReadingSession = addReadingSession(sura, ayah)
-    override suspend fun updateReadingSession(localId: String, sura: Int, ayah: Int): ReadingSession =
+    override suspend fun updateReadingSession(id: String, sura: Int, ayah: Int): ReadingSession =
         addReadingSession(sura, ayah)
     override suspend fun updateReadingSession(
-        localId: String,
+        id: String,
         sura: Int,
         ayah: Int,
         timestamp: com.quran.shared.persistence.util.PlatformDateTime
@@ -1657,19 +1657,18 @@ private class ServiceReadingSessionsRepository : ReadingSessionsRepository, Read
 }
 
 private fun bookmarkLink(
-    collectionLocalId: String,
-    bookmarkLocalId: String = "bookmark",
-    lastUpdated: PlatformDateTime = testTimestamp()
+    collectionId: String,
+    bookmarkId: String = "bookmark",
+    bookmarkLastUpdated: PlatformDateTime = testTimestamp(),
+    bookmarkAddedDate: PlatformDateTime = bookmarkLastUpdated
 ): CollectionAyahBookmark =
     CollectionAyahBookmark(
-        collectionLocalId = collectionLocalId,
-        collectionRemoteId = null,
-        bookmarkLocalId = bookmarkLocalId,
-        bookmarkRemoteId = null,
+        collectionId = collectionId,
+        bookmarkId = bookmarkId,
         sura = 2,
         ayah = 255,
-        lastUpdated = lastUpdated,
-        localId = "collection-bookmark"
+        bookmarkLastUpdated = bookmarkLastUpdated,
+        bookmarkAddedDate = bookmarkAddedDate
     )
 
 private fun testTimestamp(): com.quran.shared.persistence.util.PlatformDateTime =

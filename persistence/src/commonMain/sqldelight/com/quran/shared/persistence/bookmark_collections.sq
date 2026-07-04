@@ -89,7 +89,9 @@ getCollectionBookmarksWithDetails:
     b.bookmark_type AS bookmark_type,
     b.sura AS sura,
     b.ayah AS ayah,
-    b.page AS page
+    b.page AS page,
+    b.modified_at AS bookmark_last_updated_at,
+    b.created_at AS bookmark_added_at
   FROM bookmark_collection bc
   JOIN collection c ON c.local_id = bc.collection_local_id
   JOIN bookmark b ON b.local_id = bc.bookmark_local_id
@@ -116,7 +118,9 @@ getCollectionBookmarksForCollectionWithDetails:
     b.bookmark_type AS bookmark_type,
     b.sura AS sura,
     b.ayah AS ayah,
-    b.page AS page
+    b.page AS page,
+    b.modified_at AS bookmark_last_updated_at,
+    b.created_at AS bookmark_added_at
   FROM bookmark_collection bc
   JOIN collection c ON c.local_id = bc.collection_local_id
   JOIN bookmark b ON b.local_id = bc.bookmark_local_id

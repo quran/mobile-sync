@@ -106,58 +106,58 @@ class ReadingSessionsRepositoryImpl(
         }
     }
 
-    override suspend fun updateReadingSession(localId: String, sura: Int, ayah: Int): ReadingSession {
-        return updateReadingSessionWithTimestampMillis(localId, sura, ayah, timestampMillis = null)
+    override suspend fun updateReadingSession(id: String, sura: Int, ayah: Int): ReadingSession {
+        return updateReadingSessionWithTimestampMillis(id, sura, ayah, timestampMillis = null)
     }
 
     override suspend fun updateReadingSession(
-        localId: String,
+        id: String,
         sura: Int,
         ayah: Int,
         timestamp: PlatformDateTime
     ): ReadingSession {
-        return updateReadingSessionWithTimestampMillis(localId, sura, ayah, timestamp.toEpochMillisecondsOrNull())
+        return updateReadingSessionWithTimestampMillis(id, sura, ayah, timestamp.toEpochMillisecondsOrNull())
     }
 
     private suspend fun updateReadingSessionWithTimestampMillis(
-        localId: String,
+        id: String,
         sura: Int,
         ayah: Int,
         timestampMillis: Long?
     ): ReadingSession {
-        logger.i { "Updating reading session localId=$localId to $sura:$ayah" }
+        logger.i { "Updating reading session id=$id to $sura:$ayah" }
         return withContext(Dispatchers.IO) {
-            val id = localId.toLong()
+            val localId = id.toLong()
             val updatedAt = timestampMillis ?: currentTimeMillis()
             var updatedSession: ReadingSession? = null
 
             database.transaction {
-                val existing = readingSessionsQueries.value.getReadingSessionByLocalId(id)
+                val existing = readingSessionsQueries.value.getReadingSessionByLocalId(localId)
                     .executeAsOneOrNull()
                 require(existing?.deleted == 0L) {
-                    "Expected active reading session localId=$localId before update."
+                    "Expected active reading session id=$id before update."
                 }
 
                 val conflicting = readingSessionsQueries.value.getReadingSessionForChapterVerse(
                     sura.toLong(),
                     ayah.toLong()
                 ).executeAsOneOrNull()
-                require(conflicting == null || conflicting.local_id == id) {
+                require(conflicting == null || conflicting.local_id == localId) {
                     "Reading session already exists for $sura:$ayah."
                 }
 
                 readingSessionsQueries.value.updateReadingSession(
-                    local_id = id,
+                    local_id = localId,
                     chapter_number = sura.toLong(),
                     verse_number = ayah.toLong(),
                     modified_at = updatedAt
                 )
                 pruneOldReadingSessions()
 
-                val record = readingSessionsQueries.value.getReadingSessionByLocalId(id)
+                val record = readingSessionsQueries.value.getReadingSessionByLocalId(localId)
                     .executeAsOneOrNull()
-                requireNotNull(record) { "Expected reading session localId=$localId after update." }
-                require(record.deleted == 0L) { "Expected active reading session localId=$localId after update." }
+                requireNotNull(record) { "Expected reading session id=$id after update." }
+                require(record.deleted == 0L) { "Expected active reading session id=$id after update." }
                 updatedSession = record.toReadingSession()
             }
 

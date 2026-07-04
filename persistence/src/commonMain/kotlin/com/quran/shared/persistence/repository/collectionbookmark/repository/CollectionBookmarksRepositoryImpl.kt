@@ -49,8 +49,8 @@ class CollectionBookmarksRepositoryImpl(
     private val bookmarkQueries = lazy { database.bookmarksQueries }
     private val collectionQueries = lazy { database.collectionsQueries }
 
-    override suspend fun getBookmarksForCollection(collectionLocalId: String): List<CollectionAyahBookmark> {
-        if (collectionLocalId == DEFAULT_COLLECTION_ID) {
+    override suspend fun getBookmarksForCollection(collectionId: String): List<CollectionAyahBookmark> {
+        if (collectionId == DEFAULT_COLLECTION_ID) {
             return withContext(Dispatchers.IO) {
                 bookmarkQueries.value.getDefaultCollectionAyahBookmarks()
                     .executeAsList()
@@ -59,7 +59,7 @@ class CollectionBookmarksRepositoryImpl(
         }
         return withContext(Dispatchers.IO) {
             bookmarkCollectionQueries.value
-                .getCollectionBookmarksForCollectionWithDetails(collection_local_id = collectionLocalId.toLong())
+                .getCollectionBookmarksForCollectionWithDetails(collection_local_id = collectionId.toLong())
                 .executeAsList()
                 .mapNotNull { record ->
                     toCollectionBookmark(
@@ -69,7 +69,9 @@ class CollectionBookmarksRepositoryImpl(
                         ayah = record.ayah,
                         collectionLocalId = record.collection_local_id,
                         collectionRemoteId = record.collection_remote_id,
-                        modifiedAt = record.modified_at,
+                        membershipModifiedAt = record.modified_at,
+                        bookmarkModifiedAt = record.bookmark_last_updated_at,
+                        bookmarkCreatedAt = record.bookmark_added_at,
                         localId = record.local_id,
                         logMissingBookmark = false
                     )
@@ -77,15 +79,15 @@ class CollectionBookmarksRepositoryImpl(
         }
     }
 
-    override fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<CollectionAyahBookmark>> {
-        return if (collectionLocalId == DEFAULT_COLLECTION_ID) {
+    override fun getBookmarksForCollectionFlow(collectionId: String): Flow<List<CollectionAyahBookmark>> {
+        return if (collectionId == DEFAULT_COLLECTION_ID) {
             bookmarkQueries.value.getDefaultCollectionAyahBookmarks()
                 .asFlow()
                 .mapToList(Dispatchers.IO)
                 .map { list -> list.map { it.toDefaultCollectionBookmark() } }
         } else {
             bookmarkCollectionQueries.value
-                .getCollectionBookmarksForCollectionWithDetails(collection_local_id = collectionLocalId.toLong())
+                .getCollectionBookmarksForCollectionWithDetails(collection_local_id = collectionId.toLong())
                 .asFlow()
                 .mapToList(Dispatchers.IO)
                 .map { list ->
@@ -97,7 +99,9 @@ class CollectionBookmarksRepositoryImpl(
                             ayah = record.ayah,
                             collectionLocalId = record.collection_local_id,
                             collectionRemoteId = record.collection_remote_id,
-                            modifiedAt = record.modified_at,
+                            membershipModifiedAt = record.modified_at,
+                            bookmarkModifiedAt = record.bookmark_last_updated_at,
+                            bookmarkCreatedAt = record.bookmark_added_at,
                             localId = record.local_id,
                             logMissingBookmark = false
                         )
@@ -107,26 +111,26 @@ class CollectionBookmarksRepositoryImpl(
     }
 
     override suspend fun addBookmarkToCollection(
-        collectionLocalId: String,
+        collectionId: String,
         bookmark: AyahBookmark
     ): CollectionAyahBookmark {
-        return addBookmarkToCollectionWithTimestampMillis(collectionLocalId, bookmark, timestampMillis = null)
+        return addBookmarkToCollectionWithTimestampMillis(collectionId, bookmark, timestampMillis = null)
     }
 
     override suspend fun addBookmarkToCollection(
-        collectionLocalId: String,
+        collectionId: String,
         bookmark: AyahBookmark,
         timestamp: PlatformDateTime
     ): CollectionAyahBookmark {
         return addBookmarkToCollectionWithTimestampMillis(
-            collectionLocalId,
+            collectionId,
             bookmark,
             timestamp.toEpochMillisecondsOrNull()
         )
     }
 
     private suspend fun addBookmarkToCollectionWithTimestampMillis(
-        collectionLocalId: String,
+        collectionId: String,
         bookmark: AyahBookmark,
         timestampMillis: Long?
     ): CollectionAyahBookmark {
@@ -134,10 +138,10 @@ class CollectionBookmarksRepositoryImpl(
             var created: CollectionAyahBookmark? = null
             database.transaction {
                 val row = requireNotNull(
-                    bookmarkQueries.value.getBookmarkByLocalId(bookmark.localId.toLong()).executeAsOneOrNull()
-                ) { "Bookmark not found for localId=${bookmark.localId}." }
+                    bookmarkQueries.value.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOneOrNull()
+                ) { "Bookmark not found for id=${bookmark.id}." }
 
-                if (collectionLocalId == DEFAULT_COLLECTION_ID) {
+                if (collectionId == DEFAULT_COLLECTION_ID) {
                     bookmarkQueries.value.addAyahToDefaultCollection(
                         ayah_id = getAyahId(bookmark.sura, bookmark.ayah).toLong(),
                         sura = bookmark.sura.toLong(),
@@ -152,9 +156,9 @@ class CollectionBookmarksRepositoryImpl(
                 }
 
                 val collection = collectionQueries.value
-                    .getCollectionByLocalId(collectionLocalId.toLong())
+                    .getCollectionByLocalId(collectionId.toLong())
                     .executeAsOneOrNull()
-                requireNotNull(collection) { "Collection not found for localId=$collectionLocalId." }
+                requireNotNull(collection) { "Collection not found for id=$collectionId." }
 
                 bookmarkCollectionQueries.value.addBookmarkToCollection(
                     bookmark_local_id = row.local_id,
@@ -173,7 +177,9 @@ class CollectionBookmarksRepositoryImpl(
                     ayah = record.ayah,
                     collectionLocalId = record.collection_local_id,
                     collectionRemoteId = record.collection_remote_id,
-                    modifiedAt = record.modified_at,
+                    membershipModifiedAt = record.modified_at,
+                    bookmarkModifiedAt = record.bookmark_last_updated_at,
+                    bookmarkCreatedAt = record.bookmark_added_at,
                     localId = record.local_id,
                     logMissingBookmark = true
                 )
@@ -183,21 +189,21 @@ class CollectionBookmarksRepositoryImpl(
     }
 
     override suspend fun addAyahBookmarkToCollection(
-        collectionLocalId: String,
+        collectionId: String,
         sura: Int,
         ayah: Int
     ): CollectionAyahBookmark {
-        return addAyahBookmarkToCollectionWithTimestampMillis(collectionLocalId, sura, ayah, timestampMillis = null)
+        return addAyahBookmarkToCollectionWithTimestampMillis(collectionId, sura, ayah, timestampMillis = null)
     }
 
     override suspend fun addAyahBookmarkToCollection(
-        collectionLocalId: String,
+        collectionId: String,
         sura: Int,
         ayah: Int,
         timestamp: PlatformDateTime
     ): CollectionAyahBookmark {
         return addAyahBookmarkToCollectionWithTimestampMillis(
-            collectionLocalId,
+            collectionId,
             sura,
             ayah,
             timestamp.toEpochMillisecondsOrNull()
@@ -205,7 +211,7 @@ class CollectionBookmarksRepositoryImpl(
     }
 
     private suspend fun addAyahBookmarkToCollectionWithTimestampMillis(
-        collectionLocalId: String,
+        collectionId: String,
         sura: Int,
         ayah: Int,
         timestampMillis: Long?
@@ -214,7 +220,7 @@ class CollectionBookmarksRepositoryImpl(
             var created: CollectionAyahBookmark? = null
             database.transaction {
                 val ayahId = getAyahId(sura, ayah).toLong()
-                if (collectionLocalId == DEFAULT_COLLECTION_ID) {
+                if (collectionId == DEFAULT_COLLECTION_ID) {
                     bookmarkQueries.value.addAyahToDefaultCollection(
                         ayah_id = ayahId,
                         sura = sura.toLong(),
@@ -240,9 +246,9 @@ class CollectionBookmarksRepositoryImpl(
                     bookmarkQueries.value.getBookmarkForAyah(sura.toLong(), ayah.toLong()).executeAsOneOrNull()
                 ) { "Expected ayah bookmark for $sura:$ayah after insert." }
                 val collection = collectionQueries.value
-                    .getCollectionByLocalId(collectionLocalId.toLong())
+                    .getCollectionByLocalId(collectionId.toLong())
                     .executeAsOneOrNull()
-                requireNotNull(collection) { "Collection not found for localId=$collectionLocalId." }
+                requireNotNull(collection) { "Collection not found for id=$collectionId." }
 
                 bookmarkCollectionQueries.value.addBookmarkToCollection(
                     bookmark_local_id = bookmark.local_id,
@@ -261,7 +267,9 @@ class CollectionBookmarksRepositoryImpl(
                     ayah = record.ayah,
                     collectionLocalId = record.collection_local_id,
                     collectionRemoteId = record.collection_remote_id,
-                    modifiedAt = record.modified_at,
+                    membershipModifiedAt = record.modified_at,
+                    bookmarkModifiedAt = record.bookmark_last_updated_at,
+                    bookmarkCreatedAt = record.bookmark_added_at,
                     localId = record.local_id,
                     logMissingBookmark = true
                 )
@@ -271,20 +279,20 @@ class CollectionBookmarksRepositoryImpl(
     }
 
     override suspend fun removeBookmarkFromCollection(
-        collectionLocalId: String,
+        collectionId: String,
         bookmark: AyahBookmark
     ): Boolean {
         return withContext(Dispatchers.IO) {
             database.transaction {
-                if (collectionLocalId == DEFAULT_COLLECTION_ID) {
+                if (collectionId == DEFAULT_COLLECTION_ID) {
                     bookmarkQueries.value.clearDefaultCollection(
-                        local_id = bookmark.localId.toLong(),
+                        local_id = bookmark.id.toLong(),
                         timestamp = null
                     )
                 } else {
                     bookmarkCollectionQueries.value.markBookmarkCollectionDeleted(
-                        bookmark_local_id = bookmark.localId.toLong(),
-                        collection_local_id = collectionLocalId.toLong(),
+                        bookmark_local_id = bookmark.id.toLong(),
+                        collection_local_id = collectionId.toLong(),
                         timestamp = null
                     )
                 }
@@ -297,15 +305,15 @@ class CollectionBookmarksRepositoryImpl(
     override suspend fun removeAyahBookmarkFromCollection(collectionAyahBookmark: CollectionAyahBookmark): Boolean {
         return withContext(Dispatchers.IO) {
             database.transaction {
-                if (collectionAyahBookmark.collectionLocalId == DEFAULT_COLLECTION_ID) {
+                if (collectionAyahBookmark.collectionId == DEFAULT_COLLECTION_ID) {
                     bookmarkQueries.value.clearDefaultCollection(
-                        local_id = collectionAyahBookmark.bookmarkLocalId.toLong(),
+                        local_id = collectionAyahBookmark.bookmarkId.toLong(),
                         timestamp = null
                     )
                 } else {
                     bookmarkCollectionQueries.value.markBookmarkCollectionDeleted(
-                        bookmark_local_id = collectionAyahBookmark.bookmarkLocalId.toLong(),
-                        collection_local_id = collectionAyahBookmark.collectionLocalId.toLong(),
+                        bookmark_local_id = collectionAyahBookmark.bookmarkId.toLong(),
+                        collection_local_id = collectionAyahBookmark.collectionId.toLong(),
                         timestamp = null
                     )
                 }
@@ -564,7 +572,7 @@ class CollectionBookmarksRepositoryImpl(
         }
     }
 
-    override suspend fun fetchCollectionBookmarkByRemoteId(remoteId: String): CollectionAyahBookmark? {
+    override suspend fun fetchCollectionBookmarkByRemoteId(remoteId: String): LocalSyncCollectionAyahBookmark? {
         return withContext(Dispatchers.IO) {
             if (remoteId.startsWith("$DEFAULT_COLLECTION_ID-")) {
                 val bookmarkRemoteId = remoteId.removePrefix("$DEFAULT_COLLECTION_ID-")
@@ -573,7 +581,14 @@ class CollectionBookmarksRepositoryImpl(
                     row.deleted == 0L &&
                     (row.is_in_default_collection == 1L || row.default_pending_op == "DELETED")
                 ) {
-                    return@withContext row.toDefaultCollectionBookmark(bookmarkRemoteId)
+                    return@withContext defaultLocalSyncCollectionBookmark(
+                        bookmarkLocalId = row.local_id,
+                        bookmarkRemoteId = bookmarkRemoteId,
+                        sura = row.sura,
+                        ayah = row.ayah,
+                        modifiedAt = row.default_modified_at ?: row.modified_at,
+                        createdAt = row.created_at
+                    )
                 }
                 return@withContext null
             }
@@ -587,7 +602,7 @@ class CollectionBookmarksRepositoryImpl(
                             record.last_synced_collection_remote_id,
                             record.last_synced_bookmark_remote_id
                         ) == remoteId
-                    toCollectionBookmark(
+                    toLocalSyncCollectionBookmark(
                         bookmarkLocalId = record.bookmark_local_id,
                         bookmarkRemoteId = if (matchedSnapshot) {
                             record.last_synced_bookmark_remote_id
@@ -603,6 +618,7 @@ class CollectionBookmarksRepositoryImpl(
                             record.collection_remote_id ?: record.last_synced_collection_remote_id
                         },
                         modifiedAt = record.modified_at,
+                        createdAt = record.created_at,
                         localId = record.local_id,
                         logMissingBookmark = false
                     )
@@ -1172,7 +1188,9 @@ class CollectionBookmarksRepositoryImpl(
         ayah: Long?,
         collectionLocalId: Long,
         collectionRemoteId: String?,
-        modifiedAt: Long,
+        membershipModifiedAt: Long,
+        bookmarkModifiedAt: Long,
+        bookmarkCreatedAt: Long,
         localId: Long,
         logMissingBookmark: Boolean
     ): CollectionAyahBookmark? {
@@ -1183,7 +1201,9 @@ class CollectionBookmarksRepositoryImpl(
             ayah = ayah,
             collectionLocalId = collectionLocalId,
             collectionRemoteId = collectionRemoteId,
-            modifiedAt = modifiedAt,
+            membershipModifiedAt = membershipModifiedAt,
+            bookmarkModifiedAt = bookmarkModifiedAt,
+            bookmarkCreatedAt = bookmarkCreatedAt,
             localId = localId,
             logMissingBookmark = logMissingBookmark
         )?.toCollectionBookmark()
@@ -1208,7 +1228,9 @@ class CollectionBookmarksRepositoryImpl(
             ayah = ayah,
             collectionLocalId = collectionLocalId,
             collectionRemoteId = collectionRemoteId,
-            modifiedAt = modifiedAt,
+            membershipModifiedAt = modifiedAt,
+            bookmarkModifiedAt = modifiedAt,
+            bookmarkCreatedAt = modifiedAt,
             localId = localId,
             logMissingBookmark = logMissingBookmark
         )?.toLocalSyncCollectionBookmark(
@@ -1223,11 +1245,15 @@ class CollectionBookmarksRepositoryImpl(
         ayah: Long?,
         collectionLocalId: Long,
         collectionRemoteId: String?,
-        modifiedAt: Long,
+        membershipModifiedAt: Long,
+        bookmarkModifiedAt: Long,
+        bookmarkCreatedAt: Long,
         localId: Long,
         logMissingBookmark: Boolean
     ): CollectionBookmarkFields? {
-        val updatedAt = Instant.fromEpochMilliseconds(modifiedAt).toPlatform()
+        val membershipUpdatedAt = Instant.fromEpochMilliseconds(membershipModifiedAt).toPlatform()
+        val bookmarkUpdatedAt = Instant.fromEpochMilliseconds(bookmarkModifiedAt).toPlatform()
+        val bookmarkAddedAt = Instant.fromEpochMilliseconds(bookmarkCreatedAt).toPlatform()
         val suraValue = sura?.toInt()
         val ayahValue = ayah?.toInt()
         if (suraValue == null || ayahValue == null) {
@@ -1243,7 +1269,9 @@ class CollectionBookmarksRepositoryImpl(
             bookmarkRemoteId = bookmarkRemoteId,
             sura = suraValue,
             ayah = ayahValue,
-            lastUpdated = updatedAt,
+            membershipLastUpdated = membershipUpdatedAt,
+            bookmarkLastUpdated = bookmarkUpdatedAt,
+            bookmarkAddedDate = bookmarkAddedAt,
             localId = localId.toString()
         )
     }
@@ -1256,7 +1284,9 @@ class CollectionBookmarksRepositoryImpl(
             bookmarkRemoteId = relationBookmarkRemoteId,
             sura = sura,
             ayah = ayah,
-            modifiedAt = default_modified_at ?: modified_at
+            membershipModifiedAt = default_modified_at ?: modified_at,
+            bookmarkModifiedAt = modified_at,
+            bookmarkCreatedAt = created_at
         )
     }
 
@@ -1273,7 +1303,9 @@ class CollectionBookmarksRepositoryImpl(
             bookmarkRemoteId = bookmarkRemoteId,
             sura = sura,
             ayah = ayah,
-            modifiedAt = modifiedAt
+            membershipModifiedAt = modifiedAt,
+            bookmarkModifiedAt = modifiedAt,
+            bookmarkCreatedAt = createdAt
         ).toLocalSyncCollectionBookmark(
             createdAt = Instant.fromEpochMilliseconds(createdAt).toPlatform()
         )
@@ -1284,14 +1316,18 @@ class CollectionBookmarksRepositoryImpl(
         bookmarkRemoteId: String?,
         sura: Long?,
         ayah: Long?,
-        modifiedAt: Long
+        membershipModifiedAt: Long,
+        bookmarkModifiedAt: Long,
+        bookmarkCreatedAt: Long
     ): CollectionAyahBookmark {
         return defaultCollectionBookmarkFields(
             bookmarkLocalId = bookmarkLocalId,
             bookmarkRemoteId = bookmarkRemoteId,
             sura = sura,
             ayah = ayah,
-            modifiedAt = modifiedAt
+            membershipModifiedAt = membershipModifiedAt,
+            bookmarkModifiedAt = bookmarkModifiedAt,
+            bookmarkCreatedAt = bookmarkCreatedAt
         ).toCollectionBookmark()
     }
 
@@ -1300,9 +1336,13 @@ class CollectionBookmarksRepositoryImpl(
         bookmarkRemoteId: String?,
         sura: Long?,
         ayah: Long?,
-        modifiedAt: Long
+        membershipModifiedAt: Long,
+        bookmarkModifiedAt: Long,
+        bookmarkCreatedAt: Long
     ): CollectionBookmarkFields {
-        val updatedAt = Instant.fromEpochMilliseconds(modifiedAt).toPlatform()
+        val membershipUpdatedAt = Instant.fromEpochMilliseconds(membershipModifiedAt).toPlatform()
+        val bookmarkUpdatedAt = Instant.fromEpochMilliseconds(bookmarkModifiedAt).toPlatform()
+        val bookmarkAddedAt = Instant.fromEpochMilliseconds(bookmarkCreatedAt).toPlatform()
         return CollectionBookmarkFields(
             collectionLocalId = DEFAULT_COLLECTION_ID,
             collectionRemoteId = DEFAULT_COLLECTION_ID,
@@ -1310,21 +1350,21 @@ class CollectionBookmarksRepositoryImpl(
             bookmarkRemoteId = bookmarkRemoteId,
             sura = requireNotNull(sura).toInt(),
             ayah = requireNotNull(ayah).toInt(),
-            lastUpdated = updatedAt,
+            membershipLastUpdated = membershipUpdatedAt,
+            bookmarkLastUpdated = bookmarkUpdatedAt,
+            bookmarkAddedDate = bookmarkAddedAt,
             localId = defaultLocalId(bookmarkLocalId)
         )
     }
 
     private fun CollectionBookmarkFields.toCollectionBookmark(): CollectionAyahBookmark {
         return CollectionAyahBookmark(
-            collectionLocalId = collectionLocalId,
-            collectionRemoteId = collectionRemoteId,
-            bookmarkLocalId = bookmarkLocalId,
-            bookmarkRemoteId = bookmarkRemoteId,
+            collectionId = collectionLocalId,
+            bookmarkId = bookmarkLocalId,
             sura = sura,
             ayah = ayah,
-            lastUpdated = lastUpdated,
-            localId = localId
+            bookmarkLastUpdated = bookmarkLastUpdated,
+            bookmarkAddedDate = bookmarkAddedDate
         )
     }
 
@@ -1338,7 +1378,7 @@ class CollectionBookmarksRepositoryImpl(
             bookmarkRemoteId = bookmarkRemoteId,
             sura = sura,
             ayah = ayah,
-            lastUpdated = lastUpdated,
+            lastUpdated = membershipLastUpdated,
             localId = localId,
             createdAt = createdAt
         )
@@ -1356,7 +1396,9 @@ private data class CollectionBookmarkFields(
     val bookmarkRemoteId: String?,
     val sura: Int,
     val ayah: Int,
-    val lastUpdated: PlatformDateTime,
+    val membershipLastUpdated: PlatformDateTime,
+    val bookmarkLastUpdated: PlatformDateTime,
+    val bookmarkAddedDate: PlatformDateTime,
     val localId: String
 )
 

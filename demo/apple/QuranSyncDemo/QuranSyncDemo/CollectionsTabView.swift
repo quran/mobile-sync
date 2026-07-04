@@ -28,7 +28,7 @@ struct CollectionsTabView: View {
                         .foregroundColor(.secondary)
                         .italic()
                 } else {
-                    ForEach(viewModel.collectionsWithBookmarks, id: \.collection.localId) { collectionWithBookmarks in
+                    ForEach(viewModel.collectionsWithBookmarks, id: \.collection.id) { collectionWithBookmarks in
                         CollectionRowView(viewModel: viewModel, collectionWithBookmarks: collectionWithBookmarks)
                     }
                 }
@@ -51,12 +51,12 @@ struct CollectionsTabView: View {
         }
         .sheet(isPresented: $showSelectCollectionSheet) {
             NavigationView {
-                List(viewModel.collectionsWithBookmarks, id: \.collection.localId) { item in
+                List(viewModel.collectionsWithBookmarks, id: \.collection.id) { item in
                     Button(action: {
                         Task {
                             let sura = Shared.QuranActionsUtils().getRandomSura()
                             let ayah = Shared.QuranActionsUtils().getRandomAyah(sura: sura)
-                            await viewModel.addAyahBookmarkToCollection(collectionId: item.collection.localId,
+                            await viewModel.addAyahBookmarkToCollection(collectionId: item.collection.id,
                                                                         sura: sura,
                                                                         ayah: ayah)
                         }
@@ -98,7 +98,7 @@ struct CollectionRowView: View {
 
                 Button(action: {
                     Task {
-                        await viewModel.deleteCollection(collectionId: collectionWithBookmarks.collection.localId)
+                        await viewModel.deleteCollection(collectionId: collectionWithBookmarks.collection.id)
                     }
                 }) {
                     Image(systemName: "trash")
@@ -115,7 +115,7 @@ struct CollectionRowView: View {
                             .foregroundColor(.secondary)
                             .padding(.leading, 32)
                     } else {
-                        ForEach(collectionWithBookmarks.bookmarks, id: \.localId) { cb in
+                        ForEach(collectionWithBookmarks.bookmarks, id: \.bookmarkId) { cb in
                             HStack {
                                 Image(systemName: "bookmark")
                                     .font(.caption)

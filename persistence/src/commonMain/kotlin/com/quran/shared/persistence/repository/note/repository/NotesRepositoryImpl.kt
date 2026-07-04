@@ -107,7 +107,7 @@ class NotesRepositoryImpl(
     }
 
     override suspend fun updateNote(
-        localId: String,
+        id: String,
         body: String,
         startSura: Int,
         startAyah: Int,
@@ -115,7 +115,7 @@ class NotesRepositoryImpl(
         endAyah: Int
     ): Note {
         return updateNoteWithTimestampMillis(
-            localId,
+            id,
             body,
             startSura,
             startAyah,
@@ -126,7 +126,7 @@ class NotesRepositoryImpl(
     }
 
     override suspend fun updateNote(
-        localId: String,
+        id: String,
         body: String,
         startSura: Int,
         startAyah: Int,
@@ -135,7 +135,7 @@ class NotesRepositoryImpl(
         timestamp: PlatformDateTime
     ): Note {
         return updateNoteWithTimestampMillis(
-            localId,
+            id,
             body,
             startSura,
             startAyah,
@@ -146,7 +146,7 @@ class NotesRepositoryImpl(
     }
 
     private suspend fun updateNoteWithTimestampMillis(
-        localId: String,
+        id: String,
         body: String,
         startSura: Int,
         startAyah: Int,
@@ -154,29 +154,30 @@ class NotesRepositoryImpl(
         endAyah: Int,
         timestampMillis: Long?
     ): Note {
-        logger.i { "Updating note localId=$localId" }
+        logger.i { "Updating note id=$id" }
         return withContext(Dispatchers.IO) {
+            val localId = id.toLong()
             val startAyahId = requireAyahId(startSura, startAyah)
             val endAyahId = requireAyahId(endSura, endAyah)
             notesQueries.value.updateNote(
                 note = body,
                 start_ayah_id = startAyahId.toLong(),
                 end_ayah_id = endAyahId.toLong(),
-                id = localId.toLong(),
+                id = localId,
                 timestamp = timestampMillis
             )
-            val record = notesQueries.value.getNoteByLocalId(localId.toLong())
+            val record = notesQueries.value.getNoteByLocalId(localId)
                 .executeAsOneOrNull()
-            requireNotNull(record) { "Expected note localId=$localId after update." }
+            requireNotNull(record) { "Expected note id=$id after update." }
             record.toNote()
         }
     }
 
-    override suspend fun deleteNote(localId: String): Boolean {
-        logger.i { "Deleting note localId=$localId" }
+    override suspend fun deleteNote(id: String): Boolean {
+        logger.i { "Deleting note id=$id" }
         withContext(Dispatchers.IO) {
             notesQueries.value.deleteNote(
-                id = localId.toLong()
+                id = id.toLong()
             )
         }
         return true

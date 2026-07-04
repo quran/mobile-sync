@@ -20,7 +20,7 @@ struct NotesTabView: View {
                         .foregroundColor(.secondary)
                         .italic()
                 } else {
-                    ForEach(viewModel.notes, id: \.localId) { note in
+                    ForEach(viewModel.notes, id: \.id) { note in
                         HStack {
                             Image(systemName: "note.text")
                                 .foregroundColor(.blue)
@@ -34,7 +34,7 @@ struct NotesTabView: View {
                             Spacer()
                             Button(action: {
                                 Task {
-                                    await viewModel.deleteNote(localId: note.localId)
+                                    await viewModel.deleteNote(id: note.id)
                                 }
                             }) {
                                 Image(systemName: "trash")
