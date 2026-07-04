@@ -19,7 +19,7 @@ ktor = "3.5.1"
 
 oidc = "0.16.5"
 
-androidx-viewmodel = "2.10.0"
+androidx-viewmodel = "2.11.0"
 androidx-appcompat = "1.7.1"
 androidx-activity = "1.13.0"
 androidx-datastore = "1.2.1"
