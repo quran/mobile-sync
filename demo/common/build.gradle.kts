@@ -6,15 +6,14 @@ plugins {
 }
 
 kotlin {
-    iosX64()
     iosArm64()
     iosSimulatorArm64()
 
     jvm()
     android {
         namespace = "com.quran.shared.demo.common"
-        compileSdk = 36
-        minSdk = 23
+        compileSdk = libs.versions.android.compile.sdk.get().toInt()
+        minSdk = libs.versions.android.min.sdk.get().toInt()
 
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_17)

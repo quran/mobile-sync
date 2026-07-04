@@ -18,11 +18,11 @@ plugins {
 }
 
 android {
-    compileSdk = 36
+    compileSdk = libs.versions.android.compile.sdk.get().toInt()
     namespace = "com.quran.shared.demo.android"
 
     defaultConfig {
-        minSdk = 23
+        minSdk = libs.versions.android.min.sdk.get().toInt()
         targetSdk = 36
         manifestPlaceholders["oidcRedirectScheme"] = "com.quran.oauth"
         manifestPlaceholders["oidcRedirectHost"] = "callback"
