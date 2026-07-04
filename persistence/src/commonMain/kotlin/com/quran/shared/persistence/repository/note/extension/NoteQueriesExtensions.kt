@@ -30,7 +30,7 @@ internal fun DatabaseNote.toNote(): Note {
         endSura = end.first,
         endAyah = end.second,
         lastUpdated = Instant.fromEpochMilliseconds(normalizedModifiedAt).toPlatform(),
-        localId = local_id.toString()
+        id = local_id.toString()
     )
 }
 

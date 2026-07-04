@@ -56,7 +56,7 @@ class NotesRepositoryTest {
             endAyah = 13,
             timestamp = timestamp(1_700_000_001_234L)
         )
-        val record = database.notesQueries.getNoteByLocalId(note.localId.toLong()).executeAsOne()
+        val record = database.notesQueries.getNoteByLocalId(note.id.toLong()).executeAsOne()
 
         assertEquals(1_700_000_001_234L, note.lastUpdated.fromPlatform().toEpochMilliseconds())
         assertEquals(1_700_000_001_234L, record.created_at)
@@ -68,7 +68,7 @@ class NotesRepositoryTest {
         val note = repository.addNote("test note", 2, 13, 2, 13, timestamp(1_700_000_001_000L))
 
         val updated = repository.updateNote(
-            note.localId,
+            note.id,
             "updated note",
             2,
             14,
@@ -76,7 +76,7 @@ class NotesRepositoryTest {
             14,
             timestamp(1_700_000_002_345L)
         )
-        val record = database.notesQueries.getNoteByLocalId(note.localId.toLong()).executeAsOne()
+        val record = database.notesQueries.getNoteByLocalId(note.id.toLong()).executeAsOne()
 
         assertEquals(1_700_000_002_345L, updated.lastUpdated.fromPlatform().toEpochMilliseconds())
         assertEquals(1_700_000_001_000L, record.created_at)
@@ -87,7 +87,7 @@ class NotesRepositoryTest {
     fun `fetchMutatedNotes carries created_at separately from modified_at`() = runTest {
         val note = repository.addNote("test note", 2, 13, 2, 13, timestamp(1_700_000_001_000L))
         repository.updateNote(
-            note.localId,
+            note.id,
             "updated note",
             2,
             14,
@@ -260,7 +260,7 @@ class NotesRepositoryTest {
         )
         val staleMutation = repository.fetchMutatedNotes(0).single()
         repository.updateNote(
-            note.localId,
+            note.id,
             "newer note",
             2,
             14,
@@ -286,13 +286,13 @@ class NotesRepositoryTest {
             localMutationsToClear = listOf(staleMutation)
         )
 
-        val record = database.notesQueries.getNoteByLocalId(note.localId.toLong()).executeAsOne()
+        val record = database.notesQueries.getNoteByLocalId(note.id.toLong()).executeAsOne()
         val remaining = repository.fetchMutatedNotes(0).single()
         assertEquals("remote-created-note-id", record.remote_id)
         assertEquals("newer note", record.note)
         assertEquals(QuranData.getAyahId(2, 14).toLong(), record.start_ayah_id)
         assertEquals(1L, record.is_edited)
-        assertEquals(note.localId, remaining.localID)
+        assertEquals(note.id, remaining.localID)
         assertEquals("remote-created-note-id", remaining.remoteID)
         assertEquals(Mutation.MODIFIED, remaining.mutation)
     }
@@ -308,7 +308,7 @@ class NotesRepositoryTest {
             timestamp = timestamp(1_700_000_001_000L)
         )
         val staleMutation = repository.fetchMutatedNotes(0).single()
-        repository.deleteNote(note.localId)
+        repository.deleteNote(note.id)
         assertEquals(emptyList(), repository.getAllNotes())
         assertEquals(emptyList(), repository.fetchMutatedNotes(0))
 
@@ -329,13 +329,13 @@ class NotesRepositoryTest {
             localMutationsToClear = listOf(staleMutation)
         )
 
-        val record = database.notesQueries.getNoteByLocalId(note.localId.toLong()).executeAsOne()
+        val record = database.notesQueries.getNoteByLocalId(note.id.toLong()).executeAsOne()
         val remaining = repository.fetchMutatedNotes(0).single()
         assertEquals(emptyList(), repository.getAllNotes())
         assertEquals("remote-created-note-id", record.remote_id)
         assertEquals(1L, record.deleted)
         assertEquals("uploaded note", record.note)
-        assertEquals(note.localId, remaining.localID)
+        assertEquals(note.id, remaining.localID)
         assertEquals("remote-created-note-id", remaining.remoteID)
         assertEquals(Mutation.DELETED, remaining.mutation)
     }
@@ -356,7 +356,7 @@ class NotesRepositoryTest {
             deleteExisting = true
         )
 
-        val tombstone = database.notesQueries.getNoteByLocalId(note.localId.toLong()).executeAsOne()
+        val tombstone = database.notesQueries.getNoteByLocalId(note.id.toLong()).executeAsOne()
         assertEquals(null, tombstone.remote_id)
         assertEquals(1L, tombstone.deleted)
         assertEquals(emptyList(), repository.getAllNotes())
@@ -379,11 +379,11 @@ class NotesRepositoryTest {
             localMutationsToClear = listOf(staleMutation)
         )
 
-        val record = database.notesQueries.getNoteByLocalId(note.localId.toLong()).executeAsOne()
+        val record = database.notesQueries.getNoteByLocalId(note.id.toLong()).executeAsOne()
         val remaining = repository.fetchMutatedNotes(0).single()
         assertEquals("remote-created-note-id", record.remote_id)
         assertEquals(1L, record.deleted)
-        assertEquals(note.localId, remaining.localID)
+        assertEquals(note.id, remaining.localID)
         assertEquals("remote-created-note-id", remaining.remoteID)
         assertEquals(Mutation.DELETED, remaining.mutation)
     }
@@ -415,7 +415,7 @@ class NotesRepositoryTest {
             localMutationsToClear = emptyList()
         )
 
-        val localRecord = database.notesQueries.getNoteByLocalId(note.localId.toLong()).executeAsOne()
+        val localRecord = database.notesQueries.getNoteByLocalId(note.id.toLong()).executeAsOne()
         assertEquals("remote-created-note-id", localRecord.remote_id)
         assertEquals(1, repository.getAllNotes().size)
         assertEquals(emptyList(), repository.fetchMutatedNotes(0))
@@ -457,11 +457,11 @@ class NotesRepositoryTest {
         )
 
         val existingRemote = database.notesQueries.getNoteByRemoteId("remote-created-note-id").executeAsOne()
-        val duplicateRecord = database.notesQueries.getNoteByLocalId(duplicate.localId.toLong()).executeAsOne()
+        val duplicateRecord = database.notesQueries.getNoteByLocalId(duplicate.id.toLong()).executeAsOne()
         val remaining = repository.fetchMutatedNotes(0).single()
         assertEquals("remote-created-note-id", existingRemote.remote_id)
         assertEquals(null, duplicateRecord.remote_id)
-        assertEquals(duplicate.localId, remaining.localID)
+        assertEquals(duplicate.id, remaining.localID)
         assertEquals(Mutation.CREATED, remaining.mutation)
     }
 
@@ -475,7 +475,7 @@ class NotesRepositoryTest {
             endAyah = 13,
             timestamp = timestamp(1_700_000_001_000L)
         )
-        repository.deleteNote(note.localId)
+        repository.deleteNote(note.id)
         assertEquals(emptyList(), repository.getAllNotes())
         assertEquals(emptyList(), repository.fetchMutatedNotes(0))
 
@@ -495,12 +495,12 @@ class NotesRepositoryTest {
             localMutationsToClear = emptyList()
         )
 
-        val localRecord = database.notesQueries.getNoteByLocalId(note.localId.toLong()).executeAsOne()
+        val localRecord = database.notesQueries.getNoteByLocalId(note.id.toLong()).executeAsOne()
         val remaining = repository.fetchMutatedNotes(0).single()
         assertEquals(emptyList(), repository.getAllNotes())
         assertEquals("remote-created-note-id", localRecord.remote_id)
         assertEquals(1L, localRecord.deleted)
-        assertEquals(note.localId, remaining.localID)
+        assertEquals(note.id, remaining.localID)
         assertEquals("remote-created-note-id", remaining.remoteID)
         assertEquals(Mutation.DELETED, remaining.mutation)
     }
@@ -515,7 +515,7 @@ class NotesRepositoryTest {
             endAyah = 13,
             timestamp = timestamp(1_700_000_001_000L)
         )
-        repository.deleteNote(deleted.localId)
+        repository.deleteNote(deleted.id)
         val active = repository.addNote(
             body = "same note",
             startSura = 2,
@@ -541,8 +541,8 @@ class NotesRepositoryTest {
             localMutationsToClear = emptyList()
         )
 
-        val deletedRecord = database.notesQueries.getNoteByLocalId(deleted.localId.toLong()).executeAsOne()
-        val activeRecord = database.notesQueries.getNoteByLocalId(active.localId.toLong()).executeAsOne()
+        val deletedRecord = database.notesQueries.getNoteByLocalId(deleted.id.toLong()).executeAsOne()
+        val activeRecord = database.notesQueries.getNoteByLocalId(active.id.toLong()).executeAsOne()
         val remoteRecord = database.notesQueries.getNoteByRemoteId("remote-created-note-id").executeAsOne()
         val remaining = repository.fetchMutatedNotes(0)
         assertEquals(null, deletedRecord.remote_id)
@@ -551,7 +551,7 @@ class NotesRepositoryTest {
         assertEquals(0L, activeRecord.deleted)
         assertEquals("remote-created-note-id", remoteRecord.remote_id)
         assertEquals(2, repository.getAllNotes().size)
-        assertEquals(listOf(active.localId), remaining.map { it.localID })
+        assertEquals(listOf(active.id), remaining.map { it.localID })
         assertEquals(Mutation.CREATED, remaining.single().mutation)
     }
 
@@ -559,8 +559,8 @@ class NotesRepositoryTest {
     fun `ambiguous deleted note replay candidates persist remote note separately`() = runTest {
         val first = repository.addNote("same note", 2, 13, 2, 13, timestamp(1_700_000_001_000L))
         val second = repository.addNote("same note", 2, 13, 2, 13, timestamp(1_700_000_002_000L))
-        repository.deleteNote(first.localId)
-        repository.deleteNote(second.localId)
+        repository.deleteNote(first.id)
+        repository.deleteNote(second.id)
 
         repository.applyRemoteChanges(
             updatesToPersist = listOf(
@@ -578,8 +578,8 @@ class NotesRepositoryTest {
             localMutationsToClear = emptyList()
         )
 
-        val firstRecord = database.notesQueries.getNoteByLocalId(first.localId.toLong()).executeAsOne()
-        val secondRecord = database.notesQueries.getNoteByLocalId(second.localId.toLong()).executeAsOne()
+        val firstRecord = database.notesQueries.getNoteByLocalId(first.id.toLong()).executeAsOne()
+        val secondRecord = database.notesQueries.getNoteByLocalId(second.id.toLong()).executeAsOne()
         val remoteRecord = database.notesQueries.getNoteByRemoteId("remote-created-note-id").executeAsOne()
         assertEquals(null, firstRecord.remote_id)
         assertEquals(1L, firstRecord.deleted)
@@ -618,7 +618,7 @@ class NotesRepositoryTest {
             localMutationsToClear = emptyList()
         )
 
-        val localRecord = database.notesQueries.getNoteByLocalId(note.localId.toLong()).executeAsOne()
+        val localRecord = database.notesQueries.getNoteByLocalId(note.id.toLong()).executeAsOne()
         val remoteRecord = database.notesQueries.getNoteByRemoteId("remote-created-note-id").executeAsOne()
         assertEquals(null, localRecord.remote_id)
         assertEquals("remote-created-note-id", remoteRecord.remote_id)
@@ -693,7 +693,7 @@ class NotesRepositoryTest {
             localMutationsToClear = emptyList()
         )
 
-        val localRecord = database.notesQueries.getNoteByLocalId(note.localId.toLong()).executeAsOne()
+        val localRecord = database.notesQueries.getNoteByLocalId(note.id.toLong()).executeAsOne()
         val remoteRecord = database.notesQueries.getNoteByRemoteId("remote-created-note-id").executeAsOne()
         assertEquals(null, localRecord.remote_id)
         assertEquals("remote-created-note-id", remoteRecord.remote_id)

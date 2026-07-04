@@ -80,41 +80,41 @@ class CollectionsRepositoryImpl(
         }
     }
 
-    override suspend fun updateCollection(localId: String, name: String): Collection {
-        return updateCollectionWithTimestampMillis(localId, name, timestampMillis = null)
+    override suspend fun updateCollection(id: String, name: String): Collection {
+        return updateCollectionWithTimestampMillis(id, name, timestampMillis = null)
     }
 
-    override suspend fun updateCollection(localId: String, name: String, timestamp: PlatformDateTime): Collection {
-        return updateCollectionWithTimestampMillis(localId, name, timestamp.toEpochMillisecondsOrNull())
+    override suspend fun updateCollection(id: String, name: String, timestamp: PlatformDateTime): Collection {
+        return updateCollectionWithTimestampMillis(id, name, timestamp.toEpochMillisecondsOrNull())
     }
 
     private suspend fun updateCollectionWithTimestampMillis(
-        localId: String,
+        id: String,
         name: String,
         timestampMillis: Long?
     ): Collection {
-        logger.i { "Updating collection localId=$localId with name=$name" }
+        logger.i { "Updating collection id=$id with name=$name" }
         return withContext(Dispatchers.IO) {
-            val id = localId.toLong()
+            val localId = id.toLong()
             var updatedCollection: Collection? = null
 
             database.transaction {
-                val existing = collectionQueries.value.getCollectionByLocalId(id)
+                val existing = collectionQueries.value.getCollectionByLocalId(localId)
                     .executeAsOneOrNull()
                 require(existing?.deleted == 0L) {
-                    "Expected active collection localId=$localId before update."
+                    "Expected active collection id=$id before update."
                 }
 
                 collectionQueries.value.updateCollectionName(
                     name = name,
-                    id = id,
+                    id = localId,
                     timestamp = timestampMillis
                 )
                 val record = requireNotNull(
-                    collectionQueries.value.getCollectionByLocalId(id)
+                    collectionQueries.value.getCollectionByLocalId(localId)
                         .executeAsOneOrNull()
-                ) { "Expected collection localId=$localId after update." }
-                require(record.deleted == 0L) { "Expected active collection localId=$localId after update." }
+                ) { "Expected collection id=$id after update." }
+                require(record.deleted == 0L) { "Expected active collection id=$id after update." }
                 updatedCollection = record.toCollection()
             }
 
@@ -122,18 +122,18 @@ class CollectionsRepositoryImpl(
         }
     }
 
-    override suspend fun deleteCollection(localId: String): Boolean {
-        logger.i { "Deleting collection localId=$localId" }
+    override suspend fun deleteCollection(id: String): Boolean {
+        logger.i { "Deleting collection id=$id" }
         return withContext(Dispatchers.IO) {
             var deleted = false
             database.transaction {
-                val id = localId.toLong()
-                val collection = collectionQueries.value.getCollectionByLocalId(id).executeAsOneOrNull()
+                val localId = id.toLong()
+                val collection = collectionQueries.value.getCollectionByLocalId(localId).executeAsOneOrNull()
                 if (collection?.deleted != 0L) {
                     return@transaction
                 }
                 collectionQueries.value.deleteCollection(
-                    id = id
+                    id = localId
                 )
                 reconciler.reconcile()
                 deleted = true

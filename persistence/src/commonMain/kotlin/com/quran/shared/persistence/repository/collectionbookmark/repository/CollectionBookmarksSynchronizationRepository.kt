@@ -5,7 +5,6 @@ import com.quran.shared.mutations.LocalMutationAck
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.input.LocalSyncCollectionAyahBookmark
 import com.quran.shared.persistence.input.RemoteCollectionBookmark
-import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 
 interface CollectionBookmarksSynchronizationRepository {
@@ -35,5 +34,5 @@ interface CollectionBookmarksSynchronizationRepository {
 
     suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean>
 
-    suspend fun fetchCollectionBookmarkByRemoteId(remoteId: String): CollectionAyahBookmark?
+    suspend fun fetchCollectionBookmarkByRemoteId(remoteId: String): LocalSyncCollectionAyahBookmark?
 }

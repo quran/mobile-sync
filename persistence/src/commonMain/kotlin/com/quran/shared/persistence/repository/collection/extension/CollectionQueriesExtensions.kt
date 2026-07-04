@@ -18,7 +18,7 @@ internal fun DatabaseCollection.toCollection(): PersistenceCollection {
     return PersistenceCollection(
         name = name,
         lastUpdated = Instant.fromEpochMilliseconds(modified_at).toPlatform(),
-        localId = local_id.toString()
+        id = local_id.toString()
     )
 }
 

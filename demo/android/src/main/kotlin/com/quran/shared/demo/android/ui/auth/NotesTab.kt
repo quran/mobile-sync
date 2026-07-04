@@ -82,7 +82,7 @@ fun NotesTab(
                 items(notes) { note ->
                     NoteItem(
                         note = note,
-                        onDelete = { onDeleteNote(note.localId) }
+                        onDelete = { onDeleteNote(note.id) }
                     )
                 }
             }

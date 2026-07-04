@@ -25,12 +25,12 @@ interface NotesRepository {
     ): Note
 
     /**
-     * Update a note by its local ID.
+     * Update a note by its mobile-sync ID.
      */
-    suspend fun updateNote(localId: String, body: String, startSura: Int, startAyah: Int, endSura: Int, endAyah: Int): Note
+    suspend fun updateNote(id: String, body: String, startSura: Int, startAyah: Int, endSura: Int, endAyah: Int): Note
 
     suspend fun updateNote(
-        localId: String,
+        id: String,
         body: String,
         startSura: Int,
         startAyah: Int,
@@ -40,9 +40,9 @@ interface NotesRepository {
     ): Note
 
     /**
-     * Delete a note by its local ID.
+     * Delete a note by its mobile-sync ID.
      */
-    suspend fun deleteNote(localId: String): Boolean
+    suspend fun deleteNote(id: String): Boolean
 
     /**
      * Observe the notes list as a Flow.

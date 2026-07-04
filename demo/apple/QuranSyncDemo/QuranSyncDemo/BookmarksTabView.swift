@@ -80,7 +80,7 @@ struct BookmarksTabView: View {
                         .foregroundColor(.secondary)
                         .italic()
                 } else {
-                    ForEach(viewModel.bookmarks, id: \.localId) { bookmark in
+                    ForEach(viewModel.bookmarks, id: \.id) { bookmark in
                         HStack {
                             Image(systemName: "bookmark.fill")
                                 .foregroundColor(.accentColor)

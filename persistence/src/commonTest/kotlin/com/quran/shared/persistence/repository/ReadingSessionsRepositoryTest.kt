@@ -83,7 +83,7 @@ class ReadingSessionsRepositoryTest {
     @Test
     fun `fetchMutatedReadingSessions carries created_at separately from modified_at`() = runTest {
         val readingSession = repository.addReadingSession(2, 255, timestamp(1000L))
-        repository.updateReadingSession(readingSession.localId, 3, 10, timestamp(2345L))
+        repository.updateReadingSession(readingSession.id, 3, 10, timestamp(2345L))
 
         val mutation = repository.fetchMutatedReadingSessions().single()
 
@@ -244,7 +244,7 @@ class ReadingSessionsRepositoryTest {
         val record = database.reading_sessionsQueries.getReadingSessionByLocalId(original.local_id)
             .executeAsOne()
 
-        assertEquals(original.local_id.toString(), updated.localId)
+        assertEquals(original.local_id.toString(), updated.id)
         assertEquals(original.local_id, record.local_id)
         assertEquals("remote-reading-session-id", record.remote_id)
         assertEquals(1000L, record.created_at)
@@ -259,8 +259,8 @@ class ReadingSessionsRepositoryTest {
         val readingSession = repository.addReadingSession(2, 255)
 
         now = 1234567890123L
-        val updated = repository.updateReadingSession(readingSession.localId, 3, 10)
-        val record = database.reading_sessionsQueries.getReadingSessionByLocalId(readingSession.localId.toLong())
+        val updated = repository.updateReadingSession(readingSession.id, 3, 10)
+        val record = database.reading_sessionsQueries.getReadingSessionByLocalId(readingSession.id.toLong())
             .executeAsOne()
 
         assertEquals(1234567890123L, updated.lastUpdated.fromPlatform().toEpochMilliseconds())
@@ -272,8 +272,8 @@ class ReadingSessionsRepositoryTest {
         repository = ReadingSessionsRepositoryImpl(database) { 9999L }
         val readingSession = repository.addReadingSession(2, 255, timestamp(1000L))
 
-        val updated = repository.updateReadingSession(readingSession.localId, 3, 10, timestamp(3456L))
-        val record = database.reading_sessionsQueries.getReadingSessionByLocalId(readingSession.localId.toLong())
+        val updated = repository.updateReadingSession(readingSession.id, 3, 10, timestamp(3456L))
+        val record = database.reading_sessionsQueries.getReadingSessionByLocalId(readingSession.id.toLong())
             .executeAsOne()
 
         assertEquals(3456L, updated.lastUpdated.fromPlatform().toEpochMilliseconds())
@@ -311,9 +311,9 @@ class ReadingSessionsRepositoryTest {
         val readingSession = repository.addReadingSession(2, 255)
 
         now = 2000L
-        repository.updateReadingSession(readingSession.localId, 3, 10)
+        repository.updateReadingSession(readingSession.id, 3, 10)
 
-        val record = database.reading_sessionsQueries.getReadingSessionByLocalId(readingSession.localId.toLong())
+        val record = database.reading_sessionsQueries.getReadingSessionByLocalId(readingSession.id.toLong())
             .executeAsOne()
         val localMutation = repository.fetchMutatedReadingSessions().single()
         assertNull(record.remote_id)
@@ -328,16 +328,16 @@ class ReadingSessionsRepositoryTest {
         val target = repository.addReadingSession(3, 10)
 
         assertFailsWith<IllegalArgumentException> {
-            repository.updateReadingSession(source.localId, 3, 10)
+            repository.updateReadingSession(source.id, 3, 10)
         }
 
-        val sourceRecord = database.reading_sessionsQueries.getReadingSessionByLocalId(source.localId.toLong())
+        val sourceRecord = database.reading_sessionsQueries.getReadingSessionByLocalId(source.id.toLong())
             .executeAsOne()
         val targetRecord = database.reading_sessionsQueries.getReadingSessionForChapterVerse(3L, 10L)
             .executeAsOne()
         assertEquals(2L, sourceRecord.chapter_number)
         assertEquals(255L, sourceRecord.verse_number)
-        assertEquals(target.localId.toLong(), targetRecord.local_id)
+        assertEquals(target.id.toLong(), targetRecord.local_id)
     }
 
     @Test
@@ -380,15 +380,15 @@ class ReadingSessionsRepositoryTest {
         val created = repository.addReadingSession(2, 255)
         assertTrue(repository.deleteReadingSession(2, 255))
         val tombstone = database.reading_sessionsQueries
-            .getReadingSessionByLocalId(created.localId.toLong())
+            .getReadingSessionByLocalId(created.id.toLong())
             .executeAsOne()
 
         assertFailsWith<IllegalArgumentException> {
-            repository.updateReadingSession(created.localId, 3, 10)
+            repository.updateReadingSession(created.id, 3, 10)
         }
 
         val unchanged = database.reading_sessionsQueries
-            .getReadingSessionByLocalId(created.localId.toLong())
+            .getReadingSessionByLocalId(created.id.toLong())
             .executeAsOne()
         assertEquals(1L, unchanged.deleted)
         assertEquals(0L, unchanged.is_edited)
@@ -427,7 +427,7 @@ class ReadingSessionsRepositoryTest {
         }
 
         val pruned = database.reading_sessionsQueries
-            .getReadingSessionByLocalId(oldest.localId.toLong())
+            .getReadingSessionByLocalId(oldest.id.toLong())
             .executeAsOne()
         assertEquals(1L, pruned.deleted)
         assertEquals((21 downTo 2).toList(), repository.getReadingSessions().map { it.ayah })
@@ -489,7 +489,7 @@ class ReadingSessionsRepositoryTest {
             assertEquals((20 downTo 1).toList(), receiveEmission().map { it.ayah })
 
             now = 21000L
-            repository.updateReadingSession(oldest.localId, 2, 21)
+            repository.updateReadingSession(oldest.id, 2, 21)
 
             assertEquals((21 downTo 2).toList(), receiveEmission().map { it.ayah })
 
@@ -563,7 +563,7 @@ class ReadingSessionsRepositoryTest {
         assertEquals(1, readingSessions.size)
         assertEquals(2, readingSessions.single().sura)
         assertEquals(255, readingSessions.single().ayah)
-        assertEquals(localReadingSession.localId, readingSessions.single().localId)
+        assertEquals(localReadingSession.id, readingSessions.single().id)
         assertEquals(emptyList(), repository.fetchMutatedReadingSessions())
     }
 
@@ -631,7 +631,7 @@ class ReadingSessionsRepositoryTest {
         assertFailsWith<IllegalArgumentException> {
             repository.applyRemoteChanges(
                 updatesToPersist = emptyList(),
-                localMutationIdsToClear = listOf(readingSession.localId)
+                localMutationIdsToClear = listOf(readingSession.id)
             )
         }
     }
@@ -744,7 +744,7 @@ class ReadingSessionsRepositoryTest {
     fun `stale created reading session ACK binds remote id and leaves newer move pending`() = runTest {
         val readingSession = repository.addReadingSession(2, 255, timestamp(1000L))
         val staleMutation = repository.fetchMutatedReadingSessions().single()
-        repository.updateReadingSession(readingSession.localId, 3, 10, timestamp(2000L))
+        repository.updateReadingSession(readingSession.id, 3, 10, timestamp(2000L))
 
         repository.applyRemoteChangesForMutations(
             updatesToPersist = listOf(
@@ -762,14 +762,14 @@ class ReadingSessionsRepositoryTest {
             localMutationsToClear = listOf(staleMutation)
         )
 
-        val record = database.reading_sessionsQueries.getReadingSessionByLocalId(readingSession.localId.toLong())
+        val record = database.reading_sessionsQueries.getReadingSessionByLocalId(readingSession.id.toLong())
             .executeAsOne()
         val remaining = repository.fetchMutatedReadingSessions().single()
         assertEquals("remote-created-reading-session-id", record.remote_id)
         assertEquals(3L, record.chapter_number)
         assertEquals(10L, record.verse_number)
         assertEquals(1L, record.is_edited)
-        assertEquals(readingSession.localId, remaining.localID)
+        assertEquals(readingSession.id, remaining.localID)
         assertEquals("remote-created-reading-session-id", remaining.remoteID)
         assertEquals(Mutation.MODIFIED, remaining.mutation)
     }
@@ -798,13 +798,13 @@ class ReadingSessionsRepositoryTest {
             localMutationsToClear = listOf(staleMutation)
         )
 
-        val record = database.reading_sessionsQueries.getReadingSessionByLocalId(readingSession.localId.toLong())
+        val record = database.reading_sessionsQueries.getReadingSessionByLocalId(readingSession.id.toLong())
             .executeAsOne()
         val remaining = repository.fetchMutatedReadingSessions().single()
         assertEquals(emptyList(), repository.getReadingSessions())
         assertEquals("remote-created-reading-session-id", record.remote_id)
         assertEquals(1L, record.deleted)
-        assertEquals(readingSession.localId, remaining.localID)
+        assertEquals(readingSession.id, remaining.localID)
         assertEquals("remote-created-reading-session-id", remaining.remoteID)
         assertEquals(Mutation.DELETED, remaining.mutation)
     }
@@ -827,14 +827,14 @@ class ReadingSessionsRepositoryTest {
         )
 
         val tombstone = database.reading_sessionsQueries
-            .getReadingSessionByLocalId(readingSession.localId.toLong())
+            .getReadingSessionByLocalId(readingSession.id.toLong())
             .executeAsOne()
         val imported = database.reading_sessionsQueries
             .getReadingSessionForChapterVerse(2L, 255L)
             .executeAsOne()
         assertEquals(null, tombstone.remote_id)
         assertEquals(1L, tombstone.deleted)
-        assertEquals(readingSession.localId.toLong(), tombstone.local_id)
+        assertEquals(readingSession.id.toLong(), tombstone.local_id)
         assertEquals(1, repository.getReadingSessions().size)
         assertEquals(1, repository.fetchMutatedReadingSessions().size)
         assertEquals(0L, imported.deleted)
@@ -858,11 +858,11 @@ class ReadingSessionsRepositoryTest {
         )
 
         val record = database.reading_sessionsQueries
-            .getReadingSessionByLocalId(readingSession.localId.toLong())
+            .getReadingSessionByLocalId(readingSession.id.toLong())
             .executeAsOne()
         val remaining = repository.fetchMutatedReadingSessions()
-        val tombstoneDelete = remaining.single { it.localID == readingSession.localId }
-        val importedCreate = remaining.single { it.localID != readingSession.localId }
+        val tombstoneDelete = remaining.single { it.localID == readingSession.id }
+        val importedCreate = remaining.single { it.localID != readingSession.id }
         assertEquals("remote-created-reading-session-id", record.remote_id)
         assertEquals(1L, record.deleted)
         assertEquals("remote-created-reading-session-id", tombstoneDelete.remoteID)
@@ -903,7 +903,7 @@ class ReadingSessionsRepositoryTest {
             localMutationsToClear = listOf(staleCreate)
         )
         val staleDelete = repository.fetchMutatedReadingSessions()
-            .single { it.localID == readingSession.localId }
+            .single { it.localID == readingSession.id }
 
         repository.applyRemoteChangesForMutations(
             updatesToPersist = listOf(
@@ -924,13 +924,13 @@ class ReadingSessionsRepositoryTest {
         val remainingMutation = repository.fetchMutatedReadingSessions().single()
         assertNull(
             database.reading_sessionsQueries
-                .getReadingSessionByLocalId(readingSession.localId.toLong())
+                .getReadingSessionByLocalId(readingSession.id.toLong())
                 .executeAsOneOrNull()
         )
         assertEquals(2, active.sura)
         assertEquals(255, active.ayah)
         assertEquals(Mutation.CREATED, remainingMutation.mutation)
-        assertEquals(active.localId, remainingMutation.localID)
+        assertEquals(active.id, remainingMutation.localID)
     }
 
     @Test
@@ -946,11 +946,11 @@ class ReadingSessionsRepositoryTest {
             }
         }
         val staleMutation = repository.fetchMutatedReadingSessions()
-            .single { it.localID == oldest.localId }
+            .single { it.localID == oldest.id }
 
         now = 21_000L
         repository.addReadingSession(2, 21)
-        assertTrue(repository.fetchMutatedReadingSessions().none { it.localID == oldest.localId })
+        assertTrue(repository.fetchMutatedReadingSessions().none { it.localID == oldest.id })
 
         repository.applyRemoteChangesForMutations(
             updatesToPersist = listOf(
@@ -968,10 +968,10 @@ class ReadingSessionsRepositoryTest {
             localMutationsToClear = listOf(staleMutation)
         )
 
-        val record = database.reading_sessionsQueries.getReadingSessionByLocalId(oldest.localId.toLong())
+        val record = database.reading_sessionsQueries.getReadingSessionByLocalId(oldest.id.toLong())
             .executeAsOne()
         val remaining = repository.fetchMutatedReadingSessions()
-            .single { it.localID == oldest.localId }
+            .single { it.localID == oldest.id }
         assertEquals((21 downTo 2).toList(), repository.getReadingSessions().map { it.ayah })
         assertEquals("remote-pruned-reading-session-id", record.remote_id)
         assertEquals(1L, record.deleted)
@@ -992,7 +992,7 @@ class ReadingSessionsRepositoryTest {
             }
         }
         val oldestCreate = repository.fetchMutatedReadingSessions()
-            .single { it.localID == oldest.localId }
+            .single { it.localID == oldest.id }
         val observedPendingVersion = oldestCreate.ack!!.observedPendingVersion
 
         repository.applyRemoteChangesForMutations(
@@ -1011,7 +1011,7 @@ class ReadingSessionsRepositoryTest {
         )
 
         val pruned = database.reading_sessionsQueries
-            .getReadingSessionByLocalId(oldest.localId.toLong())
+            .getReadingSessionByLocalId(oldest.id.toLong())
             .executeAsOne()
         assertEquals(1L, pruned.deleted)
         assertEquals(observedPendingVersion, pruned.pending_version)
@@ -1038,13 +1038,13 @@ class ReadingSessionsRepositoryTest {
         )
 
         val localRecord = database.reading_sessionsQueries
-            .getReadingSessionByLocalId(readingSession.localId.toLong())
+            .getReadingSessionByLocalId(readingSession.id.toLong())
             .executeAsOne()
         val readingSessions = repository.getReadingSessions()
         assertEquals("remote-created-reading-session-id", localRecord.remote_id)
         assertEquals(0L, localRecord.is_edited)
         assertEquals(1, readingSessions.size)
-        assertEquals(readingSession.localId, readingSessions.single().localId)
+        assertEquals(readingSession.id, readingSessions.single().id)
         assertEquals(emptyList(), repository.fetchMutatedReadingSessions())
     }
 
@@ -1071,13 +1071,13 @@ class ReadingSessionsRepositoryTest {
         )
 
         val localRecord = database.reading_sessionsQueries
-            .getReadingSessionByLocalId(readingSession.localId.toLong())
+            .getReadingSessionByLocalId(readingSession.id.toLong())
             .executeAsOne()
         val remaining = repository.fetchMutatedReadingSessions().single()
         assertEquals(emptyList(), repository.getReadingSessions())
         assertEquals("remote-created-reading-session-id", localRecord.remote_id)
         assertEquals(1L, localRecord.deleted)
-        assertEquals(readingSession.localId, remaining.localID)
+        assertEquals(readingSession.id, remaining.localID)
         assertEquals("remote-created-reading-session-id", remaining.remoteID)
         assertEquals(Mutation.DELETED, remaining.mutation)
     }
@@ -1104,20 +1104,20 @@ class ReadingSessionsRepositoryTest {
         )
 
         val tombstone = database.reading_sessionsQueries
-            .getReadingSessionByLocalId(original.localId.toLong())
+            .getReadingSessionByLocalId(original.id.toLong())
             .executeAsOne()
         val active = database.reading_sessionsQueries
-            .getReadingSessionByLocalId(readded.localId.toLong())
+            .getReadingSessionByLocalId(readded.id.toLong())
             .executeAsOne()
         val visible = repository.getReadingSessions().single()
         val remaining = repository.fetchMutatedReadingSessions()
-        val pendingDelete = remaining.single { it.localID == original.localId }
-        val pendingCreate = remaining.single { it.localID == readded.localId }
+        val pendingDelete = remaining.single { it.localID == original.id }
+        val pendingCreate = remaining.single { it.localID == readded.id }
         assertEquals("remote-created-reading-session-id", tombstone.remote_id)
         assertEquals(1L, tombstone.deleted)
         assertEquals(null, active.remote_id)
         assertEquals(0L, active.deleted)
-        assertEquals(readded.localId, visible.localId)
+        assertEquals(readded.id, visible.id)
         assertEquals("remote-created-reading-session-id", pendingDelete.remoteID)
         assertEquals(Mutation.DELETED, pendingDelete.mutation)
         assertEquals(null, pendingCreate.remoteID)
@@ -1157,7 +1157,7 @@ class ReadingSessionsRepositoryTest {
         val tombstones = database.reading_sessionsQueries
             .getDeletedPendingCreatedReadingSessionsForChapterVerse(2L, 255L)
             .executeAsList()
-        assertEquals(listOf(first.localId.toLong(), second.localId.toLong()), tombstones.map { it.local_id })
+        assertEquals(listOf(first.id.toLong(), second.id.toLong()), tombstones.map { it.local_id })
         assertEquals(emptyList(), repository.getReadingSessions())
     }
 
@@ -1165,7 +1165,7 @@ class ReadingSessionsRepositoryTest {
     fun `remote created reading session without ACK does not bind stale planned local create by position`() = runTest {
         val readingSession = repository.addReadingSession(2, 255, timestamp(1000L))
         val staleMutation = repository.fetchMutatedReadingSessions().single()
-        repository.updateReadingSession(readingSession.localId, 3, 10, timestamp(2000L))
+        repository.updateReadingSession(readingSession.id, 3, 10, timestamp(2000L))
 
         repository.applyRemoteChangesForMutations(
             updatesToPersist = listOf(
@@ -1182,7 +1182,7 @@ class ReadingSessionsRepositoryTest {
             localMutationsToClear = listOf(staleMutation)
         )
 
-        val localRecord = database.reading_sessionsQueries.getReadingSessionByLocalId(readingSession.localId.toLong())
+        val localRecord = database.reading_sessionsQueries.getReadingSessionByLocalId(readingSession.id.toLong())
             .executeAsOne()
         val remoteRecord = database.reading_sessionsQueries
             .getReadingSessionByRemoteId("remote-created-reading-session-id")
@@ -1193,7 +1193,7 @@ class ReadingSessionsRepositoryTest {
         assertEquals(10L, localRecord.verse_number)
         assertEquals(2L, remoteRecord.chapter_number)
         assertEquals(255L, remoteRecord.verse_number)
-        assertEquals(readingSession.localId, remaining.localID)
+        assertEquals(readingSession.id, remaining.localID)
         assertEquals(Mutation.CREATED, remaining.mutation)
     }
 

@@ -14,18 +14,18 @@ import kotlin.time.Instant
 
 internal fun DatabaseBookmark.toReadingBookmark(): ReadingBookmark {
     val lastUpdated = Instant.fromEpochMilliseconds(reading_modified_at ?: modified_at).toPlatform()
-    val localId = local_id.toString()
+    val id = local_id.toString()
     return when (bookmark_type) {
         "AYAH" -> AyahReadingBookmark(
             sura = requireNotNull(sura).toInt(),
             ayah = requireNotNull(ayah).toInt(),
             lastUpdated = lastUpdated,
-            localId = localId
+            id = id
         )
         "PAGE" -> PageReadingBookmark(
             page = requireNotNull(page).toInt(),
             lastUpdated = lastUpdated,
-            localId = localId
+            id = id
         )
         else -> error("Unsupported reading bookmark type: $bookmark_type")
     }
@@ -33,13 +33,13 @@ internal fun DatabaseBookmark.toReadingBookmark(): ReadingBookmark {
 
 internal fun DatabaseBookmark.toAyahReadingBookmark(): AyahReadingBookmark {
     val lastUpdated = Instant.fromEpochMilliseconds(reading_modified_at ?: modified_at).toPlatform()
-    val localId = local_id.toString()
+    val id = local_id.toString()
     return when (bookmark_type) {
         "AYAH" -> AyahReadingBookmark(
             sura = requireNotNull(sura).toInt(),
             ayah = requireNotNull(ayah).toInt(),
             lastUpdated = lastUpdated,
-            localId = localId
+            id = id
         )
         else -> error("Unsupported reading bookmark type: $bookmark_type")
     }
@@ -47,12 +47,12 @@ internal fun DatabaseBookmark.toAyahReadingBookmark(): AyahReadingBookmark {
 
 internal fun DatabaseBookmark.toPageReadingBookmark(): PageReadingBookmark {
     val lastUpdated = Instant.fromEpochMilliseconds(reading_modified_at ?: modified_at).toPlatform()
-    val localId = local_id.toString()
+    val id = local_id.toString()
     return when (bookmark_type) {
         "PAGE" -> PageReadingBookmark(
             page = requireNotNull(page).toInt(),
             lastUpdated = lastUpdated,
-            localId = localId
+            id = id
         )
         else -> error("Unsupported reading bookmark type: $bookmark_type")
     }

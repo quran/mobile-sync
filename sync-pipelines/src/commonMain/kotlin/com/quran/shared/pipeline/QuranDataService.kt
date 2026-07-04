@@ -126,10 +126,10 @@ class QuranDataService internal constructor(
     private val syncClientFactory: QuranDataServiceSynchronizationClientFactory
 ) {
     /**
-     * Stable local identifier for the virtual default bookmark collection.
+     * Stable mobile-sync identifier for the virtual default bookmark collection.
      *
      * The default collection is not persisted as a collection row. Read APIs synthesize it from
-     * bookmark default-membership state so callers can treat it like other collections by local ID.
+     * bookmark default-membership state so callers can treat it like other collections by ID.
      */
     val defaultCollectionId: String = DEFAULT_COLLECTION_ID
 
@@ -195,7 +195,7 @@ class QuranDataService internal constructor(
                     collections
                         .filterNot { it.isDefault }
                         .map { collection ->
-                            collectionBookmarksRepository.getBookmarksForCollectionFlow(collection.localId)
+                            collectionBookmarksRepository.getBookmarksForCollectionFlow(collection.id)
                                 .map { bookmarks: List<CollectionAyahBookmark> ->
                                     CollectionWithAyahBookmarks(collection, bookmarks)
                                 }
@@ -398,9 +398,9 @@ class QuranDataService internal constructor(
     }
 
     @NativeCoroutines
-    suspend fun addBookmark(sura: Int, ayah: Int, collectionLocalIds: List<String>): AyahBookmark {
+    suspend fun addBookmark(sura: Int, ayah: Int, collectionIds: List<String>): AyahBookmark {
         return mutatingCall("Failed to add ayah bookmark with collection memberships") {
-            bookmarksRepository.addBookmark(sura, ayah, collectionLocalIds)
+            bookmarksRepository.addBookmark(sura, ayah, collectionIds)
         }
     }
 
@@ -408,18 +408,18 @@ class QuranDataService internal constructor(
     suspend fun addBookmark(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>,
+        collectionIds: List<String>,
         timestamp: PlatformDateTime
     ): AyahBookmark {
         return mutatingCall("Failed to add ayah bookmark with collection memberships") {
-            bookmarksRepository.addBookmark(sura, ayah, collectionLocalIds, timestamp)
+            bookmarksRepository.addBookmark(sura, ayah, collectionIds, timestamp)
         }
     }
 
     @NativeCoroutines
-    suspend fun replaceBookmarkCollections(localId: String, collectionLocalIds: List<String>): Boolean {
+    suspend fun replaceBookmarkCollections(id: String, collectionIds: List<String>): Boolean {
         return mutatingCall("Failed to replace bookmark collection memberships", triggerAfter = false) {
-            val changed = bookmarksRepository.replaceBookmarkCollections(localId, collectionLocalIds)
+            val changed = bookmarksRepository.replaceBookmarkCollections(id, collectionIds)
             if (changed) {
                 triggerSync()
             }
@@ -433,12 +433,12 @@ class QuranDataService internal constructor(
      */
     @NativeCoroutines
     suspend fun replaceBookmarkCollections(
-        localId: String,
-        collectionLocalIds: List<String>,
+        id: String,
+        collectionIds: List<String>,
         timestamp: PlatformDateTime
     ): Boolean {
         return mutatingCall("Failed to replace bookmark collection memberships", triggerAfter = false) {
-            val changed = bookmarksRepository.replaceBookmarkCollections(localId, collectionLocalIds, timestamp)
+            val changed = bookmarksRepository.replaceBookmarkCollections(id, collectionIds, timestamp)
             if (changed) {
                 triggerSync()
             }
@@ -450,10 +450,10 @@ class QuranDataService internal constructor(
     suspend fun replaceAyahBookmarkCollections(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>
+        collectionIds: List<String>
     ): AyahBookmark {
         return mutatingCall("Failed to replace ayah bookmark collection memberships", triggerAfter = false) {
-            val result = bookmarksRepository.replaceAyahBookmarkCollections(sura, ayah, collectionLocalIds)
+            val result = bookmarksRepository.replaceAyahBookmarkCollections(sura, ayah, collectionIds)
             if (result.changed) {
                 triggerSync()
             }
@@ -469,11 +469,11 @@ class QuranDataService internal constructor(
     suspend fun replaceAyahBookmarkCollections(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>,
+        collectionIds: List<String>,
         timestamp: PlatformDateTime
     ): AyahBookmark {
         return mutatingCall("Failed to replace ayah bookmark collection memberships", triggerAfter = false) {
-            val result = bookmarksRepository.replaceAyahBookmarkCollections(sura, ayah, collectionLocalIds, timestamp)
+            val result = bookmarksRepository.replaceAyahBookmarkCollections(sura, ayah, collectionIds, timestamp)
             if (result.changed) {
                 triggerSync()
             }
@@ -534,21 +534,21 @@ class QuranDataService internal constructor(
     }
 
     @NativeCoroutines
-    suspend fun updateReadingSession(localId: String, sura: Int, ayah: Int): ReadingSession {
+    suspend fun updateReadingSession(id: String, sura: Int, ayah: Int): ReadingSession {
         return mutatingCall("Failed to update reading session") {
-            readingSessionsRepository.updateReadingSession(localId, sura, ayah)
+            readingSessionsRepository.updateReadingSession(id, sura, ayah)
         }
     }
 
     @NativeCoroutines
     suspend fun updateReadingSession(
-        localId: String,
+        id: String,
         sura: Int,
         ayah: Int,
         timestamp: PlatformDateTime
     ): ReadingSession {
         return mutatingCall("Failed to update reading session") {
-            readingSessionsRepository.updateReadingSession(localId, sura, ayah, timestamp)
+            readingSessionsRepository.updateReadingSession(id, sura, ayah, timestamp)
         }
     }
 
@@ -589,9 +589,9 @@ class QuranDataService internal constructor(
     }
 
     @NativeCoroutines
-    suspend fun deleteBookmark(localId: String): Boolean {
+    suspend fun deleteBookmark(id: String): Boolean {
         return deleteBookmarkResult("Failed to delete bookmark") {
-            bookmarksRepository.deleteBookmark(localId)
+            bookmarksRepository.deleteBookmark(id)
         }
     }
 
@@ -632,43 +632,43 @@ class QuranDataService internal constructor(
     /**
      * Updates a collection name and schedules sync for the local mutation.
      *
-     * @param localId the local identifier of the collection to update.
+     * @param id the mobile-sync identifier of the collection to update.
      * @param name the new collection name.
      * @return the updated collection.
-     * Returns the unchanged virtual default collection when [localId] is [DEFAULT_COLLECTION_ID].
-     * @throws IllegalArgumentException when [localId] does not identify an active collection.
+     * Returns the unchanged virtual default collection when [id] is [DEFAULT_COLLECTION_ID].
+     * @throws IllegalArgumentException when [id] does not identify an active collection.
      */
     @NativeCoroutines
-    suspend fun updateCollection(localId: String, name: String): Collection {
-        if (localId == DEFAULT_COLLECTION_ID) {
+    suspend fun updateCollection(id: String, name: String): Collection {
+        if (id == DEFAULT_COLLECTION_ID) {
             return mutatingCall("Failed to update collection", triggerAfter = false) {
                 defaultCollection(collectionBookmarksRepository.getBookmarksForCollection(DEFAULT_COLLECTION_ID))
             }
         }
         return mutatingCall("Failed to update collection") {
-            collectionsRepository.updateCollection(localId, name)
+            collectionsRepository.updateCollection(id, name)
         }
     }
 
     /**
      * Updates a collection name with an explicit mutation timestamp and schedules sync.
      *
-     * @param localId the local identifier of the collection to update.
+     * @param id the mobile-sync identifier of the collection to update.
      * @param name the new collection name.
      * @param timestamp the timestamp to persist for the mutation.
      * @return the updated collection.
-     * Returns the unchanged virtual default collection when [localId] is [DEFAULT_COLLECTION_ID].
-     * @throws IllegalArgumentException when [localId] does not identify an active collection.
+     * Returns the unchanged virtual default collection when [id] is [DEFAULT_COLLECTION_ID].
+     * @throws IllegalArgumentException when [id] does not identify an active collection.
      */
     @NativeCoroutines
-    suspend fun updateCollection(localId: String, name: String, timestamp: PlatformDateTime): Collection {
-        if (localId == DEFAULT_COLLECTION_ID) {
+    suspend fun updateCollection(id: String, name: String, timestamp: PlatformDateTime): Collection {
+        if (id == DEFAULT_COLLECTION_ID) {
             return mutatingCall("Failed to update collection", triggerAfter = false) {
                 defaultCollection(collectionBookmarksRepository.getBookmarksForCollection(DEFAULT_COLLECTION_ID))
             }
         }
         return mutatingCall("Failed to update collection") {
-            collectionsRepository.updateCollection(localId, name, timestamp)
+            collectionsRepository.updateCollection(id, name, timestamp)
         }
     }
 
@@ -679,14 +679,14 @@ class QuranDataService internal constructor(
      * `false` without touching persistence or scheduling sync.
      */
     @NativeCoroutines
-    suspend fun deleteCollection(localId: String): Boolean {
-        if (localId == DEFAULT_COLLECTION_ID) {
+    suspend fun deleteCollection(id: String): Boolean {
+        if (id == DEFAULT_COLLECTION_ID) {
             return mutatingCall("Failed to delete collection", triggerAfter = false) {
                 false
             }
         }
         return mutatingCall("Failed to delete collection", triggerAfter = false) {
-            val deleted = collectionsRepository.deleteCollection(localId)
+            val deleted = collectionsRepository.deleteCollection(id)
             if (deleted) {
                 triggerSync()
             }
@@ -695,50 +695,50 @@ class QuranDataService internal constructor(
     }
 
     @NativeCoroutines
-    suspend fun addBookmarkToCollection(collectionLocalId: String, bookmark: AyahBookmark) {
+    suspend fun addBookmarkToCollection(collectionId: String, bookmark: AyahBookmark) {
         mutatingCall("Failed to add bookmark to collection") {
-            collectionBookmarksRepository.addBookmarkToCollection(collectionLocalId, bookmark)
+            collectionBookmarksRepository.addBookmarkToCollection(collectionId, bookmark)
         }
     }
 
     @NativeCoroutines
     suspend fun addBookmarkToCollection(
-        collectionLocalId: String,
+        collectionId: String,
         bookmark: AyahBookmark,
         timestamp: PlatformDateTime
     ) {
         mutatingCall("Failed to add bookmark to collection") {
-            collectionBookmarksRepository.addBookmarkToCollection(collectionLocalId, bookmark, timestamp)
+            collectionBookmarksRepository.addBookmarkToCollection(collectionId, bookmark, timestamp)
         }
     }
 
     @NativeCoroutines
     suspend fun addAyahBookmarkToCollection(
-        collectionLocalId: String,
+        collectionId: String,
         sura: Int,
         ayah: Int
     ): CollectionAyahBookmark {
         return mutatingCall("Failed to add ayah bookmark to collection") {
-            collectionBookmarksRepository.addAyahBookmarkToCollection(collectionLocalId, sura, ayah)
+            collectionBookmarksRepository.addAyahBookmarkToCollection(collectionId, sura, ayah)
         }
     }
 
     @NativeCoroutines
     suspend fun addAyahBookmarkToCollection(
-        collectionLocalId: String,
+        collectionId: String,
         sura: Int,
         ayah: Int,
         timestamp: PlatformDateTime
     ): CollectionAyahBookmark {
         return mutatingCall("Failed to add ayah bookmark to collection") {
-            collectionBookmarksRepository.addAyahBookmarkToCollection(collectionLocalId, sura, ayah, timestamp)
+            collectionBookmarksRepository.addAyahBookmarkToCollection(collectionId, sura, ayah, timestamp)
         }
     }
 
     @NativeCoroutines
-    suspend fun removeBookmarkFromCollection(collectionLocalId: String, bookmark: AyahBookmark) {
+    suspend fun removeBookmarkFromCollection(collectionId: String, bookmark: AyahBookmark) {
         mutatingCall("Failed to remove bookmark from collection") {
-            collectionBookmarksRepository.removeBookmarkFromCollection(collectionLocalId, bookmark)
+            collectionBookmarksRepository.removeBookmarkFromCollection(collectionId, bookmark)
         }
     }
 
@@ -773,7 +773,7 @@ class QuranDataService internal constructor(
     /**
      * Updates an existing note and schedules sync for the local mutation.
      *
-     * @param localId the local identifier of the note to update.
+     * @param id the mobile-sync identifier of the note to update.
      * @param body the updated note body.
      * @param startSura the first sura covered by the note.
      * @param startAyah the first ayah covered by the note.
@@ -782,7 +782,7 @@ class QuranDataService internal constructor(
      */
     @NativeCoroutines
     suspend fun updateNote(
-        localId: String,
+        id: String,
         body: String,
         startSura: Int,
         startAyah: Int,
@@ -790,26 +790,26 @@ class QuranDataService internal constructor(
         endAyah: Int
     ) {
         mutatingCall("Failed to update note") {
-            notesRepository.updateNote(localId, body, startSura, startAyah, endSura, endAyah)
+            notesRepository.updateNote(id, body, startSura, startAyah, endSura, endAyah)
         }
     }
 
     @NativeCoroutines
-    suspend fun deleteNote(localId: String) {
+    suspend fun deleteNote(id: String) {
         mutatingCall("Failed to delete note") {
-            notesRepository.deleteNote(localId)
+            notesRepository.deleteNote(id)
         }
     }
 
     @NativeCoroutines
-    fun getBookmarksForCollectionFlow(collectionLocalId: String): Flow<List<CollectionAyahBookmark>> =
-        collectionBookmarksRepository.getBookmarksForCollectionFlow(collectionLocalId)
+    fun getBookmarksForCollectionFlow(collectionId: String): Flow<List<CollectionAyahBookmark>> =
+        collectionBookmarksRepository.getBookmarksForCollectionFlow(collectionId)
 
     private fun defaultCollection(bookmarks: List<CollectionAyahBookmark> = emptyList()): Collection =
         Collection(
             name = DEFAULT_COLLECTION_NAME,
-            lastUpdated = bookmarks.firstOrNull()?.lastUpdated ?: emptyDefaultCollectionTimestamp,
-            localId = DEFAULT_COLLECTION_ID
+            lastUpdated = bookmarks.firstOrNull()?.bookmarkLastUpdated ?: emptyDefaultCollectionTimestamp,
+            id = DEFAULT_COLLECTION_ID
         )
 }
 

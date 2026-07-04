@@ -43,13 +43,13 @@ interface BookmarksRepository {
      * represents default membership.
      */
     @NativeCoroutines
-    suspend fun addBookmark(sura: Int, ayah: Int, collectionLocalIds: List<String>): AyahBookmark
+    suspend fun addBookmark(sura: Int, ayah: Int, collectionIds: List<String>): AyahBookmark
 
     @NativeCoroutines
     suspend fun addBookmark(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>,
+        collectionIds: List<String>,
         timestamp: PlatformDateTime
     ): AyahBookmark
 
@@ -63,7 +63,7 @@ interface BookmarksRepository {
      * or already has exactly the requested memberships.
      */
     @NativeCoroutines
-    suspend fun replaceBookmarkCollections(localId: String, collectionLocalIds: List<String>): Boolean
+    suspend fun replaceBookmarkCollections(id: String, collectionIds: List<String>): Boolean
 
     /**
      * Replaces the saved collection memberships for an existing ayah bookmark with an explicit
@@ -77,8 +77,8 @@ interface BookmarksRepository {
      */
     @NativeCoroutines
     suspend fun replaceBookmarkCollections(
-        localId: String,
-        collectionLocalIds: List<String>,
+        id: String,
+        collectionIds: List<String>,
         timestamp: PlatformDateTime
     ): Boolean
 
@@ -91,7 +91,7 @@ interface BookmarksRepository {
     suspend fun replaceAyahBookmarkCollections(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>
+        collectionIds: List<String>
     ): BookmarkCollectionsReplacementResult
 
     /**
@@ -104,7 +104,7 @@ interface BookmarksRepository {
     suspend fun replaceAyahBookmarkCollections(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>,
+        collectionIds: List<String>,
         timestamp: PlatformDateTime
     ): BookmarkCollectionsReplacementResult
 
@@ -125,10 +125,10 @@ interface BookmarksRepository {
     suspend fun deleteBookmark(bookmark: AyahBookmark): Boolean
 
     /**
-     * Delete a bookmark by local ID, including any collection links.
+     * Delete a bookmark by its mobile-sync ID, including any collection links.
      *
      * @return a boolean denoting success
      */
     @NativeCoroutines
-    suspend fun deleteBookmark(localId: String): Boolean
+    suspend fun deleteBookmark(id: String): Boolean
 }

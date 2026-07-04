@@ -44,7 +44,7 @@ class CollectionsRepositoryTest {
     @Test
     fun `addCollection respects explicit timestamp`() = runTest {
         val collection = repository.addCollection("Favorites", timestamp(1234L))
-        val record = database.collectionsQueries.getCollectionByLocalId(collection.localId.toLong()).executeAsOne()
+        val record = database.collectionsQueries.getCollectionByLocalId(collection.id.toLong()).executeAsOne()
 
         assertEquals(1234L, collection.lastUpdated.fromPlatform().toEpochMilliseconds())
         assertEquals(1234L, record.created_at)
@@ -54,7 +54,7 @@ class CollectionsRepositoryTest {
     @Test
     fun `addCollection advances pending version for fresh create`() = runTest {
         val collection = repository.addCollection("Favorites", timestamp(1234L))
-        val record = database.collectionsQueries.getCollectionByLocalId(collection.localId.toLong()).executeAsOne()
+        val record = database.collectionsQueries.getCollectionByLocalId(collection.id.toLong()).executeAsOne()
         val mutation = repository.fetchMutatedCollections().single()
 
         assertEquals(1L, record.pending_version)
@@ -66,8 +66,8 @@ class CollectionsRepositoryTest {
     fun `updateCollection respects explicit timestamp and preserves created_at`() = runTest {
         val collection = repository.addCollection("Favorites", timestamp(1000L))
 
-        val updated = repository.updateCollection(collection.localId, "Updated", timestamp(2345L))
-        val record = database.collectionsQueries.getCollectionByLocalId(collection.localId.toLong()).executeAsOne()
+        val updated = repository.updateCollection(collection.id, "Updated", timestamp(2345L))
+        val record = database.collectionsQueries.getCollectionByLocalId(collection.id.toLong()).executeAsOne()
 
         assertEquals(2345L, updated.lastUpdated.fromPlatform().toEpochMilliseconds())
         assertEquals(1000L, record.created_at)
@@ -77,7 +77,7 @@ class CollectionsRepositoryTest {
     @Test
     fun `fetchMutatedCollections carries created_at separately from modified_at`() = runTest {
         val collection = repository.addCollection("Favorites", timestamp(1000L))
-        repository.updateCollection(collection.localId, "Updated", timestamp(2345L))
+        repository.updateCollection(collection.id, "Updated", timestamp(2345L))
 
         val mutation = repository.fetchMutatedCollections().single()
 
@@ -110,13 +110,13 @@ class CollectionsRepositoryTest {
     @Test
     fun `updateCollection rejects deleted collection without renaming tombstone`() = runTest {
         val collection = repository.addCollection("Favorites", timestamp(1000L))
-        repository.deleteCollection(collection.localId)
+        repository.deleteCollection(collection.id)
 
         assertFailsWith<IllegalArgumentException> {
-            repository.updateCollection(collection.localId, "Renamed", timestamp(2000L))
+            repository.updateCollection(collection.id, "Renamed", timestamp(2000L))
         }
 
-        val tombstone = database.collectionsQueries.getCollectionByLocalId(collection.localId.toLong()).executeAsOne()
+        val tombstone = database.collectionsQueries.getCollectionByLocalId(collection.id.toLong()).executeAsOne()
         assertEquals("Favorites", tombstone.name)
         assertEquals(1L, tombstone.deleted)
         assertEquals(emptyList(), repository.getAllCollections())
@@ -287,7 +287,7 @@ class CollectionsRepositoryTest {
     fun `stale created collection ACK binds remote id and leaves newer rename pending`() = runTest {
         val collection = repository.addCollection("Favorites", timestamp(1000L))
         val staleMutation = repository.fetchMutatedCollections().single()
-        repository.updateCollection(collection.localId, "Renamed", timestamp(2000L))
+        repository.updateCollection(collection.id, "Renamed", timestamp(2000L))
 
         repository.applyRemoteChanges(
             updatesToPersist = listOf(
@@ -301,12 +301,12 @@ class CollectionsRepositoryTest {
             localMutationsToClear = listOf(staleMutation)
         )
 
-        val record = database.collectionsQueries.getCollectionByLocalId(collection.localId.toLong()).executeAsOne()
+        val record = database.collectionsQueries.getCollectionByLocalId(collection.id.toLong()).executeAsOne()
         val remaining = repository.fetchMutatedCollections().single()
         assertEquals("remote-created-collection-id", record.remote_id)
         assertEquals("Renamed", record.name)
         assertEquals(1L, record.is_edited)
-        assertEquals(collection.localId, remaining.localID)
+        assertEquals(collection.id, remaining.localID)
         assertEquals("remote-created-collection-id", remaining.remoteID)
         assertEquals(Mutation.MODIFIED, remaining.mutation)
     }
@@ -315,7 +315,7 @@ class CollectionsRepositoryTest {
     fun `stale created collection ACK binds remote id and leaves delete pending`() = runTest {
         val collection = repository.addCollection("Favorites", timestamp(1000L))
         val staleMutation = repository.fetchMutatedCollections().single()
-        repository.deleteCollection(collection.localId)
+        repository.deleteCollection(collection.id)
         assertEquals(emptyList(), repository.getAllCollections())
         assertEquals(emptyList(), repository.fetchMutatedCollections())
 
@@ -331,12 +331,12 @@ class CollectionsRepositoryTest {
             localMutationsToClear = listOf(staleMutation)
         )
 
-        val record = database.collectionsQueries.getCollectionByLocalId(collection.localId.toLong()).executeAsOne()
+        val record = database.collectionsQueries.getCollectionByLocalId(collection.id.toLong()).executeAsOne()
         val remaining = repository.fetchMutatedCollections().single()
         assertEquals(emptyList(), repository.getAllCollections())
         assertEquals("remote-created-collection-id", record.remote_id)
         assertEquals(1L, record.deleted)
-        assertEquals(collection.localId, remaining.localID)
+        assertEquals(collection.id, remaining.localID)
         assertEquals("remote-created-collection-id", remaining.remoteID)
         assertEquals(Mutation.DELETED, remaining.mutation)
     }
@@ -358,11 +358,11 @@ class CollectionsRepositoryTest {
             deleteExisting = true
         )
 
-        val tombstone = database.collectionsQueries.getCollectionByLocalId(collection.localId.toLong()).executeAsOne()
+        val tombstone = database.collectionsQueries.getCollectionByLocalId(collection.id.toLong()).executeAsOne()
         val imported = database.collectionsQueries.getCollectionByName("Favorites").executeAsOne()
         assertEquals(null, tombstone.remote_id)
         assertEquals(1L, tombstone.deleted)
-        assertEquals(collection.localId.toLong(), tombstone.local_id)
+        assertEquals(collection.id.toLong(), tombstone.local_id)
         assertEquals(1, repository.getAllCollections().size)
         assertEquals(1, repository.fetchMutatedCollections().size)
         assertEquals("Favorites", imported.name)
@@ -382,10 +382,10 @@ class CollectionsRepositoryTest {
             localMutationsToClear = listOf(staleMutation)
         )
 
-        val record = database.collectionsQueries.getCollectionByLocalId(collection.localId.toLong()).executeAsOne()
+        val record = database.collectionsQueries.getCollectionByLocalId(collection.id.toLong()).executeAsOne()
         val remaining = repository.fetchMutatedCollections()
-        val tombstoneDelete = remaining.single { it.localID == collection.localId }
-        val importedCreate = remaining.single { it.localID != collection.localId }
+        val tombstoneDelete = remaining.single { it.localID == collection.id }
+        val importedCreate = remaining.single { it.localID != collection.id }
         assertEquals("remote-created-collection-id", record.remote_id)
         assertEquals(1L, record.deleted)
         assertEquals("remote-created-collection-id", tombstoneDelete.remoteID)
@@ -422,7 +422,7 @@ class CollectionsRepositoryTest {
             localMutationsToClear = listOf(staleCreate)
         )
         val staleDelete = repository.fetchMutatedCollections()
-            .single { it.localID == collection.localId }
+            .single { it.localID == collection.id }
 
         repository.applyRemoteChanges(
             updatesToPersist = listOf(
@@ -437,10 +437,10 @@ class CollectionsRepositoryTest {
 
         val active = repository.getAllCollections().single()
         val remainingMutation = repository.fetchMutatedCollections().single()
-        assertNull(database.collectionsQueries.getCollectionByLocalId(collection.localId.toLong()).executeAsOneOrNull())
+        assertNull(database.collectionsQueries.getCollectionByLocalId(collection.id.toLong()).executeAsOneOrNull())
         assertEquals("Favorites", active.name)
         assertEquals(Mutation.CREATED, remainingMutation.mutation)
-        assertEquals(active.localId, remainingMutation.localID)
+        assertEquals(active.id, remainingMutation.localID)
     }
 
     @Test
@@ -472,7 +472,7 @@ class CollectionsRepositoryTest {
     fun `remote created collection without ACK does not bind stale planned local create by name`() = runTest {
         val collection = repository.addCollection("Favorites", timestamp(1000L))
         val staleMutation = repository.fetchMutatedCollections().single()
-        repository.updateCollection(collection.localId, "Renamed", timestamp(2000L))
+        repository.updateCollection(collection.id, "Renamed", timestamp(2000L))
 
         repository.applyRemoteChanges(
             updatesToPersist = listOf(
@@ -485,14 +485,14 @@ class CollectionsRepositoryTest {
             localMutationsToClear = listOf(staleMutation)
         )
 
-        val localRecord = database.collectionsQueries.getCollectionByLocalId(collection.localId.toLong()).executeAsOne()
+        val localRecord = database.collectionsQueries.getCollectionByLocalId(collection.id.toLong()).executeAsOne()
         val remoteRecord = database.collectionsQueries.getCollectionByRemoteId("remote-created-collection-id")
             .executeAsOne()
         val remaining = repository.fetchMutatedCollections().single()
         assertEquals(null, localRecord.remote_id)
         assertEquals("Renamed", localRecord.name)
         assertEquals("Favorites", remoteRecord.name)
-        assertEquals(collection.localId, remaining.localID)
+        assertEquals(collection.id, remaining.localID)
         assertEquals(Mutation.CREATED, remaining.mutation)
     }
 
@@ -511,7 +511,7 @@ class CollectionsRepositoryTest {
             localMutationsToClear = emptyList()
         )
 
-        val record = database.collectionsQueries.getCollectionByLocalId(collection.localId.toLong()).executeAsOne()
+        val record = database.collectionsQueries.getCollectionByLocalId(collection.id.toLong()).executeAsOne()
         assertEquals("remote-created-collection-id", record.remote_id)
         assertEquals(0L, record.is_edited)
         assertEquals(1, repository.getAllCollections().size)
@@ -521,7 +521,7 @@ class CollectionsRepositoryTest {
     @Test
     fun `remote created collection without ACK binds deleted pending create by name and leaves delete pending`() = runTest {
         val collection = repository.addCollection("Favorites", timestamp(1000L))
-        repository.deleteCollection(collection.localId)
+        repository.deleteCollection(collection.id)
         assertEquals(emptyList(), repository.getAllCollections())
         assertEquals(emptyList(), repository.fetchMutatedCollections())
 
@@ -536,12 +536,12 @@ class CollectionsRepositoryTest {
             localMutationsToClear = emptyList()
         )
 
-        val record = database.collectionsQueries.getCollectionByLocalId(collection.localId.toLong()).executeAsOne()
+        val record = database.collectionsQueries.getCollectionByLocalId(collection.id.toLong()).executeAsOne()
         val remaining = repository.fetchMutatedCollections().single()
         assertEquals(emptyList(), repository.getAllCollections())
         assertEquals("remote-created-collection-id", record.remote_id)
         assertEquals(1L, record.deleted)
-        assertEquals(collection.localId, remaining.localID)
+        assertEquals(collection.id, remaining.localID)
         assertEquals("remote-created-collection-id", remaining.remoteID)
         assertEquals(Mutation.DELETED, remaining.mutation)
     }
@@ -575,14 +575,14 @@ class CollectionsRepositoryTest {
             localMutationsToClear = emptyList()
         )
 
-        val deletedRecord = database.collectionsQueries.getCollectionByLocalId(deleted.localId.toLong()).executeAsOne()
+        val deletedRecord = database.collectionsQueries.getCollectionByLocalId(deleted.id.toLong()).executeAsOne()
         val active = repository.getAllCollections().single()
         val remaining = repository.fetchMutatedCollections()
         assertEquals("remote-created-collection-id", deletedRecord.remote_id)
         assertEquals(1L, deletedRecord.deleted)
         assertEquals("Favorites", active.name)
-        assertEquals(deleted.localId, remaining.single { it.mutation == Mutation.DELETED }.localID)
-        assertEquals(active.localId, remaining.single { it.mutation == Mutation.CREATED }.localID)
+        assertEquals(deleted.id, remaining.single { it.mutation == Mutation.DELETED }.localID)
+        assertEquals(active.id, remaining.single { it.mutation == Mutation.CREATED }.localID)
     }
 
     @Test
@@ -601,9 +601,9 @@ class CollectionsRepositoryTest {
             deleteExisting = true
         )
         val second = repository.getAllCollections().single()
-        repository.deleteCollection(second.localId)
+        repository.deleteCollection(second.id)
         assertEquals(2, database.collectionsQueries.getPendingCreatedCollectionsByName("Favorites").executeAsList().size)
-        assertEquals(1L, database.collectionsQueries.getCollectionByLocalId(first.localId.toLong()).executeAsOne().deleted)
+        assertEquals(1L, database.collectionsQueries.getCollectionByLocalId(first.id.toLong()).executeAsOne().deleted)
 
         assertFailsWith<IllegalStateException> {
             repository.applyRemoteChanges(
@@ -648,11 +648,11 @@ class CollectionsRepositoryTest {
 
         val record = database.collectionsQueries.getCollectionByRemoteId("remote-collection-id").executeAsOne()
         val remaining = repository.fetchMutatedCollections().single()
-        assertEquals(listOf(readded.localId), repository.getAllCollections().map { it.localId })
+        assertEquals(listOf(readded.id), repository.getAllCollections().map { it.id })
         assertEquals(0L, record.deleted)
         assertEquals(1L, record.is_edited)
         assertEquals(Mutation.MODIFIED, remaining.mutation)
-        assertEquals(readded.localId, remaining.localID)
+        assertEquals(readded.id, remaining.localID)
         assertEquals("remote-collection-id", remaining.remoteID)
     }
 

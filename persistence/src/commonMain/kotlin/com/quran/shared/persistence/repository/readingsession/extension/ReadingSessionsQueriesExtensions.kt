@@ -19,7 +19,7 @@ internal fun DatabaseReadingSession.toReadingSession(): ReadingSession {
         sura = chapter_number.toInt(),
         ayah = verse_number.toInt(),
         lastUpdated = Instant.fromEpochMilliseconds(modified_at).toPlatform(),
-        localId = local_id.toString()
+        id = local_id.toString()
     )
 }
 

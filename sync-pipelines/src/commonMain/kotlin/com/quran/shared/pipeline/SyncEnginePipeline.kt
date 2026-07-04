@@ -15,7 +15,6 @@ import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.input.RemoteNote
 import com.quran.shared.persistence.input.RemoteReadingSession
-import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksSynchronizationRepository
@@ -562,17 +561,6 @@ private fun SyncCollection.toRemoteInput(): RemoteCollection {
     )
 }
 
-private fun CollectionAyahBookmark.toSyncEngine(): SyncCollectionBookmark {
-    val collectionId = requireNotNull(collectionRemoteId) { "Collection remote ID is required for sync." }
-    return SyncCollectionBookmark.AyahBookmark(
-        collectionId = collectionId,
-        sura = sura,
-        ayah = ayah,
-        lastModified = lastUpdated.fromPlatform(),
-        bookmarkId = bookmarkRemoteId
-    )
-}
-
 private fun LocalSyncCollectionAyahBookmark.toSyncEngine(): SyncCollectionBookmark {
     val collectionId = requireNotNull(collectionRemoteId) { "Collection remote ID is required for sync." }
     return SyncCollectionBookmark.AyahBookmark(
@@ -706,7 +694,7 @@ private fun ayahIdToSuraAyah(ayahId: Long): NoteAyah? {
 
 private fun ReadingSession.toSyncEngine(): SyncReadingSession {
     return SyncReadingSession(
-        id = localId,
+        id = id,
         chapterNumber = sura,
         verseNumber = ayah,
         lastModified = lastUpdated.fromPlatform()
