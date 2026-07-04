@@ -14,8 +14,9 @@ internal fun DatabaseBookmark.toAyahBookmark(): AyahBookmark {
     return AyahBookmark(
         sura = requireNotNull(sura).toInt(),
         ayah = requireNotNull(ayah).toInt(),
+        localId = local_id.toString(),
         lastUpdated = Instant.fromEpochMilliseconds(modified_at).toPlatform(),
-        localId = local_id.toString()
+        addedDate = Instant.fromEpochMilliseconds(created_at).toPlatform()
     )
 }
 

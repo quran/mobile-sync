@@ -5,6 +5,7 @@ import com.quran.shared.persistence.util.PlatformDateTime
 data class AyahBookmark(
     val sura: Int,
     val ayah: Int,
+    val localId: String,
     val lastUpdated: PlatformDateTime,
-    val localId: String
+    val addedDate: PlatformDateTime = lastUpdated
 )

@@ -63,14 +63,14 @@ class BookmarksRepositoryImpl(
     }
 
     override suspend fun addBookmark(sura: Int, ayah: Int): AyahBookmark {
-        return addBookmark(sura = sura, ayah = ayah, collectionLocalIds = null)
+        return addBookmark(sura = sura, ayah = ayah, collectionLocalIds = emptyList())
     }
 
     override suspend fun addBookmark(sura: Int, ayah: Int, timestamp: PlatformDateTime): AyahBookmark {
         return addBookmark(
             sura = sura,
             ayah = ayah,
-            collectionLocalIds = null,
+            collectionLocalIds = emptyList(),
             timestamp = timestamp
         )
     }
@@ -78,7 +78,7 @@ class BookmarksRepositoryImpl(
     override suspend fun addBookmark(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>?
+        collectionLocalIds: List<String>
     ): AyahBookmark {
         return addBookmarkWithTimestampMillis(
             sura = sura,
@@ -91,7 +91,7 @@ class BookmarksRepositoryImpl(
     override suspend fun addBookmark(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>?,
+        collectionLocalIds: List<String>,
         timestamp: PlatformDateTime
     ): AyahBookmark {
         return addBookmarkWithTimestampMillis(
@@ -105,7 +105,7 @@ class BookmarksRepositoryImpl(
     private suspend fun addBookmarkWithTimestampMillis(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>?,
+        collectionLocalIds: List<String>,
         timestampMillis: Long?
     ): AyahBookmark {
         logger.i { "Adding ayah bookmark for $sura:$ayah" }
@@ -163,7 +163,7 @@ class BookmarksRepositoryImpl(
 
     override suspend fun replaceBookmarkCollections(
         localId: String,
-        collectionLocalIds: List<String>?
+        collectionLocalIds: List<String>
     ): Boolean {
         return replaceBookmarkCollectionsWithTimestampMillis(
             localId = localId,
@@ -174,7 +174,7 @@ class BookmarksRepositoryImpl(
 
     override suspend fun replaceBookmarkCollections(
         localId: String,
-        collectionLocalIds: List<String>?,
+        collectionLocalIds: List<String>,
         timestamp: PlatformDateTime
     ): Boolean {
         return replaceBookmarkCollectionsWithTimestampMillis(
@@ -186,7 +186,7 @@ class BookmarksRepositoryImpl(
 
     private suspend fun replaceBookmarkCollectionsWithTimestampMillis(
         localId: String,
-        collectionLocalIds: List<String>?,
+        collectionLocalIds: List<String>,
         timestampMillis: Long?
     ): Boolean {
         logger.i { "Replacing ayah bookmark collection memberships localId=$localId" }
@@ -210,7 +210,7 @@ class BookmarksRepositoryImpl(
     override suspend fun replaceAyahBookmarkCollections(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>?
+        collectionLocalIds: List<String>
     ): BookmarkCollectionsReplacementResult {
         return replaceAyahBookmarkCollectionsWithTimestampMillis(
             sura = sura,
@@ -223,7 +223,7 @@ class BookmarksRepositoryImpl(
     override suspend fun replaceAyahBookmarkCollections(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>?,
+        collectionLocalIds: List<String>,
         timestamp: PlatformDateTime
     ): BookmarkCollectionsReplacementResult {
         return replaceAyahBookmarkCollectionsWithTimestampMillis(
@@ -237,7 +237,7 @@ class BookmarksRepositoryImpl(
     private suspend fun replaceAyahBookmarkCollectionsWithTimestampMillis(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>?,
+        collectionLocalIds: List<String>,
         timestampMillis: Long?
     ): BookmarkCollectionsReplacementResult {
         logger.i { "Replacing ayah bookmark collection memberships for $sura:$ayah" }
@@ -326,7 +326,7 @@ class BookmarksRepositoryImpl(
 
     private fun replaceBookmarkCollectionsInTransaction(
         bookmark: DatabaseBookmark,
-        collectionLocalIds: List<String>?,
+        collectionLocalIds: List<String>,
         timestampMillis: Long?
     ): Boolean {
         require(bookmark.bookmark_type == "AYAH") {
@@ -809,12 +809,11 @@ class BookmarksRepositoryImpl(
         }
     }
 
-    private fun normalizeCollectionIds(collectionLocalIds: List<String>?): List<String> {
+    private fun normalizeCollectionIds(collectionLocalIds: List<String>): List<String> {
         val nonBlankIds = collectionLocalIds
-            ?.map { it.trim() }
-            ?.filter { it.isNotEmpty() }
-            ?.distinct()
-            .orEmpty()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
         return nonBlankIds.ifEmpty { listOf(DEFAULT_COLLECTION_ID) }
     }
 

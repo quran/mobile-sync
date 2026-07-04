@@ -8,6 +8,8 @@ import com.quran.shared.auth.repository.RemoteLogoutFailure
 import com.quran.shared.auth.repository.RemoteLogoutOperation
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.di.AppScope
+import com.quran.shared.persistence.input.PersistenceImportData
+import com.quran.shared.persistence.input.PersistenceImportResult
 import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.AyahReadingBookmark
 import com.quran.shared.persistence.model.Collection
@@ -18,18 +20,15 @@ import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingSession
-import com.quran.shared.persistence.input.PersistenceImportData
-import com.quran.shared.persistence.input.PersistenceImportResult
-import com.quran.shared.persistence.util.PlatformDateTime
-import com.quran.shared.persistence.util.toPlatform
-import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepository
 import com.quran.shared.persistence.repository.PersistenceResetRepository
+import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepository
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepository
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepository
 import com.quran.shared.persistence.repository.importdata.PersistenceImportRepository
 import com.quran.shared.persistence.repository.note.repository.NotesRepository
-import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksRepository
 import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepository
+import com.quran.shared.persistence.util.PlatformDateTime
+import com.quran.shared.persistence.util.toPlatform
 import com.quran.shared.syncengine.AuthenticationDataFetcher
 import com.quran.shared.syncengine.LocalModificationDateFetcher
 import com.quran.shared.syncengine.SyncLifecycleGate
@@ -39,10 +38,8 @@ import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutinesState
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
-import kotlin.native.HiddenFromObjC
-import kotlin.time.Instant
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -53,6 +50,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlin.native.HiddenFromObjC
+import kotlin.time.Instant
 
 /**
  * Creates the scheduler-backed synchronization client used by [QuranDataService].
@@ -399,7 +398,7 @@ class QuranDataService internal constructor(
     }
 
     @NativeCoroutines
-    suspend fun addBookmark(sura: Int, ayah: Int, collectionLocalIds: List<String>?): AyahBookmark {
+    suspend fun addBookmark(sura: Int, ayah: Int, collectionLocalIds: List<String>): AyahBookmark {
         return mutatingCall("Failed to add ayah bookmark with collection memberships") {
             bookmarksRepository.addBookmark(sura, ayah, collectionLocalIds)
         }
@@ -409,7 +408,7 @@ class QuranDataService internal constructor(
     suspend fun addBookmark(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>?,
+        collectionLocalIds: List<String>,
         timestamp: PlatformDateTime
     ): AyahBookmark {
         return mutatingCall("Failed to add ayah bookmark with collection memberships") {
@@ -418,7 +417,7 @@ class QuranDataService internal constructor(
     }
 
     @NativeCoroutines
-    suspend fun replaceBookmarkCollections(localId: String, collectionLocalIds: List<String>?): Boolean {
+    suspend fun replaceBookmarkCollections(localId: String, collectionLocalIds: List<String>): Boolean {
         return mutatingCall("Failed to replace bookmark collection memberships", triggerAfter = false) {
             val changed = bookmarksRepository.replaceBookmarkCollections(localId, collectionLocalIds)
             if (changed) {
@@ -435,7 +434,7 @@ class QuranDataService internal constructor(
     @NativeCoroutines
     suspend fun replaceBookmarkCollections(
         localId: String,
-        collectionLocalIds: List<String>?,
+        collectionLocalIds: List<String>,
         timestamp: PlatformDateTime
     ): Boolean {
         return mutatingCall("Failed to replace bookmark collection memberships", triggerAfter = false) {
@@ -451,7 +450,7 @@ class QuranDataService internal constructor(
     suspend fun replaceAyahBookmarkCollections(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>?
+        collectionLocalIds: List<String>
     ): AyahBookmark {
         return mutatingCall("Failed to replace ayah bookmark collection memberships", triggerAfter = false) {
             val result = bookmarksRepository.replaceAyahBookmarkCollections(sura, ayah, collectionLocalIds)
@@ -470,7 +469,7 @@ class QuranDataService internal constructor(
     suspend fun replaceAyahBookmarkCollections(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>?,
+        collectionLocalIds: List<String>,
         timestamp: PlatformDateTime
     ): AyahBookmark {
         return mutatingCall("Failed to replace ayah bookmark collection memberships", triggerAfter = false) {

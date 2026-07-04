@@ -37,39 +37,39 @@ interface BookmarksRepository {
     /**
      * Add a saved ayah bookmark and add it to the requested memberships.
      *
-     * Null or empty memberships normalize to the virtual default collection. A non-empty list is
+     * Empty memberships normalize to the virtual default collection. A non-empty list is
      * additive: requested memberships are added, while existing custom memberships not present in
      * the list are left unchanged. [com.quran.shared.persistence.model.DEFAULT_COLLECTION_ID]
      * represents default membership.
      */
     @NativeCoroutines
-    suspend fun addBookmark(sura: Int, ayah: Int, collectionLocalIds: List<String>?): AyahBookmark
+    suspend fun addBookmark(sura: Int, ayah: Int, collectionLocalIds: List<String>): AyahBookmark
 
     @NativeCoroutines
     suspend fun addBookmark(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>?,
+        collectionLocalIds: List<String>,
         timestamp: PlatformDateTime
     ): AyahBookmark
 
     /**
      * Replaces the saved collection memberships for an existing ayah bookmark.
      *
-     * Null or empty memberships normalize to the virtual default collection. Use [deleteBookmark]
+     * Empty memberships normalize to the virtual default collection. Use [deleteBookmark]
      * when a saved bookmark should be removed from every collection.
      *
      * @return `true` when memberships changed, or `false` when the bookmark is missing, deleted,
      * or already has exactly the requested memberships.
      */
     @NativeCoroutines
-    suspend fun replaceBookmarkCollections(localId: String, collectionLocalIds: List<String>?): Boolean
+    suspend fun replaceBookmarkCollections(localId: String, collectionLocalIds: List<String>): Boolean
 
     /**
      * Replaces the saved collection memberships for an existing ayah bookmark with an explicit
      * mutation timestamp.
      *
-     * Null or empty memberships normalize to the virtual default collection. Use [deleteBookmark]
+     * Empty memberships normalize to the virtual default collection. Use [deleteBookmark]
      * when a saved bookmark should be removed from every collection.
      *
      * @return `true` when memberships changed, or `false` when the bookmark is missing, deleted,
@@ -78,33 +78,33 @@ interface BookmarksRepository {
     @NativeCoroutines
     suspend fun replaceBookmarkCollections(
         localId: String,
-        collectionLocalIds: List<String>?,
+        collectionLocalIds: List<String>,
         timestamp: PlatformDateTime
     ): Boolean
 
     /**
      * Creates an ayah bookmark if needed, then replaces its saved collection memberships exactly.
      *
-     * Null or empty memberships normalize to the virtual default collection.
+     * Empty memberships normalize to the virtual default collection.
      */
     @NativeCoroutines
     suspend fun replaceAyahBookmarkCollections(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>?
+        collectionLocalIds: List<String>
     ): BookmarkCollectionsReplacementResult
 
     /**
      * Creates an ayah bookmark if needed, then replaces its saved collection memberships exactly
      * with an explicit mutation timestamp.
      *
-     * Null or empty memberships normalize to the virtual default collection.
+     * Empty memberships normalize to the virtual default collection.
      */
     @NativeCoroutines
     suspend fun replaceAyahBookmarkCollections(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>?,
+        collectionLocalIds: List<String>,
         timestamp: PlatformDateTime
     ): BookmarkCollectionsReplacementResult
 
