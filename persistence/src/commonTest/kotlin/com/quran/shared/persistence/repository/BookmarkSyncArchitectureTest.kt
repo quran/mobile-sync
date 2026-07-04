@@ -337,6 +337,17 @@ class BookmarkSyncArchitectureTest {
     }
 
     @Test
+    fun `saved bookmark exposes added date separately from last updated`() = runTest {
+        bookmarksRepository.addBookmark(2, 20, listOf(DEFAULT_COLLECTION_ID), at(100))
+        bookmarksRepository.addBookmark(2, 20, listOf(DEFAULT_COLLECTION_ID), at(250))
+
+        val bookmark = bookmarksRepository.getAllBookmarks().single()
+
+        assertEquals(100L, bookmark.addedDate.fromPlatform().toEpochMilliseconds())
+        assertEquals(250L, bookmark.lastUpdated.fromPlatform().toEpochMilliseconds())
+    }
+
+    @Test
     fun `addBookmark supports default and custom membership together`() = runTest {
         val collectionId = createCollection("Both", "remote-both")
 

@@ -875,7 +875,15 @@ class QuranDataServiceLifecycleTest {
 
             val result = fixture.service.replaceAyahBookmarkCollections(2, 255, listOf("collection-a"))
 
-            assertEquals(AyahBookmark(2, 255, testTimestamp(), "bookmark-replaced"), result)
+            assertEquals(
+                AyahBookmark(
+                    sura = 2,
+                    ayah = 255,
+                    localId = "bookmark-replaced",
+                    lastUpdated = testTimestamp()
+                ),
+                result
+            )
             assertEquals(
                 listOf(BookmarkAyahCollectionsReplaceCall(2, 255, listOf("collection-a"))),
                 fixture.bookmarksRepository.replaceAyahCalls
@@ -893,7 +901,15 @@ class QuranDataServiceLifecycleTest {
 
             val result = fixture.service.replaceAyahBookmarkCollections(2, 255, listOf("collection-a"))
 
-            assertEquals(AyahBookmark(2, 255, testTimestamp(), "bookmark-replaced"), result)
+            assertEquals(
+                AyahBookmark(
+                    sura = 2,
+                    ayah = 255,
+                    localId = "bookmark-replaced",
+                    lastUpdated = testTimestamp()
+                ),
+                result
+            )
             assertEquals(0, fixture.syncClient.localDataUpdatedCount)
             fixture.clearAndJoin()
         }
@@ -913,7 +929,15 @@ class QuranDataServiceLifecycleTest {
                 timestamp = timestamp
             )
 
-            assertEquals(AyahBookmark(2, 255, timestamp, "bookmark-replaced"), result)
+            assertEquals(
+                AyahBookmark(
+                    sura = 2,
+                    ayah = 255,
+                    localId = "bookmark-replaced",
+                    lastUpdated = timestamp
+                ),
+                result
+            )
             assertEquals(
                 listOf(BookmarkAyahCollectionsReplaceCall(2, 255, listOf("collection-a"), timestamp)),
                 fixture.bookmarksRepository.replaceAyahCalls
@@ -1284,24 +1308,29 @@ private class ServiceBookmarksRepository : BookmarksRepository, BookmarksSynchro
     override suspend fun getAllBookmarks(): List<AyahBookmark> = bookmarks.value
     override fun getBookmarksFlow(): Flow<List<AyahBookmark>> = bookmarks
     override suspend fun addBookmark(sura: Int, ayah: Int): AyahBookmark =
-        AyahBookmark(sura, ayah, testTimestamp(), "bookmark-${++addCount}")
+        AyahBookmark(
+            sura = sura,
+            ayah = ayah,
+            localId = "bookmark-${++addCount}",
+            lastUpdated = testTimestamp()
+        )
 
     override suspend fun addBookmark(sura: Int, ayah: Int, timestamp: com.quran.shared.persistence.util.PlatformDateTime): AyahBookmark =
         addBookmark(sura, ayah)
 
-    override suspend fun addBookmark(sura: Int, ayah: Int, collectionLocalIds: List<String>?): AyahBookmark =
+    override suspend fun addBookmark(sura: Int, ayah: Int, collectionLocalIds: List<String>): AyahBookmark =
         addBookmark(sura, ayah)
 
     override suspend fun addBookmark(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>?,
+        collectionLocalIds: List<String>,
         timestamp: com.quran.shared.persistence.util.PlatformDateTime
     ): AyahBookmark = addBookmark(sura, ayah)
 
     override suspend fun replaceBookmarkCollections(
         localId: String,
-        collectionLocalIds: List<String>?
+        collectionLocalIds: List<String>
     ): Boolean {
         replaceCalls += BookmarkCollectionsReplaceCall(localId, collectionLocalIds)
         return replaceResult
@@ -1309,7 +1338,7 @@ private class ServiceBookmarksRepository : BookmarksRepository, BookmarksSynchro
 
     override suspend fun replaceBookmarkCollections(
         localId: String,
-        collectionLocalIds: List<String>?,
+        collectionLocalIds: List<String>,
         timestamp: com.quran.shared.persistence.util.PlatformDateTime
     ): Boolean {
         replaceCalls += BookmarkCollectionsReplaceCall(localId, collectionLocalIds, timestamp)
@@ -1319,11 +1348,16 @@ private class ServiceBookmarksRepository : BookmarksRepository, BookmarksSynchro
     override suspend fun replaceAyahBookmarkCollections(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>?
+        collectionLocalIds: List<String>
     ): BookmarkCollectionsReplacementResult {
         replaceAyahCalls += BookmarkAyahCollectionsReplaceCall(sura, ayah, collectionLocalIds)
         return BookmarkCollectionsReplacementResult(
-            bookmark = AyahBookmark(sura, ayah, testTimestamp(), "bookmark-replaced"),
+            bookmark = AyahBookmark(
+                sura = sura,
+                ayah = ayah,
+                localId = "bookmark-replaced",
+                lastUpdated = testTimestamp()
+            ),
             changed = replaceAyahResultChanged
         )
     }
@@ -1331,12 +1365,17 @@ private class ServiceBookmarksRepository : BookmarksRepository, BookmarksSynchro
     override suspend fun replaceAyahBookmarkCollections(
         sura: Int,
         ayah: Int,
-        collectionLocalIds: List<String>?,
+        collectionLocalIds: List<String>,
         timestamp: com.quran.shared.persistence.util.PlatformDateTime
     ): BookmarkCollectionsReplacementResult {
         replaceAyahCalls += BookmarkAyahCollectionsReplaceCall(sura, ayah, collectionLocalIds, timestamp)
         return BookmarkCollectionsReplacementResult(
-            bookmark = AyahBookmark(sura, ayah, timestamp, "bookmark-replaced"),
+            bookmark = AyahBookmark(
+                sura = sura,
+                ayah = ayah,
+                localId = "bookmark-replaced",
+                lastUpdated = timestamp
+            ),
             changed = replaceAyahResultChanged
         )
     }
@@ -1368,14 +1407,14 @@ private class ServiceBookmarksRepository : BookmarksRepository, BookmarksSynchro
 
 private data class BookmarkCollectionsReplaceCall(
     val localId: String,
-    val collectionLocalIds: List<String>?,
+    val collectionLocalIds: List<String>,
     val timestamp: PlatformDateTime? = null
 )
 
 private data class BookmarkAyahCollectionsReplaceCall(
     val sura: Int,
     val ayah: Int,
-    val collectionLocalIds: List<String>?,
+    val collectionLocalIds: List<String>,
     val timestamp: PlatformDateTime? = null
 )
 
