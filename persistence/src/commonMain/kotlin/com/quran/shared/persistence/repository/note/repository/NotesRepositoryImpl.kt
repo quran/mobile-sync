@@ -20,8 +20,10 @@ import com.quran.shared.persistence.repository.note.extension.toNote
 import com.quran.shared.persistence.repository.note.extension.toNoteMutation
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.QuranData
+import com.quran.shared.persistence.util.currentEpochMilliseconds
+import com.quran.shared.persistence.util.currentPlatformDateTime
 import com.quran.shared.persistence.util.fromPlatform
-import com.quran.shared.persistence.util.toEpochMillisecondsOrNull
+import com.quran.shared.persistence.util.toEpochMillisecondsFromPlatform
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.Dispatchers
@@ -57,7 +59,7 @@ class NotesRepositoryImpl(
     }
 
     override suspend fun addNote(body: String, startSura: Int, startAyah: Int, endSura: Int, endAyah: Int): Note {
-        return addNoteWithTimestampMillis(body, startSura, startAyah, endSura, endAyah, timestampMillis = null)
+        return addNote(body, startSura, startAyah, endSura, endAyah, currentPlatformDateTime())
     }
 
     override suspend fun addNote(
@@ -74,7 +76,7 @@ class NotesRepositoryImpl(
             startAyah,
             endSura,
             endAyah,
-            timestamp.toEpochMillisecondsOrNull()
+            timestamp.toEpochMillisecondsFromPlatform()
         )
     }
 
@@ -84,7 +86,7 @@ class NotesRepositoryImpl(
         startAyah: Int,
         endSura: Int,
         endAyah: Int,
-        timestampMillis: Long?
+        timestampMillis: Long
     ): Note {
         logger.i { "Adding note for range=$startSura:$startAyah-$endSura:$endAyah" }
         return withContext(Dispatchers.IO) {
@@ -114,15 +116,7 @@ class NotesRepositoryImpl(
         endSura: Int,
         endAyah: Int
     ): Note {
-        return updateNoteWithTimestampMillis(
-            id,
-            body,
-            startSura,
-            startAyah,
-            endSura,
-            endAyah,
-            timestampMillis = null
-        )
+        return updateNote(id, body, startSura, startAyah, endSura, endAyah, currentPlatformDateTime())
     }
 
     override suspend fun updateNote(
@@ -141,7 +135,7 @@ class NotesRepositoryImpl(
             startAyah,
             endSura,
             endAyah,
-            timestamp.toEpochMillisecondsOrNull()
+            timestamp.toEpochMillisecondsFromPlatform()
         )
     }
 
@@ -152,7 +146,7 @@ class NotesRepositoryImpl(
         startAyah: Int,
         endSura: Int,
         endAyah: Int,
-        timestampMillis: Long?
+        timestampMillis: Long
     ): Note {
         logger.i { "Updating note id=$id" }
         return withContext(Dispatchers.IO) {
@@ -177,7 +171,8 @@ class NotesRepositoryImpl(
         logger.i { "Deleting note id=$id" }
         withContext(Dispatchers.IO) {
             notesQueries.value.deleteNote(
-                id = id.toLong()
+                id = id.toLong(),
+                timestamp = currentEpochMilliseconds()
             )
         }
         return true
@@ -353,6 +348,7 @@ class NotesRepositoryImpl(
         val ack = local.ack ?: return
         notesQueries.value.clearLocalMutationFor(
             id = local.localID.toLong(),
+            modified_at = local.model.lastUpdated.fromPlatform().toEpochMilliseconds(),
             pending_version = ack.observedPendingVersion,
             pending_op = ack.observedPendingOp.name
         )

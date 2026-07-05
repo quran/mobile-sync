@@ -152,7 +152,7 @@ class ReadingSessionsRepositoryTest {
     }
 
     @Test
-    fun `deleteReadingSession does not update remote row timestamp`() = runTest {
+    fun `deleteReadingSession updates remote row timestamp`() = runTest {
         repository = ReadingSessionsRepositoryImpl(database) { 1234567890123L }
         database.reading_sessionsQueries.persistRemoteReadingSession(
             remote_id = "remote-reading-session-id",
@@ -168,12 +168,12 @@ class ReadingSessionsRepositoryTest {
         val record = database.reading_sessionsQueries.getReadingSessionByRemoteId("remote-reading-session-id")
             .executeAsOne()
         assertEquals(Mutation.DELETED, localMutation.mutation)
-        assertEquals(1L, localMutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
-        assertEquals(1L, record.modified_at)
+        assertEquals(1234567890123L, localMutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(1234567890123L, record.modified_at)
     }
 
     @Test
-    fun `deleteReadingSession preserves timestamp for remote rows`() = runTest {
+    fun `deleteReadingSession uses injected clock for remote row timestamp`() = runTest {
         repository = ReadingSessionsRepositoryImpl(database) { 9999L }
         database.reading_sessionsQueries.persistRemoteReadingSession(
             remote_id = "remote-reading-session-id",
@@ -189,8 +189,8 @@ class ReadingSessionsRepositoryTest {
         val record = database.reading_sessionsQueries.getReadingSessionByRemoteId("remote-reading-session-id")
             .executeAsOne()
         assertEquals(Mutation.DELETED, localMutation.mutation)
-        assertEquals(1L, localMutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
-        assertEquals(1L, record.modified_at)
+        assertEquals(9999L, localMutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(9999L, record.modified_at)
     }
 
     @Test

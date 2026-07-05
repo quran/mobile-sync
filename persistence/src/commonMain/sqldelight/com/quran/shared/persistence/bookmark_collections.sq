@@ -90,7 +90,7 @@ getCollectionBookmarksWithDetails:
     b.sura AS sura,
     b.ayah AS ayah,
     b.page AS page,
-    b.modified_at AS bookmark_last_updated_at,
+    b.bookmark_modified_at AS bookmark_last_updated_at,
     b.created_at AS bookmark_added_at
   FROM bookmark_collection bc
   JOIN collection c ON c.local_id = bc.collection_local_id
@@ -119,7 +119,7 @@ getCollectionBookmarksForCollectionWithDetails:
     b.sura AS sura,
     b.ayah AS ayah,
     b.page AS page,
-    b.modified_at AS bookmark_last_updated_at,
+    b.bookmark_modified_at AS bookmark_last_updated_at,
     b.created_at AS bookmark_added_at
   FROM bookmark_collection bc
   JOIN collection c ON c.local_id = bc.collection_local_id
@@ -232,8 +232,8 @@ addBookmarkToCollection {
     1,
     'CREATED',
     0,
-    COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
-    COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
+    :timestamp,
+    :timestamp
   );
   UPDATE bookmark_collection
   SET is_active = 1,
@@ -251,7 +251,7 @@ addBookmarkToCollection {
       ELSE 'CREATED'
     END,
     pending_version = pending_version + 1,
-    modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
+    modified_at = :timestamp
   WHERE bookmark_local_id = :bookmark_local_id
     AND collection_local_id = :collection_local_id;
 }
@@ -295,7 +295,7 @@ markBookmarkCollectionDeleted {
   SET is_active = 0,
     pending_op = 'DELETED',
     pending_version = CASE WHEN pending_op = 'DELETED' THEN pending_version ELSE pending_version + 1 END,
-    modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
+    modified_at = :timestamp
   WHERE bookmark_local_id = :bookmark_local_id
     AND collection_local_id = :collection_local_id;
 }
@@ -310,7 +310,7 @@ markBookmarkCollectionsDeletedForBookmark {
   SET is_active = 0,
     pending_op = 'DELETED',
     pending_version = CASE WHEN pending_op = 'DELETED' THEN pending_version ELSE pending_version + 1 END,
-    modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
+    modified_at = :timestamp
   WHERE bookmark_local_id = :bookmark_local_id;
 }
 
@@ -328,8 +328,7 @@ clearLocalMutationFor {
 bindRemoteSnapshotForCreatedAck:
   UPDATE bookmark_collection
   SET last_synced_bookmark_remote_id = COALESCE(:bookmark_remote_id, last_synced_bookmark_remote_id),
-    last_synced_collection_remote_id = COALESCE(:collection_remote_id, last_synced_collection_remote_id),
-    modified_at = :modified_at
+    last_synced_collection_remote_id = COALESCE(:collection_remote_id, last_synced_collection_remote_id)
   WHERE local_id = :id
     AND is_active = 0
     AND pending_op = 'DELETED';
@@ -405,8 +404,7 @@ persistRemoteBookmarkCollection {
 deleteRemoteBookmarkCollectionBySnapshot {
   UPDATE bookmark_collection
   SET last_synced_bookmark_remote_id = NULL,
-    last_synced_collection_remote_id = NULL,
-    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+    last_synced_collection_remote_id = NULL
   WHERE last_synced_bookmark_remote_id = :bookmark_remote_id
     AND last_synced_collection_remote_id = :collection_remote_id
     AND is_active = 1
@@ -440,7 +438,7 @@ markActiveLinksWithChangedSnapshots:
   UPDATE bookmark_collection
   SET pending_op = 'CREATED',
     pending_version = pending_version + 1,
-    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+    modified_at = :modified_at
   WHERE is_active = 1
     AND pending_op IS NULL
     AND (
@@ -517,7 +515,7 @@ markSyncedLinksForInactiveParents:
   SET is_active = 0,
     pending_op = 'DELETED',
     pending_version = CASE WHEN pending_op = 'DELETED' THEN pending_version ELSE pending_version + 1 END,
-    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+    modified_at = CASE WHEN pending_op = 'DELETED' THEN modified_at ELSE :modified_at END
   WHERE (
       last_synced_bookmark_remote_id IS NOT NULL
       OR last_synced_collection_remote_id IS NOT NULL

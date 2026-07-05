@@ -149,7 +149,7 @@ class CollectionsRepositoryTest {
     }
 
     @Test
-    fun `deleteCollection preserves timestamp for remote rows`() = runTest {
+    fun `deleteCollection updates timestamp for remote rows`() = runTest {
         database.collectionsQueries.persistRemoteCollection(
             remote_id = "remote-collection-id",
             name = "Favorites",
@@ -163,8 +163,8 @@ class CollectionsRepositoryTest {
         val mutation = repository.fetchMutatedCollections().single()
         val record = database.collectionsQueries.getCollectionByRemoteId("remote-collection-id").executeAsOne()
         assertEquals(Mutation.DELETED, mutation.mutation)
-        assertEquals(1000L, mutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
-        assertEquals(1000L, record.modified_at)
+        assertTrue(mutation.model.lastUpdated.fromPlatform().toEpochMilliseconds() > 1000L)
+        assertTrue(record.modified_at > 1000L)
     }
 
     @Test
@@ -228,6 +228,7 @@ class CollectionsRepositoryTest {
         val record = database.collectionsQueries.getCollectionByRemoteId("remote-collection-id").executeAsOne()
         assertEquals("Synced", record.name)
         assertEquals(0L, record.is_edited)
+        assertEquals(2000L, record.modified_at)
         assertEquals(emptyList(), repository.fetchMutatedCollections())
     }
 

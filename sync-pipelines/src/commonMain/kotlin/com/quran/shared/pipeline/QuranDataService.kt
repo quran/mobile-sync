@@ -28,6 +28,7 @@ import com.quran.shared.persistence.repository.importdata.PersistenceImportRepos
 import com.quran.shared.persistence.repository.note.repository.NotesRepository
 import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepository
 import com.quran.shared.persistence.util.PlatformDateTime
+import com.quran.shared.persistence.util.currentPlatformDateTime
 import com.quran.shared.persistence.util.toPlatform
 import com.quran.shared.syncengine.AuthenticationDataFetcher
 import com.quran.shared.syncengine.LocalModificationDateFetcher
@@ -189,7 +190,10 @@ class QuranDataService internal constructor(
                 val defaultCollectionFlow =
                     collectionBookmarksRepository.getBookmarksForCollectionFlow(DEFAULT_COLLECTION_ID)
                         .map { bookmarks ->
-                            CollectionWithAyahBookmarks(defaultCollection(bookmarks), bookmarks)
+                            CollectionWithAyahBookmarks(
+                                defaultCollection(bookmarks),
+                                bookmarks
+                            )
                         }
                 val customCollectionFlows =
                     collections
@@ -385,9 +389,7 @@ class QuranDataService internal constructor(
 
     @NativeCoroutines
     suspend fun addBookmark(sura: Int, ayah: Int): AyahBookmark {
-        return mutatingCall("Failed to add ayah bookmark") {
-            bookmarksRepository.addBookmark(sura, ayah)
-        }
+        return addBookmark(sura, ayah, currentPlatformDateTime())
     }
 
     @NativeCoroutines
@@ -399,9 +401,7 @@ class QuranDataService internal constructor(
 
     @NativeCoroutines
     suspend fun addBookmark(sura: Int, ayah: Int, collectionIds: List<String>): AyahBookmark {
-        return mutatingCall("Failed to add ayah bookmark with collection memberships") {
-            bookmarksRepository.addBookmark(sura, ayah, collectionIds)
-        }
+        return addBookmark(sura, ayah, collectionIds, currentPlatformDateTime())
     }
 
     @NativeCoroutines
@@ -418,13 +418,7 @@ class QuranDataService internal constructor(
 
     @NativeCoroutines
     suspend fun replaceBookmarkCollections(id: String, collectionIds: List<String>): Boolean {
-        return mutatingCall("Failed to replace bookmark collection memberships", triggerAfter = false) {
-            val changed = bookmarksRepository.replaceBookmarkCollections(id, collectionIds)
-            if (changed) {
-                triggerSync()
-            }
-            changed
-        }
+        return replaceBookmarkCollections(id, collectionIds, currentPlatformDateTime())
     }
 
     /**
@@ -452,13 +446,7 @@ class QuranDataService internal constructor(
         ayah: Int,
         collectionIds: List<String>
     ): AyahBookmark {
-        return mutatingCall("Failed to replace ayah bookmark collection memberships", triggerAfter = false) {
-            val result = bookmarksRepository.replaceAyahBookmarkCollections(sura, ayah, collectionIds)
-            if (result.changed) {
-                triggerSync()
-            }
-            result.bookmark
-        }
+        return replaceAyahBookmarkCollections(sura, ayah, collectionIds, currentPlatformDateTime())
     }
 
     /**
@@ -483,7 +471,7 @@ class QuranDataService internal constructor(
 
     @NativeCoroutines
     suspend fun addReadingBookmark(sura: Int, ayah: Int): AyahReadingBookmark {
-        return addAyahReadingBookmark(sura, ayah)
+        return addAyahReadingBookmark(sura, ayah, currentPlatformDateTime())
     }
 
     @NativeCoroutines
@@ -493,9 +481,7 @@ class QuranDataService internal constructor(
 
     @NativeCoroutines
     suspend fun addAyahReadingBookmark(sura: Int, ayah: Int): AyahReadingBookmark {
-        return mutatingCall("Failed to add reading ayah bookmark") {
-            readingBookmarksRepository.addAyahReadingBookmark(sura, ayah)
-        }
+        return addAyahReadingBookmark(sura, ayah, currentPlatformDateTime())
     }
 
     @NativeCoroutines
@@ -507,9 +493,7 @@ class QuranDataService internal constructor(
 
     @NativeCoroutines
     suspend fun addPageReadingBookmark(page: Int): PageReadingBookmark {
-        return mutatingCall("Failed to add reading page bookmark") {
-            readingBookmarksRepository.addPageReadingBookmark(page)
-        }
+        return addPageReadingBookmark(page, currentPlatformDateTime())
     }
 
     @NativeCoroutines
@@ -521,9 +505,7 @@ class QuranDataService internal constructor(
 
     @NativeCoroutines
     suspend fun addReadingSession(sura: Int, ayah: Int): ReadingSession {
-        return mutatingCall("Failed to add reading session") {
-            readingSessionsRepository.addReadingSession(sura, ayah)
-        }
+        return addReadingSession(sura, ayah, currentPlatformDateTime())
     }
 
     @NativeCoroutines
@@ -535,9 +517,7 @@ class QuranDataService internal constructor(
 
     @NativeCoroutines
     suspend fun updateReadingSession(id: String, sura: Int, ayah: Int): ReadingSession {
-        return mutatingCall("Failed to update reading session") {
-            readingSessionsRepository.updateReadingSession(id, sura, ayah)
-        }
+        return updateReadingSession(id, sura, ayah, currentPlatformDateTime())
     }
 
     @NativeCoroutines
@@ -617,9 +597,7 @@ class QuranDataService internal constructor(
 
     @NativeCoroutines
     suspend fun addCollection(name: String): Collection {
-        return mutatingCall("Failed to add collection") {
-            collectionsRepository.addCollection(name)
-        }
+        return addCollection(name, currentPlatformDateTime())
     }
 
     @NativeCoroutines
@@ -645,9 +623,7 @@ class QuranDataService internal constructor(
                 defaultCollection(collectionBookmarksRepository.getBookmarksForCollection(DEFAULT_COLLECTION_ID))
             }
         }
-        return mutatingCall("Failed to update collection") {
-            collectionsRepository.updateCollection(id, name)
-        }
+        return updateCollection(id, name, currentPlatformDateTime())
     }
 
     /**
@@ -696,9 +672,7 @@ class QuranDataService internal constructor(
 
     @NativeCoroutines
     suspend fun addBookmarkToCollection(collectionId: String, bookmark: AyahBookmark) {
-        mutatingCall("Failed to add bookmark to collection") {
-            collectionBookmarksRepository.addBookmarkToCollection(collectionId, bookmark)
-        }
+        addBookmarkToCollection(collectionId, bookmark, currentPlatformDateTime())
     }
 
     @NativeCoroutines
@@ -718,9 +692,7 @@ class QuranDataService internal constructor(
         sura: Int,
         ayah: Int
     ): CollectionAyahBookmark {
-        return mutatingCall("Failed to add ayah bookmark to collection") {
-            collectionBookmarksRepository.addAyahBookmarkToCollection(collectionId, sura, ayah)
-        }
+        return addAyahBookmarkToCollection(collectionId, sura, ayah, currentPlatformDateTime())
     }
 
     @NativeCoroutines
@@ -751,9 +723,7 @@ class QuranDataService internal constructor(
 
     @NativeCoroutines
     suspend fun addNote(body: String, startSura: Int, startAyah: Int, endSura: Int, endAyah: Int) {
-        mutatingCall("Failed to add note") {
-            notesRepository.addNote(body, startSura, startAyah, endSura, endAyah)
-        }
+        addNote(body, startSura, startAyah, endSura, endAyah, currentPlatformDateTime())
     }
 
     @NativeCoroutines
@@ -789,8 +759,21 @@ class QuranDataService internal constructor(
         endSura: Int,
         endAyah: Int
     ) {
+        updateNote(id, body, startSura, startAyah, endSura, endAyah, currentPlatformDateTime())
+    }
+
+    @NativeCoroutines
+    suspend fun updateNote(
+        id: String,
+        body: String,
+        startSura: Int,
+        startAyah: Int,
+        endSura: Int,
+        endAyah: Int,
+        timestamp: PlatformDateTime
+    ) {
         mutatingCall("Failed to update note") {
-            notesRepository.updateNote(id, body, startSura, startAyah, endSura, endAyah)
+            notesRepository.updateNote(id, body, startSura, startAyah, endSura, endAyah, timestamp)
         }
     }
 

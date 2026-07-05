@@ -1,19 +1,20 @@
 package com.quran.shared.persistence.repository.bookmark
 
 import com.quran.shared.persistence.QuranDatabase
+import com.quran.shared.persistence.util.currentEpochMilliseconds
 import dev.zacsweers.metro.Inject
 
 @Inject
 class BookmarkDependencyReconciler(
     private val database: QuranDatabase
 ) {
-    fun reconcile() {
+    fun reconcile(timestampMillis: Long = currentEpochMilliseconds()) {
         val bookmarkQueries = database.bookmarksQueries
         val linkQueries = database.bookmark_collectionsQueries
 
-        linkQueries.markActiveLinksWithChangedSnapshots()
+        linkQueries.markActiveLinksWithChangedSnapshots(modified_at = timestampMillis)
         linkQueries.deleteLinksForInactiveParents()
-        linkQueries.markSyncedLinksForInactiveParents()
+        linkQueries.markSyncedLinksForInactiveParents(modified_at = timestampMillis)
         linkQueries.deleteInactiveClearedLinks()
 
         val activeReadingRows = bookmarkQueries.getReadingBookmarks().executeAsList()
