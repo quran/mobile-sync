@@ -25,8 +25,10 @@ import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconc
 import com.quran.shared.persistence.repository.bookmark.extension.toAyahBookmark
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.QuranData
+import com.quran.shared.persistence.util.currentEpochMilliseconds
+import com.quran.shared.persistence.util.currentPlatformDateTime
 import com.quran.shared.persistence.util.fromPlatform
-import com.quran.shared.persistence.util.toEpochMillisecondsOrNull
+import com.quran.shared.persistence.util.toEpochMillisecondsFromPlatform
 import com.quran.shared.persistence.util.toPlatform
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -114,7 +116,7 @@ class CollectionBookmarksRepositoryImpl(
         collectionId: String,
         bookmark: AyahBookmark
     ): CollectionAyahBookmark {
-        return addBookmarkToCollectionWithTimestampMillis(collectionId, bookmark, timestampMillis = null)
+        return addBookmarkToCollection(collectionId, bookmark, currentPlatformDateTime())
     }
 
     override suspend fun addBookmarkToCollection(
@@ -125,14 +127,14 @@ class CollectionBookmarksRepositoryImpl(
         return addBookmarkToCollectionWithTimestampMillis(
             collectionId,
             bookmark,
-            timestamp.toEpochMillisecondsOrNull()
+            timestamp.toEpochMillisecondsFromPlatform()
         )
     }
 
     private suspend fun addBookmarkToCollectionWithTimestampMillis(
         collectionId: String,
         bookmark: AyahBookmark,
-        timestampMillis: Long?
+        timestampMillis: Long
     ): CollectionAyahBookmark {
         return withContext(Dispatchers.IO) {
             var created: CollectionAyahBookmark? = null
@@ -148,7 +150,7 @@ class CollectionBookmarksRepositoryImpl(
                         ayah = bookmark.ayah.toLong(),
                         timestamp = timestampMillis
                     )
-                    reconciler.reconcile()
+                    reconciler.reconcile(timestampMillis)
                     created = bookmarkQueries.value.getBookmarkByLocalId(row.local_id)
                         .executeAsOne()
                         .toDefaultCollectionBookmark()
@@ -165,7 +167,7 @@ class CollectionBookmarksRepositoryImpl(
                     collection_local_id = collection.local_id,
                     timestamp = timestampMillis
                 )
-                reconciler.reconcile()
+                reconciler.reconcile(timestampMillis)
                 val record = bookmarkCollectionQueries.value
                     .getCollectionBookmarksForCollectionWithDetails(collection.local_id)
                     .executeAsList()
@@ -193,7 +195,7 @@ class CollectionBookmarksRepositoryImpl(
         sura: Int,
         ayah: Int
     ): CollectionAyahBookmark {
-        return addAyahBookmarkToCollectionWithTimestampMillis(collectionId, sura, ayah, timestampMillis = null)
+        return addAyahBookmarkToCollection(collectionId, sura, ayah, currentPlatformDateTime())
     }
 
     override suspend fun addAyahBookmarkToCollection(
@@ -206,7 +208,7 @@ class CollectionBookmarksRepositoryImpl(
             collectionId,
             sura,
             ayah,
-            timestamp.toEpochMillisecondsOrNull()
+            timestamp.toEpochMillisecondsFromPlatform()
         )
     }
 
@@ -214,7 +216,7 @@ class CollectionBookmarksRepositoryImpl(
         collectionId: String,
         sura: Int,
         ayah: Int,
-        timestampMillis: Long?
+        timestampMillis: Long
     ): CollectionAyahBookmark {
         return withContext(Dispatchers.IO) {
             var created: CollectionAyahBookmark? = null
@@ -227,7 +229,7 @@ class CollectionBookmarksRepositoryImpl(
                         ayah = ayah.toLong(),
                         timestamp = timestampMillis
                     )
-                    reconciler.reconcile()
+                    reconciler.reconcile(timestampMillis)
                     created = bookmarkQueries.value.getBookmarkForAyah(sura.toLong(), ayah.toLong())
                         .executeAsOne()
                         .toDefaultCollectionBookmark()
@@ -255,7 +257,7 @@ class CollectionBookmarksRepositoryImpl(
                     collection_local_id = collection.local_id,
                     timestamp = timestampMillis
                 )
-                reconciler.reconcile()
+                reconciler.reconcile(timestampMillis)
                 val record = bookmarkCollectionQueries.value
                     .getCollectionBookmarksForCollectionWithDetails(collection.local_id)
                     .executeAsList()
@@ -283,20 +285,21 @@ class CollectionBookmarksRepositoryImpl(
         bookmark: AyahBookmark
     ): Boolean {
         return withContext(Dispatchers.IO) {
+            val timestampMillis = currentEpochMilliseconds()
             database.transaction {
                 if (collectionId == DEFAULT_COLLECTION_ID) {
                     bookmarkQueries.value.clearDefaultCollection(
                         local_id = bookmark.id.toLong(),
-                        timestamp = null
+                        timestamp = timestampMillis
                     )
                 } else {
                     bookmarkCollectionQueries.value.markBookmarkCollectionDeleted(
                         bookmark_local_id = bookmark.id.toLong(),
                         collection_local_id = collectionId.toLong(),
-                        timestamp = null
+                        timestamp = timestampMillis
                     )
                 }
-                reconciler.reconcile()
+                reconciler.reconcile(timestampMillis)
             }
             true
         }
@@ -304,20 +307,21 @@ class CollectionBookmarksRepositoryImpl(
 
     override suspend fun removeAyahBookmarkFromCollection(collectionAyahBookmark: CollectionAyahBookmark): Boolean {
         return withContext(Dispatchers.IO) {
+            val timestampMillis = currentEpochMilliseconds()
             database.transaction {
                 if (collectionAyahBookmark.collectionId == DEFAULT_COLLECTION_ID) {
                     bookmarkQueries.value.clearDefaultCollection(
                         local_id = collectionAyahBookmark.bookmarkId.toLong(),
-                        timestamp = null
+                        timestamp = timestampMillis
                     )
                 } else {
                     bookmarkCollectionQueries.value.markBookmarkCollectionDeleted(
                         bookmark_local_id = collectionAyahBookmark.bookmarkId.toLong(),
                         collection_local_id = collectionAyahBookmark.collectionId.toLong(),
-                        timestamp = null
+                        timestamp = timestampMillis
                     )
                 }
-                reconciler.reconcile()
+                reconciler.reconcile(timestampMillis)
             }
             true
         }
@@ -713,7 +717,7 @@ class CollectionBookmarksRepositoryImpl(
             ) {
                 bookmarkQueries.value.markDefaultRelationForRecreation(
                     local_id = bookmarkLocalId,
-                    modified_at = updatedAt
+                    modified_at = row.default_modified_at ?: row.modified_at
                 )
             }
             return
@@ -727,8 +731,7 @@ class CollectionBookmarksRepositoryImpl(
             bookmarkQueries.value.bindDefaultRemoteSnapshotForCreatedAck(
                 local_id = bookmarkLocalId,
                 remote_id = local.model.bookmarkRemoteId,
-                default_last_synced_bookmark_remote_id = relationBookmarkRemoteId,
-                modified_at = updatedAt
+                default_last_synced_bookmark_remote_id = relationBookmarkRemoteId
             )
             return
         }
@@ -742,7 +745,7 @@ class CollectionBookmarksRepositoryImpl(
                 local_id = bookmarkLocalId,
                 remote_id = local.model.bookmarkRemoteId,
                 default_last_synced_bookmark_remote_id = relationBookmarkRemoteId,
-                modified_at = updatedAt
+                modified_at = row.default_modified_at ?: row.modified_at
             )
             return
         }
@@ -777,8 +780,7 @@ class CollectionBookmarksRepositoryImpl(
         bookmarkCollectionQueries.value.bindRemoteSnapshotForCreatedAck(
             id = relationRow.local_id,
             bookmark_remote_id = relationBookmarkRemoteId,
-            collection_remote_id = local.model.collectionRemoteId,
-            modified_at = updatedAt
+            collection_remote_id = local.model.collectionRemoteId
         )
         if (!local.model.bookmarkRemoteId.isNullOrEmpty()) {
             bookmarkQueries.value.getBookmarkByLocalId(relationRow.bookmark_local_id)
@@ -844,7 +846,7 @@ class CollectionBookmarksRepositoryImpl(
         } else if (relationRow.pending_op == null && relationRow.is_active == 1L) {
             bookmarkCollectionQueries.value.markBookmarkCollectionForRecreation(
                 id = relationRow.local_id,
-                modified_at = updatedAt
+                modified_at = relationRow.modified_at
             )
         }
     }
@@ -1285,7 +1287,7 @@ class CollectionBookmarksRepositoryImpl(
             sura = sura,
             ayah = ayah,
             membershipModifiedAt = default_modified_at ?: modified_at,
-            bookmarkModifiedAt = modified_at,
+            bookmarkModifiedAt = bookmark_modified_at,
             bookmarkCreatedAt = created_at
         )
     }

@@ -89,6 +89,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
@@ -538,11 +539,10 @@ class QuranDataServiceLifecycleTest {
 
         val result = fixture.service.updateCollection("collection-local-id", "Updated collection")
 
-        assertEquals(Collection("Updated collection", testTimestamp(), "collection-local-id"), result)
-        assertEquals(
-            listOf(CollectionUpdateCall("collection-local-id", "Updated collection", null)),
-            fixture.collectionsRepository.updateCalls
-        )
+        val call = fixture.collectionsRepository.updateCalls.single()
+        val timestamp = assertNotNull(call.timestamp)
+        assertEquals(Collection("Updated collection", timestamp, "collection-local-id"), result)
+        assertEquals(CollectionUpdateCall("collection-local-id", "Updated collection", timestamp), call)
         assertEquals(1, fixture.syncClient.localDataUpdatedCount)
         fixture.clearAndJoin()
     }
@@ -710,8 +710,10 @@ class QuranDataServiceLifecycleTest {
 
         val result = fixture.service.addCollection("Favorites")
 
-        assertEquals(Collection("Favorites", testTimestamp(), "collection-1"), result)
-        assertEquals(listOf(CollectionAddCall("Favorites", null)), fixture.collectionsRepository.addCalls)
+        val call = fixture.collectionsRepository.addCalls.single()
+        val timestamp = assertNotNull(call.timestamp)
+        assertEquals(Collection("Favorites", timestamp, "collection-1"), result)
+        assertEquals(CollectionAddCall("Favorites", timestamp), call)
         assertEquals(1, fixture.syncClient.localDataUpdatedCount)
         fixture.clearAndJoin()
     }
@@ -817,10 +819,10 @@ class QuranDataServiceLifecycleTest {
             val result = fixture.service.replaceBookmarkCollections("bookmark-local-id", listOf("collection-a"))
 
             assertFalse(result)
-            assertEquals(
-                listOf(BookmarkCollectionsReplaceCall("bookmark-local-id", listOf("collection-a"))),
-                fixture.bookmarksRepository.replaceCalls
-            )
+            val call = fixture.bookmarksRepository.replaceCalls.single()
+            assertEquals("bookmark-local-id", call.id)
+            assertEquals(listOf("collection-a"), call.collectionIds)
+            assertNotNull(call.timestamp)
             assertEquals(0, fixture.syncClient.localDataUpdatedCount)
             fixture.clearAndJoin()
         }
@@ -835,10 +837,10 @@ class QuranDataServiceLifecycleTest {
             val result = fixture.service.replaceBookmarkCollections("bookmark-local-id", listOf("collection-a"))
 
             assertTrue(result)
-            assertEquals(
-                listOf(BookmarkCollectionsReplaceCall("bookmark-local-id", listOf("collection-a"))),
-                fixture.bookmarksRepository.replaceCalls
-            )
+            val call = fixture.bookmarksRepository.replaceCalls.single()
+            assertEquals("bookmark-local-id", call.id)
+            assertEquals(listOf("collection-a"), call.collectionIds)
+            assertNotNull(call.timestamp)
             assertEquals(1, fixture.syncClient.localDataUpdatedCount)
             fixture.clearAndJoin()
         }
@@ -875,19 +877,20 @@ class QuranDataServiceLifecycleTest {
 
             val result = fixture.service.replaceAyahBookmarkCollections(2, 255, listOf("collection-a"))
 
+            val call = fixture.bookmarksRepository.replaceAyahCalls.single()
+            val timestamp = assertNotNull(call.timestamp)
             assertEquals(
                 AyahBookmark(
                     sura = 2,
                     ayah = 255,
                     id = "bookmark-replaced",
-                    lastUpdated = testTimestamp()
+                    lastUpdated = timestamp
                 ),
                 result
             )
-            assertEquals(
-                listOf(BookmarkAyahCollectionsReplaceCall(2, 255, listOf("collection-a"))),
-                fixture.bookmarksRepository.replaceAyahCalls
-            )
+            assertEquals(2, call.sura)
+            assertEquals(255, call.ayah)
+            assertEquals(listOf("collection-a"), call.collectionIds)
             assertEquals(1, fixture.syncClient.localDataUpdatedCount)
             fixture.clearAndJoin()
         }
@@ -901,15 +904,20 @@ class QuranDataServiceLifecycleTest {
 
             val result = fixture.service.replaceAyahBookmarkCollections(2, 255, listOf("collection-a"))
 
+            val call = fixture.bookmarksRepository.replaceAyahCalls.single()
+            val timestamp = assertNotNull(call.timestamp)
             assertEquals(
                 AyahBookmark(
                     sura = 2,
                     ayah = 255,
                     id = "bookmark-replaced",
-                    lastUpdated = testTimestamp()
+                    lastUpdated = timestamp
                 ),
                 result
             )
+            assertEquals(2, call.sura)
+            assertEquals(255, call.ayah)
+            assertEquals(listOf("collection-a"), call.collectionIds)
             assertEquals(0, fixture.syncClient.localDataUpdatedCount)
             fixture.clearAndJoin()
         }

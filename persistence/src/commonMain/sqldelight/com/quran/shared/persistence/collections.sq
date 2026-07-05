@@ -61,7 +61,7 @@ addNewCollection {
       WHEN deleted = 1 THEN 1
       ELSE is_edited
     END,
-    modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    modified_at = :timestamp,
     pending_version = CASE
       WHEN remote_id IS NULL OR deleted = 1 OR is_edited = 1 THEN pending_version + 1
       ELSE pending_version
@@ -74,7 +74,7 @@ addNewCollection {
       WHEN remote_id IS NULL THEN 0
       ELSE 1
     END,
-    modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    modified_at = :timestamp,
     pending_version = pending_version + 1
   WHERE local_id = (
     SELECT local_id FROM collection
@@ -92,8 +92,8 @@ addNewCollection {
   SELECT
     NULL,
     :name,
-    COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
-    COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    :timestamp,
+    :timestamp,
     0,
     0,
     1
@@ -147,7 +147,7 @@ updateCollectionName:
   UPDATE collection
   SET name = :name,
     is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
-    modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    modified_at = :timestamp,
     pending_version = pending_version + 1
   WHERE local_id = :id
     AND deleted = 0;
@@ -162,11 +162,12 @@ deleteCollection {
   SET is_active = 0,
     pending_op = 'DELETED',
     pending_version = CASE WHEN pending_op = 'DELETED' THEN pending_version ELSE pending_version + 1 END,
-    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+    modified_at = :timestamp
   WHERE collection_local_id = :id;
   UPDATE collection
   SET deleted = 1,
     is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
+    modified_at = :timestamp,
     pending_version = pending_version + 1
   WHERE local_id = :id;
 }
@@ -256,7 +257,7 @@ clearLocalMutationFor {
   UPDATE collection
   SET deleted = 0,
     is_edited = 0,
-    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+    modified_at = :modified_at
   WHERE local_id = :id
     AND pending_version = :pending_version
     AND (

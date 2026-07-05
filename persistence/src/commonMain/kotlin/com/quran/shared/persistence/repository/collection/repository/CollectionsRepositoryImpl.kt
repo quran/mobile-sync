@@ -20,8 +20,10 @@ import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconc
 import com.quran.shared.persistence.repository.collection.extension.toCollection
 import com.quran.shared.persistence.repository.collection.extension.toCollectionMutation
 import com.quran.shared.persistence.util.PlatformDateTime
+import com.quran.shared.persistence.util.currentEpochMilliseconds
+import com.quran.shared.persistence.util.currentPlatformDateTime
 import com.quran.shared.persistence.util.fromPlatform
-import com.quran.shared.persistence.util.toEpochMillisecondsOrNull
+import com.quran.shared.persistence.util.toEpochMillisecondsFromPlatform
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.Dispatchers
@@ -59,14 +61,14 @@ class CollectionsRepositoryImpl(
     }
 
     override suspend fun addCollection(name: String): Collection {
-        return addCollectionWithTimestampMillis(name, timestampMillis = null)
+        return addCollection(name, currentPlatformDateTime())
     }
 
     override suspend fun addCollection(name: String, timestamp: PlatformDateTime): Collection {
-        return addCollectionWithTimestampMillis(name, timestamp.toEpochMillisecondsOrNull())
+        return addCollectionWithTimestampMillis(name, timestamp.toEpochMillisecondsFromPlatform())
     }
 
-    private suspend fun addCollectionWithTimestampMillis(name: String, timestampMillis: Long?): Collection {
+    private suspend fun addCollectionWithTimestampMillis(name: String, timestampMillis: Long): Collection {
         logger.i { "Adding collection with name=$name" }
         return withContext(Dispatchers.IO) {
             collectionQueries.value.addNewCollection(
@@ -81,17 +83,17 @@ class CollectionsRepositoryImpl(
     }
 
     override suspend fun updateCollection(id: String, name: String): Collection {
-        return updateCollectionWithTimestampMillis(id, name, timestampMillis = null)
+        return updateCollection(id, name, currentPlatformDateTime())
     }
 
     override suspend fun updateCollection(id: String, name: String, timestamp: PlatformDateTime): Collection {
-        return updateCollectionWithTimestampMillis(id, name, timestamp.toEpochMillisecondsOrNull())
+        return updateCollectionWithTimestampMillis(id, name, timestamp.toEpochMillisecondsFromPlatform())
     }
 
     private suspend fun updateCollectionWithTimestampMillis(
         id: String,
         name: String,
-        timestampMillis: Long?
+        timestampMillis: Long
     ): Collection {
         logger.i { "Updating collection id=$id with name=$name" }
         return withContext(Dispatchers.IO) {
@@ -125,6 +127,7 @@ class CollectionsRepositoryImpl(
     override suspend fun deleteCollection(id: String): Boolean {
         logger.i { "Deleting collection id=$id" }
         return withContext(Dispatchers.IO) {
+            val timestampMillis = currentEpochMilliseconds()
             var deleted = false
             database.transaction {
                 val localId = id.toLong()
@@ -133,9 +136,10 @@ class CollectionsRepositoryImpl(
                     return@transaction
                 }
                 collectionQueries.value.deleteCollection(
-                    id = localId
+                    id = localId,
+                    timestamp = timestampMillis
                 )
-                reconciler.reconcile()
+                reconciler.reconcile(timestampMillis)
                 deleted = true
             }
             deleted
@@ -332,6 +336,7 @@ class CollectionsRepositoryImpl(
         }
         collectionQueries.value.clearLocalMutationFor(
             id = local.localID.toLong(),
+            modified_at = local.model.lastUpdated.fromPlatform().toEpochMilliseconds(),
             pending_version = ack.observedPendingVersion,
             pending_op = ack.observedPendingOp.name
         )

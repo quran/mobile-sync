@@ -17,6 +17,7 @@ import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.model.DEFAULT_COLLECTION_ID
 import com.quran.shared.persistence.model.PageReadingBookmark
+import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepositoryImpl
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepositoryImpl
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepositoryImpl
@@ -352,6 +353,24 @@ class BookmarkSyncArchitectureTest {
         assertEquals(100L, linked.bookmarkLastUpdated.fromPlatform().toEpochMilliseconds())
         assertEquals(100L, linked.bookmarkAddedDate.fromPlatform().toEpochMilliseconds())
         assertEquals(linked, queried)
+    }
+
+    @Test
+    fun `collection bookmark projections expose bookmark timestamp after default membership changes`() = runTest {
+        val collectionId = createCollection("ProjectionTimestamp", "remote-projection-timestamp")
+        val bookmark = bookmarksRepository.addBookmark(2, 22, listOf(collectionId), at(100))
+
+        collectionBookmarksRepository.addBookmarkToCollection(DEFAULT_COLLECTION_ID, bookmark, at(300))
+
+        val row = database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOne()
+        val defaultBookmark = collectionBookmarksRepository.getBookmarksForCollection(DEFAULT_COLLECTION_ID).single()
+        val customBookmark = collectionBookmarksRepository.getBookmarksForCollection(collectionId).single()
+
+        assertEquals(300L, row.modified_at)
+        assertEquals(300L, row.default_modified_at)
+        assertEquals(100L, row.bookmark_modified_at)
+        assertEquals(100L, defaultBookmark.bookmarkLastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(100L, customBookmark.bookmarkLastUpdated.fromPlatform().toEpochMilliseconds())
     }
 
     @Test
@@ -1163,9 +1182,16 @@ class BookmarkSyncArchitectureTest {
         assertTrue(collectionsRepository.deleteCollection(collectionId))
 
         val deletion = collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single()
+        val collectionRow = database.collectionsQueries.getCollectionByLocalId(collectionId.toLong()).executeAsOne()
+        val bookmarkRow = database.bookmarksQueries.getBookmarkByRemoteId("remote-bookmark-4-4").executeAsOne()
+        val linkRow = database.bookmark_collectionsQueries
+            .getCollectionBookmarkFor(bookmarkRow.local_id, collectionId.toLong())
+            .executeAsOne()
         assertEquals(Mutation.DELETED, deletion.mutation)
         assertEquals("remote-delete-collection", deletion.model.collectionRemoteId)
         assertEquals("remote-bookmark-4-4", deletion.model.bookmarkRemoteId)
+        assertEquals(collectionRow.modified_at, linkRow.modified_at)
+        assertEquals(collectionRow.modified_at, deletion.model.lastUpdated.fromPlatform().toEpochMilliseconds())
     }
 
     @Test
@@ -1423,7 +1449,7 @@ class BookmarkSyncArchitectureTest {
             modified_at = 200L,
             local_id = collectionId.toLong()
         )
-        collectionBookmarksRepository.addBookmarkToCollection(collectionId, bookmark)
+        collectionBookmarksRepository.addBookmarkToCollection(collectionId, bookmark, at(300))
 
         collectionBookmarksRepository.applyRemoteChanges(
             updatesToPersist = listOf(
@@ -1442,8 +1468,48 @@ class BookmarkSyncArchitectureTest {
         assertEquals(Mutation.CREATED, recreated.mutation)
         assertEquals("remote-new-recreate", recreated.model.collectionRemoteId)
         assertEquals("remote-bookmark-4-10", recreated.model.bookmarkRemoteId)
+        assertEquals(300L, recreated.model.lastUpdated.fromPlatform().toEpochMilliseconds())
         val row = database.bookmarksQueries.getBookmarkForAyah(4L, 10L).executeAsOne()
+        val link = database.bookmark_collectionsQueries
+            .getCollectionBookmarkFor(row.local_id, collectionId.toLong())
+            .executeAsOne()
+        assertEquals(300L, link.modified_at)
         assertEquals(1L, database.bookmark_collectionsQueries.countActiveForBookmark(row.local_id).executeAsOne())
+    }
+
+    @Test
+    fun `changed custom link snapshots use reconciler timestamp`() = runTest {
+        val collectionId = createCollection("SnapshotTimestamp", "remote-snapshot-old")
+        collectionBookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                customRemoteMutation(
+                    collectionId = "remote-snapshot-old",
+                    sura = 4,
+                    ayah = 11,
+                    bookmarkId = "remote-bookmark-snapshot",
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+        database.collectionsQueries.updateRemoteCollectionByLocalId(
+            remote_id = "remote-snapshot-new",
+            name = "SnapshotTimestamp",
+            modified_at = 200L,
+            local_id = collectionId.toLong()
+        )
+
+        BookmarkDependencyReconciler(database).reconcile(777L)
+
+        val recreated = collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single()
+        val bookmark = database.bookmarksQueries.getBookmarkByRemoteId("remote-bookmark-snapshot").executeAsOne()
+        val link = database.bookmark_collectionsQueries
+            .getCollectionBookmarkFor(bookmark.local_id, collectionId.toLong())
+            .executeAsOne()
+        assertEquals(Mutation.CREATED, recreated.mutation)
+        assertEquals("remote-snapshot-new", recreated.model.collectionRemoteId)
+        assertEquals(777L, link.modified_at)
+        assertEquals(777L, recreated.model.lastUpdated.fromPlatform().toEpochMilliseconds())
     }
 
     @Test
@@ -2267,6 +2333,44 @@ class BookmarkSyncArchitectureTest {
     }
 
     @Test
+    fun `reading bookmark delete stamps derived inactive custom link delete with same timestamp`() = runTest {
+        val collectionId = createCollection("ReadingDeleteLinkTimestamp", "remote-reading-delete-link-timestamp")
+        collectionBookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                customRemoteMutation(
+                    collectionId = "remote-reading-delete-link-timestamp",
+                    sura = 6,
+                    ayah = 8,
+                    bookmarkId = "remote-reading-delete-link-bookmark",
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+        val bookmark = bookmarksRepository.getAllBookmarks().single()
+        collectionBookmarksRepository.removeBookmarkFromCollection(collectionId, bookmark)
+        val linkDelete = collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single()
+        collectionBookmarksRepository.applyRemoteChanges(
+            updatesToPersist = emptyList(),
+            localMutationsToClear = listOf(linkDelete)
+        )
+
+        readingRepository.addAyahReadingBookmark(6, 8, at(200))
+        assertTrue(readingRepository.deleteReadingBookmark())
+
+        val bookmarkRow = database.bookmarksQueries
+            .getBookmarkByRemoteId("remote-reading-delete-link-bookmark")
+            .executeAsOne()
+        val linkRow = database.bookmark_collectionsQueries
+            .getCollectionBookmarkByLocalId(linkDelete.localID.toLong())
+            .executeAsOne()
+        val derivedLinkDelete = collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single()
+        assertEquals("DELETED", linkRow.pending_op)
+        assertEquals(bookmarkRow.modified_at, linkRow.modified_at)
+        assertEquals(bookmarkRow.modified_at, derivedLinkDelete.model.lastUpdated.fromPlatform().toEpochMilliseconds())
+    }
+
+    @Test
     fun `local deletes without explicit timestamp advance modified timestamps`() = runTest {
         collectionBookmarksRepository.applyRemoteChanges(
             updatesToPersist = listOf(defaultRemoteMutation(6, 4, "remote-default-timestamp", Mutation.CREATED)),
@@ -2490,16 +2594,19 @@ class BookmarkSyncArchitectureTest {
         collectionBookmarksRepository.removeBookmarkFromCollection(DEFAULT_COLLECTION_ID, bookmark)
         val staleDefaultDelete = collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single()
 
-        bookmarksRepository.addBookmark(8, 3, listOf(DEFAULT_COLLECTION_ID))
+        bookmarksRepository.addBookmark(8, 3, listOf(DEFAULT_COLLECTION_ID), at(200))
         collectionBookmarksRepository.applyRemoteChanges(
             updatesToPersist = emptyList(),
             localMutationsToClear = listOf(staleDefaultDelete)
         )
 
         val row = database.bookmarksQueries.getBookmarkByRemoteId("remote-stale-default").executeAsOne()
+        val createMutation = collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single()
         assertEquals(1L, row.is_in_default_collection)
         assertEquals("CREATED", row.default_pending_op)
-        assertEquals(Mutation.CREATED, collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single().mutation)
+        assertEquals(200L, row.default_modified_at)
+        assertEquals(Mutation.CREATED, createMutation.mutation)
+        assertEquals(200L, createMutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
     }
 
     @Test
@@ -2521,7 +2628,7 @@ class BookmarkSyncArchitectureTest {
         collectionBookmarksRepository.removeBookmarkFromCollection(collectionId, bookmark)
         val staleCustomDelete = collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single()
 
-        collectionBookmarksRepository.addBookmarkToCollection(collectionId, bookmark)
+        collectionBookmarksRepository.addBookmarkToCollection(collectionId, bookmark, at(200))
         collectionBookmarksRepository.applyRemoteChanges(
             updatesToPersist = emptyList(),
             localMutationsToClear = listOf(staleCustomDelete)
@@ -2531,9 +2638,12 @@ class BookmarkSyncArchitectureTest {
         val link = database.bookmark_collectionsQueries
             .getCollectionBookmarkFor(row.local_id, collectionId.toLong())
             .executeAsOne()
+        val createMutation = collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single()
         assertEquals(1L, link.is_active)
         assertEquals("CREATED", link.pending_op)
-        assertEquals(Mutation.CREATED, collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single().mutation)
+        assertEquals(200L, link.modified_at)
+        assertEquals(Mutation.CREATED, createMutation.mutation)
+        assertEquals(200L, createMutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
     }
 
     @Test
@@ -2802,6 +2912,7 @@ class BookmarkSyncArchitectureTest {
         val tombstoneBeforeAck = database.bookmarksQueries
             .getBookmarkByLocalId(bookmark.id.toLong())
             .executeAsOne()
+        val tombstoneTimestamp = requireNotNull(tombstoneBeforeAck.default_modified_at)
         assertEquals(1L, tombstoneBeforeAck.deleted)
         assertEquals(0L, tombstoneBeforeAck.is_in_default_collection)
         assertEquals("DELETED", tombstoneBeforeAck.default_pending_op)
@@ -2825,9 +2936,11 @@ class BookmarkSyncArchitectureTest {
             .executeAsOne()
         assertEquals("remote-import-default-create", tombstoneAfterAck.remote_id)
         assertEquals("DELETED", tombstoneAfterAck.default_pending_op)
+        assertEquals(tombstoneTimestamp, tombstoneAfterAck.default_modified_at)
         val deleteMutation = collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single()
         assertEquals(Mutation.DELETED, deleteMutation.mutation)
         assertEquals("remote-import-default-create", deleteMutation.model.bookmarkRemoteId)
+        assertEquals(tombstoneTimestamp, deleteMutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
     }
 
     @Test
@@ -2841,6 +2954,7 @@ class BookmarkSyncArchitectureTest {
         val linkBeforeAck = database.bookmark_collectionsQueries
             .getCollectionBookmarkByLocalId(customCreate.localID.toLong())
             .executeAsOne()
+        val linkDeleteTimestamp = linkBeforeAck.modified_at
         assertEquals(0L, linkBeforeAck.is_active)
         assertEquals("DELETED", linkBeforeAck.pending_op)
         assertNull(linkBeforeAck.last_synced_bookmark_remote_id)
@@ -2865,12 +2979,14 @@ class BookmarkSyncArchitectureTest {
         val bookmarkAfterAck = database.bookmarksQueries.getBookmarkForAyah(8L, 14L).executeAsOne()
         assertEquals("remote-import-custom-bookmark", bookmarkAfterAck.remote_id)
         assertEquals("DELETED", linkAfterAck.pending_op)
+        assertEquals(linkDeleteTimestamp, linkAfterAck.modified_at)
         assertEquals("remote-import-custom-bookmark", linkAfterAck.last_synced_bookmark_remote_id)
         assertEquals("remote-import-pending-custom", linkAfterAck.last_synced_collection_remote_id)
         val deleteMutation = collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single()
         assertEquals(Mutation.DELETED, deleteMutation.mutation)
         assertEquals("remote-import-custom-bookmark", deleteMutation.model.bookmarkRemoteId)
         assertEquals("remote-import-pending-custom", deleteMutation.model.collectionRemoteId)
+        assertEquals(linkDeleteTimestamp, deleteMutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
     }
 
     @Test
@@ -2885,6 +3001,7 @@ class BookmarkSyncArchitectureTest {
         val linkBeforeAck = database.bookmark_collectionsQueries
             .getCollectionBookmarkByLocalId(customCreate.localID.toLong())
             .executeAsOne()
+        val linkDeleteTimestamp = linkBeforeAck.modified_at
         assertEquals(0L, linkBeforeAck.is_active)
         assertEquals("DELETED", linkBeforeAck.pending_op)
         assertNull(linkBeforeAck.last_synced_bookmark_remote_id)
@@ -2904,9 +3021,14 @@ class BookmarkSyncArchitectureTest {
         )
 
         val deleteMutation = collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single()
+        val linkAfterAck = database.bookmark_collectionsQueries
+            .getCollectionBookmarkByLocalId(customCreate.localID.toLong())
+            .executeAsOne()
+        assertEquals(linkDeleteTimestamp, linkAfterAck.modified_at)
         assertEquals(Mutation.DELETED, deleteMutation.mutation)
         assertEquals("remote-pending-custom-delete-collection-row", deleteMutation.model.bookmarkRemoteId)
         assertEquals("remote-pending-custom-delete-collection", deleteMutation.model.collectionRemoteId)
+        assertEquals(linkDeleteTimestamp, deleteMutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
     }
 
     @Test
@@ -3189,9 +3311,11 @@ class BookmarkSyncArchitectureTest {
         val beforeAck = database.bookmarksQueries
             .getBookmarkByLocalId(bookmark.id.toLong())
             .executeAsOne()
+        val readdTimestamp = requireNotNull(beforeAck.default_modified_at)
         assertEquals(1L, beforeAck.is_in_default_collection)
         assertEquals("DELETED", beforeAck.default_pending_op)
         assertNull(beforeAck.remote_id)
+        assertEquals(150L, readdTimestamp)
 
         val createAck = LocalModelMutation(
             model = defaultCreate.model.copy(bookmarkRemoteId = "remote-default-readd"),
@@ -3211,6 +3335,7 @@ class BookmarkSyncArchitectureTest {
         assertEquals(1L, afterAck.is_in_default_collection)
         assertEquals("remote-default-readd", afterAck.remote_id)
         assertNull(afterAck.default_pending_op)
+        assertEquals(readdTimestamp, afterAck.default_modified_at)
         assertTrue(collectionBookmarksRepository.fetchMutatedCollectionBookmarks().none())
     }
 
@@ -3227,6 +3352,7 @@ class BookmarkSyncArchitectureTest {
         val beforeAck = database.bookmarksQueries
             .getBookmarkByLocalId(bookmark.id.toLong())
             .executeAsOne()
+        val deleteTimestamp = requireNotNull(beforeAck.default_modified_at)
         assertEquals(0L, beforeAck.is_in_default_collection)
         assertEquals("DELETED", beforeAck.default_pending_op)
         assertNull(beforeAck.remote_id)
@@ -3249,9 +3375,11 @@ class BookmarkSyncArchitectureTest {
             .executeAsOne()
         assertEquals("remote-default-readd-remove", afterAck.remote_id)
         assertEquals("DELETED", afterAck.default_pending_op)
+        assertEquals(deleteTimestamp, afterAck.default_modified_at)
         val deleteMutation = collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single()
         assertEquals(Mutation.DELETED, deleteMutation.mutation)
         assertEquals("remote-default-readd-remove", deleteMutation.model.bookmarkRemoteId)
+        assertEquals(deleteTimestamp, deleteMutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
     }
 
     @Test
@@ -3349,6 +3477,10 @@ class BookmarkSyncArchitectureTest {
         collectionBookmarksRepository.markMutatedCollectionBookmarksInFlight(listOf(assertNotNull(remoteBackedCreate.ack)))
 
         collectionBookmarksRepository.removeBookmarkFromCollection(DEFAULT_COLLECTION_ID, remoteBackedBookmark)
+        val remoteBackedBeforeAck = database.bookmarksQueries
+            .getBookmarkByLocalId(remoteBackedBookmark.id.toLong())
+            .executeAsOne()
+        val remoteBackedDeleteTimestamp = requireNotNull(remoteBackedBeforeAck.default_modified_at)
         collectionBookmarksRepository.applyRemoteChanges(
             updatesToPersist = emptyList(),
             localMutationsToClear = listOf(remoteBackedCreate)
@@ -3364,6 +3496,8 @@ class BookmarkSyncArchitectureTest {
         }
         assertEquals(Mutation.DELETED, remoteBackedDelete.mutation)
         assertEquals("remote-pending-default-backed", remoteBackedDelete.model.bookmarkRemoteId)
+        assertEquals(remoteBackedDeleteTimestamp, remoteBackedRow.default_modified_at)
+        assertEquals(remoteBackedDeleteTimestamp, remoteBackedDelete.model.lastUpdated.fromPlatform().toEpochMilliseconds())
     }
 
     @Test
@@ -3686,7 +3820,7 @@ class BookmarkSyncArchitectureTest {
     }
 
     private fun createCollection(name: String, remoteId: String): String {
-        database.collectionsQueries.addNewCollection(name = name, timestamp = null)
+        database.collectionsQueries.addNewCollection(name = name, timestamp = 1L)
         val collection = database.collectionsQueries.getCollectionByName(name).executeAsOne()
         database.collectionsQueries.updateRemoteCollectionByLocalId(
             remote_id = remoteId,

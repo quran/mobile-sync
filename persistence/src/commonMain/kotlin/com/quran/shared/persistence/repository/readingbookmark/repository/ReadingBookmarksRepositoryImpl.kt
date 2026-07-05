@@ -14,7 +14,9 @@ import com.quran.shared.persistence.repository.readingbookmark.extension.toPageR
 import com.quran.shared.persistence.repository.readingbookmark.extension.toReadingBookmark
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.QuranData
-import com.quran.shared.persistence.util.toEpochMillisecondsOrNull
+import com.quran.shared.persistence.util.currentEpochMilliseconds
+import com.quran.shared.persistence.util.currentPlatformDateTime
+import com.quran.shared.persistence.util.toEpochMillisecondsFromPlatform
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.Dispatchers
@@ -50,7 +52,7 @@ class ReadingBookmarksRepositoryImpl(
     }
 
     override suspend fun addAyahReadingBookmark(sura: Int, ayah: Int): AyahReadingBookmark {
-        return addAyahReadingBookmarkWithTimestampMillis(sura, ayah, timestampMillis = null)
+        return addAyahReadingBookmark(sura, ayah, currentPlatformDateTime())
     }
 
     override suspend fun addAyahReadingBookmark(
@@ -58,13 +60,13 @@ class ReadingBookmarksRepositoryImpl(
         ayah: Int,
         timestamp: PlatformDateTime
     ): AyahReadingBookmark {
-        return addAyahReadingBookmarkWithTimestampMillis(sura, ayah, timestamp.toEpochMillisecondsOrNull())
+        return addAyahReadingBookmarkWithTimestampMillis(sura, ayah, timestamp.toEpochMillisecondsFromPlatform())
     }
 
     private suspend fun addAyahReadingBookmarkWithTimestampMillis(
         sura: Int,
         ayah: Int,
-        timestampMillis: Long?
+        timestampMillis: Long
     ): AyahReadingBookmark {
         logger.i { "Adding ayah reading bookmark for $sura:$ayah" }
         return withContext(Dispatchers.IO) {
@@ -83,7 +85,7 @@ class ReadingBookmarksRepositoryImpl(
                     local_id = row.local_id,
                     timestamp = timestampMillis
                 )
-                reconciler.reconcile()
+                reconciler.reconcile(timestampMillis)
                 created = bookmarkQueries.value
                     .getBookmarkForAyah(sura.toLong(), ayah.toLong())
                     .executeAsOne()
@@ -94,16 +96,16 @@ class ReadingBookmarksRepositoryImpl(
     }
 
     override suspend fun addPageReadingBookmark(page: Int): PageReadingBookmark {
-        return addPageReadingBookmarkWithTimestampMillis(page, timestampMillis = null)
+        return addPageReadingBookmark(page, currentPlatformDateTime())
     }
 
     override suspend fun addPageReadingBookmark(page: Int, timestamp: PlatformDateTime): PageReadingBookmark {
-        return addPageReadingBookmarkWithTimestampMillis(page, timestamp.toEpochMillisecondsOrNull())
+        return addPageReadingBookmarkWithTimestampMillis(page, timestamp.toEpochMillisecondsFromPlatform())
     }
 
     private suspend fun addPageReadingBookmarkWithTimestampMillis(
         page: Int,
-        timestampMillis: Long?
+        timestampMillis: Long
     ): PageReadingBookmark {
         logger.i { "Adding page reading bookmark for page=$page" }
         return withContext(Dispatchers.IO) {
@@ -120,7 +122,7 @@ class ReadingBookmarksRepositoryImpl(
                     local_id = row.local_id,
                     timestamp = timestampMillis
                 )
-                reconciler.reconcile()
+                reconciler.reconcile(timestampMillis)
                 created = bookmarkQueries.value
                     .getBookmarkForPage(page.toLong())
                     .executeAsOne()
@@ -133,6 +135,7 @@ class ReadingBookmarksRepositoryImpl(
     override suspend fun deleteReadingBookmark(): Boolean {
         logger.i { "Deleting current reading bookmark" }
         return withContext(Dispatchers.IO) {
+            val timestampMillis = currentEpochMilliseconds()
             var deleted = false
             database.transaction {
                 val row = bookmarkQueries.value.getCurrentReadingBookmark().executeAsOneOrNull()
@@ -143,21 +146,21 @@ class ReadingBookmarksRepositoryImpl(
                 when {
                     hasSavedMembership -> bookmarkQueries.value.clearReadingBookmark(
                         local_id = row.local_id,
-                        timestamp = null
+                        timestamp = timestampMillis
                     )
                     row.remote_id == null && row.reading_pending_op == "CREATED" &&
                         row.reading_pending_version > 1L ->
                         bookmarkQueries.value.markPendingReadingBookmarkDeleted(
                             local_id = row.local_id,
-                            timestamp = null
+                            timestamp = timestampMillis
                         )
                     row.remote_id == null -> bookmarkQueries.value.hardDeleteBookmarkByLocalId(row.local_id)
                     else -> bookmarkQueries.value.markBookmarkDeleted(
                         local_id = row.local_id,
-                        timestamp = null
+                        timestamp = timestampMillis
                     )
                 }
-                reconciler.reconcile()
+                reconciler.reconcile(timestampMillis)
                 deleted = true
             }
             deleted

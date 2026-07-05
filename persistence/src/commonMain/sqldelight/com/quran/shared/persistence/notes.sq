@@ -77,8 +77,8 @@ addNewNote:
     :note,
     :start_ayah_id,
     :end_ayah_id,
-    COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
-    COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    :timestamp,
+    :timestamp,
     0,
     1
   );
@@ -114,7 +114,7 @@ updateNote:
     end_ayah_id = :end_ayah_id,
     deleted = 0,
     is_edited = CASE WHEN remote_id IS NULL THEN 0 ELSE 1 END,
-    modified_at = COALESCE(:timestamp, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    modified_at = :timestamp,
     pending_version = pending_version + 1
   WHERE local_id = :id;
 
@@ -122,6 +122,7 @@ deleteNote {
   UPDATE note
   SET deleted = 1,
     is_edited = CASE WHEN remote_id IS NULL THEN is_edited ELSE 1 END,
+    modified_at = :timestamp,
     pending_version = pending_version + 1
   WHERE local_id = :id;
 }
@@ -197,7 +198,7 @@ clearLocalMutationFor {
   UPDATE note
   SET deleted = 0,
     is_edited = 0,
-    modified_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+    modified_at = :modified_at
   WHERE local_id = :id
     AND remote_id IS NOT NULL
     AND deleted = 0

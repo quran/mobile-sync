@@ -23,8 +23,10 @@ import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconc
 import com.quran.shared.persistence.repository.bookmark.extension.toAyahBookmark
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.QuranData
+import com.quran.shared.persistence.util.currentEpochMilliseconds
+import com.quran.shared.persistence.util.currentPlatformDateTime
 import com.quran.shared.persistence.util.fromPlatform
-import com.quran.shared.persistence.util.toEpochMillisecondsOrNull
+import com.quran.shared.persistence.util.toEpochMillisecondsFromPlatform
 import com.quran.shared.persistence.util.toPlatform
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -63,7 +65,7 @@ class BookmarksRepositoryImpl(
     }
 
     override suspend fun addBookmark(sura: Int, ayah: Int): AyahBookmark {
-        return addBookmark(sura = sura, ayah = ayah, collectionIds = emptyList())
+        return addBookmark(sura = sura, ayah = ayah, timestamp = currentPlatformDateTime())
     }
 
     override suspend fun addBookmark(sura: Int, ayah: Int, timestamp: PlatformDateTime): AyahBookmark {
@@ -80,12 +82,7 @@ class BookmarksRepositoryImpl(
         ayah: Int,
         collectionIds: List<String>
     ): AyahBookmark {
-        return addBookmarkWithTimestampMillis(
-            sura = sura,
-            ayah = ayah,
-            collectionLocalIds = collectionIds,
-            timestampMillis = null
-        )
+        return addBookmark(sura, ayah, collectionIds, currentPlatformDateTime())
     }
 
     override suspend fun addBookmark(
@@ -98,7 +95,7 @@ class BookmarksRepositoryImpl(
             sura = sura,
             ayah = ayah,
             collectionLocalIds = collectionIds,
-            timestampMillis = timestamp.toEpochMillisecondsOrNull()
+            timestampMillis = timestamp.toEpochMillisecondsFromPlatform()
         )
     }
 
@@ -106,7 +103,7 @@ class BookmarksRepositoryImpl(
         sura: Int,
         ayah: Int,
         collectionLocalIds: List<String>,
-        timestampMillis: Long?
+        timestampMillis: Long
     ): AyahBookmark {
         logger.i { "Adding ayah bookmark for $sura:$ayah" }
         return withContext(Dispatchers.IO) {
@@ -114,7 +111,6 @@ class BookmarksRepositoryImpl(
             database.transaction {
                 val normalizedCollectionIds = normalizeCollectionIds(collectionLocalIds)
                 val ayahId = getAyahId(sura, ayah).toLong()
-
                 bookmarkQueries.value.upsertAyahBookmark(
                     remote_id = null,
                     ayah_id = ayahId,
@@ -151,7 +147,7 @@ class BookmarksRepositoryImpl(
                         )
                     }
 
-                reconciler.reconcile()
+                reconciler.reconcile(timestampMillis)
                 created = bookmarkQueries.value
                     .getBookmarkForAyah(sura.toLong(), ayah.toLong())
                     .executeAsOne()
@@ -165,11 +161,7 @@ class BookmarksRepositoryImpl(
         id: String,
         collectionIds: List<String>
     ): Boolean {
-        return replaceBookmarkCollectionsWithTimestampMillis(
-            localId = id,
-            collectionLocalIds = collectionIds,
-            timestampMillis = null
-        )
+        return replaceBookmarkCollections(id, collectionIds, currentPlatformDateTime())
     }
 
     override suspend fun replaceBookmarkCollections(
@@ -180,14 +172,14 @@ class BookmarksRepositoryImpl(
         return replaceBookmarkCollectionsWithTimestampMillis(
             localId = id,
             collectionLocalIds = collectionIds,
-            timestampMillis = timestamp.toEpochMillisecondsOrNull()
+            timestampMillis = timestamp.toEpochMillisecondsFromPlatform()
         )
     }
 
     private suspend fun replaceBookmarkCollectionsWithTimestampMillis(
         localId: String,
         collectionLocalIds: List<String>,
-        timestampMillis: Long?
+        timestampMillis: Long
     ): Boolean {
         logger.i { "Replacing ayah bookmark collection memberships localId=$localId" }
         return withContext(Dispatchers.IO) {
@@ -212,12 +204,7 @@ class BookmarksRepositoryImpl(
         ayah: Int,
         collectionIds: List<String>
     ): BookmarkCollectionsReplacementResult {
-        return replaceAyahBookmarkCollectionsWithTimestampMillis(
-            sura = sura,
-            ayah = ayah,
-            collectionLocalIds = collectionIds,
-            timestampMillis = null
-        )
+        return replaceAyahBookmarkCollections(sura, ayah, collectionIds, currentPlatformDateTime())
     }
 
     override suspend fun replaceAyahBookmarkCollections(
@@ -230,7 +217,7 @@ class BookmarksRepositoryImpl(
             sura = sura,
             ayah = ayah,
             collectionLocalIds = collectionIds,
-            timestampMillis = timestamp.toEpochMillisecondsOrNull()
+            timestampMillis = timestamp.toEpochMillisecondsFromPlatform()
         )
     }
 
@@ -238,7 +225,7 @@ class BookmarksRepositoryImpl(
         sura: Int,
         ayah: Int,
         collectionLocalIds: List<String>,
-        timestampMillis: Long?
+        timestampMillis: Long
     ): BookmarkCollectionsReplacementResult {
         logger.i { "Replacing ayah bookmark collection memberships for $sura:$ayah" }
         return withContext(Dispatchers.IO) {
@@ -280,13 +267,14 @@ class BookmarksRepositoryImpl(
     override suspend fun deleteBookmark(sura: Int, ayah: Int): Boolean {
         logger.i { "Deleting ayah bookmark for $sura:$ayah" }
         return withContext(Dispatchers.IO) {
+            val timestampMillis = currentEpochMilliseconds()
             var deleted = false
             database.transaction {
                 val bookmark = bookmarkQueries.value
                     .getBookmarkForAyah(sura.toLong(), ayah.toLong())
                     .executeAsOneOrNull()
                 if (bookmark?.hasSavedBookmarkMembership() == true) {
-                    deleteSavedBookmarkByLocalIdInTransaction(bookmark.local_id, null)
+                    deleteSavedBookmarkByLocalIdInTransaction(bookmark.local_id, timestampMillis)
                     deleted = true
                 }
             }
@@ -306,12 +294,13 @@ class BookmarksRepositoryImpl(
 
     private suspend fun deleteBookmarkWithLocalId(localId: String): Boolean {
         return withContext(Dispatchers.IO) {
+            val timestampMillis = currentEpochMilliseconds()
             var deleted = false
             database.transaction {
                 val id = localId.toLong()
                 val bookmark = bookmarkQueries.value.getBookmarkByLocalId(id).executeAsOneOrNull()
                 if (bookmark?.hasSavedBookmarkMembership() == true) {
-                    deleteSavedBookmarkByLocalIdInTransaction(id, null)
+                    deleteSavedBookmarkByLocalIdInTransaction(id, timestampMillis)
                     deleted = true
                 }
             }
@@ -327,7 +316,7 @@ class BookmarksRepositoryImpl(
     private fun replaceBookmarkCollectionsInTransaction(
         bookmark: DatabaseBookmark,
         collectionLocalIds: List<String>,
-        timestampMillis: Long?
+        timestampMillis: Long
     ): Boolean {
         require(bookmark.bookmark_type == "AYAH") {
             "Expected ayah bookmark localId=${bookmark.local_id} before replacing collections."
@@ -395,7 +384,7 @@ class BookmarksRepositoryImpl(
                 timestamp = timestampMillis
             )
         }
-        reconciler.reconcile()
+        reconciler.reconcile(timestampMillis)
         return true
     }
 
@@ -412,7 +401,7 @@ class BookmarksRepositoryImpl(
         }
     }
 
-    private fun deleteSavedBookmarkByLocalIdInTransaction(localId: Long, timestampMillis: Long?) {
+    private fun deleteSavedBookmarkByLocalIdInTransaction(localId: Long, timestampMillis: Long) {
         bookmarkQueries.value.clearDefaultCollection(
             local_id = localId,
             timestamp = timestampMillis
@@ -421,7 +410,7 @@ class BookmarksRepositoryImpl(
             bookmark_local_id = localId,
             timestamp = timestampMillis
         )
-        reconciler.reconcile()
+        reconciler.reconcile(timestampMillis)
     }
 
     override suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<RemoteBookmark>> {

@@ -17,6 +17,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlin.time.Instant
 
 class NotesRepositoryTest {
@@ -127,7 +128,7 @@ class NotesRepositoryTest {
     }
 
     @Test
-    fun `deleteNote preserves timestamp for remote rows`() = runTest {
+    fun `deleteNote updates timestamp for remote rows`() = runTest {
         database.notesQueries.persistRemoteNote(
             remote_id = "remote-note-id",
             note = "test note",
@@ -143,8 +144,8 @@ class NotesRepositoryTest {
         val mutation = repository.fetchMutatedNotes(0).single()
         val record = database.notesQueries.getNoteByLocalId(note.local_id).executeAsOne()
         assertEquals(Mutation.DELETED, mutation.mutation)
-        assertEquals(1_700_000_001_000L, mutation.model.lastUpdated.fromPlatform().toEpochMilliseconds())
-        assertEquals(1_700_000_001_000L, record.modified_at)
+        assertTrue(mutation.model.lastUpdated.fromPlatform().toEpochMilliseconds() > 1_700_000_001_000L)
+        assertTrue(record.modified_at > 1_700_000_001_000L)
     }
 
     @Test
@@ -180,6 +181,7 @@ class NotesRepositoryTest {
         val record = database.notesQueries.getNoteByRemoteId("remote-note-id").executeAsOne()
         assertEquals("synced note", record.note)
         assertEquals(0L, record.is_edited)
+        assertEquals(1_700_000_002_000L, record.modified_at)
         assertEquals(emptyList(), repository.fetchMutatedNotes(0))
     }
 

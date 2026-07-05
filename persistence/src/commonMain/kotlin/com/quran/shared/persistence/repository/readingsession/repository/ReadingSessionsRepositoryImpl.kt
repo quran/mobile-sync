@@ -19,8 +19,10 @@ import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
 import com.quran.shared.persistence.repository.readingsession.extension.toReadingSession
 import com.quran.shared.persistence.repository.readingsession.extension.toReadingSessionMutation
 import com.quran.shared.persistence.util.PlatformDateTime
+import com.quran.shared.persistence.util.currentEpochMilliseconds
 import com.quran.shared.persistence.util.fromPlatform
-import com.quran.shared.persistence.util.toEpochMillisecondsOrNull
+import com.quran.shared.persistence.util.toEpochMillisecondsFromPlatform
+import com.quran.shared.persistence.util.toPlatform
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.Dispatchers
@@ -28,8 +30,7 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-import kotlin.time.Clock
-import kotlin.time.ExperimentalTime
+import kotlin.time.Instant
 
 @Inject
 @SingleIn(AppScope::class)
@@ -68,21 +69,21 @@ class ReadingSessionsRepositoryImpl(
     }
 
     override suspend fun addReadingSession(sura: Int, ayah: Int): ReadingSession {
-        return addReadingSessionWithTimestampMillis(sura, ayah, timestampMillis = null)
+        return addReadingSession(sura, ayah, currentRepositoryPlatformDateTime())
     }
 
     override suspend fun addReadingSession(sura: Int, ayah: Int, timestamp: PlatformDateTime): ReadingSession {
-        return addReadingSessionWithTimestampMillis(sura, ayah, timestamp.toEpochMillisecondsOrNull())
+        return addReadingSessionWithTimestampMillis(sura, ayah, timestamp.toEpochMillisecondsFromPlatform())
     }
 
     private suspend fun addReadingSessionWithTimestampMillis(
         sura: Int,
         ayah: Int,
-        timestampMillis: Long?
+        timestampMillis: Long
     ): ReadingSession {
         logger.i { "Adding reading session ($sura:$ayah)" }
         return withContext(Dispatchers.IO) {
-            val updatedAt = timestampMillis ?: currentTimeMillis()
+            val updatedAt = timestampMillis
             var readingSession: ReadingSession? = null
 
             database.transaction {
@@ -107,7 +108,7 @@ class ReadingSessionsRepositoryImpl(
     }
 
     override suspend fun updateReadingSession(id: String, sura: Int, ayah: Int): ReadingSession {
-        return updateReadingSessionWithTimestampMillis(id, sura, ayah, timestampMillis = null)
+        return updateReadingSession(id, sura, ayah, currentRepositoryPlatformDateTime())
     }
 
     override suspend fun updateReadingSession(
@@ -116,19 +117,19 @@ class ReadingSessionsRepositoryImpl(
         ayah: Int,
         timestamp: PlatformDateTime
     ): ReadingSession {
-        return updateReadingSessionWithTimestampMillis(id, sura, ayah, timestamp.toEpochMillisecondsOrNull())
+        return updateReadingSessionWithTimestampMillis(id, sura, ayah, timestamp.toEpochMillisecondsFromPlatform())
     }
 
     private suspend fun updateReadingSessionWithTimestampMillis(
         id: String,
         sura: Int,
         ayah: Int,
-        timestampMillis: Long?
+        timestampMillis: Long
     ): ReadingSession {
         logger.i { "Updating reading session id=$id to $sura:$ayah" }
         return withContext(Dispatchers.IO) {
             val localId = id.toLong()
-            val updatedAt = timestampMillis ?: currentTimeMillis()
+            val updatedAt = timestampMillis
             var updatedSession: ReadingSession? = null
 
             database.transaction {
@@ -168,6 +169,7 @@ class ReadingSessionsRepositoryImpl(
     override suspend fun deleteReadingSession(sura: Int, ayah: Int): Boolean {
         logger.i { "Deleting reading session for $sura:$ayah" }
         return withContext(Dispatchers.IO) {
+            val timestampMillis = currentTimeMillis()
             var deleted = false
             database.transaction {
                 val existing = readingSessionsQueries.value.getReadingSessionForChapterVerse(
@@ -177,7 +179,8 @@ class ReadingSessionsRepositoryImpl(
                 if (existing != null) {
                     readingSessionsQueries.value.deleteReadingSession(
                         chapter_number = sura.toLong(),
-                        verse_number = ayah.toLong()
+                        verse_number = ayah.toLong(),
+                        timestamp = timestampMillis
                     )
                     deleted = true
                 }
@@ -440,7 +443,7 @@ class ReadingSessionsRepositoryImpl(
         val localId: Long,
         val pendingVersion: Long
     )
-}
 
-@OptIn(ExperimentalTime::class)
-private fun currentEpochMilliseconds(): Long = Clock.System.now().toEpochMilliseconds()
+    private fun currentRepositoryPlatformDateTime(): PlatformDateTime =
+        Instant.fromEpochMilliseconds(currentTimeMillis()).toPlatform()
+}
