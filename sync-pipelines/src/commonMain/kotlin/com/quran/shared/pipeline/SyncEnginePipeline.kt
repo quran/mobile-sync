@@ -502,7 +502,8 @@ private fun RemoteBookmark.toSyncEngine(id: String): SyncBookmark {
             ayah = this.ayah,
             lastModified = this.lastUpdated.fromPlatform(),
             isReading = this.isReading,
-            createdAt = this.createdAt?.fromPlatform()
+            createdAt = this.createdAt?.fromPlatform(),
+            isInDefaultCollection = this.isInDefaultCollection
         )
         is RemoteBookmark.Page -> SyncBookmark.PageBookmark(
             id = id,
@@ -541,7 +542,8 @@ private fun SyncBookmark.toRemoteInput(): RemoteBookmark {
                 ayah = this.ayah,
                 lastUpdated = this.lastModified.toPlatform(),
                 isReading = this.isReading,
-                createdAt = this.createdAt?.toPlatform()
+                createdAt = this.createdAt?.toPlatform(),
+                isInDefaultCollection = this.isInDefaultCollection
             )
         is SyncBookmark.PageBookmark ->
             RemoteBookmark.Page(

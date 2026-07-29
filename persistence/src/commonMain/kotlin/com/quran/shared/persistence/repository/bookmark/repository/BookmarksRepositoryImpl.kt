@@ -684,6 +684,29 @@ class BookmarksRepositoryImpl(
             is_reading = if (remote.model.isReading) 1L else 0L,
             modified_at = updatedAt
         )
+        applyRemoteDefaultMembership(row, remote, updatedAt)
+    }
+
+    private fun applyRemoteDefaultMembership(
+        row: DatabaseBookmark,
+        remote: RemoteModelMutation<RemoteBookmark>,
+        updatedAt: Long
+    ) {
+        val model = remote.model as? RemoteBookmark.Ayah ?: return
+        val isInDefaultCollection = model.isInDefaultCollection ?: return
+        if (row.default_pending_op != null) {
+            logger.d {
+                "Preserving pending local default membership over remote bookmark snapshot: " +
+                    "remoteId=${remote.remoteID}, pendingOp=${row.default_pending_op}"
+            }
+            return
+        }
+        bookmarkQueries.value.setDefaultFromRemote(
+            local_id = row.local_id,
+            remote_id = remote.remoteID,
+            is_in_default_collection = if (isInDefaultCollection) 1L else 0L,
+            modified_at = updatedAt
+        )
     }
 
     private fun getBookmarkAtLocation(bookmark: RemoteBookmark): DatabaseBookmark? {

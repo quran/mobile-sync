@@ -126,6 +126,97 @@ class BookmarkSyncArchitectureTest {
     }
 
     @Test
+    fun `remote ayah bookmark populates and clears default membership`() = runTest {
+        bookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                remoteAyahBookmark(
+                    sura = 2,
+                    ayah = 254,
+                    remoteId = "remote-default-membership",
+                    isInDefaultCollection = true,
+                    timestamp = 100
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        var row = database.bookmarksQueries.getBookmarkByRemoteId("remote-default-membership").executeAsOne()
+        assertEquals(1L, row.is_in_default_collection)
+        assertEquals(0L, database.bookmark_collectionsQueries.countAll().executeAsOne())
+
+        bookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                remoteAyahBookmark(
+                    sura = 2,
+                    ayah = 254,
+                    remoteId = "remote-default-membership",
+                    isInDefaultCollection = false,
+                    timestamp = 200,
+                    mutation = Mutation.MODIFIED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        row = database.bookmarksQueries.getBookmarkByRemoteId("remote-default-membership").executeAsOne()
+        assertEquals(0L, row.is_in_default_collection)
+    }
+
+    @Test
+    fun `remote ayah bookmark without default membership preserves existing value`() = runTest {
+        bookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                remoteAyahBookmark(
+                    sura = 2,
+                    ayah = 253,
+                    remoteId = "remote-missing-default-membership",
+                    isInDefaultCollection = true,
+                    timestamp = 100
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+        bookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                remoteAyahBookmark(
+                    sura = 2,
+                    ayah = 253,
+                    remoteId = "remote-missing-default-membership",
+                    isInDefaultCollection = null,
+                    timestamp = 200,
+                    mutation = Mutation.MODIFIED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        val row = database.bookmarksQueries.getBookmarkByRemoteId("remote-missing-default-membership").executeAsOne()
+        assertEquals(1L, row.is_in_default_collection)
+    }
+
+    @Test
+    fun `remote ayah default membership preserves pending local membership`() = runTest {
+        val bookmark = bookmarksRepository.addBookmark(2, 252, listOf(DEFAULT_COLLECTION_ID), at(100))
+
+        bookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                remoteAyahBookmark(
+                    sura = 2,
+                    ayah = 252,
+                    remoteId = "remote-pending-default-membership",
+                    isInDefaultCollection = false,
+                    timestamp = 200
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        val row = database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOne()
+        assertEquals(1L, row.is_in_default_collection)
+        assertEquals("CREATED", row.default_pending_op)
+    }
+
+    @Test
     fun `remote created page bookmark persists created_at separately from modified_at`() = runTest {
         bookmarksRepository.applyRemoteChanges(
             updatesToPersist = listOf(
@@ -3869,6 +3960,26 @@ class BookmarkSyncArchitectureTest {
             mutation = mutation
         )
     }
+
+    private fun remoteAyahBookmark(
+        sura: Int,
+        ayah: Int,
+        remoteId: String,
+        isInDefaultCollection: Boolean?,
+        timestamp: Long,
+        mutation: Mutation = Mutation.CREATED
+    ): RemoteModelMutation<RemoteBookmark> =
+        RemoteModelMutation(
+            model = RemoteBookmark.Ayah(
+                sura = sura,
+                ayah = ayah,
+                isReading = false,
+                lastUpdated = at(timestamp),
+                isInDefaultCollection = isInDefaultCollection
+            ),
+            remoteID = remoteId,
+            mutation = mutation
+        )
 
     private fun activeCustomCollectionIds(bookmarkLocalId: String): Set<String> =
         database.bookmark_collectionsQueries

@@ -19,6 +19,7 @@ sealed class RemoteBookmark {
         val ayah: Int,
         override val isReading: Boolean,
         override val lastUpdated: PlatformDateTime,
-        override val createdAt: PlatformDateTime? = null
+        override val createdAt: PlatformDateTime? = null,
+        val isInDefaultCollection: Boolean? = null
     ) : RemoteBookmark()
 }
