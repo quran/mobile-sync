@@ -15,7 +15,10 @@ import kotlinx.coroutines.internal.synchronized
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
 import kotlin.math.pow
 import kotlin.time.Clock
 import kotlin.time.Duration
@@ -70,6 +73,15 @@ private sealed class SchedulerState {
 
 internal var schedulerAfterCommandDrainSnapshotHook: (() -> Unit)? = null
 internal var schedulerBeforeCommandDrainReleaseHook: (() -> Unit)? = null
+
+private class SchedulerAttemptContext(
+    val attempt: Int
+) : AbstractCoroutineContextElement(SchedulerAttemptContext) {
+    companion object Key : CoroutineContext.Key<SchedulerAttemptContext>
+}
+
+internal suspend fun currentSchedulerAttempt(): Int =
+    currentCoroutineContext()[SchedulerAttemptContext]?.attempt ?: 0
 
 /**
  * A scheduler that manages the execution of a task function with configurable timing and retry logic.
@@ -296,7 +308,9 @@ class Scheduler(
 
         logger.d { "Executing task function, state: WaitingForReply" }
         try {
-            taskFunction()
+            withContext(SchedulerAttemptContext(startingState.getRetryCount())) {
+                taskFunction()
+            }
 
             mutex.withLock {
                 state = SchedulerState.Replied(original = startingState)

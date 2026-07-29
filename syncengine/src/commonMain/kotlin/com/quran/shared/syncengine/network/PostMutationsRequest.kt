@@ -67,7 +67,16 @@ class PostMutationsRequest(
         mutations: List<SyncMutation>,
         lastModificationDate: Long,
         authHeaders: Map<String, String>
+    ): MutationsResponse =
+        postMutations(mutations, lastModificationDate, authHeaders, attempt = 0)
+
+    internal suspend fun postMutations(
+        mutations: List<SyncMutation>,
+        lastModificationDate: Long,
+        authHeaders: Map<String, String>,
+        attempt: Int
     ): MutationsResponse {
+        val logContext = SyncRequestLogContext.create(attempt)
         val requestBody = PostMutationsRequestData(
             mutations = mutations.map { localMutation ->
                 PostMutationRequestData(
@@ -80,12 +89,19 @@ class PostMutationsRequest(
         )
 
         val fullUrl = "$url/v1/sync"
-        logger.i { "Starting POST mutations request to $fullUrl" }
+        logger.i { logContext.format("Starting POST mutations request to $fullUrl") }
         
         // Log request body summary
-        logger.d { "Request body: mutations count=${requestBody.mutations.size}, lastMutationAt=$lastModificationDate" }
+        logger.d {
+            logContext.format(
+                "Request body: mutations count=${requestBody.mutations.size}, " +
+                    "lastMutationAt=$lastModificationDate"
+            )
+        }
         if (requestBody.mutations.isNotEmpty()) {
-            logger.v { "First mutation sample: ${requestBody.mutations.first()}" }
+            logger.v {
+                logContext.format("First mutation sample: ${requestBody.mutations.first()}")
+            }
         }
 
         val httpResponse = httpClient.post(fullUrl) {
@@ -99,26 +115,33 @@ class PostMutationsRequest(
             setBody(requestBody)
         }
 
-        logger.d { "HTTP response status: ${httpResponse.status}" }
+        logger.d { logContext.format("HTTP response status: ${httpResponse.status}") }
 
         if (!httpResponse.status.isSuccess()) {
-            httpResponse.processError(logger)
+            httpResponse.processError(logger, logContext)
         }
 
         val response: PostMutationsResponse = httpResponse.body()
         if (!response.success) {
-            logger.e { "Server returned success=false in response body" }
+            logger.e { logContext.format("Server returned success=false in response body") }
             logger.e {
-                "Response data: lastMutationAt=${response.data.lastMutationAt}, " +
-                    "mutations count=${response.data.mutations.size}"
+                logContext.format(
+                    "Response data: lastMutationAt=${response.data.lastMutationAt}, " +
+                        "mutations count=${response.data.mutations.size}"
+                )
             }
             throw RuntimeException("Server returned success=false in response body")
         }
 
-        logger.i { "Received response: success=${response.success}" }
+        logger.i { logContext.format("Received response: success=${response.success}") }
 
         val result = response.data.toMutationsResponse()
-        logger.i { "lastModificationDate=${result.lastModificationDate}, mutations count=${result.mutations.size}" }
+        logger.i {
+            logContext.format(
+                "lastModificationDate=${result.lastModificationDate}, " +
+                    "mutations count=${result.mutations.size}"
+            )
+        }
 
         return result
     }

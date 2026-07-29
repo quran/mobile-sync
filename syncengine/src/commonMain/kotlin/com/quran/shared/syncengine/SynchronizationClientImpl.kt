@@ -9,6 +9,7 @@ import com.quran.shared.syncengine.network.PostMutationsRequest
 import com.quran.shared.syncengine.scheduling.Scheduler
 import com.quran.shared.syncengine.scheduling.Trigger
 import com.quran.shared.syncengine.scheduling.createScheduler
+import com.quran.shared.syncengine.scheduling.currentSchedulerAttempt
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
@@ -85,6 +86,7 @@ internal class SynchronizationClientImpl(
     }
 
     private suspend fun startSyncOperation() {
+        val attempt = currentSchedulerAttempt()
         val syncEpoch = try {
             if (!syncLifecycleGate.canStartSync()) {
                 logger.i { "Sync lifecycle is unavailable, skipping sync operation" }
@@ -101,7 +103,7 @@ internal class SynchronizationClientImpl(
             return
         }
 
-        logger.i { "Starting sync operation for ${resourceAdapters.size} resource(s)" }
+        logger.i { "Starting sync operation attempt=$attempt for ${resourceAdapters.size} resource(s)" }
 
         val authHeaders = getAuthHeaders()
         if (authHeaders.isEmpty()) {
@@ -115,7 +117,7 @@ internal class SynchronizationClientImpl(
             .localLastModificationDate() ?: 0L
 
         val resources = resourceAdapters.map { it.resourceName }.distinct()
-        val remoteResponse = fetchRemoteMutations(lastModificationDate, authHeaders, resources)
+        val remoteResponse = fetchRemoteMutations(lastModificationDate, authHeaders, resources, attempt)
 
         try {
             executeDependencyAwareSync(
@@ -128,7 +130,7 @@ internal class SynchronizationClientImpl(
                         syncLifecycleGate.admitSyncPost(syncEpoch)
                         admitPost()
                     }
-                    val response = pushMutations(mutations, mutationToken, authHeaders)
+                    val response = pushMutations(mutations, mutationToken, authHeaders, attempt)
                     syncLifecycleGate.checkSyncEpoch(syncEpoch)
                     response
                 },
@@ -151,7 +153,8 @@ internal class SynchronizationClientImpl(
     private suspend fun pushMutations(
         mutations: List<SyncMutation>,
         lastModificationDate: Long,
-        authHeaders: Map<String, String>
+        authHeaders: Map<String, String>,
+        attempt: Int
     ): MutationsResponse {
         if (mutations.isEmpty()) {
             logger.d { "No local mutations to push, skipping network request" }
@@ -161,7 +164,7 @@ internal class SynchronizationClientImpl(
         logger.i { "Pushing ${mutations.size} local mutations" }
         val url = environment.endPointURL
         val request = PostMutationsRequest(httpClient, url)
-        val response = request.postMutations(mutations, lastModificationDate, authHeaders)
+        val response = request.postMutations(mutations, lastModificationDate, authHeaders, attempt)
         logger.i { "Successfully pushed mutations: received ${response.mutations.size} pushed remote mutations" }
         return response
     }
@@ -176,7 +179,8 @@ internal class SynchronizationClientImpl(
     private suspend fun fetchRemoteMutations(
         lastModificationDate: Long,
         authHeaders: Map<String, String>,
-        resources: List<String>
+        resources: List<String>,
+        attempt: Int
     ): MutationsResponse {
         logger.d {
             "Fetching remote modifications from ${environment.endPointURL} with " +
@@ -184,7 +188,7 @@ internal class SynchronizationClientImpl(
         }
         val url = environment.endPointURL
         val request = GetMutationsRequest(httpClient, url)
-        return request.getMutations(lastModificationDate, authHeaders, resources)
+        return request.getMutations(lastModificationDate, authHeaders, resources, attempt)
     }
 }
 

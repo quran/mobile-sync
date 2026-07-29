@@ -45,14 +45,21 @@ internal fun String.asMutation(logger: Logger): Mutation {
     }
 }
 
-internal suspend fun HttpResponse.processError(logger: Logger) {
+internal suspend fun HttpResponse.processError(
+    logger: Logger,
+    logContext: SyncRequestLogContext
+) {
     val errorBody = bodyAsText()
-    logger.e { "HTTP error response: status=${status}, body=$errorBody" }
+    logger.e {
+        logContext.format("HTTP error response: status=${status}, body=$errorBody")
+    }
 
     val parsedMessage = try {
         errorResponseJson.decodeFromString<SyncErrorResponse>(errorBody).message
     } catch (e: Exception) {
-        logger.w { "Failed to parse error response, using raw body: ${e.message}" }
+        logger.w {
+            logContext.format("Failed to parse error response, using raw body: ${e.message}")
+        }
         null
     }
 

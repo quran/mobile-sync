@@ -52,10 +52,23 @@ class GetMutationsRequest(
         lastModificationDate: Long,
         authHeaders: Map<String, String>,
         resources: List<String> = emptyList()
+    ): MutationsResponse =
+        getMutations(lastModificationDate, authHeaders, resources, attempt = 0)
+
+    internal suspend fun getMutations(
+        lastModificationDate: Long,
+        authHeaders: Map<String, String>,
+        resources: List<String>,
+        attempt: Int
     ): MutationsResponse {
+        val logContext = SyncRequestLogContext.create(attempt)
         val fullUrl = "$url/v1/sync"
-        logger.i { "Starting GET mutations request to $fullUrl" }
-        logger.d { "Request params: mutationsSince=$lastModificationDate, resources=$resources" }
+        logger.i { logContext.format("Starting GET mutations request to $fullUrl") }
+        logger.d {
+            logContext.format(
+                "Request params: mutationsSince=$lastModificationDate, resources=$resources"
+            )
+        }
 
         val httpResponse = httpClient.get(fullUrl) {
             headers {
@@ -70,20 +83,30 @@ class GetMutationsRequest(
             }
         }
         
-        logger.d { "HTTP response status: ${httpResponse.status}" }
+        logger.d { logContext.format("HTTP response status: ${httpResponse.status}") }
         if (!httpResponse.status.isSuccess()) {
-            httpResponse.processError(logger)
+            httpResponse.processError(logger, logContext)
         }
         
         val apiResponse: ApiResponse = httpResponse.body()
         if (!apiResponse.success) {
-            logger.e { "Server returned success=false in response body" }
-            logger.e { "Response data: lastMutationAt=${apiResponse.data.lastMutationAt}, mutations count=${apiResponse.data.mutations.size}" }
+            logger.e { logContext.format("Server returned success=false in response body") }
+            logger.e {
+                logContext.format(
+                    "Response data: lastMutationAt=${apiResponse.data.lastMutationAt}, " +
+                        "mutations count=${apiResponse.data.mutations.size}"
+                )
+            }
             throw RuntimeException("Server returned success=false in response body")
         }
         
-        logger.i { "Received response: success=${apiResponse.success}" }
-        logger.d { "Response data: lastMutationAt=${apiResponse.data.lastMutationAt}, mutations count=${apiResponse.data.mutations.size}" }
+        logger.i { logContext.format("Received response: success=${apiResponse.success}") }
+        logger.d {
+            logContext.format(
+                "Response data: lastMutationAt=${apiResponse.data.lastMutationAt}, " +
+                    "mutations count=${apiResponse.data.mutations.size}"
+            )
+        }
 
         return apiResponse.data.toMutationsResponse()
     }
