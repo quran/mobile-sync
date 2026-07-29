@@ -72,9 +72,7 @@ class GetMutationsRequest(
         
         logger.d { "HTTP response status: ${httpResponse.status}" }
         if (!httpResponse.status.isSuccess()) {
-            httpResponse.processError(logger) {
-                httpResponse.body<SyncErrorResponse>().message
-            }
+            httpResponse.processError(logger)
         }
         
         val apiResponse: ApiResponse = httpResponse.body()

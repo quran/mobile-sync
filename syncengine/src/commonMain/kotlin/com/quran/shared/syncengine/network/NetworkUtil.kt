@@ -5,7 +5,8 @@ import com.quran.shared.mutations.Mutation
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import kotlinx.serialization.Serializable
-import io.ktor.client.call.body
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 
 @Serializable
 internal data class SyncErrorResponse(
@@ -24,8 +25,13 @@ internal data class SyncErrorDetails(
 @Serializable
 internal data class SyncErrorDetail(
     val code: String,
-    val message: String
+    val message: String,
+    val details: JsonElement? = null
 )
+
+private val errorResponseJson = Json {
+    ignoreUnknownKeys = true
+}
 
 internal fun String.asMutation(logger: Logger): Mutation {
     return when (this) {
@@ -39,12 +45,12 @@ internal fun String.asMutation(logger: Logger): Mutation {
     }
 }
 
-internal suspend fun HttpResponse.processError(logger: Logger, errorMessageExtractor: suspend () -> String? = { null }) {
+internal suspend fun HttpResponse.processError(logger: Logger) {
     val errorBody = bodyAsText()
     logger.e { "HTTP error response: status=${status}, body=$errorBody" }
 
     val parsedMessage = try {
-        errorMessageExtractor()
+        errorResponseJson.decodeFromString<SyncErrorResponse>(errorBody).message
     } catch (e: Exception) {
         logger.w { "Failed to parse error response, using raw body: ${e.message}" }
         null
