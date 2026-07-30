@@ -67,6 +67,41 @@ class PostMutationsRequestTest {
     }
 
     @Test
+    fun `postMutations preserves message from error response with nested details`() = runTest {
+        val errorBody = """
+            {
+              "details": {
+                "success": false,
+                "error": {
+                  "code": "ValidationError",
+                  "message": "\"bookmarkId\" is not allowed",
+                  "details": {}
+                }
+              },
+              "message": "\"bookmarkId\" is not allowed",
+              "type": "unprocessable_entity",
+              "success": false,
+              "requestId": "request-a"
+            }
+        """.trimIndent()
+        val request = postRequestWithResponse(errorBody, HttpStatusCode.UnprocessableEntity)
+
+        val exception = assertFailsWith<SyncNetworkException> {
+            request.postMutations(
+                mutations = listOf(collectionBookmarkCreateRequest()),
+                lastModificationDate = 1000L,
+                authHeaders = emptyMap()
+            )
+        }
+
+        assertEquals("\"bookmarkId\" is not allowed", exception.parsedMessage)
+        assertEquals(errorBody, exception.rawBody)
+
+        val errorResponse = errorResponseJson.decodeFromString<SyncErrorResponse>(errorBody)
+        assertEquals(buildJsonObject {}, errorResponse.details?.error?.details)
+    }
+
+    @Test
     fun `postMutations decodes collection bookmark create ACK with missing resource id`() = runTest {
         val localMutation = collectionBookmarkCreateRequest()
         val request = postRequestWithResponse(
@@ -193,12 +228,15 @@ class PostMutationsRequestTest {
             timestamp = null
         )
 
-    private fun postRequestWithResponse(responseContent: String): PostMutationsRequest {
+    private fun postRequestWithResponse(
+        responseContent: String,
+        responseStatus: HttpStatusCode = HttpStatusCode.OK
+    ): PostMutationsRequest {
         val client = HttpClient(
             MockEngine {
                 respond(
                     content = responseContent,
-                    status = HttpStatusCode.OK,
+                    status = responseStatus,
                     headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
                 )
             }
@@ -208,5 +246,11 @@ class PostMutationsRequestTest {
             }
         }
         return PostMutationsRequest(client, "https://example.test")
+    }
+
+    private companion object {
+        val errorResponseJson = Json {
+            ignoreUnknownKeys = true
+        }
     }
 }
