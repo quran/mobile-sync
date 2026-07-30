@@ -143,22 +143,36 @@ class ReadingSessionsRepositoryImpl(
                     sura.toLong(),
                     ayah.toLong()
                 ).executeAsOneOrNull()
-                require(conflicting == null || conflicting.local_id == localId) {
-                    "Reading session already exists for $sura:$ayah."
+
+                val updatedLocalId = if (conflicting != null && conflicting.local_id != localId) {
+                    logger.i {
+                        "Merging reading session id=$id into existing session " +
+                            "id=${conflicting.local_id} at $sura:$ayah"
+                    }
+                    readingSessionsQueries.value.deleteReadingSession(
+                        chapter_number = existing.chapter_number,
+                        verse_number = existing.verse_number,
+                        timestamp = updatedAt
+                    )
+                    conflicting.local_id
+                } else {
+                    localId
                 }
 
                 readingSessionsQueries.value.updateReadingSession(
-                    local_id = localId,
+                    local_id = updatedLocalId,
                     chapter_number = sura.toLong(),
                     verse_number = ayah.toLong(),
                     modified_at = updatedAt
                 )
                 pruneOldReadingSessions()
 
-                val record = readingSessionsQueries.value.getReadingSessionByLocalId(localId)
+                val record = readingSessionsQueries.value.getReadingSessionByLocalId(updatedLocalId)
                     .executeAsOneOrNull()
-                requireNotNull(record) { "Expected reading session id=$id after update." }
-                require(record.deleted == 0L) { "Expected active reading session id=$id after update." }
+                requireNotNull(record) { "Expected reading session id=$updatedLocalId after update." }
+                require(record.deleted == 0L) {
+                    "Expected active reading session id=$updatedLocalId after update."
+                }
                 updatedSession = record.toReadingSession()
             }
 

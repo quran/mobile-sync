@@ -29,12 +29,14 @@ interface ReadingSessionsRepository {
     suspend fun addReadingSession(sura: Int, ayah: Int, timestamp: PlatformDateTime): ReadingSession
 
     /**
-     * Update an existing active reading session by its mobile-sync ID.
+     * Update an existing active reading session by its mobile-sync ID. If another active
+     * session already occupies the destination, the source is deleted and the destination
+     * is updated instead.
      *
      * @param id the mobile-sync ID of the session to update
      * @param sura the new sura number of the session
      * @param ayah the new ayah number of the session
-     * @return the updated [ReadingSession]
+     * @return the updated [ReadingSession], whose ID may be the existing destination's ID
      */
     @NativeCoroutines
     suspend fun updateReadingSession(id: String, sura: Int, ayah: Int): ReadingSession

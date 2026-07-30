@@ -323,21 +323,73 @@ class ReadingSessionsRepositoryTest {
     }
 
     @Test
-    fun `updateReadingSession handles target conflicts deterministically`() = runTest {
-        val source = repository.addReadingSession(2, 255)
-        val target = repository.addReadingSession(3, 10)
+    fun `updateReadingSession merges source into existing local target`() = runTest {
+        val source = repository.addReadingSession(2, 255, timestamp(1000L))
+        val target = repository.addReadingSession(3, 10, timestamp(2000L))
 
-        assertFailsWith<IllegalArgumentException> {
-            repository.updateReadingSession(source.id, 3, 10)
-        }
+        val updated = repository.updateReadingSession(source.id, 3, 10, timestamp(3000L))
 
-        val sourceRecord = database.reading_sessionsQueries.getReadingSessionByLocalId(source.id.toLong())
+        val sourceRecord = database.reading_sessionsQueries
+            .getReadingSessionByLocalId(source.id.toLong())
             .executeAsOne()
-        val targetRecord = database.reading_sessionsQueries.getReadingSessionForChapterVerse(3L, 10L)
+        val targetRecord = database.reading_sessionsQueries
+            .getReadingSessionByLocalId(target.id.toLong())
             .executeAsOne()
-        assertEquals(2L, sourceRecord.chapter_number)
-        assertEquals(255L, sourceRecord.verse_number)
-        assertEquals(target.id.toLong(), targetRecord.local_id)
+        assertEquals(target.id, updated.id)
+        assertEquals(3000L, updated.lastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(1L, sourceRecord.deleted)
+        assertEquals(0L, targetRecord.deleted)
+        assertEquals(3000L, targetRecord.modified_at)
+        assertEquals(listOf(target.id), repository.getReadingSessions().map { it.id })
+
+        val mutation = repository.fetchMutatedReadingSessions().single()
+        assertEquals(target.id, mutation.localID)
+        assertEquals(Mutation.CREATED, mutation.mutation)
+    }
+
+    @Test
+    fun `updateReadingSession merges remote source into existing remote target mutations`() = runTest {
+        database.reading_sessionsQueries.persistRemoteReadingSession(
+            remote_id = "remote-source",
+            chapter_number = 2L,
+            verse_number = 255L,
+            created_at = 1000L,
+            modified_at = 1000L
+        )
+        database.reading_sessionsQueries.persistRemoteReadingSession(
+            remote_id = "remote-target",
+            chapter_number = 3L,
+            verse_number = 10L,
+            created_at = 2000L,
+            modified_at = 2000L
+        )
+        val source = database.reading_sessionsQueries
+            .getReadingSessionByRemoteId("remote-source")
+            .executeAsOne()
+        val target = database.reading_sessionsQueries
+            .getReadingSessionByRemoteId("remote-target")
+            .executeAsOne()
+
+        val updated = repository.updateReadingSession(
+            source.local_id.toString(),
+            3,
+            10,
+            timestamp(3000L)
+        )
+
+        assertEquals(target.local_id.toString(), updated.id)
+        assertEquals(listOf(target.local_id.toString()), repository.getReadingSessions().map { it.id })
+        val mutations = repository.fetchMutatedReadingSessions()
+        assertEquals(2, mutations.size)
+        assertEquals(
+            setOf("remote-source" to Mutation.DELETED, "remote-target" to Mutation.MODIFIED),
+            mutations.map { it.remoteID to it.mutation }.toSet()
+        )
+        assertTrue(
+            mutations.all {
+                it.model.lastUpdated.fromPlatform().toEpochMilliseconds() == 3000L
+            }
+        )
     }
 
     @Test
