@@ -249,6 +249,7 @@ class SchedulerTest {
     fun `task function failures should retry with exponential backoff until maximum retries reached`() = runTimeoutTest {
         val timings = STANDARD_TEST_TIMINGS
         var callCount = 0
+        val attempts = mutableListOf<Int>()
         var maxRetriesError: Exception? = null
         val maxRetriesDeferred = CompletableDeferred<Unit>()
 
@@ -256,6 +257,7 @@ class SchedulerTest {
             timings = timings,
             taskFunction = {
                 callCount++
+                attempts += currentSchedulerAttempt()
                 throw Exception("Test failure")
             },
             reachedMaximumFailureRetries = { error ->
@@ -274,6 +276,11 @@ class SchedulerTest {
             timings.failureRetryingConfig.maximumRetries + 1,
             callCount,
             "Should be called maximum retries + 1 times (initial + retries)"
+        )
+        assertEquals(
+            (0..timings.failureRetryingConfig.maximumRetries).toList(),
+            attempts,
+            "Task context should expose the initial attempt and each retry number"
         )
         assertEquals("Test failure", maxRetriesError?.message, "Exception should be passed to max retries callback")
         assertEquals(
