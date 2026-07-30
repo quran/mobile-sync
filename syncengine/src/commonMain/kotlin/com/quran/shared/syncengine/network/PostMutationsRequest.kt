@@ -14,6 +14,8 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 
 class PostMutationsRequest(
@@ -21,6 +23,9 @@ class PostMutationsRequest(
     private val url: String
 ) {
     private val logger = Logger.withTag("PostMutationsRequestClient")
+    private val requestBodyJson = Json {
+        explicitNulls = false
+    }
     
     // region: JSON Mapping.
     @Serializable
@@ -90,18 +95,15 @@ class PostMutationsRequest(
 
         val fullUrl = "$url/v1/sync"
         logger.i { logContext.format("Starting POST mutations request to $fullUrl") }
-        
-        // Log request body summary
+
         logger.d {
             logContext.format(
-                "Request body: mutations count=${requestBody.mutations.size}, " +
+                "Request summary: mutations count=${requestBody.mutations.size}, " +
                     "lastMutationAt=$lastModificationDate"
             )
         }
-        if (requestBody.mutations.isNotEmpty()) {
-            logger.v {
-                logContext.format("First mutation sample: ${requestBody.mutations.first()}")
-            }
+        logger.v {
+            logContext.format("Request body: ${requestBodyJson.encodeToString(requestBody)}")
         }
 
         val httpResponse = httpClient.post(fullUrl) {
