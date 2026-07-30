@@ -44,7 +44,12 @@ class PostMutationsRequestTest {
             }
         ) {
             install(ContentNegotiation) {
-                json(Json { explicitNulls = false })
+                json(
+                    Json {
+                        explicitNulls = false
+                        ignoreUnknownKeys = true
+                    }
+                )
             }
         }
         val request = PostMutationsRequest(client, "https://example.test")
@@ -102,18 +107,21 @@ class PostMutationsRequestTest {
     }
 
     @Test
-    fun `postMutations decodes collection bookmark create ACK with missing resource id`() = runTest {
+    fun `postMutations ignores unknown response fields`() = runTest {
         val localMutation = collectionBookmarkCreateRequest()
         val request = postRequestWithResponse(
             """
                 {
                   "success": true,
+                  "requestId": "request-a",
                   "data": {
                     "lastMutationAt": 1234,
+                    "serverVersion": 2,
                     "mutations": [
                       {
                         "type": "CREATE",
                         "resource": "COLLECTION_BOOKMARK",
+                        "traceId": "trace-a",
                         "data": {
                           "collectionId": "collection-a",
                           "bookmarkId": "bookmark-a",
@@ -242,7 +250,12 @@ class PostMutationsRequestTest {
             }
         ) {
             install(ContentNegotiation) {
-                json(Json { explicitNulls = false })
+                json(
+                    Json {
+                        explicitNulls = false
+                        ignoreUnknownKeys = true
+                    }
+                )
             }
         }
         return PostMutationsRequest(client, "https://example.test")

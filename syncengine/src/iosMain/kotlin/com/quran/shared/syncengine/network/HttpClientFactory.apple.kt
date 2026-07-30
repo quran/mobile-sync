@@ -17,7 +17,12 @@ actual object HttpClientFactory {
     actual fun createHttpClient(): HttpClient {
         return HttpClient(Darwin) {
             install(ContentNegotiation) {
-                json(Json { explicitNulls = false })
+                json(
+                    Json {
+                        explicitNulls = false
+                        ignoreUnknownKeys = true
+                    }
+                )
             }
             install(Logging) {
                 logger = object : KtorLogger {
