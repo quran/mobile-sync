@@ -88,7 +88,7 @@ class SyncMutationTimestampTest {
     }
 
     @Test
-    fun `collection update payload serializes client timestamps`() = runTest {
+    fun `collection update payload serializes only client updated timestamp`() = runTest {
         val localMutation = LocalModelMutation<SyncCollection>(
             model = SyncCollection(
                 id = "local-collection",
@@ -111,7 +111,7 @@ class SyncMutationTimestampTest {
 
         val mutation = adapter.buildPlan(0L, emptyList()).mutationsToPush().single()
 
-        assertClientTimestamps(assertNotNull(mutation.data), createdAt = 1_000, updatedAt = 2_345)
+        assertUpdateClientTimestamp(assertNotNull(mutation.data), updatedAt = 2_345)
     }
 
     @Test
@@ -514,7 +514,40 @@ class SyncMutationTimestampTest {
     }
 
     @Test
-    fun `reading session update payload serializes client timestamps`() = runTest {
+    fun `note update payload serializes only client updated timestamp`() = runTest {
+        val localMutation = LocalModelMutation(
+            model = SyncNote(
+                id = "local-note",
+                body = "Updated note",
+                ranges = listOf(
+                    NoteRange(
+                        start = NoteAyah(sura = 2, ayah = 255),
+                        end = NoteAyah(sura = 2, ayah = 255)
+                    )
+                ),
+                createdAt = Instant.fromEpochMilliseconds(1_000),
+                lastModified = Instant.fromEpochMilliseconds(2_345)
+            ),
+            remoteID = "remote-note",
+            localID = "local-note",
+            mutation = Mutation.MODIFIED
+        )
+
+        val adapter = NotesSyncAdapter(
+            NotesSynchronizationConfigurations(
+                localDataFetcher = localFetcher(listOf(localMutation)),
+                resultNotifier = noopNotifier(),
+                localModificationDateFetcher = zeroModificationDateFetcher()
+            )
+        )
+
+        val mutation = adapter.buildPlan(0L, emptyList()).mutationsToPush().single()
+
+        assertUpdateClientTimestamp(assertNotNull(mutation.data), updatedAt = 2_345)
+    }
+
+    @Test
+    fun `reading session update payload serializes only client updated timestamp`() = runTest {
         val localMutation = LocalModelMutation(
             model = SyncReadingSession(
                 id = "local-reading-session",
@@ -538,7 +571,7 @@ class SyncMutationTimestampTest {
 
         val mutation = adapter.buildPlan(0L, emptyList()).mutationsToPush().single()
 
-        assertClientTimestamps(assertNotNull(mutation.data), createdAt = 1_000, updatedAt = 2_345)
+        assertUpdateClientTimestamp(assertNotNull(mutation.data), updatedAt = 2_345)
     }
 
     private fun assertClientTimestamps(data: JsonObject, createdAt: Long, updatedAt: Long) {
@@ -546,6 +579,14 @@ class SyncMutationTimestampTest {
             instant(createdAt).toString(),
             data["clientCreatedAt"]?.jsonPrimitive?.content
         )
+        assertEquals(
+            instant(updatedAt).toString(),
+            data["clientUpdatedAt"]?.jsonPrimitive?.content
+        )
+    }
+
+    private fun assertUpdateClientTimestamp(data: JsonObject, updatedAt: Long) {
+        assertNull(data["clientCreatedAt"])
         assertEquals(
             instant(updatedAt).toString(),
             data["clientUpdatedAt"]?.jsonPrimitive?.content

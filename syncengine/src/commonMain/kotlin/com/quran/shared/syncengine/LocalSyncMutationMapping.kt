@@ -41,7 +41,9 @@ private fun JsonObject.withClientTimestamps(
         this@withClientTimestamps.forEach { (key, value) ->
             put(key, value)
         }
-        clientCreatedAt?.let { put("clientCreatedAt", it.toIsoTimestamp()) }
+        if (mutation == Mutation.CREATED) {
+            clientCreatedAt?.let { put("clientCreatedAt", it.toIsoTimestamp()) }
+        }
         put("clientUpdatedAt", clientUpdatedAt.toIsoTimestamp())
     }
 }
