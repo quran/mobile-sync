@@ -852,7 +852,7 @@ clearReadingPending:
     AND reading_pending_op = :pending_op
     AND reading_pending_version = :pending_version;
 
-applyRemoteReading:
+applyRemoteBookmarkSnapshot:
   UPDATE bookmark
   SET remote_id = CASE
       WHEN :remote_id IS NULL THEN remote_id
@@ -862,13 +862,27 @@ applyRemoteReading:
       WHEN deleted = 1 AND bookmark_pending_op = 'DELETED' THEN is_reading
       ELSE :is_reading
     END,
+    is_in_default_collection = CASE
+      WHEN :remote_default_membership IS NULL THEN is_in_default_collection
+      ELSE :remote_default_membership
+    END,
+    default_last_synced_bookmark_remote_id = CASE
+      WHEN :remote_default_membership IS NULL THEN default_last_synced_bookmark_remote_id
+      WHEN :remote_default_membership = 1
+        THEN COALESCE(:remote_id, default_last_synced_bookmark_remote_id)
+      ELSE NULL
+    END,
     reading_pending_op = reading_pending_op,
     deleted = CASE
       WHEN deleted = 1 AND bookmark_pending_op = 'DELETED' THEN deleted
       ELSE 0
     END,
     modified_at = :modified_at,
-    reading_modified_at = :modified_at
+    reading_modified_at = :modified_at,
+    default_modified_at = CASE
+      WHEN :remote_default_membership IS NULL THEN default_modified_at
+      ELSE :modified_at
+    END
   WHERE local_id = :local_id;
 
 deleteUnsyncedBookmarks:
