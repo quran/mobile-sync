@@ -134,6 +134,7 @@ class BookmarkSyncArchitectureTest {
                     ayah = 254,
                     remoteId = "remote-default-membership",
                     isInDefaultCollection = true,
+                    isReading = true,
                     timestamp = 100
                 )
             ),
@@ -142,6 +143,7 @@ class BookmarkSyncArchitectureTest {
 
         var row = database.bookmarksQueries.getBookmarkByRemoteId("remote-default-membership").executeAsOne()
         assertEquals(1L, row.is_in_default_collection)
+        assertEquals(1L, row.is_reading)
         assertEquals(0L, database.bookmark_collectionsQueries.countAll().executeAsOne())
 
         bookmarksRepository.applyRemoteChanges(
@@ -205,6 +207,7 @@ class BookmarkSyncArchitectureTest {
                     ayah = 252,
                     remoteId = "remote-pending-default-membership",
                     isInDefaultCollection = false,
+                    isReading = true,
                     timestamp = 200
                 )
             ),
@@ -213,6 +216,7 @@ class BookmarkSyncArchitectureTest {
 
         val row = database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOne()
         assertEquals(1L, row.is_in_default_collection)
+        assertEquals(1L, row.is_reading)
         assertEquals("CREATED", row.default_pending_op)
     }
 
@@ -3966,6 +3970,7 @@ class BookmarkSyncArchitectureTest {
         ayah: Int,
         remoteId: String,
         isInDefaultCollection: Boolean?,
+        isReading: Boolean = false,
         timestamp: Long,
         mutation: Mutation = Mutation.CREATED
     ): RemoteModelMutation<RemoteBookmark> =
@@ -3973,7 +3978,7 @@ class BookmarkSyncArchitectureTest {
             model = RemoteBookmark.Ayah(
                 sura = sura,
                 ayah = ayah,
-                isReading = false,
+                isReading = isReading,
                 lastUpdated = at(timestamp),
                 isInDefaultCollection = isInDefaultCollection
             ),
