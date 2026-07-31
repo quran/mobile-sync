@@ -34,7 +34,9 @@ class GetMutationsRequest(
         val page: Int? = null,
         val limit: Int? = null,
         val total: Int? = null,
-        val hasMore: Boolean? = null
+        val hasMore: Boolean? = null,
+        val nextCursor: String? = null,
+        val syncUntil: Long? = null
     )
 
     @Serializable
@@ -53,9 +55,54 @@ class GetMutationsRequest(
         authHeaders: Map<String, String>,
         resources: List<String> = emptyList()
     ): MutationsResponse {
+        var response = getMutationsPage(
+            lastModificationDate = lastModificationDate,
+            authHeaders = authHeaders,
+            resources = resources
+        )
+        val mutations = response.mutations.toMutableList()
+        val fixedSyncUntil = response.syncUntil
+        var pagesFetched = 1
+
+        while (response.hasMore == true) {
+            val nextCursor = response.nextCursor
+            val useCursor = fixedSyncUntil != null && nextCursor != null
+            response = getMutationsPage(
+                lastModificationDate = lastModificationDate,
+                authHeaders = authHeaders,
+                resources = resources,
+                page = if (useCursor) null else pagesFetched + 1,
+                syncUntil = if (useCursor) fixedSyncUntil else null,
+                cursor = if (useCursor) nextCursor else null
+            )
+            mutations += response.mutations
+            pagesFetched += 1
+        }
+
+        return response.copy(
+            lastModificationDate = fixedSyncUntil ?: response.lastModificationDate,
+            mutations = mutations,
+            page = null,
+            hasMore = false,
+            nextCursor = null,
+            syncUntil = fixedSyncUntil
+        )
+    }
+
+    private suspend fun getMutationsPage(
+        lastModificationDate: Long,
+        authHeaders: Map<String, String>,
+        resources: List<String>,
+        page: Int? = null,
+        syncUntil: Long? = null,
+        cursor: String? = null
+    ): MutationsResponse {
         val fullUrl = "$url/v1/sync"
         logger.i { "Starting GET mutations request to $fullUrl" }
-        logger.d { "Request params: mutationsSince=$lastModificationDate, resources=$resources" }
+        logger.d {
+            "Request params: mutationsSince=$lastModificationDate, resources=$resources, " +
+                "page=$page, syncUntil=$syncUntil, cursor=${cursor != null}"
+        }
 
         val httpResponse = httpClient.get(fullUrl) {
             headers {
@@ -68,6 +115,9 @@ class GetMutationsRequest(
             if (resources.isNotEmpty()) {
                 parameter("resources", resources.joinToString(","))
             }
+            page?.let { parameter("page", it) }
+            syncUntil?.let { parameter("syncUntil", it) }
+            cursor?.let { parameter("cursor", it) }
         }
         
         logger.d { "HTTP response status: ${httpResponse.status}" }
@@ -104,7 +154,13 @@ class GetMutationsRequest(
 
         val result = MutationsResponse(
             lastModificationDate = lastMutationAt,
-            mutations = mutations
+            mutations = mutations,
+            page = page,
+            limit = limit,
+            total = total,
+            hasMore = hasMore,
+            nextCursor = nextCursor,
+            syncUntil = syncUntil
         )
         
         return result

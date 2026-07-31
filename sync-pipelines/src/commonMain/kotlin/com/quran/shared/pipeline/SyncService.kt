@@ -254,13 +254,23 @@ fun makeSettings(): Settings = Settings()
 
 class SettingsLocalModificationDateFetcher(private val settings: Settings) :
     LocalModificationDateFetcher {
-    private val KEY_LAST_MODIFIED = "com.quran.sync.last_modified_date"
 
     override suspend fun localLastModificationDate(): Long {
+        if (settings.getInt(KEY_PROTOCOL_VERSION, 0) < CURRENT_PROTOCOL_VERSION) {
+            settings[KEY_LAST_MODIFIED] = 0L
+            return 0L
+        }
         return settings.getLong(KEY_LAST_MODIFIED, 0L)
     }
 
     fun updateLastModificationDate(date: Long) {
         settings[KEY_LAST_MODIFIED] = date
+        settings[KEY_PROTOCOL_VERSION] = CURRENT_PROTOCOL_VERSION
+    }
+
+    private companion object {
+        const val KEY_LAST_MODIFIED = "com.quran.sync.last_modified_date"
+        const val KEY_PROTOCOL_VERSION = "com.quran.sync.protocol_version"
+        const val CURRENT_PROTOCOL_VERSION = 1
     }
 }

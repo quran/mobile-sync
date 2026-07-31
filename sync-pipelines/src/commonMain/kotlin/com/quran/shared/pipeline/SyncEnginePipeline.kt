@@ -87,7 +87,8 @@ public class SyncEnginePipeline(
             bookmarksConfigurations = bookmarksConf,
             collectionsConfigurations = collectionsConf,
             collectionBookmarksConfigurations = collectionBookmarksConf,
-            notesConfigurations = notesConf
+            notesConfigurations = notesConf,
+            synchronizationCompleted = callback::synchronizationDone
         )
 
         this.syncClient = syncClient
@@ -249,7 +250,6 @@ private class ResultReceiver(
         Logger.i { "Persisting ${mappedRemotes.count()} remote updates, and clearing ${mappedLocals.count()} local updates." }
         
         repository.applyRemoteChanges(mappedRemotes, mappedLocals)
-        callback.synchronizationDone(newToken)
     }
 }
 
@@ -289,7 +289,6 @@ private class CollectionsResultReceiver(
         }
 
         repository.applyRemoteChanges(mappedRemotes, mappedLocals)
-        callback.synchronizationDone(newToken)
     }
 }
 
@@ -329,7 +328,6 @@ private class CollectionBookmarksResultReceiver(
         }
 
         repository.applyRemoteChanges(mappedRemotes, mappedLocals)
-        callback.synchronizationDone(newToken)
     }
 }
 
@@ -392,7 +390,6 @@ private class NotesResultReceiver(
         }
 
         repository.applyRemoteChanges(mappedRemotes, mappedLocals)
-        callback.synchronizationDone(newToken)
     }
 }
 

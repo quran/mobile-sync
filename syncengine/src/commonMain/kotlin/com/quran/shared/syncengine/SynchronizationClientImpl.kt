@@ -13,7 +13,9 @@ internal class SynchronizationClientImpl(
     private val environment: SynchronizationEnvironment,
     private val httpClient: HttpClient,
     private val resourceAdapters: List<SyncResourceAdapter>,
-    private val authenticationDataFetcher: AuthenticationDataFetcher): SynchronizationClient {
+    private val authenticationDataFetcher: AuthenticationDataFetcher,
+    private val synchronizationCompleted: (Long) -> Unit
+) : SynchronizationClient {
 
     private val logger = Logger.withTag("SynchronizationClient")
     
@@ -90,6 +92,7 @@ internal class SynchronizationClientImpl(
             val pushedForResource = pushedMutationsByResource[plan.resourceName.uppercase()].orEmpty()
             plan.complete(pushResponse.lastModificationDate, pushedForResource)
         }
+        synchronizationCompleted(pushResponse.lastModificationDate)
     }
 
     private suspend fun pushMutations(

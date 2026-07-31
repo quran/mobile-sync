@@ -97,7 +97,8 @@ object SynchronizationClientBuilder {
         collectionsConfigurations: CollectionsSynchronizationConfigurations? = null,
         collectionBookmarksConfigurations: CollectionBookmarksSynchronizationConfigurations? = null,
         notesConfigurations: NotesSynchronizationConfigurations? = null,
-        httpClient: HttpClient? = null
+        httpClient: HttpClient? = null,
+        synchronizationCompleted: (Long) -> Unit = {}
     ): SynchronizationClient {
         val adapters = buildList {
             add(BookmarksSyncAdapter(bookmarksConfigurations))
@@ -109,7 +110,8 @@ object SynchronizationClientBuilder {
             environment,
             httpClient ?: HttpClientFactory.createHttpClient(),
             adapters,
-            authFetcher
+            authFetcher,
+            synchronizationCompleted
         )
     }
 }
