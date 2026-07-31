@@ -81,13 +81,16 @@ internal class CollectionBookmarksSyncAdapter(
             if (!mutation.resource.equals(resourceName, ignoreCase = true)) {
                 return@mapNotNull null
             }
-            val bookmarkId = mutation.data?.stringOrNull("bookmarkId")
-            val resourceId = mutation.resourceId ?: bookmarkId
+            val collectionBookmark =
+                mutation.toSyncCollectionBookmark(
+                    logger,
+                    configurations.localDataFetcher
+                ) ?: return@mapNotNull null
+            val resourceId = mutation.resourceId ?: collectionBookmark.fallbackResourceId()
             if (resourceId == null) {
                 logger.w { "Skipping collection bookmark mutation without resourceId" }
                 return@mapNotNull null
             }
-            val collectionBookmark = mutation.toSyncCollectionBookmark(logger, configurations.localDataFetcher) ?: return@mapNotNull null
             RemoteModelMutation(
                 model = collectionBookmark,
                 remoteID = resourceId,
@@ -298,6 +301,14 @@ private fun parseBookmarkId(resourceId: String?, collectionId: String): String? 
     } else {
         null
     }
+}
+
+private fun SyncCollectionBookmark.fallbackResourceId(): String? {
+    val bookmarkId = when (this) {
+        is SyncCollectionBookmark.PageBookmark -> bookmarkId
+        is SyncCollectionBookmark.AyahBookmark -> bookmarkId
+    }
+    return bookmarkId?.let { "$collectionId-$it" }
 }
 
 private fun JsonObject.stringOrNull(key: String): String? =

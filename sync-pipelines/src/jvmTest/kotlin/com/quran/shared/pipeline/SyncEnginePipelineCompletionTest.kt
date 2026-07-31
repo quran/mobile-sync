@@ -78,6 +78,72 @@ class SyncEnginePipelineCompletionTest {
     }
 
     @Test
+    fun `first protocol replay preserves same bookmark memberships across collections`() = runBlocking {
+        CollectionMembershipReplayServer().use { server ->
+            val settings = PropertiesSettings(Properties())
+            settings["com.quran.sync.last_modified_date"] = 900L
+            val dateFetcher = SettingsLocalModificationDateFetcher(settings)
+            val collectionBookmarksRepository =
+                ReplayCollectionBookmarksRepository(settings)
+            val completion = CompletableDeferred<Unit>()
+            val pipeline = SyncEnginePipeline(
+                bookmarksRepository = ReplayBookmarksRepository(),
+                collectionsRepository = SuccessfulCollectionsRepository(),
+                collectionBookmarksRepository = collectionBookmarksRepository
+            )
+            val client = pipeline.setup(
+                environment = SynchronizationEnvironment(server.baseUrl),
+                localModificationDateFetcher = dateFetcher,
+                authenticationDataFetcher = LoggedInAuthenticationDataFetcher,
+                callback = object : SyncEngineCallback {
+                    override fun synchronizationDone(newLastModificationDate: Long) {
+                        dateFetcher.updateLastModificationDate(newLastModificationDate)
+                        completion.complete(Unit)
+                    }
+
+                    override fun encounteredError(errorMsg: String) = Unit
+                }
+            )
+
+            try {
+                client.triggerSyncImmediately()
+                withTimeout(5_000) {
+                    completion.await()
+                }
+            } finally {
+                client.cancelSyncing()
+            }
+
+            assertTrue(server.getQueries.single().contains("mutationsSince=0"))
+            assertEquals(listOf("GET"), server.requestMethods)
+            assertEquals(
+                setOf(
+                    "__default__-bookmark-42",
+                    "custom-collection-bookmark-42"
+                ),
+                collectionBookmarksRepository.persistedRemoteIds.toSet()
+            )
+            assertEquals(
+                setOf("__default__", "custom-collection"),
+                collectionBookmarksRepository.persistedCollectionIds.toSet()
+            )
+            assertEquals(
+                listOf("pending-default-membership"),
+                collectionBookmarksRepository.clearedLocalIds
+            )
+            assertEquals(
+                0L,
+                collectionBookmarksRepository.lastModificationDateWhenApplied
+            )
+            assertEquals(
+                2_000L,
+                settings.getLong("com.quran.sync.last_modified_date", -1L)
+            )
+            assertEquals(1, settings.getInt("com.quran.sync.protocol_version", 0))
+        }
+    }
+
+    @Test
     fun `timestamp completion is not reported when a later resource fails`() = runBlocking {
         EmptySyncServer().use { server ->
             val completionTokens = CopyOnWriteArrayList<Long>()
@@ -194,6 +260,30 @@ private class PendingBookmarksRepository : BookmarksSynchronizationRepository {
     override suspend fun fetchBookmarkByRemoteId(remoteId: String): Bookmark? = null
 }
 
+private class ReplayBookmarksRepository : BookmarksSynchronizationRepository {
+    override suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<Bookmark>> =
+        emptyList()
+
+    override suspend fun applyRemoteChanges(
+        updatesToPersist: List<RemoteModelMutation<RemoteBookmark>>,
+        localMutationsToClear: List<LocalModelMutation<Bookmark>>
+    ) = Unit
+
+    override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
+        remoteIDs.associateWith { false }
+
+    override suspend fun fetchBookmarkByRemoteId(remoteId: String): Bookmark? =
+        if (remoteId == "bookmark-42") {
+            Bookmark.PageBookmark(
+                page = 42,
+                lastUpdated = Instant.fromEpochMilliseconds(500),
+                localId = "local-bookmark-42"
+            )
+        } else {
+            null
+        }
+}
+
 private class SuccessfulCollectionsRepository : CollectionsSynchronizationRepository {
     override suspend fun fetchMutatedCollections(): List<LocalModelMutation<Collection>> =
         emptyList()
@@ -268,7 +358,16 @@ private class OrderingBookmarksRepository(
     override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
         remoteIDs.associateWith { false }
 
-    override suspend fun fetchBookmarkByRemoteId(remoteId: String): Bookmark? = null
+    override suspend fun fetchBookmarkByRemoteId(remoteId: String): Bookmark? =
+        if (remoteId == "bookmark-42") {
+            Bookmark.PageBookmark(
+                page = 42,
+                lastUpdated = Instant.fromEpochMilliseconds(500),
+                localId = "local-bookmark-42"
+            )
+        } else {
+            null
+        }
 }
 
 private class OrderingCollectionsRepository(
@@ -301,6 +400,45 @@ private class OrderingCollectionBookmarksRepository(
         state.applicationOrder += "COLLECTION_BOOKMARK"
         state.collectionExistedWhenMembershipWasApplied =
             state.collectionRemoteId == updatesToPersist.single().model.collectionId
+    }
+
+    override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
+        remoteIDs.associateWith { false }
+}
+
+private class ReplayCollectionBookmarksRepository(
+    private val settings: PropertiesSettings
+) : CollectionBookmarksSynchronizationRepository {
+    private val pending: LocalModelMutation<CollectionBookmark> = LocalModelMutation(
+        model = CollectionBookmark.PageBookmark(
+            collectionLocalId = "default-local",
+            collectionRemoteId = "__default__",
+            bookmarkLocalId = "local-bookmark-42",
+            page = 42,
+            lastUpdated = Instant.fromEpochMilliseconds(500),
+            localId = "pending-default-membership"
+        ),
+        remoteID = null,
+        localID = "pending-default-membership",
+        mutation = Mutation.CREATED
+    )
+    val persistedRemoteIds = mutableListOf<String>()
+    val persistedCollectionIds = mutableListOf<String>()
+    val clearedLocalIds = mutableListOf<String>()
+    var lastModificationDateWhenApplied: Long? = null
+
+    override suspend fun fetchMutatedCollectionBookmarks():
+        List<LocalModelMutation<CollectionBookmark>> = listOf(pending)
+
+    override suspend fun applyRemoteChanges(
+        updatesToPersist: List<RemoteModelMutation<RemoteCollectionBookmark>>,
+        localMutationsToClear: List<LocalModelMutation<CollectionBookmark>>
+    ) {
+        lastModificationDateWhenApplied =
+            settings.getLong("com.quran.sync.last_modified_date", -1L)
+        persistedRemoteIds += updatesToPersist.map { it.remoteID }
+        persistedCollectionIds += updatesToPersist.map { it.model.collectionId }
+        clearedLocalIds += localMutationsToClear.map { it.localID }
     }
 
     override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
@@ -388,6 +526,77 @@ private class ReplaySyncServer : AutoCloseable {
     }
 }
 
+private class CollectionMembershipReplayServer : AutoCloseable {
+    private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+    val getQueries = CopyOnWriteArrayList<String>()
+    val requestMethods = CopyOnWriteArrayList<String>()
+    val baseUrl: String
+
+    init {
+        server.createContext("/v1/sync") { exchange ->
+            requestMethods += exchange.requestMethod
+            getQueries += exchange.requestURI.rawQuery
+            val body = """
+                {
+                  "success": true,
+                  "data": {
+                    "lastMutationAt": 2000,
+                    "mutations": [
+                      {
+                        "type": "CREATE",
+                        "resource": "COLLECTION_BOOKMARK",
+                        "timestamp": 1100,
+                        "data": {
+                          "collectionId": "__default__",
+                          "bookmarkId": "bookmark-42"
+                        }
+                      },
+                      {
+                        "type": "CREATE",
+                        "resource": "COLLECTION_BOOKMARK",
+                        "timestamp": 1200,
+                        "data": {
+                          "collectionId": "custom-collection",
+                          "bookmarkId": "bookmark-42"
+                        }
+                      },
+                      {
+                        "type": "CREATE",
+                        "resource": "COLLECTION",
+                        "resourceId": "__default__",
+                        "timestamp": 1000,
+                        "data": {
+                          "name": "Favorites"
+                        }
+                      },
+                      {
+                        "type": "CREATE",
+                        "resource": "COLLECTION",
+                        "resourceId": "custom-collection",
+                        "timestamp": 1050,
+                        "data": {
+                          "name": "Reading"
+                        }
+                      }
+                    ],
+                    "page": 1,
+                    "hasMore": false
+                  }
+                }
+            """.trimIndent().toByteArray(StandardCharsets.UTF_8)
+            exchange.responseHeaders.add("Content-Type", "application/json")
+            exchange.sendResponseHeaders(200, body.size.toLong())
+            exchange.responseBody.use { it.write(body) }
+        }
+        server.start()
+        baseUrl = "http://127.0.0.1:${server.address.port}"
+    }
+
+    override fun close() {
+        server.stop(0)
+    }
+}
+
 private class DefaultCollectionSyncServer : AutoCloseable {
     private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
     val baseUrl: String
@@ -403,13 +612,10 @@ private class DefaultCollectionSyncServer : AutoCloseable {
                       {
                         "type": "CREATE",
                         "resource": "COLLECTION_BOOKMARK",
-                        "resourceId": "__default__-bookmark-42",
                         "timestamp": 2000,
                         "data": {
                           "collectionId": "__default__",
-                          "bookmarkId": "bookmark-42",
-                          "type": "page",
-                          "key": 42
+                          "bookmarkId": "bookmark-42"
                         }
                       },
                       {
