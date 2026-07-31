@@ -119,6 +119,48 @@ class DefaultCollectionRepositoryTest {
     }
 
     @Test
+    fun `rename statement rejects a row bound as default at the mutation boundary`() = runTest {
+        val localFavorites = collectionsRepository.addCollection(FAVORITES_NAME)
+        bindDefaultAtMutationBoundary(localFavorites.localId)
+
+        database.collectionsQueries.updateCollectionName(
+            name = "Renamed",
+            id = localFavorites.localId.toLong()
+        )
+
+        val persisted = database.collectionsQueries
+            .getCollectionByLocalId(localFavorites.localId.toLong())
+            .executeAsOne()
+        assertEquals(FAVORITES_NAME, persisted.name)
+        assertEquals(0L, persisted.is_edited)
+    }
+
+    @Test
+    fun `delete statement preserves a row and memberships bound as default at mutation boundary`() = runTest {
+        val localFavorites = collectionsRepository.addCollection(FAVORITES_NAME)
+        val bookmark = bookmarksRepository.addBookmark(42)
+        val membership = collectionBookmarksRepository.addBookmarkToCollection(
+            localFavorites.localId,
+            bookmark
+        )
+        bindDefaultAtMutationBoundary(localFavorites.localId)
+
+        database.collectionsQueries.deleteCollection(localFavorites.localId.toLong())
+
+        val persisted = database.collectionsQueries
+            .getCollectionByLocalId(localFavorites.localId.toLong())
+            .executeAsOne()
+        assertEquals(0L, persisted.deleted)
+        assertEquals(0L, persisted.is_edited)
+        assertEquals(
+            listOf(membership.localId),
+            collectionBookmarksRepository
+                .getBookmarksForCollection(localFavorites.localId)
+                .map { it.localId }
+        )
+    }
+
+    @Test
     fun `remote default membership without its collection is rejected without side effects`() = runTest {
         collectionBookmarksSyncRepository.applyRemoteChanges(
             updatesToPersist = listOf(defaultMembershipMutation("remote-membership-1")),
@@ -193,6 +235,15 @@ class DefaultCollectionRepositoryTest {
         collectionsSyncRepository.applyRemoteChanges(
             updatesToPersist = listOf(defaultCollectionMutation()),
             localMutationsToClear = emptyList()
+        )
+    }
+
+    private fun bindDefaultAtMutationBoundary(localId: String) {
+        database.collectionsQueries.updateRemoteCollectionByLocalId(
+            local_id = localId.toLong(),
+            remote_id = DEFAULT_COLLECTION_ID,
+            name = FAVORITES_NAME,
+            modified_at = 1_000
         )
     }
 
