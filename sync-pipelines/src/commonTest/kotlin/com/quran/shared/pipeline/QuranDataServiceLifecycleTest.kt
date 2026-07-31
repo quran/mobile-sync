@@ -30,6 +30,8 @@ import com.quran.shared.persistence.input.RemoteNote
 import com.quran.shared.persistence.input.RemoteReadingSession
 import com.quran.shared.persistence.di.PersistenceModule
 import com.quran.shared.persistence.model.AyahBookmark
+import com.quran.shared.persistence.model.AyahHighlight
+import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.model.AyahReadingBookmark
 import com.quran.shared.persistence.model.BookmarkCollectionsReplacementResult
 import com.quran.shared.persistence.model.Collection
@@ -676,6 +678,32 @@ class QuranDataServiceLifecycleTest {
         }
 
     @Test
+    fun `collectionsWithBookmarks excludes system highlight collections`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture()
+        fixture.collectionsRepository.collections.value = listOf(
+            Collection("Study", testTimestamp(), "7"),
+            Collection("system:highlights:green", testTimestamp(), "8")
+        )
+        advanceUntilIdle()
+
+        val result = fixture.service.collectionsWithBookmarks.first()
+
+        assertEquals(listOf(DEFAULT_COLLECTION_ID, "7"), result.map { it.collection.id })
+        assertFalse("8" in fixture.collectionBookmarksRepository.flowRequests)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `highlights exposes repository flow`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture()
+        val highlight = AyahHighlight(2, 255, AyahHighlightColor.PURPLE, testTimestamp())
+        fixture.collectionBookmarksRepository.highlights.value = listOf(highlight)
+
+        assertEquals(listOf(highlight), fixture.service.highlights.first())
+        fixture.clearAndJoin()
+    }
+
+    @Test
     fun `deleteReadingSession returns false without triggering sync when nothing is deleted`() = runTest(dispatcher) {
         val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
         fixture.readingSessionsRepository.deleteResult = false
@@ -729,6 +757,46 @@ class QuranDataServiceLifecycleTest {
         assertEquals(Collection("Favorites", timestamp, "collection-1"), result)
         assertEquals(listOf(CollectionAddCall("Favorites", timestamp)), fixture.collectionsRepository.addCalls)
         assertEquals(1, fixture.syncClient.localDataUpdatedCount)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `setHighlight returns repository highlight and triggers local sync`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+        advanceUntilIdle()
+
+        val result = fixture.service.setHighlight(2, 255, AyahHighlightColor.BLUE)
+
+        val call = fixture.collectionBookmarksRepository.setHighlightCalls.single()
+        assertEquals(2, call.sura)
+        assertEquals(255, call.ayah)
+        assertEquals(AyahHighlightColor.BLUE, call.color)
+        assertEquals(
+            AyahHighlight(2, 255, AyahHighlightColor.BLUE, call.timestamp),
+            result
+        )
+        assertEquals(1, fixture.syncClient.localDataUpdatedCount)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `removeHighlight triggers local sync only when a highlight was removed`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+        advanceUntilIdle()
+
+        fixture.collectionBookmarksRepository.removeHighlightResult = false
+        assertFalse(fixture.service.removeHighlight(2, 255))
+        assertEquals(0, fixture.syncClient.localDataUpdatedCount)
+
+        fixture.collectionBookmarksRepository.removeHighlightResult = true
+        assertTrue(fixture.service.removeHighlight(2, 255))
+        assertEquals(1, fixture.syncClient.localDataUpdatedCount)
+        assertEquals(
+            listOf(HighlightRemoveCall(2, 255), HighlightRemoveCall(2, 255)),
+            fixture.collectionBookmarksRepository.removeHighlightCalls.map {
+                HighlightRemoveCall(it.sura, it.ayah)
+            }
+        )
         fixture.clearAndJoin()
     }
 
@@ -1475,6 +1543,19 @@ private data class CollectionDeleteCall(
     val id: String
 )
 
+private data class HighlightSetCall(
+    val sura: Int,
+    val ayah: Int,
+    val color: AyahHighlightColor,
+    val timestamp: PlatformDateTime
+)
+
+private data class HighlightRemoveCall(
+    val sura: Int,
+    val ayah: Int,
+    val timestamp: PlatformDateTime? = null
+)
+
 private class ServiceCollectionsRepository : CollectionsRepository, CollectionsSynchronizationRepository {
     val addCalls = mutableListOf<CollectionAddCall>()
     val updateCalls = mutableListOf<CollectionUpdateCall>()
@@ -1525,7 +1606,32 @@ private class ServiceCollectionBookmarksRepository :
     CollectionBookmarksRepository,
     CollectionBookmarksSynchronizationRepository {
     val flowRequests = mutableListOf<String>()
+    val setHighlightCalls = mutableListOf<HighlightSetCall>()
+    val removeHighlightCalls = mutableListOf<HighlightRemoveCall>()
+    var removeHighlightResult = true
+    val highlights = MutableStateFlow<List<AyahHighlight>>(emptyList())
     private val bookmarksByCollectionId = mutableMapOf<String, MutableStateFlow<List<CollectionAyahBookmark>>>()
+
+    override fun getHighlightsFlow(): Flow<List<AyahHighlight>> = highlights
+
+    override suspend fun setHighlight(
+        sura: Int,
+        ayah: Int,
+        color: AyahHighlightColor,
+        timestamp: PlatformDateTime
+    ): AyahHighlight {
+        setHighlightCalls += HighlightSetCall(sura, ayah, color, timestamp)
+        return AyahHighlight(sura, ayah, color, timestamp)
+    }
+
+    override suspend fun removeHighlight(
+        sura: Int,
+        ayah: Int,
+        timestamp: PlatformDateTime
+    ): Boolean {
+        removeHighlightCalls += HighlightRemoveCall(sura, ayah, timestamp)
+        return removeHighlightResult
+    }
 
     fun setBookmarksForCollection(collectionId: String, bookmarks: List<CollectionAyahBookmark>) {
         bookmarksFlow(collectionId).value = bookmarks

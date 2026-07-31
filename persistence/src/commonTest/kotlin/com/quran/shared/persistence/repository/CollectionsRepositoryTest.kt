@@ -42,6 +42,50 @@ class CollectionsRepositoryTest {
     }
 
     @Test
+    fun `collection identifies system highlight names case insensitively`() {
+        assertTrue(Collection(" SYSTEM:HIGHLIGHTS:GREEN ", timestamp(1L), "1").isSystemHighlight)
+        assertFalse(Collection("Green", timestamp(1L), "2").isSystemHighlight)
+    }
+
+    @Test
+    fun `collection CRUD rejects reserved highlight collections`() = runTest {
+        assertFailsWith<IllegalArgumentException> {
+            repository.addCollection("system:highlights:blue", timestamp(100L))
+        }
+        database.collectionsQueries.addNewCollection(
+            timestamp = 100L,
+            name = "system:highlights:blue"
+        )
+        val systemCollection = database.collectionsQueries
+            .getCollectionByName("system:highlights:blue")
+            .executeAsOne()
+
+        assertFailsWith<IllegalArgumentException> {
+            repository.updateCollection(systemCollection.local_id.toString(), "Blue", timestamp(200L))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            repository.deleteCollection(systemCollection.local_id.toString())
+        }
+
+        val retained = database.collectionsQueries
+            .getCollectionByLocalId(systemCollection.local_id)
+            .executeAsOne()
+        assertEquals("system:highlights:blue", retained.name)
+        assertEquals(0L, retained.deleted)
+    }
+
+    @Test
+    fun `collection rename rejects reserved highlight name`() = runTest {
+        val collection = repository.addCollection("Study", timestamp(100L))
+
+        assertFailsWith<IllegalArgumentException> {
+            repository.updateCollection(collection.id, "system:highlights:pink", timestamp(200L))
+        }
+
+        assertEquals("Study", repository.getAllCollections().single().name)
+    }
+
+    @Test
     fun `addCollection respects explicit timestamp`() = runTest {
         val collection = repository.addCollection("Favorites", timestamp(1234L))
         val record = database.collectionsQueries.getCollectionByLocalId(collection.id.toLong()).executeAsOne()

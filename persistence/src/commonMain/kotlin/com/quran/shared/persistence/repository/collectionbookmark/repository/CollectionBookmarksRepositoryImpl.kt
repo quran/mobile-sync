@@ -15,6 +15,8 @@ import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.input.LocalSyncCollectionAyahBookmark
 import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.model.AyahBookmark
+import com.quran.shared.persistence.model.AyahHighlight
+import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.model.DEFAULT_COLLECTION_ID
 import com.quran.shared.persistence.model.DatabaseBookmark
@@ -50,6 +52,22 @@ class CollectionBookmarksRepositoryImpl(
     private val bookmarkCollectionQueries = lazy { database.bookmark_collectionsQueries }
     private val bookmarkQueries = lazy { database.bookmarksQueries }
     private val collectionQueries = lazy { database.collectionsQueries }
+    private val highlightsRepository = AyahHighlightsRepository(database, reconciler)
+
+    override fun getHighlightsFlow(): Flow<List<AyahHighlight>> = highlightsRepository.getHighlightsFlow()
+
+    override suspend fun setHighlight(
+        sura: Int,
+        ayah: Int,
+        color: AyahHighlightColor,
+        timestamp: PlatformDateTime
+    ): AyahHighlight = highlightsRepository.setHighlight(sura, ayah, color, timestamp)
+
+    override suspend fun removeHighlight(
+        sura: Int,
+        ayah: Int,
+        timestamp: PlatformDateTime
+    ): Boolean = highlightsRepository.removeHighlight(sura, ayah, timestamp)
 
     override suspend fun getBookmarksForCollection(collectionId: String): List<CollectionAyahBookmark> {
         if (collectionId == DEFAULT_COLLECTION_ID) {

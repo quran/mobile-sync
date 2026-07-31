@@ -14,6 +14,7 @@ import com.quran.shared.persistence.input.LocalSyncCollection
 import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.model.DatabaseCollection
+import com.quran.shared.persistence.model.highlightColorForCollectionName
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
@@ -69,6 +70,9 @@ class CollectionsRepositoryImpl(
     }
 
     private suspend fun addCollectionWithTimestampMillis(name: String, timestampMillis: Long): Collection {
+        require(highlightColorForCollectionName(name) == null) {
+            "System highlight collection names are reserved."
+        }
         logger.i { "Adding collection with name=$name" }
         return withContext(Dispatchers.IO) {
             collectionQueries.value.addNewCollection(
@@ -106,6 +110,12 @@ class CollectionsRepositoryImpl(
                 require(existing?.deleted == 0L) {
                     "Expected active collection id=$id before update."
                 }
+                require(highlightColorForCollectionName(existing.name) == null) {
+                    "System highlight collections cannot be renamed."
+                }
+                require(highlightColorForCollectionName(name) == null) {
+                    "System highlight collection names are reserved."
+                }
 
                 collectionQueries.value.updateCollectionName(
                     name = name,
@@ -134,6 +144,9 @@ class CollectionsRepositoryImpl(
                 val collection = collectionQueries.value.getCollectionByLocalId(localId).executeAsOneOrNull()
                 if (collection?.deleted != 0L) {
                     return@transaction
+                }
+                require(highlightColorForCollectionName(collection.name) == null) {
+                    "System highlight collections cannot be deleted."
                 }
                 collectionQueries.value.deleteCollection(
                     id = localId,

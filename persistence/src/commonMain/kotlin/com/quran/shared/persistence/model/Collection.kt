@@ -19,4 +19,10 @@ data class Collection(
      */
     val isDefault: Boolean
         get() = id == DEFAULT_COLLECTION_ID
+
+    /**
+     * True when this collection is reserved for ayah highlight persistence.
+     */
+    val isSystemHighlight: Boolean
+        get() = highlightColorForCollectionName(name) != null
 }
