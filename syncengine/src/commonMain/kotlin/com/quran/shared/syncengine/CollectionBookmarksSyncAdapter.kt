@@ -186,12 +186,14 @@ internal class CollectionBookmarksSyncAdapter(
             acknowledgedRemoteId = { localMutation, pushedMutation ->
                 val requestMutation = localMutation.toSyncMutation(
                     resourceName = resourceName,
-                    resourceData = SyncCollectionBookmark::toResourceData,
+                    resourceData = { model -> model.toResourceData(localMutation.mutation) },
                     timestamp = { model -> model.lastModified.toEpochMilliseconds() },
                     createdTimestamp = { model -> model.createdAt?.toEpochMilliseconds() },
                     includeDataForDeletes = true
                 )
-                pushedMutation.acknowledgedRemoteIdFor(requestMutation)
+                pushedMutation.acknowledgedRemoteIdFor(
+                    requestMutation.withExpectedBookmarkId(localMutation.model)
+                )
                     ?: localMutation.model.remoteIdOrNull()
             },
             model = { localMutation, pushedMutation ->
@@ -213,10 +215,10 @@ internal class CollectionBookmarksSyncAdapter(
         private var markedInFlightAcks: List<LocalMutationAck> = emptyList()
 
         override suspend fun mutationsToPush(): List<SyncMutation> =
-            localMutationsToPushForCompletion.map {
-                it.toSyncMutation(
+            localMutationsToPushForCompletion.map { localMutation ->
+                localMutation.toSyncMutation(
                     resourceName = resourceName,
-                    resourceData = SyncCollectionBookmark::toResourceData,
+                    resourceData = { model -> model.toResourceData(localMutation.mutation) },
                     timestamp = { model -> model.lastModified.toEpochMilliseconds() },
                     createdTimestamp = { model -> model.createdAt?.toEpochMilliseconds() },
                     includeDataForDeletes = true
@@ -393,17 +395,32 @@ private suspend fun SyncMutation.toSyncCollectionBookmark(
     }
 }
 
-private fun SyncCollectionBookmark.toResourceData(): JsonObject {
+private fun SyncCollectionBookmark.toResourceData(mutation: Mutation): JsonObject {
     return when (this) {
         is SyncCollectionBookmark.AyahBookmark -> buildJsonObject {
             put("collectionId", collectionId)
-            bookmarkId?.let { put("bookmarkId", it) }
-            put("type", "ayah")
-            put("key", sura)
-            put("verseNumber", ayah)
-            put("mushaf", 1)
+            if (mutation == Mutation.DELETED && bookmarkId != null) {
+                put("bookmarkId", bookmarkId)
+            } else {
+                put("type", "ayah")
+                put("key", sura)
+                put("verseNumber", ayah)
+                put("mushaf", 1)
+            }
         }
     }
+}
+
+private fun SyncMutation.withExpectedBookmarkId(model: SyncCollectionBookmark): SyncMutation {
+    val bookmarkId = when (model) {
+        is SyncCollectionBookmark.AyahBookmark -> model.bookmarkId
+    } ?: return this
+    return copy(
+        data = buildJsonObject {
+            data?.forEach { (key, value) -> put(key, value) }
+            put("bookmarkId", bookmarkId)
+        }
+    )
 }
 
 private fun SyncCollectionBookmark.withPushedBookmarkId(
