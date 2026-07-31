@@ -57,6 +57,13 @@ class CollectionsRepositoryImpl(
     override suspend fun updateCollection(localId: String, name: String): Collection {
         logger.i { "Updating collection localId=$localId with name=$name" }
         return withContext(Dispatchers.IO) {
+            val existing = collectionQueries.value.getCollectionByLocalId(localId.toLong())
+                .executeAsOneOrNull()
+            requireNotNull(existing) { "Expected collection localId=$localId before update." }
+            if (existing.remote_id == DEFAULT_COLLECTION_ID) {
+                logger.w { "Ignoring rename of immutable default collection localId=$localId" }
+                return@withContext existing.toCollection()
+            }
             collectionQueries.value.updateCollectionName(name = name, id = localId.toLong())
             val record = collectionQueries.value.getCollectionByLocalId(localId.toLong())
                 .executeAsOneOrNull()
@@ -67,10 +74,16 @@ class CollectionsRepositoryImpl(
 
     override suspend fun deleteCollection(localId: String): Boolean {
         logger.i { "Deleting collection localId=$localId" }
-        withContext(Dispatchers.IO) {
+        return withContext(Dispatchers.IO) {
+            val existing = collectionQueries.value.getCollectionByLocalId(localId.toLong())
+                .executeAsOneOrNull()
+            if (existing?.remote_id == DEFAULT_COLLECTION_ID) {
+                logger.w { "Ignoring deletion of immutable default collection localId=$localId" }
+                return@withContext false
+            }
             collectionQueries.value.deleteCollection(id = localId.toLong())
+            true
         }
-        return true
     }
 
     override suspend fun fetchMutatedCollections(): List<LocalModelMutation<Collection>> {
@@ -165,5 +178,9 @@ class CollectionsRepositoryImpl(
 
             remoteIDs.associateWith { existentIDs.contains(it) }
         }
+    }
+
+    private companion object {
+        const val DEFAULT_COLLECTION_ID = "__default__"
     }
 }
