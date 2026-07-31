@@ -79,7 +79,7 @@ class CollectionsRepositoryTest {
         val collection = repository.addCollection("Study", timestamp(100L))
 
         assertFailsWith<IllegalArgumentException> {
-            repository.updateCollection(collection.id, "system:highlights:pink", timestamp(200L))
+            repository.updateCollection(collection.id, "system:highlights:yellow", timestamp(200L))
         }
 
         assertEquals("Study", repository.getAllCollections().single().name)
