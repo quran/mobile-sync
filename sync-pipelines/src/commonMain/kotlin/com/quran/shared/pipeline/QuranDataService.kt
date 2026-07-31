@@ -11,6 +11,8 @@ import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.PersistenceImportResult
 import com.quran.shared.persistence.model.AyahBookmark
+import com.quran.shared.persistence.model.AyahHighlight
+import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.model.AyahReadingBookmark
 import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.model.CollectionAyahBookmark
@@ -172,6 +174,12 @@ class QuranDataService internal constructor(
     @NativeCoroutines
     val bookmarks: Flow<List<AyahBookmark>> get() = bookmarksRepository.getBookmarksFlow()
 
+    /**
+     * Flow of ayah highlights, stored independently from app-facing bookmark collections.
+     */
+    @NativeCoroutines
+    val highlights: Flow<List<AyahHighlight>> get() = collectionBookmarksRepository.getHighlightsFlow()
+
     @NativeCoroutines
     val readingBookmark: Flow<ReadingBookmark?> get() = readingBookmarksRepository.getReadingBookmarkFlow()
 
@@ -197,7 +205,7 @@ class QuranDataService internal constructor(
                         }
                 val customCollectionFlows =
                     collections
-                        .filterNot { it.isDefault }
+                        .filterNot { it.isDefault || it.isSystemHighlight }
                         .map { collection ->
                             collectionBookmarksRepository.getBookmarksForCollectionFlow(collection.id)
                                 .map { bookmarks: List<CollectionAyahBookmark> ->
@@ -396,6 +404,37 @@ class QuranDataService internal constructor(
     suspend fun addBookmark(sura: Int, ayah: Int, timestamp: PlatformDateTime): AyahBookmark {
         return mutatingCall("Failed to add ayah bookmark") {
             bookmarksRepository.addBookmark(sura, ayah, timestamp)
+        }
+    }
+
+    /**
+     * Sets the highlight color for one ayah, replacing any existing highlight color.
+     * Default and user collection memberships are preserved.
+     */
+    @NativeCoroutines
+    suspend fun setHighlight(sura: Int, ayah: Int, color: AyahHighlightColor): AyahHighlight {
+        return mutatingCall("Failed to set ayah highlight") {
+            collectionBookmarksRepository.setHighlight(sura, ayah, color, currentPlatformDateTime())
+        }
+    }
+
+    /**
+     * Removes the highlight from one ayah while preserving default and user collection memberships.
+     *
+     * @return `true` when at least one highlight membership was removed.
+     */
+    @NativeCoroutines
+    suspend fun removeHighlight(sura: Int, ayah: Int): Boolean {
+        return mutatingCall("Failed to remove ayah highlight", triggerAfter = false) {
+            val removed = collectionBookmarksRepository.removeHighlight(
+                sura,
+                ayah,
+                currentPlatformDateTime()
+            )
+            if (removed) {
+                triggerSync()
+            }
+            removed
         }
     }
 
