@@ -515,6 +515,11 @@ class QuranDataService internal constructor(
         }
     }
 
+    /**
+     * Updates a reading session, merging it into an existing destination session when needed.
+     *
+     * The returned session is authoritative because a merge returns the destination's ID.
+     */
     @NativeCoroutines
     suspend fun updateReadingSession(id: String, sura: Int, ayah: Int): ReadingSession {
         return updateReadingSession(id, sura, ayah, currentPlatformDateTime())
