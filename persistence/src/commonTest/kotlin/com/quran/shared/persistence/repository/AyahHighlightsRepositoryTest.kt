@@ -40,7 +40,6 @@ class AyahHighlightsRepositoryTest {
         assertEquals(
             listOf(
                 "system:highlights:blue",
-                "system:highlights:pink",
                 "system:highlights:red",
                 "system:highlights:green",
                 "system:highlights:yellow",
@@ -79,11 +78,11 @@ class AyahHighlightsRepositoryTest {
     fun `highlights flow reports one latest color per ayah`() = runTest {
         collectionBookmarksRepository.setHighlight(1, 1, AyahHighlightColor.BLUE, timestamp(100))
         collectionBookmarksRepository.setHighlight(2, 255, AyahHighlightColor.GREEN, timestamp(200))
-        collectionBookmarksRepository.setHighlight(1, 1, AyahHighlightColor.PINK, timestamp(300))
+        collectionBookmarksRepository.setHighlight(1, 1, AyahHighlightColor.RED, timestamp(300))
 
         assertEquals(
             listOf(
-                AyahHighlight(1, 1, AyahHighlightColor.PINK, timestamp(300)),
+                AyahHighlight(1, 1, AyahHighlightColor.RED, timestamp(300)),
                 AyahHighlight(2, 255, AyahHighlightColor.GREEN, timestamp(200))
             ),
             collectionBookmarksRepository.getHighlightsFlow().first()

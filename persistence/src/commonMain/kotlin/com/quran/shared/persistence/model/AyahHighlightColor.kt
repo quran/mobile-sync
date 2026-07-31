@@ -2,7 +2,6 @@ package com.quran.shared.persistence.model
 
 enum class AyahHighlightColor(internal val collectionName: String) {
     BLUE("system:highlights:blue"),
-    PINK("system:highlights:pink"),
     RED("system:highlights:red"),
     GREEN("system:highlights:green"),
     YELLOW("system:highlights:yellow"),
