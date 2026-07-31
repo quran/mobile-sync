@@ -112,6 +112,18 @@ class CollectionBookmarksSyncAdapterTest {
         val earlyPushedDelete = preDependencyPlan.mutationsToPush().single()
         assertEquals(remoteId, earlyPushedDelete.resourceId)
         assertEquals(Mutation.DELETED, earlyPushedDelete.mutation)
+        assertEquals(
+            "remote-collection-1",
+            earlyPushedDelete.data?.get("collectionId")?.jsonPrimitive?.content
+        )
+        assertEquals(
+            "remote-bookmark-1",
+            earlyPushedDelete.data?.get("bookmarkId")?.jsonPrimitive?.content
+        )
+        assertNull(earlyPushedDelete.data?.get("type"))
+        assertNull(earlyPushedDelete.data?.get("key"))
+        assertNull(earlyPushedDelete.data?.get("verseNumber"))
+        assertNull(earlyPushedDelete.data?.get("mushaf"))
 
         preDependencyPlan.complete(newToken = 5L, pushedMutations = listOf(earlyPushedDelete))
 
@@ -444,7 +456,7 @@ class CollectionBookmarksSyncAdapterTest {
     }
 
     @Test
-    fun `mutations to push include bookmarkId payload field`() = runTest {
+    fun `create mutations omit bookmarkId and identify the ayah`() = runTest {
         val localMutation = LocalModelMutation<SyncCollectionBookmark>(
             model = SyncCollectionBookmark.AyahBookmark(
                 collectionId = "remote-collection-1",
@@ -509,7 +521,11 @@ class CollectionBookmarksSyncAdapterTest {
         assertNull(pushedMutations.single().resourceId)
         assertEquals(1000L, pushedMutations.single().timestamp)
         assertEquals("remote-collection-1", pushedMutations.single().data?.get("collectionId")?.jsonPrimitive?.content)
-        assertEquals("remote-bookmark-1", pushedMutations.single().data?.get("bookmarkId")?.jsonPrimitive?.content)
+        assertNull(pushedMutations.single().data?.get("bookmarkId"))
+        assertEquals("ayah", pushedMutations.single().data?.get("type")?.jsonPrimitive?.content)
+        assertEquals(2, pushedMutations.single().data?.get("key")?.jsonPrimitive?.content?.toInt())
+        assertEquals(255, pushedMutations.single().data?.get("verseNumber")?.jsonPrimitive?.content?.toInt())
+        assertEquals(1, pushedMutations.single().data?.get("mushaf")?.jsonPrimitive?.content?.toInt())
 
         plan.complete(
             newToken = 5L,
