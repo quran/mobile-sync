@@ -12,7 +12,12 @@ actual object HttpClientFactory {
     actual fun createHttpClient(): HttpClient {
         return HttpClient(OkHttp) {
             install(ContentNegotiation) {
-                json(Json { explicitNulls = false })
+                json(
+                    Json {
+                        explicitNulls = false
+                        ignoreUnknownKeys = true
+                    }
+                )
             }
             install(Logging) {
                 level = LogLevel.INFO
