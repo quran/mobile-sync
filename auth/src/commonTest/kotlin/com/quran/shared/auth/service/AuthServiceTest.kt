@@ -1,6 +1,9 @@
 package com.quran.shared.auth.service
 
 import com.quran.shared.auth.model.AuthState
+import com.quran.shared.auth.model.AuthenticationCancelledException
+import com.quran.shared.auth.model.AuthenticationFailedException
+import com.quran.shared.auth.model.AuthenticationNetworkException
 import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.auth.repository.AuthRepository
 import com.quran.shared.auth.repository.AuthRepositoryLoginCommitCallbacks
@@ -8,6 +11,7 @@ import com.quran.shared.auth.repository.LogoutTokenCaptureException
 import com.quran.shared.auth.repository.LogoutTokenMaterial
 import com.quran.shared.auth.repository.RemoteLogoutFailure
 import com.quran.shared.auth.repository.RemoteLogoutOperation
+import kotlinx.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.CompletableDeferred
@@ -22,6 +26,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import org.publicvalue.multiplatform.oidc.OpenIdConnectException
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -1761,6 +1766,58 @@ class AuthServiceTest {
         assertTrue(result.isFailure)
         val state = assertIs<AuthState.Error>(service.authState.value)
         assertEquals("login failed", state.message)
+    }
+
+    @Test
+    fun `user cancelled login throws typed cancellation without publishing an error`() = runTest(dispatcher) {
+        val repository = RecordingAuthRepository(
+            accessToken = null,
+            currentUser = null,
+            loginFailure = OpenIdConnectException.AuthenticationCancelled()
+        )
+        val service = AuthService(repository)
+        advanceUntilIdle()
+
+        val result = runCatching { service.login() }
+
+        assertIs<AuthenticationCancelledException>(result.exceptionOrNull())
+        assertFalse(service.isLoggedIn())
+        assertNull(service.getAccessToken())
+        assertIs<AuthState.Idle>(service.authState.value)
+    }
+
+    @Test
+    fun `login failure throws typed authentication failure`() = runTest(dispatcher) {
+        val repository = RecordingAuthRepository(
+            accessToken = null,
+            currentUser = null,
+            loginFailure = IllegalStateException("login failed")
+        )
+        val service = AuthService(repository)
+        advanceUntilIdle()
+
+        val result = runCatching { service.login() }
+
+        val failure = assertIs<AuthenticationFailedException>(result.exceptionOrNull())
+        assertIs<IllegalStateException>(failure.cause)
+        assertIs<AuthState.Error>(service.authState.value)
+    }
+
+    @Test
+    fun `network login failure throws typed network failure`() = runTest(dispatcher) {
+        val repository = RecordingAuthRepository(
+            accessToken = null,
+            currentUser = null,
+            loginFailure = IOException("offline")
+        )
+        val service = AuthService(repository)
+        advanceUntilIdle()
+
+        val result = runCatching { service.login() }
+
+        val failure = assertIs<AuthenticationNetworkException>(result.exceptionOrNull())
+        assertIs<IOException>(failure.cause)
+        assertIs<AuthState.Error>(service.authState.value)
     }
 }
 
