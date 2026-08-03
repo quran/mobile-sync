@@ -418,8 +418,31 @@ class OidcAuthRepositoryTest {
             )
 
             assertFailsWith<CancellationException> {
-                repository.attemptRemoteLogout(LogoutTokenMaterial(refreshToken = "refresh-token", idToken = null))
+                repository.attemptRemoteLogout(
+                    LogoutTokenMaterial(refreshToken = "refresh-token", idToken = null),
+                    RemoteLogoutMode.TOKEN_REVOCATION_ONLY
+                )
             }
+        }
+
+    @Test
+    fun `token revocation logout does not start provider end session`() =
+        runTest(UnconfinedTestDispatcher()) {
+            AuthFlowFactoryProvider.initialize(CancellingEndSessionFlowFactory)
+            val repository = oidcRepository(
+                AuthStorage(
+                    tokenStore = RecordingTokenStore(),
+                    settings = MapSettings().toSuspendSettings(),
+                    json = Json { ignoreUnknownKeys = true }
+                )
+            )
+
+            val failures = repository.attemptRemoteLogout(
+                LogoutTokenMaterial(refreshToken = null, idToken = "id-token"),
+                RemoteLogoutMode.TOKEN_REVOCATION_ONLY
+            )
+
+            assertEquals(emptyList(), failures)
         }
 
     @Test
@@ -435,7 +458,10 @@ class OidcAuthRepositoryTest {
             )
 
             assertFailsWith<CancellationException> {
-                repository.attemptRemoteLogout(LogoutTokenMaterial(refreshToken = null, idToken = "id-token"))
+                repository.attemptRemoteLogout(
+                    LogoutTokenMaterial(refreshToken = null, idToken = "id-token"),
+                    RemoteLogoutMode.TOKEN_REVOCATION_AND_END_SESSION
+                )
             }
         }
 

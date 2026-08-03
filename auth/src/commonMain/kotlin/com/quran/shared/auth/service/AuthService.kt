@@ -8,6 +8,7 @@ import com.quran.shared.auth.repository.AuthRepositoryLoginCommitCallbacks
 import com.quran.shared.auth.repository.LogoutTokenCaptureException
 import com.quran.shared.auth.repository.LogoutTokenMaterial
 import com.quran.shared.auth.repository.RemoteLogoutFailure
+import com.quran.shared.auth.repository.RemoteLogoutMode
 import com.quran.shared.di.AppScope
 import dev.zacsweers.metro.SingleIn
 import kotlin.native.HiddenFromObjC
@@ -346,7 +347,10 @@ class AuthService private constructor(
 
         if (tokenMaterial != null) {
             try {
-                authRepository.attemptRemoteLogout(tokenMaterial)
+                authRepository.attemptRemoteLogout(
+                    tokenMaterial,
+                    RemoteLogoutMode.TOKEN_REVOCATION_ONLY
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -394,8 +398,11 @@ class AuthService private constructor(
     }
 
     @HiddenFromObjC
-    suspend fun attemptRemoteLogout(tokenMaterial: LogoutTokenMaterial): List<RemoteLogoutFailure> =
-        authRepository.attemptRemoteLogout(tokenMaterial)
+    suspend fun attemptRemoteLogout(
+        tokenMaterial: LogoutTokenMaterial,
+        mode: RemoteLogoutMode
+    ): List<RemoteLogoutFailure> =
+        authRepository.attemptRemoteLogout(tokenMaterial, mode)
 
     suspend fun refreshAccessTokenIfNeeded(): Boolean {
         return when (val current = lifecycleSnapshot()) {

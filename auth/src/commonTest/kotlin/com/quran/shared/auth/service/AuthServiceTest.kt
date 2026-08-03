@@ -10,6 +10,7 @@ import com.quran.shared.auth.repository.AuthRepositoryLoginCommitCallbacks
 import com.quran.shared.auth.repository.LogoutTokenCaptureException
 import com.quran.shared.auth.repository.LogoutTokenMaterial
 import com.quran.shared.auth.repository.RemoteLogoutFailure
+import com.quran.shared.auth.repository.RemoteLogoutMode
 import com.quran.shared.auth.repository.RemoteLogoutOperation
 import kotlinx.io.IOException
 import kotlinx.coroutines.CancellationException
@@ -223,6 +224,23 @@ class AuthServiceTest {
         assertNull(repository.getAccessToken())
         assertNull(service.getAccessToken())
         assertIs<AuthState.Idle>(service.authState.value)
+    }
+
+    @Test
+    fun `logout revokes tokens without ending the provider session`() = runTest(dispatcher) {
+        val repository = RecordingAuthRepository(
+            accessToken = "access-token",
+            currentUser = null
+        )
+        val service = AuthService(repository)
+        advanceUntilIdle()
+
+        service.logout()
+
+        assertEquals(
+            listOf(RemoteLogoutMode.TOKEN_REVOCATION_ONLY),
+            repository.remoteLogoutModes
+        )
     }
 
     @Test
@@ -1899,6 +1917,7 @@ private class RecordingAuthRepository(
         private set
     var refreshCalls = 0
         private set
+    val remoteLogoutModes = mutableListOf<RemoteLogoutMode>()
     private var accessTokenReadCalls = 0
     private var isLoggedInReadCalls = 0
     private var currentUserCalls = 0
@@ -2060,7 +2079,11 @@ private class RecordingAuthRepository(
         }
     }
 
-    override suspend fun attemptRemoteLogout(tokenMaterial: LogoutTokenMaterial): List<RemoteLogoutFailure> {
+    override suspend fun attemptRemoteLogout(
+        tokenMaterial: LogoutTokenMaterial,
+        mode: RemoteLogoutMode
+    ): List<RemoteLogoutFailure> {
+        remoteLogoutModes += mode
         remoteLogoutStarted.complete(Unit)
         if (suspendRemoteLogout) {
             remoteLogoutCanFinish.await()

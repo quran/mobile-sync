@@ -5,6 +5,7 @@ import com.quran.shared.auth.model.AuthState
 import com.quran.shared.auth.repository.LogoutTokenCaptureException
 import com.quran.shared.auth.repository.LogoutTokenMaterial
 import com.quran.shared.auth.repository.RemoteLogoutFailure
+import com.quran.shared.auth.repository.RemoteLogoutMode
 import com.quran.shared.auth.repository.RemoteLogoutOperation
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.di.AppScope
@@ -279,6 +280,7 @@ class QuranDataService internal constructor(
         if (!clearLocalData) {
             throw UnsupportedOperationException("Keep-local logout is not implemented yet")
         }
+        val remoteLogoutMode = RemoteLogoutMode.TOKEN_REVOCATION_ONLY
         var tokenMaterial: LogoutTokenMaterial? = null
         var tokenCaptureFailure: Throwable? = null
         try {
@@ -298,15 +300,18 @@ class QuranDataService internal constructor(
                 resetLocalDataAndSyncToken()
             }
             val warnings = tokenCaptureFailure?.let { failure ->
-                logoutRemoteCleanupFailureWarnings(failure)
+                logoutRemoteCleanupFailureWarnings(failure, remoteLogoutMode)
             } ?: try {
-                authService.attemptRemoteLogout(tokenMaterial!!).let { failures ->
+                authService.attemptRemoteLogout(
+                    tokenMaterial!!,
+                    remoteLogoutMode
+                ).let { failures ->
                     failures.map { it.toLogoutWarning() }
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (failure: Throwable) {
-                logoutRemoteCleanupFailureWarnings(failure)
+                logoutRemoteCleanupFailureWarnings(failure, remoteLogoutMode)
             }
             return LogoutResult(warnings)
         } catch (e: CancellationException) {
@@ -335,8 +340,11 @@ class QuranDataService internal constructor(
         syncLocalModificationDateStore.updateLastModificationDate(0L)
     }
 
-    private fun logoutRemoteCleanupFailureWarnings(failure: Throwable): List<LogoutWarning> =
-        RemoteLogoutOperation.entries.map { operation ->
+    private fun logoutRemoteCleanupFailureWarnings(
+        failure: Throwable,
+        mode: RemoteLogoutMode
+    ): List<LogoutWarning> =
+        mode.operations.map { operation ->
             LogoutWarning(
                 type = operation.toLogoutWarningType(),
                 message = failure.message
