@@ -21,6 +21,14 @@ enum class RemoteLogoutOperation {
 }
 
 @HiddenFromObjC
+enum class RemoteLogoutMode(
+    val operations: List<RemoteLogoutOperation>
+) {
+    TOKEN_REVOCATION_ONLY(listOf(RemoteLogoutOperation.REVOKE_REFRESH_TOKEN)),
+    TOKEN_REVOCATION_AND_END_SESSION(RemoteLogoutOperation.entries)
+}
+
+@HiddenFromObjC
 data class RemoteLogoutFailure(
     val operation: RemoteLogoutOperation,
     val exception: Exception
@@ -79,7 +87,10 @@ interface AuthRepository {
 
     suspend fun clearLocalSession()
 
-    suspend fun attemptRemoteLogout(tokenMaterial: LogoutTokenMaterial): List<RemoteLogoutFailure>
+    suspend fun attemptRemoteLogout(
+        tokenMaterial: LogoutTokenMaterial,
+        mode: RemoteLogoutMode
+    ): List<RemoteLogoutFailure>
 
     /**
      * Returns the current access token if available.

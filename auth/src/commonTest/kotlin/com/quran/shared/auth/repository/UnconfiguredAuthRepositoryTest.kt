@@ -52,7 +52,10 @@ class UnconfiguredAuthRepositoryTest {
         )
         assertEquals(
             emptyList(),
-            repository.attemptRemoteLogout(LogoutTokenMaterial(refreshToken = "refresh", idToken = "id"))
+            repository.attemptRemoteLogout(
+                LogoutTokenMaterial(refreshToken = "refresh", idToken = "id"),
+                RemoteLogoutMode.TOKEN_REVOCATION_ONLY
+            )
         )
     }
 

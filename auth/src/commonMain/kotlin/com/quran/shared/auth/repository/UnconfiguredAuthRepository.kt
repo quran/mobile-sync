@@ -52,7 +52,10 @@ class UnconfiguredAuthRepository @Inject constructor(
         authStorage.clearAllTokens()
     }
 
-    override suspend fun attemptRemoteLogout(tokenMaterial: LogoutTokenMaterial): List<RemoteLogoutFailure> =
+    override suspend fun attemptRemoteLogout(
+        tokenMaterial: LogoutTokenMaterial,
+        mode: RemoteLogoutMode
+    ): List<RemoteLogoutFailure> =
         emptyList()
 
     override suspend fun getAccessToken(): String? = null

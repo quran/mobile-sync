@@ -9,6 +9,7 @@ import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.auth.repository.AuthRepository
 import com.quran.shared.auth.repository.LogoutTokenMaterial
 import com.quran.shared.auth.repository.RemoteLogoutFailure
+import com.quran.shared.auth.repository.RemoteLogoutMode
 import com.quran.shared.auth.repository.RemoteLogoutOperation
 import com.quran.shared.auth.service.AuthSessionPublicationGuard
 import com.quran.shared.auth.service.AuthService
@@ -190,8 +191,7 @@ class QuranDataServiceLifecycleTest {
                 refreshToken = "refresh-token",
                 idToken = "id-token",
                 remoteFailures = listOf(
-                    RemoteLogoutFailure(RemoteLogoutOperation.REVOKE_REFRESH_TOKEN, Exception("revoke failed")),
-                    RemoteLogoutFailure(RemoteLogoutOperation.END_SESSION, Exception("end-session failed"))
+                    RemoteLogoutFailure(RemoteLogoutOperation.REVOKE_REFRESH_TOKEN, Exception("revoke failed"))
                 )
             )
         )
@@ -202,14 +202,17 @@ class QuranDataServiceLifecycleTest {
 
         assertEquals(
             listOf(
-                LogoutWarning(LogoutWarningType.REVOKE_TOKEN_FAILED, "revoke failed"),
-                LogoutWarning(LogoutWarningType.END_SESSION_FAILED, "end-session failed")
+                LogoutWarning(LogoutWarningType.REVOKE_TOKEN_FAILED, "revoke failed")
             ),
             result.warnings
         )
         assertEquals(null, fixture.authRepository.getAccessToken())
         assertEquals(1, fixture.resetRepository.deleteCount)
         assertEquals(0L, fixture.tokenStore.localLastModificationDate())
+        assertEquals(
+            listOf(RemoteLogoutMode.TOKEN_REVOCATION_ONLY),
+            fixture.authRepository.remoteLogoutModes
+        )
         fixture.clearAndJoin()
     }
 
@@ -457,8 +460,7 @@ class QuranDataServiceLifecycleTest {
 
         assertEquals(
             listOf(
-                LogoutWarning(LogoutWarningType.REVOKE_TOKEN_FAILED, "token capture failed"),
-                LogoutWarning(LogoutWarningType.END_SESSION_FAILED, "token capture failed")
+                LogoutWarning(LogoutWarningType.REVOKE_TOKEN_FAILED, "token capture failed")
             ),
             result.warnings
         )
@@ -1228,6 +1230,7 @@ private class ServiceAuthRepository(
     val firstAuthHeadersCanFinish = CompletableDeferred<Unit>()
     var remoteLogoutAttemptCount = 0
         private set
+    val remoteLogoutModes = mutableListOf<RemoteLogoutMode>()
     var loginCalls = 0
         private set
     var reauthenticationCalls = 0
@@ -1258,7 +1261,10 @@ private class ServiceAuthRepository(
     }
 
     override suspend fun logout() {
-        val failures = attemptRemoteLogout(captureLogoutTokenMaterial())
+        val failures = attemptRemoteLogout(
+            captureLogoutTokenMaterial(),
+            RemoteLogoutMode.TOKEN_REVOCATION_ONLY
+        )
         if (failures.isNotEmpty()) {
             throw failures.first().exception
         }
@@ -1285,8 +1291,12 @@ private class ServiceAuthRepository(
         idToken = null
     }
 
-    override suspend fun attemptRemoteLogout(tokenMaterial: LogoutTokenMaterial): List<RemoteLogoutFailure> {
+    override suspend fun attemptRemoteLogout(
+        tokenMaterial: LogoutTokenMaterial,
+        mode: RemoteLogoutMode
+    ): List<RemoteLogoutFailure> {
         remoteLogoutAttemptCount += 1
+        remoteLogoutModes += mode
         onAttemptRemoteLogout()
         remoteLogoutException?.let { throw it }
         return remoteFailures

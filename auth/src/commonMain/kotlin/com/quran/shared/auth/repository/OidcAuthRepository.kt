@@ -441,7 +441,10 @@ class OidcAuthRepository @Inject constructor(
 
     override suspend fun logout() {
         val tokenMaterial = captureLogoutTokenMaterialAndClearLocalSession()
-        val failures = attemptRemoteLogout(tokenMaterial)
+        val failures = attemptRemoteLogout(
+            tokenMaterial,
+            RemoteLogoutMode.TOKEN_REVOCATION_ONLY
+        )
         failures.forEach { failure ->
             logger.w(failure.exception) { "Remote logout cleanup failed: ${failure.operation}" }
         }
@@ -507,7 +510,10 @@ class OidcAuthRepository @Inject constructor(
         invalidationResult.failure?.let { throw it }
     }
 
-    override suspend fun attemptRemoteLogout(tokenMaterial: LogoutTokenMaterial): List<RemoteLogoutFailure> {
+    override suspend fun attemptRemoteLogout(
+        tokenMaterial: LogoutTokenMaterial,
+        mode: RemoteLogoutMode
+    ): List<RemoteLogoutFailure> {
         val failures = mutableListOf<RemoteLogoutFailure>()
 
         tokenMaterial.refreshToken?.let { refreshToken ->
@@ -521,7 +527,10 @@ class OidcAuthRepository @Inject constructor(
             }
         }
 
-        if (AuthFlowFactoryProvider.isInitialized()) {
+        if (
+            RemoteLogoutOperation.END_SESSION in mode.operations &&
+            AuthFlowFactoryProvider.isInitialized()
+        ) {
             try {
                 val endSessionFlow = AuthFlowFactoryProvider.factory.createEndSessionFlow(oidcClient)
                 endSessionFlow.endSession(tokenMaterial.idToken) {
