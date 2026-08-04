@@ -3,12 +3,14 @@ package com.quran.shared.pipeline
 import com.quran.shared.auth.model.AuthState
 import com.quran.shared.auth.model.AuthRuntimeConfig
 import com.quran.shared.auth.model.UserInfo
+import com.quran.shared.auth.model.asAuthenticationException
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.di.AppScope
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutinesState
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -60,20 +62,32 @@ class SyncAuthService internal constructor(
     }
 
     @NativeCoroutines
-    suspend fun refreshAuthentication(): Boolean =
+    suspend fun refreshAuthentication(): Boolean = withAuthenticationErrors {
         authService.refreshAccessTokenIfNeeded()
+    }
 
     @NativeCoroutines
-    suspend fun authenticationHeaders(): Map<String, String> =
+    suspend fun authenticationHeaders(): Map<String, String> = withAuthenticationErrors {
         authService.getAuthHeaders()
+    }
 
     @NativeCoroutines
-    suspend fun logout(clearLocalData: Boolean = true): LogoutResult =
+    suspend fun logout(clearLocalData: Boolean = true): LogoutResult = withAuthenticationErrors {
         quranDataService.logout(clearLocalData)
+    }
 
     fun clearError() {
         authService.clearError()
     }
 
     fun isLoggedIn(): Boolean = authService.isLoggedIn()
+
+    private suspend fun <T> withAuthenticationErrors(operation: suspend () -> T): T =
+        try {
+            operation()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw e.asAuthenticationException()
+        }
 }

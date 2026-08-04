@@ -1,6 +1,8 @@
 package com.quran.shared.auth.service
 
 import com.quran.shared.auth.model.AuthState
+import com.quran.shared.auth.model.AuthenticationCancelledException
+import com.quran.shared.auth.model.asAuthenticationException
 import com.quran.shared.auth.repository.AuthRepository
 import com.quran.shared.auth.repository.AuthRepositoryLoginCommitCallbacks
 import com.quran.shared.auth.repository.LogoutTokenCaptureException
@@ -110,9 +112,15 @@ class AuthService private constructor(
     suspend fun loginWithReauthentication(): Unit = runLogin(LoginIntent.Reauthenticate)
 
     private suspend fun runLogin(intent: LoginIntent) {
-        val loginReservation = awaitDifferentIntentOrReserveLogin(intent) ?: return
-        runActiveLogin(loginReservation) {
-            runRepositoryLogin(intent, loginReservation)
+        try {
+            val loginReservation = awaitDifferentIntentOrReserveLogin(intent) ?: return
+            runActiveLogin(loginReservation) {
+                runRepositoryLogin(intent, loginReservation)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw e.asAuthenticationException()
         }
     }
 
@@ -241,6 +249,7 @@ class AuthService private constructor(
             }
             throw e
         } catch (e: Exception) {
+            val authenticationException = e.asAuthenticationException()
             withContext(NonCancellable) {
                 val publishResult = if (repositoryLoginCompleted) {
                     tryPublishValidatedActiveLoginSession(loginReservation.generation)
@@ -248,9 +257,13 @@ class AuthService private constructor(
                     PublishSessionResult.NoSession
                 }
                 if (publishResult != PublishSessionResult.Published) {
-                    failActiveLoginIfLoadingGenerationCurrent(e, "Login failed", loginReservation)
+                    failActiveLoginIfLoadingGenerationCurrent(
+                        authenticationException,
+                        "Login failed",
+                        loginReservation
+                    )
                 }
-                completeActiveLogin(loginReservation, e)
+                completeActiveLogin(loginReservation, authenticationException)
             }
             throw e
         }
@@ -625,7 +638,11 @@ class AuthService private constructor(
             ) {
                 cachedAccessToken = null
                 lifecycle = AuthPublicationLifecycle.Idle(loginReservation.generation + 1)
-                _authState.value = AuthState.Error(e, errorMessage)
+                _authState.value = if (e is AuthenticationCancelledException) {
+                    AuthState.Idle
+                } else {
+                    AuthState.Error(e, errorMessage)
+                }
                 loginReservation.completion.completeExceptionally(e)
             }
         }
