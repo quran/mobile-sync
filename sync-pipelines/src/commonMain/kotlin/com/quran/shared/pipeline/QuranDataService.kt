@@ -421,8 +421,18 @@ class QuranDataService internal constructor(
      */
     @NativeCoroutines
     suspend fun setHighlight(sura: Int, ayah: Int, color: AyahHighlightColor): AyahHighlight {
+        return setHighlight(sura, ayah, color, currentPlatformDateTime())
+    }
+
+    @NativeCoroutines
+    suspend fun setHighlight(
+        sura: Int,
+        ayah: Int,
+        color: AyahHighlightColor,
+        timestamp: PlatformDateTime
+    ): AyahHighlight {
         return mutatingCall("Failed to set ayah highlight") {
-            collectionBookmarksRepository.setHighlight(sura, ayah, color, currentPlatformDateTime())
+            collectionBookmarksRepository.setHighlight(sura, ayah, color, timestamp)
         }
     }
 
