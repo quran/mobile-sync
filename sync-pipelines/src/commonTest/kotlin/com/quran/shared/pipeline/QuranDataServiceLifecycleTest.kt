@@ -782,6 +782,23 @@ class QuranDataServiceLifecycleTest {
     }
 
     @Test
+    fun `setHighlight forwards explicit timestamp`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+        val timestamp = Instant.fromEpochMilliseconds(42).toPlatform()
+        advanceUntilIdle()
+
+        val result = fixture.service.setHighlight(2, 255, AyahHighlightColor.BLUE, timestamp)
+
+        assertEquals(
+            HighlightSetCall(2, 255, AyahHighlightColor.BLUE, timestamp),
+            fixture.collectionBookmarksRepository.setHighlightCalls.single()
+        )
+        assertEquals(AyahHighlight(2, 255, AyahHighlightColor.BLUE, timestamp), result)
+        assertEquals(1, fixture.syncClient.localDataUpdatedCount)
+        fixture.clearAndJoin()
+    }
+
+    @Test
     fun `removeHighlight triggers local sync only when a highlight was removed`() = runTest(dispatcher) {
         val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
         advanceUntilIdle()
