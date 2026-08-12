@@ -58,10 +58,8 @@ countRetainedForBookmark:
           WHERE b.local_id = bookmark_collection.bookmark_local_id
             AND b.deleted = 1
             AND b.is_reading = 0
-            AND b.is_in_default_collection = 0
             AND b.bookmark_pending_op IS NULL
             AND b.reading_pending_op IS NULL
-            AND b.default_pending_op IS NULL
         )
       )
     );
@@ -477,10 +475,8 @@ deleteInactiveClearedLinks:
         WHERE b.local_id = bookmark_collection.bookmark_local_id
           AND b.deleted = 1
           AND b.is_reading = 0
-          AND b.is_in_default_collection = 0
           AND b.bookmark_pending_op IS NULL
           AND b.reading_pending_op IS NULL
-          AND b.default_pending_op IS NULL
       )
     );
 
@@ -494,10 +490,8 @@ deleteRetiredInactiveClearedLinksForBookmark:
       WHERE b.local_id = :bookmark_local_id
         AND b.deleted = 1
         AND b.is_reading = 0
-        AND b.is_in_default_collection = 0
         AND b.bookmark_pending_op IS NULL
         AND b.reading_pending_op IS NULL
-        AND b.default_pending_op IS NULL
     );
 
 deleteLinksForInactiveParents:

@@ -8,18 +8,16 @@ import com.quran.shared.persistence.util.PlatformDateTime
  * @param name the name of the collection
  * @param lastUpdated when the collection was last updated
  * @param id the identifier of the collection
+ * @param isDefault whether this is the default bookmark collection
+ * @param isSystem whether this collection is managed by the system
  */
 data class Collection(
     val name: String,
     val lastUpdated: PlatformDateTime,
-    val id: String
+    val id: String,
+    val isDefault: Boolean = false,
+    val isSystem: Boolean = false
 ) {
-    /**
-     * True when this collection represents the virtual default bookmark collection.
-     */
-    val isDefault: Boolean
-        get() = id == DEFAULT_COLLECTION_ID
-
     /**
      * True when this collection is reserved for ayah highlight persistence.
      */

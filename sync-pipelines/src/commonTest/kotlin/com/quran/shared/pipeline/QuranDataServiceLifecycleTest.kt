@@ -37,7 +37,6 @@ import com.quran.shared.persistence.model.AyahReadingBookmark
 import com.quran.shared.persistence.model.BookmarkCollectionsReplacementResult
 import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.model.CollectionAyahBookmark
-import com.quran.shared.persistence.model.DEFAULT_COLLECTION_ID
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
@@ -569,128 +568,19 @@ class QuranDataServiceLifecycleTest {
     }
 
     @Test
-    fun `updateCollection returns virtual default collection without repository write`() = runTest(dispatcher) {
-        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
-        val defaultBookmark = bookmarkLink(
-            DEFAULT_COLLECTION_ID,
-            bookmarkLastUpdated = Instant.fromEpochMilliseconds(77).toPlatform()
-        )
-        fixture.collectionBookmarksRepository.setBookmarksForCollection(
-            DEFAULT_COLLECTION_ID,
-            listOf(defaultBookmark)
-        )
-        advanceUntilIdle()
-
-        val result = fixture.service.updateCollection(DEFAULT_COLLECTION_ID, "Renamed default")
-
-        assertEquals(DEFAULT_COLLECTION_ID, result.id)
-        assertEquals(true, result.isDefault)
-        assertEquals(defaultBookmark.bookmarkLastUpdated, result.lastUpdated)
-        assertEquals(emptyList(), fixture.collectionsRepository.updateCalls)
-        assertEquals(0, fixture.syncClient.localDataUpdatedCount)
-        fixture.clearAndJoin()
-    }
-
-    @Test
-    fun `updateCollection with timestamp returns virtual default collection without repository write`() =
-        runTest(dispatcher) {
-            val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
-            val timestamp = Instant.fromEpochMilliseconds(42).toPlatform()
-            val defaultBookmark = bookmarkLink(
-                DEFAULT_COLLECTION_ID,
-                bookmarkLastUpdated = Instant.fromEpochMilliseconds(88).toPlatform()
-            )
-            fixture.collectionBookmarksRepository.setBookmarksForCollection(
-                DEFAULT_COLLECTION_ID,
-                listOf(defaultBookmark)
-            )
-            advanceUntilIdle()
-
-            val result = fixture.service.updateCollection(DEFAULT_COLLECTION_ID, "Renamed default", timestamp)
-
-            assertEquals(DEFAULT_COLLECTION_ID, result.id)
-            assertEquals(true, result.isDefault)
-            assertEquals(defaultBookmark.bookmarkLastUpdated, result.lastUpdated)
-            assertEquals(emptyList(), fixture.collectionsRepository.updateCalls)
-            assertEquals(0, fixture.syncClient.localDataUpdatedCount)
-            fixture.clearAndJoin()
-        }
-
-    @Test
-    fun `default collection management is rejected during reset without repository writes`() = runTest(dispatcher) {
-        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
-        advanceUntilIdle()
-
-        fixture.lifecycleCoordinator.runManagedReset {
-            assertFailsWith<SessionResetInProgressException> {
-                fixture.service.updateCollection(DEFAULT_COLLECTION_ID, "Renamed default")
-            }
-            assertFailsWith<SessionResetInProgressException> {
-                fixture.service.deleteCollection(DEFAULT_COLLECTION_ID)
-            }
-        }
-
-        assertEquals(emptyList(), fixture.collectionsRepository.updateCalls)
-        assertEquals(emptyList(), fixture.collectionsRepository.deleteCalls)
-        assertEquals(0, fixture.syncClient.localDataUpdatedCount)
-        fixture.clearAndJoin()
-    }
-
-    @Test
-    fun `collectionsWithBookmarks includes virtual default collection with default bookmarks`() =
-        runTest(dispatcher) {
-            val fixture = quranDataServiceFixture()
-            val defaultBookmark = bookmarkLink(DEFAULT_COLLECTION_ID, bookmarkId = "default-bookmark")
-            fixture.collectionBookmarksRepository.setBookmarksForCollection(
-                DEFAULT_COLLECTION_ID,
-                listOf(defaultBookmark)
-            )
-            advanceUntilIdle()
-
-            val result = fixture.service.collectionsWithBookmarks.first()
-
-            assertEquals(listOf(DEFAULT_COLLECTION_ID), result.map { it.collection.id })
-            assertEquals(true, result.single().collection.isDefault)
-            assertEquals(listOf(defaultBookmark), result.single().bookmarks)
-            assertEquals(listOf(DEFAULT_COLLECTION_ID), fixture.collectionBookmarksRepository.flowRequests)
-            fixture.clearAndJoin()
-        }
-
-    @Test
-    fun `collectionsWithBookmarks keeps custom collections alongside virtual default collection`() =
-        runTest(dispatcher) {
-            val fixture = quranDataServiceFixture()
-            val customCollection = Collection("Favorites", testTimestamp(), "7")
-            val defaultBookmark = bookmarkLink(DEFAULT_COLLECTION_ID, bookmarkId = "default-bookmark")
-            val customBookmark = bookmarkLink("7", bookmarkId = "custom-bookmark")
-            fixture.collectionsRepository.collections.value = listOf(customCollection)
-            fixture.collectionBookmarksRepository.setBookmarksForCollection(
-                DEFAULT_COLLECTION_ID,
-                listOf(defaultBookmark)
-            )
-            fixture.collectionBookmarksRepository.setBookmarksForCollection("7", listOf(customBookmark))
-            advanceUntilIdle()
-
-            val result = fixture.service.collectionsWithBookmarks.first()
-
-            assertEquals(listOf(DEFAULT_COLLECTION_ID, "7"), result.map { it.collection.id })
-            assertEquals(listOf(defaultBookmark), result.first { it.collection.isDefault }.bookmarks)
-            assertEquals(listOf(customBookmark), result.first { it.collection.id == "7" }.bookmarks)
-            fixture.clearAndJoin()
-        }
-
-    @Test
-    fun `collectionsWithBookmarks excludes system highlight collections`() = runTest(dispatcher) {
+    fun `collectionsWithBookmarks puts default first and excludes other system collections`() = runTest(dispatcher) {
         val fixture = quranDataServiceFixture()
         fixture.collectionsRepository.collections.value = listOf(
             Collection("Study", testTimestamp(), "7"),
-            Collection("system:highlights:green", testTimestamp(), "8")
+            Collection("system:highlights:green", testTimestamp(), "8", isSystem = true),
+            Collection("Favorites", testTimestamp(), "6", isDefault = true, isSystem = true)
         )
         advanceUntilIdle()
 
         val result = fixture.service.collectionsWithBookmarks.first()
 
-        assertEquals(listOf(DEFAULT_COLLECTION_ID, "7"), result.map { it.collection.id })
+        assertEquals(listOf("6", "7"), result.map { it.collection.id })
+        assertTrue(result.first().collection.isDefault)
         assertFalse("8" in fixture.collectionBookmarksRepository.flowRequests)
         fixture.clearAndJoin()
     }
@@ -883,18 +773,6 @@ class QuranDataServiceLifecycleTest {
         fixture.clearAndJoin()
     }
 
-    @Test
-    fun `deleteCollection returns false for virtual default collection without repository write`() = runTest(dispatcher) {
-        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
-        advanceUntilIdle()
-
-        val result = fixture.service.deleteCollection(DEFAULT_COLLECTION_ID)
-
-        assertFalse(result)
-        assertEquals(emptyList(), fixture.collectionsRepository.deleteCalls)
-        assertEquals(0, fixture.syncClient.localDataUpdatedCount)
-        fixture.clearAndJoin()
-    }
 
     @Test
     fun `replaceBookmarkCollections returns false without triggering sync when memberships are unchanged`() =

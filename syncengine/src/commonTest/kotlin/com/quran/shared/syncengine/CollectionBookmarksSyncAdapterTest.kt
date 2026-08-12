@@ -2,7 +2,6 @@
 
 package com.quran.shared.syncengine
 
-import com.quran.shared.mutations.LOCAL_MUTATION_BOOKMARK_DEFAULT_FACET
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.LOCAL_MUTATION_COLLECTION_BOOKMARK_LINK_FACET
 import com.quran.shared.mutations.LocalMutationAck
@@ -629,85 +628,6 @@ class CollectionBookmarksSyncAdapterTest {
         assertNull(model.bookmarkId)
     }
 
-    @Test
-    fun `default pushed mutation response bookmarkId with matching location evidence backfills parent id`() = runTest {
-        val localMutation = LocalModelMutation<SyncCollectionBookmark>(
-            model = SyncCollectionBookmark.AyahBookmark(
-                collectionId = "remote-collection-1",
-                sura = 2,
-                ayah = 255,
-                lastModified = Instant.fromEpochMilliseconds(1000),
-                bookmarkId = null
-            ),
-            remoteID = null,
-            localID = "local-1",
-            mutation = Mutation.CREATED,
-            ack = LocalMutationAck(
-                localID = "local-1",
-                resource = LocalMutationResource.COLLECTION_BOOKMARK,
-                facet = LOCAL_MUTATION_BOOKMARK_DEFAULT_FACET,
-                observedPendingOp = Mutation.CREATED,
-                observedPendingVersion = 1
-            )
-        )
-
-        val localDataFetcher = object : LocalDataFetcher<SyncCollectionBookmark> {
-            override suspend fun fetchLocalMutations(lastModified: Long): List<LocalModelMutation<SyncCollectionBookmark>> =
-                listOf(localMutation)
-
-            override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> =
-                remoteIDs.associateWith { true }
-
-            override suspend fun fetchLocalModel(remoteId: String): SyncCollectionBookmark? = null
-        }
-
-        var capturedLocal: List<LocalModelMutation<SyncCollectionBookmark>>? = null
-        val adapter = CollectionBookmarksSyncAdapter(
-            CollectionBookmarksSynchronizationConfigurations(
-                localDataFetcher = localDataFetcher,
-                resultNotifier = object : ResultNotifier<SyncCollectionBookmark> {
-                    override suspend fun didSucceed(
-                        newToken: Long,
-                        newRemoteMutations: List<RemoteModelMutation<SyncCollectionBookmark>>,
-                        processedLocalMutations: List<LocalModelMutation<SyncCollectionBookmark>>
-                    ) {
-                        capturedLocal = processedLocalMutations
-                    }
-
-                    override suspend fun didFail(message: String) {
-                        fail("didFail called: $message")
-                    }
-                },
-                localModificationDateFetcher = object : LocalModificationDateFetcher {
-                    override suspend fun localLastModificationDate(): Long? = 0L
-                }
-            )
-        )
-
-        val plan = adapter.buildPlan(lastModificationDate = 0L, remoteMutations = emptyList())
-        plan.complete(
-            newToken = 5L,
-            pushedMutations = listOf(
-                SyncMutation(
-                    resource = "COLLECTION_BOOKMARK",
-                    resourceId = null,
-                    mutation = Mutation.CREATED,
-                    data = buildJsonObject {
-                        put("bookmarkId", "remote-bookmark-created")
-                        put("type", "ayah")
-                        put("key", 2)
-                        put("verseNumber", 255)
-                    },
-                    timestamp = 1001L
-                )
-            )
-        )
-
-        val local = assertNotNull(capturedLocal).single()
-        assertEquals(collectionBookmarkRemoteId("remote-collection-1", "remote-bookmark-created"), local.remoteID)
-        val model = local.model as SyncCollectionBookmark.AyahBookmark
-        assertEquals("remote-bookmark-created", model.bookmarkId)
-    }
 
     @Test
     fun `pushed mutation response bookmarkId with mismatched location evidence is rejected`() = runTest {
@@ -928,162 +848,7 @@ class CollectionBookmarksSyncAdapterTest {
         assertNull(model.bookmarkId)
     }
 
-    @Test
-    fun `complete stores default composite ACK payload without backfilling parent bookmark id`() = runTest {
-        val ack = LocalMutationAck(
-            localID = "local-1",
-            resource = LocalMutationResource.COLLECTION_BOOKMARK,
-            facet = LOCAL_MUTATION_BOOKMARK_DEFAULT_FACET,
-            observedPendingOp = Mutation.CREATED,
-            observedPendingVersion = 1
-        )
-        val localMutation = LocalModelMutation<SyncCollectionBookmark>(
-            model = SyncCollectionBookmark.AyahBookmark(
-                collectionId = "default-collection",
-                sura = 20,
-                ayah = 30,
-                lastModified = Instant.fromEpochMilliseconds(1000),
-                bookmarkId = null
-            ),
-            remoteID = null,
-            localID = "local-1",
-            mutation = Mutation.CREATED,
-            ack = ack
-        )
-        var capturedLocal: List<LocalModelMutation<SyncCollectionBookmark>>? = null
-        val adapter = CollectionBookmarksSyncAdapter(
-            CollectionBookmarksSynchronizationConfigurations(
-                localDataFetcher = object : LocalDataFetcher<SyncCollectionBookmark> {
-                    override suspend fun fetchLocalMutations(
-                        lastModified: Long
-                    ): List<LocalModelMutation<SyncCollectionBookmark>> = listOf(localMutation)
 
-                    override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> =
-                        remoteIDs.associateWith { true }
-
-                    override suspend fun fetchLocalModel(remoteId: String): SyncCollectionBookmark? = null
-                },
-                resultNotifier = object : ResultNotifier<SyncCollectionBookmark> {
-                    override suspend fun didSucceed(
-                        newToken: Long,
-                        newRemoteMutations: List<RemoteModelMutation<SyncCollectionBookmark>>,
-                        processedLocalMutations: List<LocalModelMutation<SyncCollectionBookmark>>
-                    ) {
-                        capturedLocal = processedLocalMutations
-                    }
-
-                    override suspend fun didFail(message: String) {
-                        fail("didFail called: $message")
-                    }
-                },
-                localModificationDateFetcher = object : LocalModificationDateFetcher {
-                    override suspend fun localLastModificationDate(): Long? = 0L
-                }
-            )
-        )
-        val remoteId = collectionBookmarkRemoteId("default-collection", "remoteBookmark")
-        val plan = adapter.buildPlan(lastModificationDate = 0L, remoteMutations = emptyList())
-
-        plan.complete(
-            newToken = 5L,
-            pushedMutations = listOf(
-                SyncMutation(
-                    resource = "COLLECTION_BOOKMARK",
-                    resourceId = remoteId,
-                    mutation = Mutation.CREATED,
-                    data = buildJsonObject {
-                        put("collectionId", "default-collection")
-                        put("type", "ayah")
-                        put("key", 20)
-                        put("verseNumber", 30)
-                    },
-                    timestamp = null
-                )
-            )
-        )
-
-        val local = assertNotNull(capturedLocal).single()
-        assertEquals(remoteId, local.remoteID)
-        val model = local.model as SyncCollectionBookmark.AyahBookmark
-        assertNull(model.bookmarkId)
-    }
-
-    @Test
-    fun `complete backfills default bookmark id from validated ACK payload without location`() = runTest {
-        val localMutation = LocalModelMutation<SyncCollectionBookmark>(
-            model = SyncCollectionBookmark.AyahBookmark(
-                collectionId = "default-collection",
-                sura = 20,
-                ayah = 30,
-                lastModified = Instant.fromEpochMilliseconds(1000),
-                bookmarkId = null
-            ),
-            remoteID = null,
-            localID = "default-local-bookmark",
-            mutation = Mutation.CREATED,
-            ack = LocalMutationAck(
-                localID = "default-local-bookmark",
-                resource = LocalMutationResource.COLLECTION_BOOKMARK,
-                facet = LOCAL_MUTATION_BOOKMARK_DEFAULT_FACET,
-                observedPendingOp = Mutation.CREATED,
-                observedPendingVersion = 1
-            )
-        )
-        var capturedLocal: List<LocalModelMutation<SyncCollectionBookmark>>? = null
-        val adapter = CollectionBookmarksSyncAdapter(
-            CollectionBookmarksSynchronizationConfigurations(
-                localDataFetcher = object : LocalDataFetcher<SyncCollectionBookmark> {
-                    override suspend fun fetchLocalMutations(
-                        lastModified: Long
-                    ): List<LocalModelMutation<SyncCollectionBookmark>> = listOf(localMutation)
-
-                    override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> =
-                        remoteIDs.associateWith { true }
-
-                    override suspend fun fetchLocalModel(remoteId: String): SyncCollectionBookmark? = null
-                },
-                resultNotifier = object : ResultNotifier<SyncCollectionBookmark> {
-                    override suspend fun didSucceed(
-                        newToken: Long,
-                        newRemoteMutations: List<RemoteModelMutation<SyncCollectionBookmark>>,
-                        processedLocalMutations: List<LocalModelMutation<SyncCollectionBookmark>>
-                    ) {
-                        capturedLocal = processedLocalMutations
-                    }
-
-                    override suspend fun didFail(message: String) {
-                        fail("didFail called: $message")
-                    }
-                },
-                localModificationDateFetcher = object : LocalModificationDateFetcher {
-                    override suspend fun localLastModificationDate(): Long? = 0L
-                }
-            )
-        )
-        val remoteId = collectionBookmarkRemoteId("default-collection", "remoteBookmark")
-        val plan = adapter.buildPlan(lastModificationDate = 0L, remoteMutations = emptyList())
-
-        plan.complete(
-            newToken = 5L,
-            pushedMutations = listOf(
-                SyncMutation(
-                    resource = "COLLECTION_BOOKMARK",
-                    resourceId = remoteId,
-                    mutation = Mutation.CREATED,
-                    data = buildJsonObject {
-                        put("collectionId", "default-collection")
-                        put("bookmarkId", "remoteBookmark")
-                    },
-                    timestamp = null
-                )
-            )
-        )
-
-        val local = assertNotNull(capturedLocal).single()
-        assertEquals(remoteId, local.remoteID)
-        val model = local.model as SyncCollectionBookmark.AyahBookmark
-        assertEquals("remoteBookmark", model.bookmarkId)
-    }
 
     @Test
     fun `complete does not backfill custom bookmark id from ACK payload without location`() = runTest {
@@ -1596,43 +1361,8 @@ class CollectionBookmarksSyncAdapterTest {
         assertNull((cleared.model as SyncCollectionBookmark.AyahBookmark).bookmarkId)
     }
 
-    @Test
-    fun `default collection bookmark create ACK with explicit bookmark id backfills parent bookmark`() = runTest {
-        val cleared = completePushedCollectionBookmarkCreate(
-            facet = LOCAL_MUTATION_BOOKMARK_DEFAULT_FACET,
-            pushedResourceId = null,
-            pushedData = collectionBookmarkAckData(bookmarkId = "remote-default-bookmark")
-        )
 
-        assertEquals(collectionBookmarkRemoteId("remote-collection", "remote-default-bookmark"), cleared.remoteID)
-        assertEquals("remote-default-bookmark", (cleared.model as SyncCollectionBookmark.AyahBookmark).bookmarkId)
-    }
 
-    @Test
-    fun `default collection bookmark create ACK with composite id does not backfill parent bookmark`() = runTest {
-        val remoteId = collectionBookmarkRemoteId("remote-collection", "remote-default-bookmark")
-        val cleared = completePushedCollectionBookmarkCreate(
-            facet = LOCAL_MUTATION_BOOKMARK_DEFAULT_FACET,
-            pushedResourceId = remoteId,
-            pushedData = collectionBookmarkAckData(bookmarkId = null)
-        )
-
-        assertEquals(remoteId, cleared.remoteID)
-        assertNull((cleared.model as SyncCollectionBookmark.AyahBookmark).bookmarkId)
-    }
-
-    @Test
-    fun `default collection bookmark create ACK with only composite id does not backfill parent bookmark`() = runTest {
-        val remoteId = collectionBookmarkRemoteId("remote-collection", "remote-default-bookmark")
-        val cleared = completePushedCollectionBookmarkCreate(
-            facet = LOCAL_MUTATION_BOOKMARK_DEFAULT_FACET,
-            pushedResourceId = remoteId,
-            pushedData = null
-        )
-
-        assertEquals(remoteId, cleared.remoteID)
-        assertNull((cleared.model as SyncCollectionBookmark.AyahBookmark).bookmarkId)
-    }
 
     @Test
     fun `complete rejects pushed delete with mismatched composite remote id before notifying success`() = runTest {
@@ -1990,52 +1720,6 @@ class CollectionBookmarksSyncAdapterTest {
         assertEquals(emptyList(), assertNotNull(capturedLocal))
     }
 
-    @Test
-    fun `replayed default collection bookmark create is cleared without a post when marker was not needed`() = runTest {
-        val ack = LocalMutationAck(
-            localID = "default-local-bookmark",
-            resource = LocalMutationResource.COLLECTION_BOOKMARK,
-            facet = LOCAL_MUTATION_BOOKMARK_DEFAULT_FACET,
-            observedPendingOp = Mutation.CREATED,
-            observedPendingVersion = 1
-        )
-        val localMutation = LocalModelMutation<SyncCollectionBookmark>(
-            model = SyncCollectionBookmark.AyahBookmark(
-                collectionId = "default-collection",
-                sura = 10,
-                ayah = 6,
-                lastModified = Instant.fromEpochMilliseconds(1000),
-                bookmarkId = null
-            ),
-            remoteID = null,
-            localID = "default-local-bookmark",
-            mutation = Mutation.CREATED,
-            ack = ack
-        )
-        val remoteId = collectionBookmarkRemoteId("default-collection", "remote-default-bookmark")
-        var capturedLocal: List<LocalModelMutation<SyncCollectionBookmark>>? = null
-
-        val adapter = replayCreateAdapter(
-            localMutation = localMutation,
-            onDidSucceed = { _, processedLocalMutations ->
-                capturedLocal = processedLocalMutations
-            }
-        )
-
-        val plan = adapter.buildPlan(
-            lastModificationDate = 0L,
-            remoteMutations = listOf(collectionBookmarkCreateEcho("default-collection", "remote-default-bookmark", 10, 6))
-        )
-        plan.markMutationsInFlight()
-        assertEquals(emptyList(), plan.mutationsToPush())
-        plan.complete(newToken = 5L, pushedMutations = emptyList())
-
-        val cleared = assertNotNull(capturedLocal).single()
-        assertEquals("default-local-bookmark", cleared.localID)
-        assertEquals(remoteId, cleared.remoteID)
-        assertEquals(ack, cleared.ack)
-        assertEquals("remote-default-bookmark", (cleared.model as SyncCollectionBookmark.AyahBookmark).bookmarkId)
-    }
 
     @Test
     fun `replayed custom collection bookmark create is cleared without a post when marker was not needed`() = runTest {

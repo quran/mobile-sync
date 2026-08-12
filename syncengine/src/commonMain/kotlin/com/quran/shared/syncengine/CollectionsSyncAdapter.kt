@@ -164,7 +164,9 @@ private fun SyncMutation.toSyncCollection(logger: Logger): SyncCollection? {
                     id = id,
                     name = name,
                     lastModified = lastModified,
-                    createdAt = clientCreatedAtInstant()
+                    createdAt = clientCreatedAtInstant(),
+                    isDefault = data.booleanOrNull("isDefault") ?: false,
+                    isSystem = data.booleanOrNull("isSystem") ?: false
                 )
             }
         }
@@ -175,5 +177,7 @@ private fun SyncCollection.toResourceData(): JsonObject {
     val collectionName = requireNotNull(name) { "Collection name is required for resource data." }
     return buildJsonObject {
         put("name", collectionName)
+        put("isDefault", isDefault)
+        put("isSystem", isSystem)
     }
 }

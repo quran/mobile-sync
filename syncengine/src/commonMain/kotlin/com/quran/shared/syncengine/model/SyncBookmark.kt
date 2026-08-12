@@ -13,8 +13,7 @@ sealed class SyncBookmark {
         val ayah: Int,
         override val isReading: Boolean,
         override val lastModified: Instant,
-        override val createdAt: Instant? = null,
-        val isInDefaultCollection: Boolean? = null
+        override val createdAt: Instant? = null
     ) : SyncBookmark()
 
     data class PageBookmark(

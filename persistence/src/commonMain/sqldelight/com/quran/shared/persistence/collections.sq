@@ -6,20 +6,40 @@ CREATE TABLE IF NOT EXISTS collection(
   modified_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
   deleted INTEGER NOT NULL DEFAULT 0,
   is_edited INTEGER NOT NULL DEFAULT 0,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  is_system INTEGER NOT NULL DEFAULT 0,
   pending_version INTEGER NOT NULL DEFAULT 0,
   CHECK (deleted IN (0, 1)),
-  CHECK (is_edited IN (0, 1))
+  CHECK (is_edited IN (0, 1)),
+  CHECK (is_default IN (0, 1)),
+  CHECK (is_system IN (0, 1))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS collection_remote_id_idx ON collection(remote_id);
 CREATE UNIQUE INDEX IF NOT EXISTS collection_active_name_idx
 ON collection(name)
 WHERE deleted = 0;
+CREATE UNIQUE INDEX IF NOT EXISTS collection_active_default_idx
+ON collection(is_default)
+WHERE is_default = 1 AND deleted = 0;
 CREATE INDEX IF NOT EXISTS collection_active_created_idx
 ON collection(deleted, created_at DESC);
 CREATE INDEX IF NOT EXISTS collection_unsynced_created_idx
 ON collection(created_at DESC)
-WHERE remote_id IS NULL OR is_edited = 1;
+WHERE (remote_id IS NULL AND pending_version > 0) OR is_edited = 1;
+
+INSERT OR IGNORE INTO collection (name, is_default, is_system)
+VALUES ('Default', 1, 1);
+INSERT OR IGNORE INTO collection (name, is_default, is_system)
+VALUES ('system:highlights:blue', 0, 1);
+INSERT OR IGNORE INTO collection (name, is_default, is_system)
+VALUES ('system:highlights:red', 0, 1);
+INSERT OR IGNORE INTO collection (name, is_default, is_system)
+VALUES ('system:highlights:green', 0, 1);
+INSERT OR IGNORE INTO collection (name, is_default, is_system)
+VALUES ('system:highlights:yellow', 0, 1);
+INSERT OR IGNORE INTO collection (name, is_default, is_system)
+VALUES ('system:highlights:purple', 0, 1);
 
 getCollections:
   SELECT * FROM collection WHERE deleted = 0 ORDER BY created_at DESC;
@@ -53,9 +73,28 @@ getCollectionByLocalId:
 getCollectionByRemoteId:
   SELECT * FROM collection WHERE remote_id = ? LIMIT 1;
 
+getDefaultCollection:
+  SELECT * FROM collection WHERE is_default = 1 AND deleted = 0 LIMIT 1;
+
+seedSystemCollections {
+  INSERT OR IGNORE INTO collection (name, is_default, is_system)
+  VALUES ('Default', 1, 1);
+  INSERT OR IGNORE INTO collection (name, is_default, is_system)
+  VALUES ('system:highlights:blue', 0, 1);
+  INSERT OR IGNORE INTO collection (name, is_default, is_system)
+  VALUES ('system:highlights:red', 0, 1);
+  INSERT OR IGNORE INTO collection (name, is_default, is_system)
+  VALUES ('system:highlights:green', 0, 1);
+  INSERT OR IGNORE INTO collection (name, is_default, is_system)
+  VALUES ('system:highlights:yellow', 0, 1);
+  INSERT OR IGNORE INTO collection (name, is_default, is_system)
+  VALUES ('system:highlights:purple', 0, 1);
+}
+
 addNewCollection {
   UPDATE collection
   SET deleted = 0,
+    is_system = :is_system,
     is_edited = CASE
       WHEN remote_id IS NULL THEN 0
       WHEN deleted = 1 THEN 1
@@ -70,6 +109,7 @@ addNewCollection {
     AND deleted = 0;
   UPDATE collection
   SET deleted = 0,
+    is_system = :is_system,
     is_edited = CASE
       WHEN remote_id IS NULL THEN 0
       ELSE 1
@@ -88,7 +128,9 @@ addNewCollection {
     ORDER BY modified_at DESC, local_id DESC
     LIMIT 1
   );
-  INSERT OR IGNORE INTO collection (remote_id, name, created_at, modified_at, deleted, is_edited, pending_version)
+  INSERT OR IGNORE INTO collection (
+    remote_id, name, created_at, modified_at, deleted, is_edited, is_default, is_system, pending_version
+  )
   SELECT
     NULL,
     :name,
@@ -96,6 +138,8 @@ addNewCollection {
     :timestamp,
     0,
     0,
+    0,
+    :is_system,
     1
   WHERE NOT EXISTS (
     SELECT 1 FROM collection
@@ -174,21 +218,25 @@ deleteCollection {
 
 getUnsyncedCollections:
   SELECT * FROM collection
-  WHERE (remote_id IS NULL AND deleted = 0)
+  WHERE (remote_id IS NULL AND deleted = 0 AND pending_version > 0)
     OR (remote_id IS NOT NULL AND deleted = 1)
     OR is_edited = 1
   ORDER BY created_at DESC;
 
 persistRemoteCollection:
-  INSERT INTO collection (remote_id, name, created_at, modified_at, deleted, is_edited)
-  VALUES (:remote_id, :name, :created_at, :modified_at, 0, 0);
+  INSERT INTO collection (
+    remote_id, name, created_at, modified_at, deleted, is_edited, is_default, is_system
+  )
+  VALUES (:remote_id, :name, :created_at, :modified_at, 0, 0, :is_default, :is_system);
 
 updateRemoteCollection:
   UPDATE collection
-  SET name = :name,
+  SET name = CASE WHEN is_default = 1 AND :is_default = 1 THEN name ELSE :name END,
     modified_at = :modified_at,
     deleted = 0,
-    is_edited = 0
+    is_edited = 0,
+    is_default = :is_default,
+    is_system = :is_system
   WHERE remote_id = :remote_id
     AND deleted = 0
     AND is_edited = 0;
@@ -196,10 +244,12 @@ updateRemoteCollection:
 updateRemoteCollectionByLocalId:
   UPDATE collection
   SET remote_id = :remote_id,
-    name = :name,
+    name = CASE WHEN is_default = 1 AND :is_default = 1 THEN name ELSE :name END,
     modified_at = :modified_at,
     deleted = 0,
-    is_edited = 0
+    is_edited = 0,
+    is_default = :is_default,
+    is_system = :is_system
   WHERE local_id = :local_id
     AND deleted = 0
     AND is_edited = 0;
@@ -207,6 +257,8 @@ updateRemoteCollectionByLocalId:
 attachRemoteCollectionIdForCreatedAck:
   UPDATE collection
   SET remote_id = :remote_id,
+    is_default = :is_default,
+    is_system = :is_system,
     is_edited = CASE
       WHEN deleted = 1 THEN is_edited
       WHEN pending_version = :pending_version THEN 0
@@ -222,6 +274,8 @@ attachRemoteCollectionIdForCreatedAck:
 attachRemoteCollectionIdForSemanticReplay:
   UPDATE collection
   SET remote_id = :remote_id,
+    is_default = :is_default,
+    is_system = :is_system,
     is_edited = CASE
       WHEN deleted = 1 THEN is_edited
       ELSE 0
@@ -273,7 +327,7 @@ deleteAll:
   DELETE FROM collection;
 
 deleteUnsyncedCollections:
-  DELETE FROM collection WHERE remote_id IS NULL;
+  DELETE FROM collection WHERE remote_id IS NULL AND is_system = 0;
 
 markUnsyncedCollectionsDeletedForImport:
   UPDATE collection
@@ -281,6 +335,7 @@ markUnsyncedCollectionsDeletedForImport:
     modified_at = :modified_at,
     pending_version = pending_version + 1
   WHERE remote_id IS NULL
+    AND is_system = 0
     AND deleted = 0;
 
 markRemoteCollectionsDeleted:
@@ -289,4 +344,5 @@ markRemoteCollectionsDeleted:
     is_edited = 1,
     modified_at = :modified_at,
     pending_version = pending_version + 1
-  WHERE remote_id IS NOT NULL;
+  WHERE remote_id IS NOT NULL
+    AND is_system = 0;

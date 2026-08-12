@@ -141,8 +141,7 @@ class ReadingBookmarksRepositoryImpl(
                 val row = bookmarkQueries.value.getCurrentReadingBookmark().executeAsOneOrNull()
                     ?: return@transaction
                 val hasSavedMembership =
-                    row.is_in_default_collection == 1L ||
-                        bookmarkCollectionQueries.value.countActiveForBookmark(row.local_id).executeAsOne() > 0
+                    bookmarkCollectionQueries.value.countActiveForBookmark(row.local_id).executeAsOne() > 0
                 when {
                     hasSavedMembership -> bookmarkQueries.value.clearReadingBookmark(
                         local_id = row.local_id,

@@ -502,8 +502,7 @@ private fun RemoteBookmark.toSyncEngine(id: String): SyncBookmark {
             ayah = this.ayah,
             lastModified = this.lastUpdated.fromPlatform(),
             isReading = this.isReading,
-            createdAt = this.createdAt?.fromPlatform(),
-            isInDefaultCollection = this.isInDefaultCollection
+            createdAt = this.createdAt?.fromPlatform()
         )
         is RemoteBookmark.Page -> SyncBookmark.PageBookmark(
             id = id,
@@ -520,7 +519,9 @@ private fun LocalSyncCollection.toSyncEngine(): SyncCollection {
         id = this.localId,
         name = this.name,
         lastModified = this.lastUpdated.fromPlatform(),
-        createdAt = this.createdAt.fromPlatform()
+        createdAt = this.createdAt.fromPlatform(),
+        isDefault = this.isDefault,
+        isSystem = this.isSystem
     )
 }
 
@@ -530,7 +531,9 @@ private fun SyncCollection.toLocalSyncCollection(): LocalSyncCollection {
         name = requireNotNull(this.name) { "Transforming a collection without a name." },
         lastUpdated = updatedAt,
         localId = this.id,
-        createdAt = this.createdAt?.toPlatform() ?: updatedAt
+        createdAt = this.createdAt?.toPlatform() ?: updatedAt,
+        isDefault = this.isDefault,
+        isSystem = this.isSystem
     )
 }
 
@@ -542,8 +545,7 @@ private fun SyncBookmark.toRemoteInput(): RemoteBookmark {
                 ayah = this.ayah,
                 lastUpdated = this.lastModified.toPlatform(),
                 isReading = this.isReading,
-                createdAt = this.createdAt?.toPlatform(),
-                isInDefaultCollection = this.isInDefaultCollection
+                createdAt = this.createdAt?.toPlatform()
             )
         is SyncBookmark.PageBookmark ->
             RemoteBookmark.Page(
@@ -559,7 +561,9 @@ private fun SyncCollection.toRemoteInput(): RemoteCollection {
     return RemoteCollection(
         name = this.name,
         lastUpdated = this.lastModified.toPlatform(),
-        createdAt = this.createdAt?.toPlatform()
+        createdAt = this.createdAt?.toPlatform(),
+        isDefault = this.isDefault,
+        isSystem = this.isSystem
     )
 }
 

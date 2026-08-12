@@ -18,7 +18,6 @@ import com.quran.shared.persistence.model.AyahReadingBookmark
 import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.model.CollectionWithAyahBookmarks
-import com.quran.shared.persistence.model.DEFAULT_COLLECTION_ID
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
@@ -52,6 +51,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlin.native.HiddenFromObjC
@@ -129,17 +129,6 @@ class QuranDataService internal constructor(
     private val sessionLifecycleCoordinator: SessionLifecycleCoordinator,
     private val syncClientFactory: QuranDataServiceSynchronizationClientFactory
 ) {
-    /**
-     * Stable mobile-sync identifier for the virtual default bookmark collection.
-     *
-     * The default collection is not persisted as a collection row. Read APIs synthesize it from
-     * bookmark default-membership state so callers can treat it like other collections by ID.
-     */
-    val defaultCollectionId: String = DEFAULT_COLLECTION_ID
-
-    private val emptyDefaultCollectionTimestamp: PlatformDateTime =
-        Instant.fromEpochMilliseconds(0).toPlatform()
-
     private val serviceJob: Job = SupervisorJob()
     private val scope = CoroutineScope(Dispatchers.Main + serviceJob)
     private val syncClient: SynchronizationClient
@@ -187,36 +176,27 @@ class QuranDataService internal constructor(
     /**
      * Flow of all collections with their bookmarks for the UI to observe.
      *
-     * The first entry is the virtual default collection, backed by
-     * [CollectionBookmarksRepository.getBookmarksForCollectionFlow] with [DEFAULT_COLLECTION_ID].
-     * Remaining entries are persisted custom collections.
+     * The default collection is first. Non-default system collections remain hidden from this
+     * app-facing collection list.
      */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     @NativeCoroutines
     val collectionsWithBookmarks: Flow<List<CollectionWithAyahBookmarks>>
         get() =
             collectionsRepository.getCollectionsFlow().flatMapLatest { collections ->
-                val defaultCollectionFlow =
-                    collectionBookmarksRepository.getBookmarksForCollectionFlow(DEFAULT_COLLECTION_ID)
-                        .map { bookmarks ->
-                            CollectionWithAyahBookmarks(
-                                defaultCollection(bookmarks),
-                                bookmarks
-                            )
-                        }
-                val customCollectionFlows =
-                    collections
-                        .filterNot { it.isDefault || it.isSystemHighlight }
-                        .map { collection ->
-                            collectionBookmarksRepository.getBookmarksForCollectionFlow(collection.id)
-                                .map { bookmarks: List<CollectionAyahBookmark> ->
-                                    CollectionWithAyahBookmarks(collection, bookmarks)
-                                }
-                        }
-                if (customCollectionFlows.isEmpty()) {
-                    defaultCollectionFlow.map { listOf(it) }
+                val collectionFlows = collections
+                    .filter { it.isDefault || !it.isSystem }
+                    .sortedByDescending(Collection::isDefault)
+                    .map { collection ->
+                        collectionBookmarksRepository.getBookmarksForCollectionFlow(collection.id)
+                            .map { bookmarks: List<CollectionAyahBookmark> ->
+                                CollectionWithAyahBookmarks(collection, bookmarks)
+                            }
+                    }
+                if (collectionFlows.isEmpty()) {
+                    flowOf(emptyList())
                 } else {
-                    combine(listOf(defaultCollectionFlow) + customCollectionFlows) { it.toList() }
+                    combine(collectionFlows) { it.toList() }
                 }
             }
 
@@ -675,16 +655,10 @@ class QuranDataService internal constructor(
      * @param id the mobile-sync identifier of the collection to update.
      * @param name the new collection name.
      * @return the updated collection.
-     * Returns the unchanged virtual default collection when [id] is [DEFAULT_COLLECTION_ID].
      * @throws IllegalArgumentException when [id] does not identify an active collection.
      */
     @NativeCoroutines
     suspend fun updateCollection(id: String, name: String): Collection {
-        if (id == DEFAULT_COLLECTION_ID) {
-            return mutatingCall("Failed to update collection", triggerAfter = false) {
-                defaultCollection(collectionBookmarksRepository.getBookmarksForCollection(DEFAULT_COLLECTION_ID))
-            }
-        }
         return updateCollection(id, name, currentPlatformDateTime())
     }
 
@@ -695,34 +669,18 @@ class QuranDataService internal constructor(
      * @param name the new collection name.
      * @param timestamp the timestamp to persist for the mutation.
      * @return the updated collection.
-     * Returns the unchanged virtual default collection when [id] is [DEFAULT_COLLECTION_ID].
      * @throws IllegalArgumentException when [id] does not identify an active collection.
      */
     @NativeCoroutines
     suspend fun updateCollection(id: String, name: String, timestamp: PlatformDateTime): Collection {
-        if (id == DEFAULT_COLLECTION_ID) {
-            return mutatingCall("Failed to update collection", triggerAfter = false) {
-                defaultCollection(collectionBookmarksRepository.getBookmarksForCollection(DEFAULT_COLLECTION_ID))
-            }
-        }
         return mutatingCall("Failed to update collection") {
             collectionsRepository.updateCollection(id, name, timestamp)
         }
     }
 
-    /**
-     * Deletes a custom collection and schedules sync when a row was removed.
-     *
-     * The virtual default collection cannot be deleted; passing [DEFAULT_COLLECTION_ID] returns
-     * `false` without touching persistence or scheduling sync.
-     */
+    /** Deletes a custom collection and schedules sync when a row was removed. */
     @NativeCoroutines
     suspend fun deleteCollection(id: String): Boolean {
-        if (id == DEFAULT_COLLECTION_ID) {
-            return mutatingCall("Failed to delete collection", triggerAfter = false) {
-                false
-            }
-        }
         return mutatingCall("Failed to delete collection", triggerAfter = false) {
             val deleted = collectionsRepository.deleteCollection(id)
             if (deleted) {
@@ -850,15 +808,7 @@ class QuranDataService internal constructor(
     fun getBookmarksForCollectionFlow(collectionId: String): Flow<List<CollectionAyahBookmark>> =
         collectionBookmarksRepository.getBookmarksForCollectionFlow(collectionId)
 
-    private fun defaultCollection(bookmarks: List<CollectionAyahBookmark> = emptyList()): Collection =
-        Collection(
-            name = DEFAULT_COLLECTION_NAME,
-            lastUpdated = bookmarks.firstOrNull()?.bookmarkLastUpdated ?: emptyDefaultCollectionTimestamp,
-            id = DEFAULT_COLLECTION_ID
-        )
 }
-
-private const val DEFAULT_COLLECTION_NAME = "Default"
 
 internal class SettingsSyncEngineCallback(
     private val syncLocalModificationDateStore: SyncLocalModificationDateStore,

@@ -37,11 +37,9 @@ class BookmarkDependencyReconciler(
         linkQueries.deleteRetiredInactiveClearedLinksForBookmark(bookmark_local_id = bookmarkLocalId)
         val retainedLinks = linkQueries.countRetainedForBookmark(bookmarkLocalId).executeAsOne()
         val hasPendingFacet = row.bookmark_pending_op != null ||
-            row.reading_pending_op != null ||
-            row.default_pending_op != null
+            row.reading_pending_op != null
 
         if (row.is_reading == 0L &&
-            row.is_in_default_collection == 0L &&
             retainedLinks == 0L &&
             !hasPendingFacet
         ) {

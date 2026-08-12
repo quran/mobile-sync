@@ -10,7 +10,6 @@ import com.quran.shared.persistence.input.ImportCollection
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.model.Collection
-import com.quran.shared.persistence.model.DEFAULT_COLLECTION_ID
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepositoryImpl
 import com.quran.shared.persistence.repository.importdata.PersistenceImportRepositoryImpl
 import com.quran.shared.persistence.util.fromPlatform
@@ -32,13 +31,39 @@ class CollectionsRepositoryTest {
     @BeforeTest
     fun setup() {
         database = QuranDatabase(TestDatabaseDriver().createDriver())
+        database.collectionsQueries.deleteAll()
         repository = CollectionsRepositoryImpl(database)
     }
 
     @Test
-    fun `collection isDefault is derived from the virtual default local id`() {
-        assertTrue(Collection("Default", timestamp(1L), DEFAULT_COLLECTION_ID).isDefault)
-        assertFalse(Collection("Favorites", timestamp(1L), "1").isDefault)
+    fun `database seeds default and highlight system collections without mutations`() = runTest {
+        val seededDatabase = QuranDatabase(TestDatabaseDriver().createDriver())
+        val seededRepository = CollectionsRepositoryImpl(seededDatabase)
+
+        val collections = seededRepository.getAllCollections()
+        val defaultCollection = collections.single { it.isDefault }
+        val highlights = collections.filter { it.isSystemHighlight }
+
+        assertEquals(6, collections.size)
+        assertEquals("Default", defaultCollection.name)
+        assertTrue(defaultCollection.isSystem)
+        assertEquals(5, highlights.size)
+        assertTrue(highlights.all { it.isSystem })
+        assertEquals(emptyList(), seededRepository.fetchMutatedCollections())
+    }
+
+    @Test
+    fun `collection exposes persisted backend flags`() {
+        val collection = Collection(
+            name = "Favorites",
+            lastUpdated = timestamp(1L),
+            id = "1",
+            isDefault = true,
+            isSystem = true
+        )
+
+        assertTrue(collection.isDefault)
+        assertTrue(collection.isSystem)
     }
 
     @Test
@@ -48,16 +73,20 @@ class CollectionsRepositoryTest {
     }
 
     @Test
-    fun `collection CRUD rejects reserved highlight collections`() = runTest {
+    fun `collection CRUD restrictions use isSystem flag`() = runTest {
         assertFailsWith<IllegalArgumentException> {
             repository.addCollection("system:highlights:blue", timestamp(100L))
         }
-        database.collectionsQueries.addNewCollection(
-            timestamp = 100L,
-            name = "system:highlights:blue"
+        database.collectionsQueries.persistRemoteCollection(
+            remote_id = "managed",
+            name = "Managed",
+            created_at = 100L,
+            modified_at = 100L,
+            is_default = 0L,
+            is_system = 1L
         )
         val systemCollection = database.collectionsQueries
-            .getCollectionByName("system:highlights:blue")
+            .getCollectionByName("Managed")
             .executeAsOne()
 
         assertFailsWith<IllegalArgumentException> {
@@ -70,8 +99,82 @@ class CollectionsRepositoryTest {
         val retained = database.collectionsQueries
             .getCollectionByLocalId(systemCollection.local_id)
             .executeAsOne()
-        assertEquals("system:highlights:blue", retained.name)
+        assertEquals("Managed", retained.name)
         assertEquals(0L, retained.deleted)
+    }
+
+    @Test
+    fun `remote default create binds seeded default by property`() = runTest {
+        val seededDatabase = QuranDatabase(TestDatabaseDriver().createDriver())
+        val seededRepository = CollectionsRepositoryImpl(seededDatabase)
+        val localDefault = seededDatabase.collectionsQueries.getDefaultCollection().executeAsOne()
+
+        seededRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                RemoteModelMutation(
+                    model = RemoteCollection(
+                        name = "Favorites",
+                        lastUpdated = timestamp(2_345L),
+                        createdAt = timestamp(1_000L),
+                        isDefault = true,
+                        isSystem = true
+                    ),
+                    remoteID = "backend-default-id",
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        val remoteDefault = seededDatabase.collectionsQueries
+            .getCollectionByRemoteId("backend-default-id")
+            .executeAsOne()
+        assertEquals(localDefault.local_id, remoteDefault.local_id)
+        assertEquals("Default", remoteDefault.name)
+        assertEquals(1L, remoteDefault.is_default)
+        assertEquals(1L, remoteDefault.is_system)
+        assertEquals(6L, seededDatabase.collectionsQueries.countAll().executeAsOne())
+    }
+
+    @Test
+    fun `remote delete preserves default and non-default system collections`() = runTest {
+        database.collectionsQueries.persistRemoteCollection(
+            remote_id = "remote-default",
+            name = "Default",
+            created_at = 1_000L,
+            modified_at = 1_000L,
+            is_default = 1L,
+            is_system = 1L
+        )
+        database.collectionsQueries.persistRemoteCollection(
+            remote_id = "remote-managed",
+            name = "Managed",
+            created_at = 1_000L,
+            modified_at = 1_000L,
+            is_default = 0L,
+            is_system = 1L
+        )
+
+        repository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                RemoteModelMutation(
+                    model = RemoteCollection(null, timestamp(2_000L)),
+                    remoteID = "remote-default",
+                    mutation = Mutation.DELETED
+                ),
+                RemoteModelMutation(
+                    model = RemoteCollection(null, timestamp(2_000L)),
+                    remoteID = "remote-managed",
+                    mutation = Mutation.DELETED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        val retained = repository.getAllCollections()
+        assertEquals(2, retained.size)
+        assertEquals("Default", retained.single { it.isDefault }.name)
+        assertTrue(retained.all { it.isSystem })
     }
 
     @Test
@@ -130,14 +233,16 @@ class CollectionsRepositoryTest {
     }
 
     @Test
-    fun `remote created collection persists created_at separately from modified_at`() = runTest {
+    fun `remote created collection persists timestamps and system flags`() = runTest {
         repository.applyRemoteChanges(
             updatesToPersist = listOf(
                 RemoteModelMutation(
                     model = RemoteCollection(
                         name = "Favorites",
                         lastUpdated = timestamp(2345L),
-                        createdAt = timestamp(1000L)
+                        createdAt = timestamp(1000L),
+                        isDefault = true,
+                        isSystem = true
                     ),
                     remoteID = "remote-created-at-collection",
                     mutation = Mutation.CREATED
@@ -149,6 +254,11 @@ class CollectionsRepositoryTest {
         val record = database.collectionsQueries.getCollectionByRemoteId("remote-created-at-collection").executeAsOne()
         assertEquals(1000L, record.created_at)
         assertEquals(2345L, record.modified_at)
+        assertEquals(1L, record.is_default)
+        assertEquals(1L, record.is_system)
+        val collection = repository.getAllCollections().single()
+        assertTrue(collection.isDefault)
+        assertTrue(collection.isSystem)
     }
 
     @Test
@@ -173,7 +283,9 @@ class CollectionsRepositoryTest {
             remote_id = "remote-collection-id",
             name = "Favorites",
             created_at = 1000L,
-            modified_at = 1000L
+            modified_at = 1000L,
+            is_default = 0L,
+            is_system = 0L
         )
         val collection = database.collectionsQueries.getCollectionByRemoteId("remote-collection-id").executeAsOne()
         repository.deleteCollection(collection.local_id.toString())
@@ -198,7 +310,9 @@ class CollectionsRepositoryTest {
             remote_id = "remote-collection-id",
             name = "Favorites",
             created_at = 1000L,
-            modified_at = 1000L
+            modified_at = 1000L,
+            is_default = 0L,
+            is_system = 0L
         )
         val collection = database.collectionsQueries.getCollectionByRemoteId("remote-collection-id").executeAsOne()
 
@@ -225,7 +339,9 @@ class CollectionsRepositoryTest {
             remote_id = "remote-collection-id",
             name = "Favorites",
             created_at = 1000L,
-            modified_at = 1000L
+            modified_at = 1000L,
+            is_default = 0L,
+            is_system = 0L
         )
         val collection = database.collectionsQueries.getCollectionByRemoteId("remote-collection-id").executeAsOne()
         assertEquals(true, repository.deleteCollection(collection.local_id.toString()))
@@ -252,7 +368,9 @@ class CollectionsRepositoryTest {
             remote_id = "remote-collection-id",
             name = "Favorites",
             created_at = 1000L,
-            modified_at = 1000L
+            modified_at = 1000L,
+            is_default = 0L,
+            is_system = 0L
         )
         val collection = database.collectionsQueries.getCollectionByRemoteId("remote-collection-id").executeAsOne()
         repository.updateCollection(collection.local_id.toString(), "Synced", timestamp(2000L))
@@ -303,7 +421,9 @@ class CollectionsRepositoryTest {
             remote_id = "remote-collection-id",
             name = "Favorites",
             created_at = 1000L,
-            modified_at = 1000L
+            modified_at = 1000L,
+            is_default = 0L,
+            is_system = 0L
         )
         val collection = database.collectionsQueries.getCollectionByRemoteId("remote-collection-id").executeAsOne()
         repository.updateCollection(collection.local_id.toString(), "Uploaded", timestamp(2000L))
@@ -494,7 +614,9 @@ class CollectionsRepositoryTest {
             remote_id = "remote-collection-1",
             name = "Favorites",
             created_at = 1000L,
-            modified_at = 1000L
+            modified_at = 1000L,
+            is_default = 0L,
+            is_system = 0L
         )
 
         repository.applyRemoteChanges(
@@ -672,7 +794,9 @@ class CollectionsRepositoryTest {
             remote_id = "remote-collection-id",
             name = "Favorites",
             created_at = 1000L,
-            modified_at = 1000L
+            modified_at = 1000L,
+            is_default = 0L,
+            is_system = 0L
         )
         val collection = database.collectionsQueries.getCollectionByRemoteId("remote-collection-id").executeAsOne()
         repository.deleteCollection(collection.local_id.toString())

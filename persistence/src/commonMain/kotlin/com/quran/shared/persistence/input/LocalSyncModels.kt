@@ -8,7 +8,9 @@ data class LocalSyncCollection(
     val name: String,
     val lastUpdated: PlatformDateTime,
     val localId: String,
-    val createdAt: PlatformDateTime
+    val createdAt: PlatformDateTime,
+    val isDefault: Boolean,
+    val isSystem: Boolean
 )
 
 @HiddenFromObjC
