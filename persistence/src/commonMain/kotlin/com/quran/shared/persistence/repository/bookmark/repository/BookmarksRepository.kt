@@ -37,10 +37,9 @@ interface BookmarksRepository {
     /**
      * Add a saved ayah bookmark and add it to the requested memberships.
      *
-     * Empty memberships normalize to the virtual default collection. A non-empty list is
-     * additive: requested memberships are added, while existing custom memberships not present in
-     * the list are left unchanged. [com.quran.shared.persistence.model.DEFAULT_COLLECTION_ID]
-     * represents default membership.
+     * Empty memberships normalize to the persisted default collection. A non-empty list is
+     * additive: requested memberships are added, while existing memberships not present in the
+     * list are left unchanged.
      */
     @NativeCoroutines
     suspend fun addBookmark(sura: Int, ayah: Int, collectionIds: List<String>): AyahBookmark

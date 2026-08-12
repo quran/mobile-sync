@@ -88,43 +88,6 @@ class ResultReceiverTest {
     }
 
     @Test
-    fun `ayah default membership is routed to unified bookmarks repository`() = runTest {
-        val updates = mutableListOf<RemoteModelMutation<RemoteBookmark>>()
-        val receiver = ResultReceiver(
-            bookmarksRepository = RecordingBookmarksRepository(
-                events = mutableListOf(),
-                remoteUpdates = updates
-            ),
-            callback = object : SyncEngineCallback {
-                override suspend fun synchronizationDone(newLastModificationDate: Long) = Unit
-                override suspend fun encounteredError(errorMsg: String) = Unit
-            }
-        )
-
-        receiver.didSucceed(
-            newToken = 11L,
-            newRemoteMutations = listOf(
-                RemoteModelMutation(
-                    model = SyncBookmark.AyahBookmark(
-                        id = "remote-default-bookmark",
-                        sura = 1,
-                        ayah = 2,
-                        isReading = false,
-                        lastModified = Instant.fromEpochMilliseconds(1000),
-                        isInDefaultCollection = true
-                    ),
-                    remoteID = "remote-default-bookmark",
-                    mutation = com.quran.shared.mutations.Mutation.CREATED
-                )
-            ),
-            processedLocalMutations = emptyList()
-        )
-
-        val model = updates.single().model as RemoteBookmark.Ayah
-        assertEquals(true, model.isInDefaultCollection)
-    }
-
-    @Test
     fun `settings sync callback persists final sync token`() = runTest {
         val store = SyncSettingsLocalModificationDateStore(MapSettings().toSuspendSettings())
         val callback = SettingsSyncEngineCallback(store)

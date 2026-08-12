@@ -64,10 +64,13 @@ internal class AyahHighlightsRepository(
             var result: AyahHighlight? = null
             database.transaction {
                 val existingHighlightCollections = activeHighlightCollections()
-                val targetCollection = existingHighlightCollections
+                val targetCollection = activateHighlightCollection(
+                    existingHighlightCollections
                     .firstOrNull { it.first == color }
                     ?.second
-                    ?: createHighlightCollection(color, timestampMillis)
+                        ?: createHighlightCollection(color, timestampMillis),
+                    timestampMillis
+                )
 
                 val bookmark = bookmarkQueries
                     .getBookmarkForAyah(sura.toLong(), ayah.toLong())
@@ -167,11 +170,28 @@ internal class AyahHighlightsRepository(
     ): DatabaseCollection {
         collectionQueries.addNewCollection(
             name = color.collectionName,
-            timestamp = timestampMillis
+            timestamp = timestampMillis,
+            is_system = 1L
         )
         return requireNotNull(
             collectionQueries.getCollectionByName(color.collectionName).executeAsOneOrNull()
         ) { "Expected highlight collection ${color.collectionName} after insert." }
+    }
+
+    private fun activateHighlightCollection(
+        collection: DatabaseCollection,
+        timestampMillis: Long
+    ): DatabaseCollection {
+        if (collection.remote_id == null && collection.pending_version == 0L) {
+            collectionQueries.addNewCollection(
+                name = collection.name,
+                timestamp = timestampMillis,
+                is_system = 1L
+            )
+        }
+        return requireNotNull(
+            collectionQueries.getCollectionByLocalId(collection.local_id).executeAsOneOrNull()
+        ) { "Expected active highlight collection ${collection.name}." }
     }
 
     private fun hasActiveMembership(bookmarkLocalId: Long, collectionLocalId: Long): Boolean =

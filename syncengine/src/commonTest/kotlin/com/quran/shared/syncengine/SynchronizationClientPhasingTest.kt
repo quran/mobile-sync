@@ -1,6 +1,5 @@
 package com.quran.shared.syncengine
 
-import com.quran.shared.mutations.LOCAL_MUTATION_BOOKMARK_DEFAULT_FACET
 import com.quran.shared.mutations.LOCAL_MUTATION_BOOKMARK_READING_FACET
 import com.quran.shared.mutations.LOCAL_MUTATION_COLLECTION_BOOKMARK_LINK_FACET
 import com.quran.shared.mutations.LocalModelMutation
@@ -1359,7 +1358,7 @@ class SynchronizationClientPhasingTest {
             ack = LocalMutationAck(
                 localID = "default-local-bookmark",
                 resource = LocalMutationResource.COLLECTION_BOOKMARK,
-                facet = LOCAL_MUTATION_BOOKMARK_DEFAULT_FACET,
+                facet = LOCAL_MUTATION_COLLECTION_BOOKMARK_LINK_FACET,
                 observedPendingOp = Mutation.CREATED,
                 observedPendingVersion = 1
             )

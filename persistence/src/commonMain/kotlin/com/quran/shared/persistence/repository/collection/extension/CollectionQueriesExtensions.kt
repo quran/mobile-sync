@@ -18,7 +18,9 @@ internal fun DatabaseCollection.toCollection(): PersistenceCollection {
     return PersistenceCollection(
         name = name,
         lastUpdated = Instant.fromEpochMilliseconds(modified_at).toPlatform(),
-        id = local_id.toString()
+        id = local_id.toString(),
+        isDefault = is_default == 1L,
+        isSystem = is_system == 1L
     )
 }
 
@@ -32,7 +34,9 @@ internal fun DatabaseCollection.toCollectionMutation(): LocalModelMutation<Local
         name = name,
         lastUpdated = Instant.fromEpochMilliseconds(modified_at).toPlatform(),
         localId = local_id.toString(),
-        createdAt = Instant.fromEpochMilliseconds(created_at).toPlatform()
+        createdAt = Instant.fromEpochMilliseconds(created_at).toPlatform(),
+        isDefault = is_default == 1L,
+        isSystem = is_system == 1L
     )
 
     return LocalModelMutation(

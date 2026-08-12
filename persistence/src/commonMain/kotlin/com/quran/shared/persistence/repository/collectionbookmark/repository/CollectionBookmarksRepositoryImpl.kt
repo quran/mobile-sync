@@ -4,7 +4,6 @@ import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import co.touchlab.kermit.Logger
 import com.quran.shared.di.AppScope
-import com.quran.shared.mutations.LOCAL_MUTATION_BOOKMARK_DEFAULT_FACET
 import com.quran.shared.mutations.LOCAL_MUTATION_COLLECTION_BOOKMARK_LINK_FACET
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.LocalMutationAck
@@ -18,7 +17,6 @@ import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.AyahHighlight
 import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.model.CollectionAyahBookmark
-import com.quran.shared.persistence.model.DEFAULT_COLLECTION_ID
 import com.quran.shared.persistence.model.DatabaseBookmark
 import com.quran.shared.persistence.model.DatabaseBookmarkCollection
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
@@ -70,13 +68,6 @@ class CollectionBookmarksRepositoryImpl(
     ): Boolean = highlightsRepository.removeHighlight(sura, ayah, timestamp)
 
     override suspend fun getBookmarksForCollection(collectionId: String): List<CollectionAyahBookmark> {
-        if (collectionId == DEFAULT_COLLECTION_ID) {
-            return withContext(Dispatchers.IO) {
-                bookmarkQueries.value.getDefaultCollectionAyahBookmarks()
-                    .executeAsList()
-                    .map { it.toDefaultCollectionBookmark() }
-            }
-        }
         return withContext(Dispatchers.IO) {
             bookmarkCollectionQueries.value
                 .getCollectionBookmarksForCollectionWithDetails(collection_local_id = collectionId.toLong())
@@ -100,34 +91,27 @@ class CollectionBookmarksRepositoryImpl(
     }
 
     override fun getBookmarksForCollectionFlow(collectionId: String): Flow<List<CollectionAyahBookmark>> {
-        return if (collectionId == DEFAULT_COLLECTION_ID) {
-            bookmarkQueries.value.getDefaultCollectionAyahBookmarks()
-                .asFlow()
-                .mapToList(Dispatchers.IO)
-                .map { list -> list.map { it.toDefaultCollectionBookmark() } }
-        } else {
-            bookmarkCollectionQueries.value
-                .getCollectionBookmarksForCollectionWithDetails(collection_local_id = collectionId.toLong())
-                .asFlow()
-                .mapToList(Dispatchers.IO)
-                .map { list ->
-                    list.mapNotNull { record ->
-                        toCollectionBookmark(
-                            bookmarkLocalId = record.bookmark_local_id,
-                            bookmarkRemoteId = record.bookmark_remote_id,
-                            sura = record.sura,
-                            ayah = record.ayah,
-                            collectionLocalId = record.collection_local_id,
-                            collectionRemoteId = record.collection_remote_id,
-                            membershipModifiedAt = record.modified_at,
-                            bookmarkModifiedAt = record.bookmark_last_updated_at,
-                            bookmarkCreatedAt = record.bookmark_added_at,
-                            localId = record.local_id,
-                            logMissingBookmark = false
-                        )
-                    }
+        return bookmarkCollectionQueries.value
+            .getCollectionBookmarksForCollectionWithDetails(collection_local_id = collectionId.toLong())
+            .asFlow()
+            .mapToList(Dispatchers.IO)
+            .map { list ->
+                list.mapNotNull { record ->
+                    toCollectionBookmark(
+                        bookmarkLocalId = record.bookmark_local_id,
+                        bookmarkRemoteId = record.bookmark_remote_id,
+                        sura = record.sura,
+                        ayah = record.ayah,
+                        collectionLocalId = record.collection_local_id,
+                        collectionRemoteId = record.collection_remote_id,
+                        membershipModifiedAt = record.modified_at,
+                        bookmarkModifiedAt = record.bookmark_last_updated_at,
+                        bookmarkCreatedAt = record.bookmark_added_at,
+                        localId = record.local_id,
+                        logMissingBookmark = false
+                    )
                 }
-        }
+            }
     }
 
     override suspend fun addBookmarkToCollection(
@@ -160,20 +144,6 @@ class CollectionBookmarksRepositoryImpl(
                 val row = requireNotNull(
                     bookmarkQueries.value.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOneOrNull()
                 ) { "Bookmark not found for id=${bookmark.id}." }
-
-                if (collectionId == DEFAULT_COLLECTION_ID) {
-                    bookmarkQueries.value.addAyahToDefaultCollection(
-                        ayah_id = getAyahId(bookmark.sura, bookmark.ayah).toLong(),
-                        sura = bookmark.sura.toLong(),
-                        ayah = bookmark.ayah.toLong(),
-                        timestamp = timestampMillis
-                    )
-                    reconciler.reconcile(timestampMillis)
-                    created = bookmarkQueries.value.getBookmarkByLocalId(row.local_id)
-                        .executeAsOne()
-                        .toDefaultCollectionBookmark()
-                    return@transaction
-                }
 
                 val collection = collectionQueries.value
                     .getCollectionByLocalId(collectionId.toLong())
@@ -240,20 +210,6 @@ class CollectionBookmarksRepositoryImpl(
             var created: CollectionAyahBookmark? = null
             database.transaction {
                 val ayahId = getAyahId(sura, ayah).toLong()
-                if (collectionId == DEFAULT_COLLECTION_ID) {
-                    bookmarkQueries.value.addAyahToDefaultCollection(
-                        ayah_id = ayahId,
-                        sura = sura.toLong(),
-                        ayah = ayah.toLong(),
-                        timestamp = timestampMillis
-                    )
-                    reconciler.reconcile(timestampMillis)
-                    created = bookmarkQueries.value.getBookmarkForAyah(sura.toLong(), ayah.toLong())
-                        .executeAsOne()
-                        .toDefaultCollectionBookmark()
-                    return@transaction
-                }
-
                 bookmarkQueries.value.upsertAyahBookmark(
                     remote_id = null,
                     ayah_id = ayahId,
@@ -305,18 +261,11 @@ class CollectionBookmarksRepositoryImpl(
         return withContext(Dispatchers.IO) {
             val timestampMillis = currentEpochMilliseconds()
             database.transaction {
-                if (collectionId == DEFAULT_COLLECTION_ID) {
-                    bookmarkQueries.value.clearDefaultCollection(
-                        local_id = bookmark.id.toLong(),
-                        timestamp = timestampMillis
-                    )
-                } else {
-                    bookmarkCollectionQueries.value.markBookmarkCollectionDeleted(
-                        bookmark_local_id = bookmark.id.toLong(),
-                        collection_local_id = collectionId.toLong(),
-                        timestamp = timestampMillis
-                    )
-                }
+                bookmarkCollectionQueries.value.markBookmarkCollectionDeleted(
+                    bookmark_local_id = bookmark.id.toLong(),
+                    collection_local_id = collectionId.toLong(),
+                    timestamp = timestampMillis
+                )
                 reconciler.reconcile(timestampMillis)
             }
             true
@@ -327,18 +276,11 @@ class CollectionBookmarksRepositoryImpl(
         return withContext(Dispatchers.IO) {
             val timestampMillis = currentEpochMilliseconds()
             database.transaction {
-                if (collectionAyahBookmark.collectionId == DEFAULT_COLLECTION_ID) {
-                    bookmarkQueries.value.clearDefaultCollection(
-                        local_id = collectionAyahBookmark.bookmarkId.toLong(),
-                        timestamp = timestampMillis
-                    )
-                } else {
-                    bookmarkCollectionQueries.value.markBookmarkCollectionDeleted(
-                        bookmark_local_id = collectionAyahBookmark.bookmarkId.toLong(),
-                        collection_local_id = collectionAyahBookmark.collectionId.toLong(),
-                        timestamp = timestampMillis
-                    )
-                }
+                bookmarkCollectionQueries.value.markBookmarkCollectionDeleted(
+                    bookmark_local_id = collectionAyahBookmark.bookmarkId.toLong(),
+                    collection_local_id = collectionAyahBookmark.collectionId.toLong(),
+                    timestamp = timestampMillis
+                )
                 reconciler.reconcile(timestampMillis)
             }
             true
@@ -347,39 +289,7 @@ class CollectionBookmarksRepositoryImpl(
 
     override suspend fun fetchMutatedCollectionBookmarks(): List<LocalModelMutation<LocalSyncCollectionAyahBookmark>> {
         return withContext(Dispatchers.IO) {
-            val defaultMutations = bookmarkQueries.value.getDefaultPendingBookmarks()
-                .executeAsList()
-                .map { row ->
-                    val mutation = if (row.default_pending_op == "DELETED") Mutation.DELETED else Mutation.CREATED
-                    val relationBookmarkRemoteId = if (mutation == Mutation.DELETED) {
-                        row.default_last_synced_bookmark_remote_id ?: row.remote_id
-                    } else {
-                        row.remote_id
-                    }
-                    LocalModelMutation(
-                        mutation = mutation,
-                        model = defaultLocalSyncCollectionBookmark(
-                            bookmarkLocalId = row.local_id,
-                            bookmarkRemoteId = relationBookmarkRemoteId,
-                            sura = row.sura,
-                            ayah = row.ayah,
-                            modifiedAt = row.default_modified_at ?: row.modified_at,
-                            createdAt = row.created_at
-                        ),
-                        remoteID = relationBookmarkRemoteId?.let {
-                            collectionBookmarkRemoteId(DEFAULT_COLLECTION_ID, it)
-                        },
-                        localID = defaultLocalId(row.local_id),
-                        ack = LocalMutationAck(
-                            localID = defaultLocalId(row.local_id),
-                            resource = LocalMutationResource.COLLECTION_BOOKMARK,
-                            facet = LOCAL_MUTATION_BOOKMARK_DEFAULT_FACET,
-                            observedPendingOp = mutation,
-                            observedPendingVersion = row.default_pending_version
-                        )
-                    )
-                }
-            val customMutations = bookmarkCollectionQueries.value.getUnsyncedCollectionBookmarksWithDetails()
+            bookmarkCollectionQueries.value.getUnsyncedCollectionBookmarksWithDetails()
                 .executeAsList()
                 .mapNotNull { record ->
                     val mutation = when (record.pending_op) {
@@ -427,7 +337,6 @@ class CollectionBookmarksRepositoryImpl(
                         )
                     )
                 }
-            defaultMutations + customMutations
         }
     }
 
@@ -445,24 +354,6 @@ class CollectionBookmarksRepositoryImpl(
                         return@forEach
                     }
                     when (ack.facet) {
-                        LOCAL_MUTATION_BOOKMARK_DEFAULT_FACET -> {
-                            val bookmarkLocalId = ack.localID
-                                .removePrefix(DEFAULT_LOCAL_ID_PREFIX)
-                                .toLongOrNull() ?: return@forEach
-                            bookmarkQueries.value.markDefaultCreateInFlight(
-                                local_id = bookmarkLocalId,
-                                pending_version = ack.observedPendingVersion
-                            )
-                            val changedRows = bookmarkQueries.value.changedRowCount().executeAsOne()
-                            val row = bookmarkQueries.value.getBookmarkByLocalId(bookmarkLocalId).executeAsOneOrNull()
-                            if (changedRows > 0 &&
-                                row?.is_in_default_collection == 1L &&
-                                row.default_pending_op == "CREATED" &&
-                                row.default_pending_version == ack.observedPendingVersion + 1
-                            ) {
-                                markedAcks += ack
-                            }
-                        }
                         LOCAL_MUTATION_COLLECTION_BOOKMARK_LINK_FACET -> {
                             val localId = ack.localID.toLongOrNull() ?: return@forEach
                             bookmarkCollectionQueries.value.markCreatedMutationInFlight(
@@ -501,21 +392,6 @@ class CollectionBookmarksRepositoryImpl(
                         return@forEach
                     }
                     when (ack.facet) {
-                        LOCAL_MUTATION_BOOKMARK_DEFAULT_FACET -> {
-                            val bookmarkLocalId = ack.localID
-                                .removePrefix(DEFAULT_LOCAL_ID_PREFIX)
-                                .toLongOrNull() ?: return@forEach
-                            bookmarkQueries.value.rollbackActiveDefaultCreateInFlight(
-                                local_id = bookmarkLocalId,
-                                pending_version = ack.observedPendingVersion,
-                                marked_pending_version = ack.observedPendingVersion + 1
-                            )
-                            bookmarkQueries.value.clearCanceledDefaultCreateInFlight(
-                                local_id = bookmarkLocalId,
-                                canceled_pending_version = ack.observedPendingVersion + 2
-                            )
-                            reconciler.pruneBookmarkIfOrphan(bookmarkLocalId)
-                        }
                         LOCAL_MUTATION_COLLECTION_BOOKMARK_LINK_FACET -> {
                             val localId = ack.localID.toLongOrNull() ?: return@forEach
                             val bookmarkLocalId = bookmarkCollectionQueries.value
@@ -574,47 +450,12 @@ class CollectionBookmarksRepositoryImpl(
             bookmarkCollectionQueries.value
                 .checkRemoteIDsExistence(chunk)
                 .executeAsList()
-                .mapNotNull { it.remote_id } + chunk.mapNotNull(::defaultCollectionRemoteIdIfExists)
-        }
-    }
-
-    private fun defaultCollectionRemoteIdIfExists(remoteId: String): String? {
-        if (!remoteId.startsWith("$DEFAULT_COLLECTION_ID-")) {
-            return null
-        }
-        val bookmarkRemoteId = remoteId.removePrefix("$DEFAULT_COLLECTION_ID-")
-        val bookmark = findBookmarkByDefaultRelationBookmarkRemoteId(bookmarkRemoteId)
-        return if (bookmark != null &&
-            bookmark.deleted == 0L &&
-            (bookmark.is_in_default_collection == 1L || bookmark.default_pending_op == "DELETED")
-        ) {
-            remoteId
-        } else {
-            null
+                .mapNotNull { it.remote_id }
         }
     }
 
     override suspend fun fetchCollectionBookmarkByRemoteId(remoteId: String): LocalSyncCollectionAyahBookmark? {
         return withContext(Dispatchers.IO) {
-            if (remoteId.startsWith("$DEFAULT_COLLECTION_ID-")) {
-                val bookmarkRemoteId = remoteId.removePrefix("$DEFAULT_COLLECTION_ID-")
-                val row = findBookmarkByDefaultRelationBookmarkRemoteId(bookmarkRemoteId)
-                if (row != null &&
-                    row.deleted == 0L &&
-                    (row.is_in_default_collection == 1L || row.default_pending_op == "DELETED")
-                ) {
-                    return@withContext defaultLocalSyncCollectionBookmark(
-                        bookmarkLocalId = row.local_id,
-                        bookmarkRemoteId = bookmarkRemoteId,
-                        sura = row.sura,
-                        ayah = row.ayah,
-                        modifiedAt = row.default_modified_at ?: row.modified_at,
-                        createdAt = row.created_at
-                    )
-                }
-                return@withContext null
-            }
-
             bookmarkCollectionQueries.value.getCollectionBookmarkWithDetailsByRemoteId(remote_id = remoteId)
                 .executeAsOneOrNull()
                 ?.let { record ->
@@ -650,12 +491,6 @@ class CollectionBookmarksRepositoryImpl(
 
     private fun clearLocalMutation(local: LocalModelMutation<LocalSyncCollectionAyahBookmark>) {
         val updatedAt = local.model.lastUpdated.fromPlatform().toEpochMilliseconds()
-        if (local.localID.startsWith(DEFAULT_LOCAL_ID_PREFIX)) {
-            val bookmarkLocalId = local.localID.removePrefix(DEFAULT_LOCAL_ID_PREFIX).toLongOrNull() ?: return
-            clearDefaultLocalMutation(local, bookmarkLocalId, updatedAt)
-            return
-        }
-
         val localId = local.localID.toLongOrNull() ?: return
         val relationRow = bookmarkCollectionQueries.value
             .getCollectionBookmarkByLocalId(localId)
@@ -696,90 +531,6 @@ class CollectionBookmarksRepositoryImpl(
                     upsertRelationBookmarkRemoteId(local.model, bookmarkLocalId, updatedAt)
                 }
         }
-    }
-
-    private fun clearDefaultLocalMutation(
-        local: LocalModelMutation<LocalSyncCollectionAyahBookmark>,
-        bookmarkLocalId: Long,
-        updatedAt: Long
-    ) {
-        val row = bookmarkQueries.value.getBookmarkByLocalId(bookmarkLocalId).executeAsOneOrNull() ?: return
-        if (!ackMatches(local, LOCAL_MUTATION_BOOKMARK_DEFAULT_FACET)) {
-            return
-        }
-        val ack = local.ack ?: return
-        if (local.mutation == Mutation.DELETED) {
-            if (row.default_pending_op == "DELETED" &&
-                row.is_in_default_collection == 0L &&
-                row.default_pending_version == ack.observedPendingVersion
-            ) {
-                bookmarkQueries.value.clearDefaultPending(
-                    local_id = bookmarkLocalId,
-                    remote_id = null,
-                    default_last_synced_bookmark_remote_id = null,
-                    modified_at = updatedAt,
-                    pending_op = ack.observedPendingOp.name,
-                    pending_version = ack.observedPendingVersion
-                )
-                if (row.remote_id == local.model.bookmarkRemoteId ||
-                    row.default_last_synced_bookmark_remote_id == local.model.bookmarkRemoteId
-                ) {
-                    reconciler.pruneBookmarkIfOrphan(bookmarkLocalId)
-                }
-            } else if (row.default_pending_op == null &&
-                row.is_in_default_collection == 1L &&
-                (
-                    row.remote_id == local.model.bookmarkRemoteId ||
-                        row.default_last_synced_bookmark_remote_id == local.model.bookmarkRemoteId
-                )
-            ) {
-                bookmarkQueries.value.markDefaultRelationForRecreation(
-                    local_id = bookmarkLocalId,
-                    modified_at = row.default_modified_at ?: row.modified_at
-                )
-            }
-            return
-        }
-
-        if (row.default_pending_op == "DELETED" &&
-            row.is_in_default_collection == 0L &&
-            ack.observedPendingOp == Mutation.CREATED
-        ) {
-            val relationBookmarkRemoteId = local.relationBookmarkRemoteId() ?: return
-            bookmarkQueries.value.bindDefaultRemoteSnapshotForCreatedAck(
-                local_id = bookmarkLocalId,
-                remote_id = local.model.bookmarkRemoteId,
-                default_last_synced_bookmark_remote_id = relationBookmarkRemoteId
-            )
-            return
-        }
-
-        if (row.default_pending_op == "DELETED" &&
-            row.is_in_default_collection == 1L &&
-            ack.observedPendingOp == Mutation.CREATED
-        ) {
-            val relationBookmarkRemoteId = local.relationBookmarkRemoteId() ?: return
-            bookmarkQueries.value.clearReaddedDefaultCreatedAck(
-                local_id = bookmarkLocalId,
-                remote_id = local.model.bookmarkRemoteId,
-                default_last_synced_bookmark_remote_id = relationBookmarkRemoteId,
-                modified_at = row.default_modified_at ?: row.modified_at
-            )
-            return
-        }
-
-        if (row.default_pending_op != "CREATED" || row.is_in_default_collection != 1L) {
-            return
-        }
-        val relationBookmarkRemoteId = local.relationBookmarkRemoteId() ?: return
-        bookmarkQueries.value.clearDefaultPending(
-            local_id = bookmarkLocalId,
-            remote_id = local.model.bookmarkRemoteId,
-            default_last_synced_bookmark_remote_id = relationBookmarkRemoteId,
-            modified_at = updatedAt,
-            pending_op = ack.observedPendingOp.name,
-            pending_version = ack.observedPendingVersion
-        )
     }
 
     private fun bindCustomCreatedAckToPendingDelete(
@@ -826,13 +577,6 @@ class CollectionBookmarksRepositoryImpl(
         } else {
             null
         }
-    }
-
-    private fun findBookmarkByDefaultRelationBookmarkRemoteId(bookmarkRemoteId: String): DatabaseBookmark? {
-        return bookmarkQueries.value.getBookmarkByRemoteId(bookmarkRemoteId)
-            .executeAsOneOrNull()
-            ?: bookmarkQueries.value.getBookmarkByDefaultRelationBookmarkRemoteId(bookmarkRemoteId)
-                .executeAsOneOrNull()
     }
 
     private fun clearCustomDeleteMutation(
@@ -885,11 +629,6 @@ class CollectionBookmarksRepositoryImpl(
     }
 
     private fun applyRemoteCollectionBookmarkUpsert(remote: RemoteModelMutation<RemoteCollectionBookmark>) {
-        if (remote.model.collectionId == DEFAULT_COLLECTION_ID) {
-            applyRemoteDefaultBookmarkUpsert(remote)
-            return
-        }
-
         val collection = collectionQueries.value
             .getCollectionByRemoteId(remote.model.collectionId)
             .executeAsOneOrNull()
@@ -916,42 +655,7 @@ class CollectionBookmarksRepositoryImpl(
         )
     }
 
-    private fun applyRemoteDefaultBookmarkUpsert(remote: RemoteModelMutation<RemoteCollectionBookmark>) {
-        val bookmarkLocalId = resolveBookmarkLocalId(
-            bookmark = remote.model,
-            createIfMissing = true,
-            markDefaultForRecreationOnBackfill = false
-        ) ?: return
-        val bookmarkRow = bookmarkQueries.value.getBookmarkByLocalId(bookmarkLocalId).executeAsOneOrNull()
-        if (bookmarkRow?.bookmark_pending_op == "DELETED") {
-            return
-        }
-        val updatedAt = remote.model.lastUpdated.fromPlatform().toEpochMilliseconds()
-        bookmarkQueries.value.setDefaultFromRemote(
-            local_id = bookmarkLocalId,
-            remote_id = remote.model.bookmarkId,
-            is_in_default_collection = 1L,
-            modified_at = updatedAt
-        )
-    }
-
     private fun applyRemoteCollectionBookmarkDeletion(remote: RemoteModelMutation<RemoteCollectionBookmark>) {
-        if (remote.model.collectionId == DEFAULT_COLLECTION_ID) {
-            val bookmarkLocalId = findBookmarkLocalIdWithoutRemoteIdBackfill(remote.model) ?: return
-            val updatedAt = remote.model.lastUpdated.fromPlatform().toEpochMilliseconds()
-            bookmarkQueries.value.setDefaultFromRemote(
-                local_id = bookmarkLocalId,
-                remote_id = remote.model.bookmarkId,
-                is_in_default_collection = 0L,
-                modified_at = updatedAt
-            )
-            val row = bookmarkQueries.value.getBookmarkByLocalId(bookmarkLocalId).executeAsOneOrNull()
-            if (row != null) {
-                reconciler.pruneBookmarkIfOrphan(bookmarkLocalId)
-            }
-            return
-        }
-
         val bookmarkRemoteId = remote.model.bookmarkId
         if (bookmarkRemoteId.isNullOrEmpty()) {
             val collection = collectionQueries.value
@@ -1023,8 +727,7 @@ class CollectionBookmarksRepositoryImpl(
 
     private fun resolveBookmarkLocalId(
         bookmark: RemoteCollectionBookmark,
-        createIfMissing: Boolean,
-        markDefaultForRecreationOnBackfill: Boolean = true
+        createIfMissing: Boolean
     ): Long? {
         return when (bookmark) {
             is RemoteCollectionBookmark.Page -> null
@@ -1049,19 +752,11 @@ class CollectionBookmarksRepositoryImpl(
                     .executeAsOneOrNull()
                 if (existingByLocation != null) {
                     if (!bookmark.bookmarkId.isNullOrEmpty() && existingByLocation.remote_id == null) {
-                        if (markDefaultForRecreationOnBackfill) {
-                            upsertRelationBookmarkRemoteId(
-                                bookmark = bookmark,
-                                bookmarkLocalId = existingByLocation.local_id,
-                                updatedAt = bookmark.lastUpdated.fromPlatform().toEpochMilliseconds()
-                            )
-                        } else {
-                            bookmarkQueries.value.attachRemoteBookmarkIdByLocalId(
-                                local_id = existingByLocation.local_id,
-                                remote_id = bookmark.bookmarkId,
-                                modified_at = bookmark.lastUpdated.fromPlatform().toEpochMilliseconds()
-                            )
-                        }
+                        bookmarkQueries.value.attachRemoteBookmarkIdByLocalId(
+                            local_id = existingByLocation.local_id,
+                            remote_id = bookmark.bookmarkId,
+                            modified_at = bookmark.lastUpdated.fromPlatform().toEpochMilliseconds()
+                        )
                     } else if (!bookmark.bookmarkId.isNullOrEmpty() && existingByLocation.remote_id != bookmark.bookmarkId) {
                         logger.w {
                             "Skipping stale remote collection bookmark for ${bookmark.sura}:${bookmark.ayah}: " +
@@ -1121,10 +816,6 @@ class CollectionBookmarksRepositoryImpl(
             created_at = updatedAt,
             modified_at = updatedAt
         )
-        bookmarkQueries.value.markDefaultRelationForRecreation(
-            local_id = bookmarkLocalId,
-            modified_at = updatedAt
-        )
     }
 
     private fun upsertRelationBookmarkRemoteId(
@@ -1138,10 +829,6 @@ class CollectionBookmarksRepositoryImpl(
             sura = bookmark.sura.toLong(),
             ayah = bookmark.ayah.toLong(),
             created_at = updatedAt,
-            modified_at = updatedAt
-        )
-        bookmarkQueries.value.markDefaultRelationForRecreation(
-            local_id = bookmarkLocalId,
             modified_at = updatedAt
         )
     }
@@ -1296,87 +983,6 @@ class CollectionBookmarksRepositoryImpl(
         )
     }
 
-    private fun DatabaseBookmark.toDefaultCollectionBookmark(
-        relationBookmarkRemoteId: String? = remote_id
-    ): CollectionAyahBookmark {
-        return defaultCollectionBookmark(
-            bookmarkLocalId = local_id,
-            bookmarkRemoteId = relationBookmarkRemoteId,
-            sura = sura,
-            ayah = ayah,
-            membershipModifiedAt = default_modified_at ?: modified_at,
-            bookmarkModifiedAt = bookmark_modified_at,
-            bookmarkCreatedAt = created_at
-        )
-    }
-
-    private fun defaultLocalSyncCollectionBookmark(
-        bookmarkLocalId: Long,
-        bookmarkRemoteId: String?,
-        sura: Long?,
-        ayah: Long?,
-        modifiedAt: Long,
-        createdAt: Long
-    ): LocalSyncCollectionAyahBookmark {
-        return defaultCollectionBookmarkFields(
-            bookmarkLocalId = bookmarkLocalId,
-            bookmarkRemoteId = bookmarkRemoteId,
-            sura = sura,
-            ayah = ayah,
-            membershipModifiedAt = modifiedAt,
-            bookmarkModifiedAt = modifiedAt,
-            bookmarkCreatedAt = createdAt
-        ).toLocalSyncCollectionBookmark(
-            createdAt = Instant.fromEpochMilliseconds(createdAt).toPlatform()
-        )
-    }
-
-    private fun defaultCollectionBookmark(
-        bookmarkLocalId: Long,
-        bookmarkRemoteId: String?,
-        sura: Long?,
-        ayah: Long?,
-        membershipModifiedAt: Long,
-        bookmarkModifiedAt: Long,
-        bookmarkCreatedAt: Long
-    ): CollectionAyahBookmark {
-        return defaultCollectionBookmarkFields(
-            bookmarkLocalId = bookmarkLocalId,
-            bookmarkRemoteId = bookmarkRemoteId,
-            sura = sura,
-            ayah = ayah,
-            membershipModifiedAt = membershipModifiedAt,
-            bookmarkModifiedAt = bookmarkModifiedAt,
-            bookmarkCreatedAt = bookmarkCreatedAt
-        ).toCollectionBookmark()
-    }
-
-    private fun defaultCollectionBookmarkFields(
-        bookmarkLocalId: Long,
-        bookmarkRemoteId: String?,
-        sura: Long?,
-        ayah: Long?,
-        membershipModifiedAt: Long,
-        bookmarkModifiedAt: Long,
-        bookmarkCreatedAt: Long
-    ): CollectionBookmarkFields {
-        val membershipUpdatedAt = Instant.fromEpochMilliseconds(membershipModifiedAt).toPlatform()
-        val bookmarkUpdatedAt = Instant.fromEpochMilliseconds(bookmarkModifiedAt).toPlatform()
-        val bookmarkAddedAt = Instant.fromEpochMilliseconds(bookmarkCreatedAt).toPlatform()
-        return CollectionBookmarkFields(
-            collectionLocalId = DEFAULT_COLLECTION_ID,
-            collectionRemoteId = DEFAULT_COLLECTION_ID,
-            bookmarkLocalId = bookmarkLocalId.toString(),
-            bookmarkRemoteId = bookmarkRemoteId,
-            sura = requireNotNull(sura).toInt(),
-            ayah = requireNotNull(ayah).toInt(),
-            membershipLastUpdated = membershipUpdatedAt,
-            bookmarkLastUpdated = bookmarkUpdatedAt,
-            bookmarkAddedDate = bookmarkAddedAt,
-            localId = defaultLocalId(bookmarkLocalId)
-        )
-    }
-
     private fun CollectionBookmarkFields.toCollectionBookmark(): CollectionAyahBookmark {
         return CollectionAyahBookmark(
             collectionId = collectionLocalId,
@@ -1421,10 +1027,6 @@ private data class CollectionBookmarkFields(
     val bookmarkAddedDate: PlatformDateTime,
     val localId: String
 )
-
-private const val DEFAULT_LOCAL_ID_PREFIX = "default:"
-
-private fun defaultLocalId(bookmarkLocalId: Long): String = "$DEFAULT_LOCAL_ID_PREFIX$bookmarkLocalId"
 
 private fun collectionBookmarkRemoteId(collectionId: String, bookmarkId: String): String {
     return "$collectionId-$bookmarkId"

@@ -11,6 +11,7 @@ import com.quran.shared.persistence.input.ImportReadingSession
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.PersistenceImportResult
 import com.quran.shared.persistence.model.DatabaseNote
+import com.quran.shared.persistence.model.isSystemCollectionName
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.QuranData
@@ -96,6 +97,9 @@ class PersistenceImportRepositoryImpl(
         )
         data.collections.forEach { collection ->
             require(collection.name.isNotBlank()) { "Collection name cannot be blank." }
+            require(!isSystemCollectionName(collection.name)) {
+                "System collection name is reserved: ${collection.name}."
+            }
         }
 
         val bookmarkCoordinates = data.bookmarks.map { bookmark ->
@@ -141,19 +145,32 @@ class PersistenceImportRepositoryImpl(
     }
 
     private fun importBookmarks(bookmarks: List<ImportAyahBookmark>): Map<String, String> {
+        if (bookmarks.isEmpty()) {
+            return emptyMap()
+        }
+        val defaultCollection = requireNotNull(
+            database.collectionsQueries.getDefaultCollection().executeAsOneOrNull()
+        ) { "Default collection is not available for bookmark import." }
         return bookmarks.associate { bookmark ->
             val ayahId = requireAyahId(bookmark.sura, bookmark.ayah, "bookmark ${bookmark.importId}")
             val timestamp = bookmark.lastUpdated.toImportTimestampMillis()
-            database.bookmarksQueries.addAyahToDefaultCollection(
+            database.bookmarksQueries.upsertAyahBookmark(
+                remote_id = null,
                 ayah_id = ayahId.toLong(),
                 sura = bookmark.sura.toLong(),
                 ayah = bookmark.ayah.toLong(),
-                timestamp = timestamp
+                created_at = timestamp,
+                modified_at = timestamp
             )
             val record = database.bookmarksQueries
                 .getBookmarkForAyah(bookmark.sura.toLong(), bookmark.ayah.toLong())
                 .executeAsOneOrNull()
             requireNotNull(record) { "Expected imported bookmark ${bookmark.importId}." }
+            database.bookmark_collectionsQueries.addBookmarkToCollection(
+                bookmark_local_id = record.local_id,
+                collection_local_id = defaultCollection.local_id,
+                timestamp = timestamp
+            )
             bookmark.importId to record.local_id.toString()
         }
     }
@@ -170,6 +187,9 @@ class PersistenceImportRepositoryImpl(
                 .getCollectionByName(collection.name)
                 .executeAsOneOrNull()
             requireNotNull(record) { "Expected imported collection ${collection.importId}." }
+            require(record.is_system == 0L) {
+                "System collection name is reserved: ${collection.name}."
+            }
             collection.importId to record.local_id
         }
     }

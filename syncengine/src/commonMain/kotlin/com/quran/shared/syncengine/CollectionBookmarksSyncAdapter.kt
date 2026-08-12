@@ -1,7 +1,6 @@
 package com.quran.shared.syncengine
 
 import co.touchlab.kermit.Logger
-import com.quran.shared.mutations.LOCAL_MUTATION_BOOKMARK_DEFAULT_FACET
 import com.quran.shared.mutations.LOCAL_MUTATION_COLLECTION_BOOKMARK_LINK_FACET
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.LocalMutationAck
@@ -196,12 +195,7 @@ internal class CollectionBookmarksSyncAdapter(
                 )
                     ?: localMutation.model.remoteIdOrNull()
             },
-            model = { localMutation, pushedMutation ->
-                localMutation.model.withPushedBookmarkId(
-                    pushedMutation = pushedMutation,
-                    isValidatedDefaultCreateAck = localMutation.isDefaultCollectionBookmarkCreate()
-                )
-            }
+            model = { localMutation, _ -> localMutation.model }
         )
 
     private inner class CollectionBookmarksResourceSyncPlan(
@@ -269,26 +263,13 @@ internal class CollectionBookmarksSyncAdapter(
 
 private fun LocalMutationAck.isCollectionBookmarkCreate(): Boolean =
     resource == LocalMutationResource.COLLECTION_BOOKMARK &&
-        facet in COLLECTION_BOOKMARK_CREATE_MARKER_FACETS &&
+        facet == LOCAL_MUTATION_COLLECTION_BOOKMARK_LINK_FACET &&
         observedPendingOp == Mutation.CREATED
-
-private fun LocalMutationAck.isDefaultCollectionBookmarkCreate(): Boolean =
-    resource == LocalMutationResource.COLLECTION_BOOKMARK &&
-        facet == LOCAL_MUTATION_BOOKMARK_DEFAULT_FACET &&
-        observedPendingOp == Mutation.CREATED
-
-private val COLLECTION_BOOKMARK_CREATE_MARKER_FACETS = setOf(
-    LOCAL_MUTATION_BOOKMARK_DEFAULT_FACET,
-    LOCAL_MUTATION_COLLECTION_BOOKMARK_LINK_FACET
-)
 
 private fun LocalModelMutation<SyncCollectionBookmark>.collectionBookmarkCreateMarkerKey(): String? {
     val ack = ack ?: return null
     return if (ack.isCollectionBookmarkCreate()) ack.markerKey() else null
 }
-
-private fun LocalModelMutation<SyncCollectionBookmark>.isDefaultCollectionBookmarkCreate(): Boolean =
-    mutation == Mutation.CREATED && ack?.isDefaultCollectionBookmarkCreate() == true
 
 private fun mapPushedLocalMutations(
     localMutations: List<LocalModelMutation<SyncCollectionBookmark>>,
@@ -421,44 +402,6 @@ private fun SyncMutation.withExpectedBookmarkId(model: SyncCollectionBookmark): 
             put("bookmarkId", bookmarkId)
         }
     )
-}
-
-private fun SyncCollectionBookmark.withPushedBookmarkId(
-    pushedMutation: SyncMutation,
-    isValidatedDefaultCreateAck: Boolean
-): SyncCollectionBookmark {
-    return when (this) {
-        is SyncCollectionBookmark.AyahBookmark -> {
-            val pushedBookmarkId = if (isValidatedDefaultCreateAck) {
-                pushedMutation.pushedBookmarkIdFor(this)
-                    ?: pushedMutation.pushedBookmarkIdPayloadEvidence()
-                    ?: bookmarkId
-            } else {
-                bookmarkId
-            }
-            copy(bookmarkId = pushedBookmarkId)
-        }
-    }
-}
-
-private fun SyncMutation.pushedBookmarkIdPayloadEvidence(): String? =
-    data?.stringOrNull("bookmarkId")
-        ?: data?.stringOrNull("bookmark_id")
-
-private fun SyncMutation.pushedBookmarkIdFor(
-    localModel: SyncCollectionBookmark.AyahBookmark
-): String? {
-    val data = data ?: return null
-    val bookmarkId = data.stringOrNull("bookmarkId")
-        ?: data.stringOrNull("bookmark_id")
-        ?: return null
-    val sura = data.intOrNull("key")
-    val ayah = data.intOrNull("verseNumber")
-    return if (sura == localModel.sura && ayah == localModel.ayah) {
-        bookmarkId
-    } else {
-        null
-    }
 }
 
 private fun parseBookmarkId(resourceId: String?, collectionId: String): String? {

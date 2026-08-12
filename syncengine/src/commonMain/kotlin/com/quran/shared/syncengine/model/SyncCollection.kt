@@ -6,7 +6,9 @@ data class SyncCollection(
     val id: String,
     val name: String?,
     val lastModified: Instant,
-    val createdAt: Instant? = null
+    val createdAt: Instant? = null,
+    val isDefault: Boolean = false,
+    val isSystem: Boolean = false
 )
 
 internal sealed class SyncCollectionKey {

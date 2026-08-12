@@ -14,7 +14,7 @@ import com.quran.shared.persistence.input.LocalSyncCollection
 import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.model.DatabaseCollection
-import com.quran.shared.persistence.model.highlightColorForCollectionName
+import com.quran.shared.persistence.model.isSystemCollectionName
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
@@ -70,18 +70,21 @@ class CollectionsRepositoryImpl(
     }
 
     private suspend fun addCollectionWithTimestampMillis(name: String, timestampMillis: Long): Collection {
-        require(highlightColorForCollectionName(name) == null) {
-            "System highlight collection names are reserved."
+        require(!isSystemCollectionName(name)) {
+            "System collection name is reserved: $name."
         }
         logger.i { "Adding collection with name=$name" }
         return withContext(Dispatchers.IO) {
             collectionQueries.value.addNewCollection(
                 name = name,
-                timestamp = timestampMillis
+                timestamp = timestampMillis,
+                is_system = 0L
             )
-            val record = collectionQueries.value.getCollectionByName(name)
-                .executeAsOneOrNull()
-            requireNotNull(record) { "Expected collection for name=$name after insert." }
+            val record = requireNotNull(
+                collectionQueries.value.getCollectionByName(name)
+                    .executeAsOneOrNull()
+            ) { "Expected collection for name=$name after insert." }
+            require(record.is_system == 0L) { "System collection name is reserved: $name." }
             record.toCollection()
         }
     }
@@ -110,11 +113,11 @@ class CollectionsRepositoryImpl(
                 require(existing?.deleted == 0L) {
                     "Expected active collection id=$id before update."
                 }
-                require(highlightColorForCollectionName(existing.name) == null) {
-                    "System highlight collections cannot be renamed."
+                require(existing.is_system == 0L) {
+                    "System collections cannot be renamed."
                 }
-                require(highlightColorForCollectionName(name) == null) {
-                    "System highlight collection names are reserved."
+                require(!isSystemCollectionName(name)) {
+                    "System collection name is reserved: $name."
                 }
 
                 collectionQueries.value.updateCollectionName(
@@ -145,8 +148,8 @@ class CollectionsRepositoryImpl(
                 if (collection?.deleted != 0L) {
                     return@transaction
                 }
-                require(highlightColorForCollectionName(collection.name) == null) {
-                    "System highlight collections cannot be deleted."
+                require(collection.is_system == 0L) {
+                    "System collections cannot be deleted."
                 }
                 collectionQueries.value.deleteCollection(
                     id = localId,
@@ -216,8 +219,14 @@ class CollectionsRepositoryImpl(
             collectionQueries.value.updateRemoteCollection(
                 remote_id = remote.remoteID,
                 name = name,
-                modified_at = updatedAt
+                modified_at = updatedAt,
+                is_default = remote.model.isDefault.toLong(),
+                is_system = remote.model.isSystem.toLong()
             )
+            return
+        }
+
+        if (remote.model.isDefault && attachRemoteIdToSeededDefault(remote, updatedAt)) {
             return
         }
 
@@ -246,7 +255,9 @@ class CollectionsRepositoryImpl(
                 remote_id = remote.remoteID,
                 name = name,
                 created_at = createdAt,
-                modified_at = updatedAt
+                modified_at = updatedAt,
+                is_default = remote.model.isDefault.toLong(),
+                is_system = remote.model.isSystem.toLong()
             )
         }
     }
@@ -254,6 +265,10 @@ class CollectionsRepositoryImpl(
     private fun applyRemoteCollectionDeletion(remote: RemoteModelMutation<RemoteCollection>) {
         val existing = collectionQueries.value.getCollectionByRemoteId(remote.remoteID)
             .executeAsOneOrNull()
+        if (existing?.is_system == 1L) {
+            logger.i { "Skipping remote deletion for system collection: remoteId=${remote.remoteID}" }
+            return
+        }
         if (existing?.hasPendingLocalMutation() == true) {
             logger.i { "Skipping remote collection deletion for pending local row: remoteId=${remote.remoteID}" }
             return
@@ -289,11 +304,33 @@ class CollectionsRepositoryImpl(
             local_id = ack.localId,
             remote_id = remote.remoteID,
             pending_version = ack.pendingVersion,
-            modified_at = updatedAt
+            modified_at = updatedAt,
+            is_default = remote.model.isDefault.toLong(),
+            is_system = remote.model.isSystem.toLong()
         )
         val attached = collectionQueries.value.getCollectionByLocalId(ack.localId)
             .executeAsOneOrNull()
         return attached?.remote_id == remote.remoteID
+    }
+
+    private fun attachRemoteIdToSeededDefault(
+        remote: RemoteModelMutation<RemoteCollection>,
+        updatedAt: Long
+    ): Boolean {
+        val row = collectionQueries.value.getDefaultCollection().executeAsOneOrNull()
+        if (row == null || row.remote_id != null) {
+            return false
+        }
+        collectionQueries.value.attachRemoteCollectionIdForSemanticReplay(
+            local_id = row.local_id,
+            remote_id = remote.remoteID,
+            modified_at = updatedAt,
+            is_default = 1L,
+            is_system = remote.model.isSystem.toLong()
+        )
+        return collectionQueries.value.getCollectionByLocalId(row.local_id)
+            .executeAsOneOrNull()
+            ?.remote_id == remote.remoteID
     }
 
     private fun attachRemoteIdForSemanticReplay(
@@ -331,7 +368,9 @@ class CollectionsRepositoryImpl(
         collectionQueries.value.attachRemoteCollectionIdForSemanticReplay(
             local_id = row.local_id,
             remote_id = remote.remoteID,
-            modified_at = updatedAt
+            modified_at = updatedAt,
+            is_default = remote.model.isDefault.toLong(),
+            is_system = remote.model.isSystem.toLong()
         )
         val attached = collectionQueries.value.getCollectionByLocalId(row.local_id)
             .executeAsOneOrNull()
@@ -397,6 +436,8 @@ class CollectionsRepositoryImpl(
     }
 
     private fun DatabaseCollection.hasPendingLocalMutation(): Boolean = pendingMutation() != null
+
+    private fun Boolean.toLong(): Long = if (this) 1L else 0L
 
     private data class CreatedCollectionAck(
         val localId: Long,

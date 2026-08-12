@@ -221,8 +221,7 @@ private suspend fun SyncMutation.toSyncBookmark(
                     ayah = ayah,
                     isReading = data.booleanOrNull("isReading") ?: false,
                     lastModified = lastModified,
-                    createdAt = createdAt,
-                    isInDefaultCollection = data.booleanOrNull("isInDefaultCollection")
+                    createdAt = createdAt
                 )
             } else {
                 null

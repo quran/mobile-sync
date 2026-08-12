@@ -6,7 +6,6 @@ import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.TestDatabaseDriver
 import com.quran.shared.persistence.model.AyahHighlight
 import com.quran.shared.persistence.model.AyahHighlightColor
-import com.quran.shared.persistence.model.DEFAULT_COLLECTION_ID
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepositoryImpl
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepositoryImpl
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepositoryImpl
@@ -50,7 +49,7 @@ class AyahHighlightsRepositoryTest {
     }
 
     @Test
-    fun `setHighlight creates namespaced collection and highlight-only bookmark`() = runTest {
+    fun `setHighlight activates seeded namespaced collection and highlight-only bookmark`() = runTest {
         val timestamp = timestamp(1_234)
 
         val highlight = collectionBookmarksRepository.setHighlight(
@@ -61,15 +60,18 @@ class AyahHighlightsRepositoryTest {
         )
 
         assertEquals(AyahHighlight(2, 255, AyahHighlightColor.BLUE, timestamp), highlight)
-        val collection = collectionsRepository.getAllCollections().single()
+        val collection = collectionsRepository.getAllCollections()
+            .single { it.name == "system:highlights:blue" }
         assertEquals("system:highlights:blue", collection.name)
         assertEquals(
             listOf(2 to 255),
             collectionBookmarksRepository.getBookmarksForCollection(collection.id).map { it.sura to it.ayah }
         )
+        assertFalse(collection.isDefault)
+        assertTrue(collection.isSystem)
         assertEquals(
-            0L,
-            database.bookmarksQueries.getBookmarkForAyah(2L, 255L).executeAsOne().is_in_default_collection
+            listOf("system:highlights:blue"),
+            collectionsRepository.fetchMutatedCollections().map { it.model.name }
         )
         assertEquals(listOf(highlight), collectionBookmarksRepository.getHighlightsFlow().first())
     }
@@ -104,7 +106,7 @@ class AyahHighlightsRepositoryTest {
         assertEquals(emptyList(), collectionBookmarksRepository.getBookmarksForCollection(green.id))
         assertEquals(1, collectionBookmarksRepository.getBookmarksForCollection(purple.id).size)
         assertEquals(1, collectionBookmarksRepository.getBookmarksForCollection(userCollection.id).size)
-        assertEquals(1, collectionBookmarksRepository.getBookmarksForCollection(DEFAULT_COLLECTION_ID).size)
+        assertEquals(1, collectionBookmarksRepository.getBookmarksForCollection(defaultCollectionId()).size)
     }
 
     @Test
@@ -121,7 +123,7 @@ class AyahHighlightsRepositoryTest {
         assertTrue(removed)
         assertEquals(emptyList(), collectionBookmarksRepository.getBookmarksForCollection(highlightCollection.id))
         assertEquals(1, collectionBookmarksRepository.getBookmarksForCollection(userCollection.id).size)
-        assertEquals(1, collectionBookmarksRepository.getBookmarksForCollection(DEFAULT_COLLECTION_ID).size)
+        assertEquals(1, collectionBookmarksRepository.getBookmarksForCollection(defaultCollectionId()).size)
         assertFalse(collectionBookmarksRepository.removeHighlight(2, 255, timestamp(600)))
     }
 
@@ -136,4 +138,7 @@ class AyahHighlightsRepositoryTest {
     }
 
     private fun timestamp(milliseconds: Long) = Instant.fromEpochMilliseconds(milliseconds).toPlatform()
+
+    private fun defaultCollectionId(): String =
+        database.collectionsQueries.getDefaultCollection().executeAsOne().local_id.toString()
 }
