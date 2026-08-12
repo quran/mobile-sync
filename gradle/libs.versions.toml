@@ -11,7 +11,7 @@ native-coroutines = "1.0.5"
 maven-publish = "0.37.0"
 
 metro = "1.4.1"
-compose = "2026.06.01"
+compose = "2026.08.00"
 coroutines = "1.11.0"
 sha2 = "0.8.0"
 sqldelight = "2.3.2"
