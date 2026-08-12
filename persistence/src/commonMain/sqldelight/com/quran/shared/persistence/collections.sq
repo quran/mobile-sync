@@ -29,7 +29,7 @@ ON collection(created_at DESC)
 WHERE (remote_id IS NULL AND pending_version > 0) OR is_edited = 1;
 
 INSERT OR IGNORE INTO collection (name, is_default, is_system)
-VALUES ('Default', 1, 1);
+VALUES ('Favorites', 1, 1);
 INSERT OR IGNORE INTO collection (name, is_default, is_system)
 VALUES ('system:highlights:blue', 0, 1);
 INSERT OR IGNORE INTO collection (name, is_default, is_system)
@@ -78,7 +78,7 @@ getDefaultCollection:
 
 seedSystemCollections {
   INSERT OR IGNORE INTO collection (name, is_default, is_system)
-  VALUES ('Default', 1, 1);
+  VALUES ('Favorites', 1, 1);
   INSERT OR IGNORE INTO collection (name, is_default, is_system)
   VALUES ('system:highlights:blue', 0, 1);
   INSERT OR IGNORE INTO collection (name, is_default, is_system)
@@ -106,7 +106,8 @@ addNewCollection {
       ELSE pending_version
     END
   WHERE name = :name
-    AND deleted = 0;
+    AND deleted = 0
+    AND (is_system = 0 OR :is_system = 1);
   UPDATE collection
   SET deleted = 0,
     is_system = :is_system,
@@ -120,6 +121,7 @@ addNewCollection {
     SELECT local_id FROM collection
     WHERE name = :name
       AND deleted = 1
+      AND (is_system = 0 OR :is_system = 1)
       AND NOT EXISTS (
         SELECT 1 FROM collection AS active
         WHERE active.name = :name
@@ -184,7 +186,8 @@ insertImportedCollection {
       ELSE pending_version
     END
   WHERE name = :name
-    AND deleted = 0;
+    AND deleted = 0
+    AND is_system = 0;
 }
 
 updateCollectionName:
@@ -231,12 +234,12 @@ persistRemoteCollection:
 
 updateRemoteCollection:
   UPDATE collection
-  SET name = CASE WHEN is_default = 1 AND :is_default = 1 THEN name ELSE :name END,
+  SET name = CASE WHEN is_system = 1 THEN name ELSE :name END,
     modified_at = :modified_at,
     deleted = 0,
     is_edited = 0,
-    is_default = :is_default,
-    is_system = :is_system
+    is_default = CASE WHEN is_system = 1 THEN is_default ELSE :is_default END,
+    is_system = CASE WHEN is_system = 1 THEN 1 ELSE :is_system END
   WHERE remote_id = :remote_id
     AND deleted = 0
     AND is_edited = 0;
@@ -244,12 +247,12 @@ updateRemoteCollection:
 updateRemoteCollectionByLocalId:
   UPDATE collection
   SET remote_id = :remote_id,
-    name = CASE WHEN is_default = 1 AND :is_default = 1 THEN name ELSE :name END,
+    name = CASE WHEN is_system = 1 THEN name ELSE :name END,
     modified_at = :modified_at,
     deleted = 0,
     is_edited = 0,
-    is_default = :is_default,
-    is_system = :is_system
+    is_default = CASE WHEN is_system = 1 THEN is_default ELSE :is_default END,
+    is_system = CASE WHEN is_system = 1 THEN 1 ELSE :is_system END
   WHERE local_id = :local_id
     AND deleted = 0
     AND is_edited = 0;
@@ -257,8 +260,8 @@ updateRemoteCollectionByLocalId:
 attachRemoteCollectionIdForCreatedAck:
   UPDATE collection
   SET remote_id = :remote_id,
-    is_default = :is_default,
-    is_system = :is_system,
+    is_default = CASE WHEN is_system = 1 THEN is_default ELSE :is_default END,
+    is_system = CASE WHEN is_system = 1 THEN 1 ELSE :is_system END,
     is_edited = CASE
       WHEN deleted = 1 THEN is_edited
       WHEN pending_version = :pending_version THEN 0
@@ -274,8 +277,8 @@ attachRemoteCollectionIdForCreatedAck:
 attachRemoteCollectionIdForSemanticReplay:
   UPDATE collection
   SET remote_id = :remote_id,
-    is_default = :is_default,
-    is_system = :is_system,
+    is_default = CASE WHEN is_system = 1 THEN is_default ELSE :is_default END,
+    is_system = CASE WHEN is_system = 1 THEN 1 ELSE :is_system END,
     is_edited = CASE
       WHEN deleted = 1 THEN is_edited
       ELSE 0

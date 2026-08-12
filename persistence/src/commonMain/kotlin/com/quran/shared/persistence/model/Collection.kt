@@ -2,6 +2,8 @@ package com.quran.shared.persistence.model
 
 import com.quran.shared.persistence.util.PlatformDateTime
 
+internal const val DEFAULT_COLLECTION_NAME = "Favorites"
+
 /**
  * App-facing collection model.
  *
@@ -23,4 +25,9 @@ data class Collection(
      */
     val isSystemHighlight: Boolean
         get() = highlightColorForCollectionName(name) != null
+}
+
+internal fun isSystemCollectionName(name: String): Boolean {
+    return name.trim().equals(DEFAULT_COLLECTION_NAME, ignoreCase = true) ||
+        highlightColorForCollectionName(name) != null
 }

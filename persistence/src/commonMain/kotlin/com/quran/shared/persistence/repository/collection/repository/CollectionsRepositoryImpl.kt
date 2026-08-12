@@ -14,7 +14,7 @@ import com.quran.shared.persistence.input.LocalSyncCollection
 import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.model.DatabaseCollection
-import com.quran.shared.persistence.model.highlightColorForCollectionName
+import com.quran.shared.persistence.model.isSystemCollectionName
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
@@ -70,8 +70,8 @@ class CollectionsRepositoryImpl(
     }
 
     private suspend fun addCollectionWithTimestampMillis(name: String, timestampMillis: Long): Collection {
-        require(highlightColorForCollectionName(name) == null) {
-            "System highlight collection names are reserved."
+        require(!isSystemCollectionName(name)) {
+            "System collection name is reserved: $name."
         }
         logger.i { "Adding collection with name=$name" }
         return withContext(Dispatchers.IO) {
@@ -80,9 +80,11 @@ class CollectionsRepositoryImpl(
                 timestamp = timestampMillis,
                 is_system = 0L
             )
-            val record = collectionQueries.value.getCollectionByName(name)
-                .executeAsOneOrNull()
-            requireNotNull(record) { "Expected collection for name=$name after insert." }
+            val record = requireNotNull(
+                collectionQueries.value.getCollectionByName(name)
+                    .executeAsOneOrNull()
+            ) { "Expected collection for name=$name after insert." }
+            require(record.is_system == 0L) { "System collection name is reserved: $name." }
             record.toCollection()
         }
     }
@@ -114,8 +116,8 @@ class CollectionsRepositoryImpl(
                 require(existing.is_system == 0L) {
                     "System collections cannot be renamed."
                 }
-                require(highlightColorForCollectionName(name) == null) {
-                    "System highlight collection names are reserved."
+                require(!isSystemCollectionName(name)) {
+                    "System collection name is reserved: $name."
                 }
 
                 collectionQueries.value.updateCollectionName(

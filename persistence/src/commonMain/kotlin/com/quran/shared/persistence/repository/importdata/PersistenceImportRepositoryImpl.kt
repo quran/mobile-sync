@@ -11,6 +11,7 @@ import com.quran.shared.persistence.input.ImportReadingSession
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.PersistenceImportResult
 import com.quran.shared.persistence.model.DatabaseNote
+import com.quran.shared.persistence.model.isSystemCollectionName
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.QuranData
@@ -96,6 +97,9 @@ class PersistenceImportRepositoryImpl(
         )
         data.collections.forEach { collection ->
             require(collection.name.isNotBlank()) { "Collection name cannot be blank." }
+            require(!isSystemCollectionName(collection.name)) {
+                "System collection name is reserved: ${collection.name}."
+            }
         }
 
         val bookmarkCoordinates = data.bookmarks.map { bookmark ->
@@ -183,6 +187,9 @@ class PersistenceImportRepositoryImpl(
                 .getCollectionByName(collection.name)
                 .executeAsOneOrNull()
             requireNotNull(record) { "Expected imported collection ${collection.importId}." }
+            require(record.is_system == 0L) {
+                "System collection name is reserved: ${collection.name}."
+            }
             collection.importId to record.local_id
         }
     }
