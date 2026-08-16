@@ -13,7 +13,6 @@ import com.quran.shared.persistence.repository.readingbookmark.extension.toAyahR
 import com.quran.shared.persistence.repository.readingbookmark.extension.toPageReadingBookmark
 import com.quran.shared.persistence.repository.readingbookmark.extension.toReadingBookmark
 import com.quran.shared.persistence.util.PlatformDateTime
-import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.currentEpochMilliseconds
 import com.quran.shared.persistence.util.currentPlatformDateTime
 import com.quran.shared.persistence.util.toEpochMillisecondsFromPlatform
@@ -73,7 +72,6 @@ class ReadingBookmarksRepositoryImpl(
             var created: AyahReadingBookmark? = null
             database.transaction {
                 bookmarkQueries.value.setAyahReadingBookmark(
-                    ayah_id = getAyahId(sura, ayah).toLong(),
                     sura = sura.toLong(),
                     ayah = ayah.toLong(),
                     timestamp = timestampMillis
@@ -164,9 +162,5 @@ class ReadingBookmarksRepositoryImpl(
             }
             deleted
         }
-    }
-
-    private fun getAyahId(sura: Int, ayah: Int): Int {
-        return QuranData.getAyahId(sura, ayah)
     }
 }

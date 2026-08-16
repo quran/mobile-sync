@@ -23,7 +23,6 @@ import com.quran.shared.persistence.repository.collectionbookmark.repository.Col
 import com.quran.shared.persistence.repository.note.repository.NotesSynchronizationRepository
 import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksRepository
 import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsSynchronizationRepository
-import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toPlatform
 import com.quran.shared.syncengine.AuthenticationDataFetcher
@@ -429,8 +428,10 @@ private class NotesResultReceiver(
             val remoteNote = when (remoteMutation.mutation) {
                 Mutation.DELETED -> RemoteNote(
                     body = null,
-                    startAyahId = null,
-                    endAyahId = null,
+                    startSura = null,
+                    startAyah = null,
+                    endSura = null,
+                    endAyah = null,
                     lastUpdated = remoteMutation.model.lastModified.toPlatform(),
                     createdAt = remoteMutation.model.createdAt?.toPlatform()
                 )
@@ -629,8 +630,6 @@ private fun LocalSyncNote.toSyncEngine(): SyncNote? {
 
 private fun SyncNote.toLocalSyncNote(localId: String): LocalSyncNote? {
     val range = primaryRangeOrNull() ?: return null
-    suraAyahToAyahId(range.start.sura, range.start.ayah) ?: return null
-    suraAyahToAyahId(range.end.sura, range.end.ayah) ?: return null
     val noteBody = requireNotNull(body) { "Transforming a note without a body." }
     val updatedAt = lastModified.toPlatform()
     return LocalSyncNote(
@@ -647,12 +646,12 @@ private fun SyncNote.toLocalSyncNote(localId: String): LocalSyncNote? {
 
 private fun SyncNote.toRemoteInput(): RemoteNote? {
     val range = primaryRangeOrNull() ?: return null
-    val startId = suraAyahToAyahId(range.start.sura, range.start.ayah) ?: return null
-    val endId = suraAyahToAyahId(range.end.sura, range.end.ayah) ?: return null
     return RemoteNote(
         body = body,
-        startAyahId = startId,
-        endAyahId = endId,
+        startSura = range.start.sura,
+        startAyah = range.start.ayah,
+        endSura = range.end.sura,
+        endAyah = range.end.ayah,
         lastUpdated = lastModified.toPlatform(),
         semanticReplayEligible = ranges.size == 1,
         createdAt = createdAt?.toPlatform()
@@ -669,33 +668,6 @@ private fun SyncNote.primaryRangeOrNull(): NoteRange? {
         notesRangeLogger.w { "Note contains ${ranges.size} ranges; only the first will be synced. noteId=$id" }
     }
     return ranges.first()
-}
-
-private fun suraAyahToAyahId(sura: Int, ayah: Int): Long? {
-    if (sura !in 1..QuranData.suraAyahCounts.size) {
-        return null
-    }
-    val count = QuranData.suraAyahCounts[sura - 1]
-    if (ayah !in 1..count) {
-        return null
-    }
-    val offset = QuranData.suraAyahOffsets[sura - 1]
-    return (offset + ayah).toLong()
-}
-
-private fun ayahIdToSuraAyah(ayahId: Long): NoteAyah? {
-    if (ayahId <= 0) {
-        return null
-    }
-    var remaining = ayahId.toInt()
-    for (index in QuranData.suraAyahCounts.indices) {
-        val count = QuranData.suraAyahCounts[index]
-        if (remaining <= count) {
-            return NoteAyah(sura = index + 1, ayah = remaining)
-        }
-        remaining -= count
-    }
-    return null
 }
 
 private fun ReadingSession.toSyncEngine(): SyncReadingSession {

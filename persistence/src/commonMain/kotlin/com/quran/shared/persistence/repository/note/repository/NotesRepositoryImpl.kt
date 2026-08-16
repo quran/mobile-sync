@@ -19,7 +19,6 @@ import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
 import com.quran.shared.persistence.repository.note.extension.toNote
 import com.quran.shared.persistence.repository.note.extension.toNoteMutation
 import com.quran.shared.persistence.util.PlatformDateTime
-import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.currentEpochMilliseconds
 import com.quran.shared.persistence.util.currentPlatformDateTime
 import com.quran.shared.persistence.util.fromPlatform
@@ -90,14 +89,14 @@ class NotesRepositoryImpl(
     ): Note {
         logger.i { "Adding note for range=$startSura:$startAyah-$endSura:$endAyah" }
         return withContext(Dispatchers.IO) {
-            val startAyahId = requireAyahId(startSura, startAyah)
-            val endAyahId = requireAyahId(endSura, endAyah)
             var inserted: Note? = null
             database.transaction {
                 notesQueries.value.addNewNote(
                     note = body,
-                    start_ayah_id = startAyahId.toLong(),
-                    end_ayah_id = endAyahId.toLong(),
+                    start_sura = startSura.toLong(),
+                    start_ayah = startAyah.toLong(),
+                    end_sura = endSura.toLong(),
+                    end_ayah = endAyah.toLong(),
                     timestamp = timestampMillis
                 )
                 val record = notesQueries.value.getLastInsertedNote().executeAsOneOrNull()
@@ -151,12 +150,12 @@ class NotesRepositoryImpl(
         logger.i { "Updating note id=$id" }
         return withContext(Dispatchers.IO) {
             val localId = id.toLong()
-            val startAyahId = requireAyahId(startSura, startAyah)
-            val endAyahId = requireAyahId(endSura, endAyah)
             notesQueries.value.updateNote(
                 note = body,
-                start_ayah_id = startAyahId.toLong(),
-                end_ayah_id = endAyahId.toLong(),
+                start_sura = startSura.toLong(),
+                start_ayah = startAyah.toLong(),
+                end_sura = endSura.toLong(),
+                end_ayah = endAyah.toLong(),
                 id = localId,
                 timestamp = timestampMillis
             )
@@ -219,9 +218,11 @@ class NotesRepositoryImpl(
     private fun applyRemoteNoteUpsert(remote: RemoteModelMutation<RemoteNote>) {
         val model = remote.model
         val body = model.body
-        val startAyahId = model.startAyahId
-        val endAyahId = model.endAyahId
-        if (body.isNullOrEmpty() || startAyahId == null || endAyahId == null) {
+        val startSura = model.startSura
+        val startAyah = model.startAyah
+        val endSura = model.endSura
+        val endAyah = model.endAyah
+        if (body.isNullOrEmpty() || startSura == null || startAyah == null || endSura == null || endAyah == null) {
             logger.w { "Skipping remote note mutation without body or ranges: remoteId=${remote.remoteID}" }
             return
         }
@@ -246,8 +247,10 @@ class NotesRepositoryImpl(
         notesQueries.value.persistRemoteNote(
             remote_id = remote.remoteID,
             note = body,
-            start_ayah_id = startAyahId,
-            end_ayah_id = endAyahId,
+            start_sura = startSura.toLong(),
+            start_ayah = startAyah.toLong(),
+            end_sura = endSura.toLong(),
+            end_ayah = endAyah.toLong(),
             created_at = createdAt,
             modified_at = updatedAt
         )
@@ -261,12 +264,6 @@ class NotesRepositoryImpl(
             return
         }
         notesQueries.value.deleteRemoteNote(remote_id = remote.remoteID)
-    }
-
-    private fun requireAyahId(sura: Int, ayah: Int): Int {
-        return requireNotNull(QuranData.getAyahIdOrNull(sura, ayah)) {
-            "Invalid note ayah: $sura:$ayah"
-        }
     }
 
     override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> {
@@ -307,17 +304,23 @@ class NotesRepositoryImpl(
             return false
         }
         val body = model.body ?: return false
-        val startAyahId = model.startAyahId ?: return false
-        val endAyahId = model.endAyahId ?: return false
+        val startSura = model.startSura ?: return false
+        val startAyah = model.startAyah ?: return false
+        val endSura = model.endSura ?: return false
+        val endAyah = model.endAyah ?: return false
         val activeCandidates = notesQueries.value.getPendingActiveCreatedNotesByContent(
             note = body,
-            start_ayah_id = startAyahId,
-            end_ayah_id = endAyahId
+            start_sura = startSura.toLong(),
+            start_ayah = startAyah.toLong(),
+            end_sura = endSura.toLong(),
+            end_ayah = endAyah.toLong()
         ).executeAsList()
         val deletedCandidates = notesQueries.value.getPendingDeletedCreatedNotesByContent(
             note = body,
-            start_ayah_id = startAyahId,
-            end_ayah_id = endAyahId
+            start_sura = startSura.toLong(),
+            start_ayah = startAyah.toLong(),
+            end_sura = endSura.toLong(),
+            end_ayah = endAyah.toLong()
         ).executeAsList()
         val candidates = activeCandidates + deletedCandidates
         if (candidates.size != 1) {

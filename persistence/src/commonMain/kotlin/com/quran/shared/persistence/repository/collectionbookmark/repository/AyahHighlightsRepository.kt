@@ -9,7 +9,6 @@ import com.quran.shared.persistence.model.DatabaseCollection
 import com.quran.shared.persistence.model.highlightColorForCollectionName
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
 import com.quran.shared.persistence.util.PlatformDateTime
-import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.toEpochMillisecondsFromPlatform
 import com.quran.shared.persistence.util.toPlatform
 import kotlinx.coroutines.Dispatchers
@@ -78,7 +77,6 @@ internal class AyahHighlightsRepository(
                     ?: run {
                         bookmarkQueries.upsertAyahBookmark(
                             remote_id = null,
-                            ayah_id = QuranData.getAyahId(sura, ayah).toLong(),
                             sura = sura.toLong(),
                             ayah = ayah.toLong(),
                             created_at = timestampMillis,

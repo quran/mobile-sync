@@ -24,7 +24,6 @@ import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
 import com.quran.shared.persistence.repository.bookmark.extension.toAyahBookmark
 import com.quran.shared.persistence.util.PlatformDateTime
-import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.currentEpochMilliseconds
 import com.quran.shared.persistence.util.currentPlatformDateTime
 import com.quran.shared.persistence.util.fromPlatform
@@ -148,10 +147,8 @@ class CollectionBookmarksRepositoryImpl(
         return withContext(Dispatchers.IO) {
             var created: CollectionAyahBookmark? = null
             database.transaction {
-                val ayahId = getAyahId(sura, ayah).toLong()
                 bookmarkQueries.value.upsertAyahBookmark(
                     remote_id = null,
-                    ayah_id = ayahId,
                     sura = sura.toLong(),
                     ayah = ayah.toLong(),
                     created_at = timestampMillis,
@@ -695,7 +692,6 @@ class CollectionBookmarksRepositoryImpl(
                 val updatedAt = bookmark.lastUpdated.fromPlatform().toEpochMilliseconds()
                 bookmarkQueries.value.upsertAyahBookmark(
                     remote_id = bookmark.bookmarkId,
-                    ayah_id = getAyahId(bookmark.sura, bookmark.ayah).toLong(),
                     sura = bookmark.sura.toLong(),
                     ayah = bookmark.ayah.toLong(),
                     created_at = updatedAt,
@@ -731,7 +727,6 @@ class CollectionBookmarksRepositoryImpl(
     ) {
         bookmarkQueries.value.upsertAyahBookmark(
             remote_id = bookmark.bookmarkId,
-            ayah_id = getAyahId(bookmark.sura, bookmark.ayah).toLong(),
             sura = bookmark.sura.toLong(),
             ayah = bookmark.ayah.toLong(),
             created_at = updatedAt,
@@ -746,7 +741,6 @@ class CollectionBookmarksRepositoryImpl(
     ) {
         bookmarkQueries.value.upsertAyahBookmark(
             remote_id = bookmark.bookmarkRemoteId,
-            ayah_id = getAyahId(bookmark.sura, bookmark.ayah).toLong(),
             sura = bookmark.sura.toLong(),
             ayah = bookmark.ayah.toLong(),
             created_at = updatedAt,
@@ -767,7 +761,6 @@ class CollectionBookmarksRepositoryImpl(
 
         bookmarkQueries.value.upsertAyahBookmark(
             remote_id = bookmark.bookmarkId,
-            ayah_id = getAyahId(bookmark.sura, bookmark.ayah).toLong(),
             sura = bookmark.sura.toLong(),
             ayah = bookmark.ayah.toLong(),
             created_at = bookmark.lastUpdated.fromPlatform().toEpochMilliseconds(),
@@ -929,10 +922,6 @@ class CollectionBookmarksRepositoryImpl(
             localId = localId,
             createdAt = createdAt
         )
-    }
-
-    private fun getAyahId(sura: Int, ayah: Int): Int {
-        return QuranData.getAyahId(sura, ayah)
     }
 }
 

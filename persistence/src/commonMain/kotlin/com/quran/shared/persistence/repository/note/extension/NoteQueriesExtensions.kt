@@ -10,25 +10,18 @@ import com.quran.shared.mutations.Mutation
 import com.quran.shared.persistence.input.LocalSyncNote
 import com.quran.shared.persistence.model.DatabaseNote
 import com.quran.shared.persistence.model.Note
-import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.toPlatform
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 
 internal fun DatabaseNote.toNote(): Note {
     val normalizedModifiedAt = normalizeEpochMillis(modified_at)
-    val start = requireNotNull(QuranData.getSuraAyahOrNull(start_ayah_id)) {
-        "Invalid start ayah id for note local_id=$local_id: $start_ayah_id"
-    }
-    val end = requireNotNull(QuranData.getSuraAyahOrNull(end_ayah_id)) {
-        "Invalid end ayah id for note local_id=$local_id: $end_ayah_id"
-    }
     return Note(
         body = note,
-        startSura = start.first,
-        startAyah = start.second,
-        endSura = end.first,
-        endAyah = end.second,
+        startSura = start_sura.toInt(),
+        startAyah = start_ayah.toInt(),
+        endSura = end_sura.toInt(),
+        endAyah = end_ayah.toInt(),
         lastUpdated = Instant.fromEpochMilliseconds(normalizedModifiedAt).toPlatform(),
         id = local_id.toString()
     )
@@ -42,18 +35,12 @@ internal fun DatabaseNote.toNoteMutation(): LocalModelMutation<LocalSyncNote> {
     }
     val normalizedModifiedAt = normalizeEpochMillis(modified_at)
     val normalizedCreatedAt = normalizeEpochMillis(created_at)
-    val start = requireNotNull(QuranData.getSuraAyahOrNull(start_ayah_id)) {
-        "Invalid start ayah id for note local_id=$local_id: $start_ayah_id"
-    }
-    val end = requireNotNull(QuranData.getSuraAyahOrNull(end_ayah_id)) {
-        "Invalid end ayah id for note local_id=$local_id: $end_ayah_id"
-    }
     val note = LocalSyncNote(
         body = note,
-        startSura = start.first,
-        startAyah = start.second,
-        endSura = end.first,
-        endAyah = end.second,
+        startSura = start_sura.toInt(),
+        startAyah = start_ayah.toInt(),
+        endSura = end_sura.toInt(),
+        endAyah = end_ayah.toInt(),
         lastUpdated = Instant.fromEpochMilliseconds(normalizedModifiedAt).toPlatform(),
         localId = local_id.toString(),
         createdAt = Instant.fromEpochMilliseconds(normalizedCreatedAt).toPlatform()
