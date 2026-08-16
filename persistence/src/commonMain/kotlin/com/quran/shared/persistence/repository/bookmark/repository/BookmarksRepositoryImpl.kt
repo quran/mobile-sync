@@ -92,10 +92,7 @@ class BookmarksRepositoryImpl(
                 val replacedBookmark = if (desiredCollectionIds.isEmpty()) {
                     null
                 } else {
-                    bookmarkQueries.value
-                        .getBookmarkForAyah(sura.toLong(), ayah.toLong())
-                        .executeAsOne()
-                        .toAyahBookmark()
+                    bookmark.toAyahBookmark()
                 }
                 result = BookmarkCollectionsReplacementResult(replacedBookmark, changed)
             }
@@ -127,18 +124,6 @@ class BookmarksRepositoryImpl(
             .toSet()
         val currentIds = currentCollectionIds.map(String::toLong).toSet()
 
-        if (currentCollectionIds.isEmpty()) {
-            val sura = requireNotNull(bookmark.sura).toInt()
-            val ayah = requireNotNull(bookmark.ayah).toInt()
-            bookmarkQueries.value.upsertAyahBookmark(
-                remote_id = null,
-                ayah_id = getAyahId(sura, ayah).toLong(),
-                sura = sura.toLong(),
-                ayah = ayah.toLong(),
-                created_at = timestampMillis,
-                modified_at = timestampMillis
-            )
-        }
         (idsToAdd - currentIds).forEach { collectionLocalId ->
             bookmarkCollectionQueries.value.addBookmarkToCollection(
                 bookmark_local_id = bookmark.local_id,
