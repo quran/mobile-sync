@@ -428,7 +428,8 @@ class QuranDataService internal constructor(
      * and schedules sync only when memberships changed.
      *
      * Non-empty memberships create the bookmark if needed. Empty memberships remove the saved
-     * bookmark, or do nothing when it does not exist.
+     * bookmark, or do nothing when it does not exist. Highlight collection memberships are always
+     * preserved and excluded from replacement.
      */
     @NativeCoroutines
     suspend fun replaceAyahBookmarkCollections(

@@ -15,6 +15,7 @@ import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.RemoteBookmark
 import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.input.RemoteCollectionBookmark
+import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
@@ -26,6 +27,7 @@ import com.quran.shared.persistence.repository.readingbookmark.repository.Readin
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.toPlatform
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -362,6 +364,70 @@ class BookmarkSyncArchitectureTest {
         assertNull(result.bookmark)
         assertEquals(1L, row.is_reading)
         assertEquals(0L, database.bookmark_collectionsQueries.countActiveForBookmark(row.local_id).executeAsOne())
+    }
+
+    @Test
+    fun `collection replacement preserves highlight membership`() = runTest {
+        val firstCollectionId = createCollection("ReplacePreserveHighlightFirst", "remote-replace-highlight-first")
+        val secondCollectionId = createCollection("ReplacePreserveHighlightSecond", "remote-replace-highlight-second")
+        collectionBookmarksRepository.setHighlight(2, 18, AyahHighlightColor.GREEN, at(100))
+        collectionBookmarksRepository.addAyahBookmarkToCollection(firstCollectionId, 2, 18, at(100))
+
+        val result = bookmarksRepository.replaceAyahBookmarkCollections(
+            sura = 2,
+            ayah = 18,
+            collectionIds = listOf(secondCollectionId),
+            timestamp = at(200)
+        )
+
+        val bookmark = database.bookmarksQueries.getBookmarkForAyah(2L, 18L).executeAsOne()
+        val highlightCollection = database.collectionsQueries
+            .getCollectionByName(AyahHighlightColor.GREEN.collectionName)
+            .executeAsOne()
+        assertTrue(result.changed)
+        assertNotNull(result.bookmark)
+        assertEquals(
+            setOf(highlightCollection.local_id, secondCollectionId.toLong()),
+            database.bookmark_collectionsQueries
+                .getActiveCollectionLocalIdsForBookmark(bookmark.local_id)
+                .executeAsList()
+                .toSet()
+        )
+        assertEquals(
+            AyahHighlightColor.GREEN,
+            collectionBookmarksRepository.getHighlightsFlow().first().single().color
+        )
+    }
+
+    @Test
+    fun `empty collection replacement preserves highlight membership`() = runTest {
+        val collectionId = createCollection("RemovePreserveHighlight", "remote-remove-preserve-highlight")
+        collectionBookmarksRepository.setHighlight(2, 19, AyahHighlightColor.PURPLE, at(100))
+        collectionBookmarksRepository.addAyahBookmarkToCollection(collectionId, 2, 19, at(100))
+
+        val result = bookmarksRepository.replaceAyahBookmarkCollections(
+            sura = 2,
+            ayah = 19,
+            collectionIds = emptyList(),
+            timestamp = at(200)
+        )
+
+        val bookmark = database.bookmarksQueries.getBookmarkForAyah(2L, 19L).executeAsOne()
+        val highlightCollection = database.collectionsQueries
+            .getCollectionByName(AyahHighlightColor.PURPLE.collectionName)
+            .executeAsOne()
+        assertTrue(result.changed)
+        assertNull(result.bookmark)
+        assertEquals(
+            listOf(highlightCollection.local_id),
+            database.bookmark_collectionsQueries
+                .getActiveCollectionLocalIdsForBookmark(bookmark.local_id)
+                .executeAsList()
+        )
+        assertEquals(
+            AyahHighlightColor.PURPLE,
+            collectionBookmarksRepository.getHighlightsFlow().first().single().color
+        )
     }
 
     @Test

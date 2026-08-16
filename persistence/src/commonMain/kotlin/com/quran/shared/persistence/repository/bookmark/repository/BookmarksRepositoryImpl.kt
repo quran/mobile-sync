@@ -13,6 +13,7 @@ import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.input.RemoteBookmark
 import com.quran.shared.persistence.model.BookmarkCollectionsReplacementResult
 import com.quran.shared.persistence.model.DatabaseBookmark
+import com.quran.shared.persistence.model.highlightColorForCollectionName
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
@@ -65,12 +66,13 @@ class BookmarksRepositoryImpl(
         return withContext(Dispatchers.IO) {
             var result: BookmarkCollectionsReplacementResult? = null
             database.transaction {
+                val desiredSavedCollectionIds = resolveSavedCollectionIds(desiredCollectionIds)
                 var bookmark = bookmarkQueries.value
                     .getBookmarkForAyah(sura.toLong(), ayah.toLong())
                     .executeAsOneOrNull()
 
                 if (bookmark == null || bookmark.deleted == 1L) {
-                    if (desiredCollectionIds.isEmpty()) {
+                    if (desiredSavedCollectionIds.isEmpty()) {
                         result = BookmarkCollectionsReplacementResult(bookmark = null, changed = false)
                         return@transaction
                     }
@@ -89,10 +91,10 @@ class BookmarksRepositoryImpl(
 
                 val changed = replaceBookmarkCollectionsInTransaction(
                     bookmark = bookmark,
-                    desiredCollectionIds = desiredCollectionIds,
+                    desiredCollectionIds = desiredSavedCollectionIds,
                     timestampMillis = timestampMillis
                 )
-                val replacedBookmark = if (desiredCollectionIds.isEmpty()) {
+                val replacedBookmark = if (desiredSavedCollectionIds.isEmpty()) {
                     null
                 } else {
                     bookmark.toAyahBookmark()
@@ -105,36 +107,25 @@ class BookmarksRepositoryImpl(
 
     private fun replaceBookmarkCollectionsInTransaction(
         bookmark: DatabaseBookmark,
-        desiredCollectionIds: Set<String>,
+        desiredCollectionIds: Set<Long>,
         timestampMillis: Long
     ): Boolean {
         require(bookmark.bookmark_type == "AYAH") {
             "Expected ayah bookmark localId=${bookmark.local_id} before replacing collections."
         }
-        val currentCollectionIds = bookmark.currentCollectionIds()
+        val currentCollectionIds = bookmark.currentSavedCollectionIds()
         if (currentCollectionIds == desiredCollectionIds) {
             return false
         }
 
-        val idsToAdd = desiredCollectionIds
-            .map { collectionLocalId ->
-                val collection = collectionQueries.value
-                    .getCollectionByLocalId(collectionLocalId.toLong())
-                    .executeAsOneOrNull()
-                require(collection?.deleted == 0L) { "Collection not found for localId=$collectionLocalId." }
-                collection.local_id
-            }
-            .toSet()
-        val currentIds = currentCollectionIds.map(String::toLong).toSet()
-
-        (idsToAdd - currentIds).forEach { collectionLocalId ->
+        (desiredCollectionIds - currentCollectionIds).forEach { collectionLocalId ->
             bookmarkCollectionQueries.value.addBookmarkToCollection(
                 bookmark_local_id = bookmark.local_id,
                 collection_local_id = collectionLocalId,
                 timestamp = timestampMillis
             )
         }
-        (currentIds - idsToAdd).forEach { collectionLocalId ->
+        (currentCollectionIds - desiredCollectionIds).forEach { collectionLocalId ->
             bookmarkCollectionQueries.value.markBookmarkCollectionDeleted(
                 bookmark_local_id = bookmark.local_id,
                 collection_local_id = collectionLocalId,
@@ -145,11 +136,26 @@ class BookmarksRepositoryImpl(
         return true
     }
 
-    private fun DatabaseBookmark.currentCollectionIds(): Set<String> {
+    private fun resolveSavedCollectionIds(collectionIds: Set<String>): Set<Long> {
+        return collectionIds.mapNotNull { collectionLocalId ->
+            val collection = collectionQueries.value
+                .getCollectionByLocalId(collectionLocalId.toLong())
+                .executeAsOneOrNull()
+            require(collection?.deleted == 0L) { "Collection not found for localId=$collectionLocalId." }
+            collection.local_id.takeUnless { highlightColorForCollectionName(collection.name) != null }
+        }.toSet()
+    }
+
+    private fun DatabaseBookmark.currentSavedCollectionIds(): Set<Long> {
         return bookmarkCollectionQueries.value
             .getActiveCollectionLocalIdsForBookmark(local_id)
             .executeAsList()
-            .map { it.toString() }
+            .filterNot { collectionLocalId ->
+                val collection = collectionQueries.value
+                    .getCollectionByLocalId(collectionLocalId)
+                    .executeAsOne()
+                highlightColorForCollectionName(collection.name) != null
+            }
             .toSet()
     }
 

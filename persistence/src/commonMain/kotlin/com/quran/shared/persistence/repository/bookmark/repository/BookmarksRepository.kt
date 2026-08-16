@@ -9,7 +9,8 @@ interface BookmarksRepository {
      * Replaces an ayah bookmark's saved collection memberships exactly.
      *
      * Non-empty memberships create the bookmark if needed. Empty memberships remove the saved
-     * bookmark, or do nothing when it does not exist.
+     * bookmark, or do nothing when it does not exist. Highlight collection memberships are always
+     * preserved and excluded from replacement.
      */
     @NativeCoroutines
     suspend fun replaceAyahBookmarkCollections(
@@ -23,7 +24,8 @@ interface BookmarksRepository {
      * timestamp.
      *
      * Non-empty memberships create the bookmark if needed. Empty memberships remove the saved
-     * bookmark, or do nothing when it does not exist.
+     * bookmark, or do nothing when it does not exist. Highlight collection memberships are always
+     * preserved and excluded from replacement.
      */
     @NativeCoroutines
     suspend fun replaceAyahBookmarkCollections(
