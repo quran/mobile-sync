@@ -137,6 +137,14 @@ class AyahHighlightsRepositoryTest {
         assertNull(database.bookmarksQueries.getBookmarkForAyah(2L, 255L).executeAsOneOrNull())
     }
 
+    @Test
+    fun `removeHighlight convenience overload supplies the mutation timestamp`() = runTest {
+        collectionBookmarksRepository.setHighlight(2, 255, AyahHighlightColor.BLUE, timestamp(100))
+
+        assertTrue(collectionBookmarksRepository.removeHighlight(2, 255))
+        assertEquals(emptyList(), collectionBookmarksRepository.getHighlightsFlow().first())
+    }
+
     private fun timestamp(milliseconds: Long) = Instant.fromEpochMilliseconds(milliseconds).toPlatform()
 
     private fun defaultCollectionId(): String =

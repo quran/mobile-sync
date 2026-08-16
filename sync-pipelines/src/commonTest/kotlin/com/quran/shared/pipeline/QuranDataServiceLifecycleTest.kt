@@ -1529,6 +1529,9 @@ private class ServiceCollectionBookmarksRepository :
         return AyahHighlight(sura, ayah, color, timestamp)
     }
 
+    override suspend fun removeHighlight(sura: Int, ayah: Int): Boolean =
+        removeHighlight(sura, ayah, testTimestamp())
+
     override suspend fun removeHighlight(
         sura: Int,
         ayah: Int,

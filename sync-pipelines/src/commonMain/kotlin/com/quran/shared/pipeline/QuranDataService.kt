@@ -424,11 +424,7 @@ class QuranDataService internal constructor(
     @NativeCoroutines
     suspend fun removeHighlight(sura: Int, ayah: Int): Boolean {
         return mutatingCall("Failed to remove ayah highlight", triggerAfter = false) {
-            val removed = collectionBookmarksRepository.removeHighlight(
-                sura,
-                ayah,
-                currentPlatformDateTime()
-            )
+            val removed = collectionBookmarksRepository.removeHighlight(sura, ayah)
             if (removed) {
                 triggerSync()
             }
