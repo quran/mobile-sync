@@ -26,6 +26,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
@@ -118,7 +119,7 @@ class OidcAuthRepositoryTest {
                 accessToken = "old-access-token",
                 refreshToken = "old-refresh-token",
                 idToken = "old-id-token",
-                failRemoveAccessToken = true
+                failRemoveTokens = true
             )
             val storage = AuthStorage(
                 tokenStore = tokenStore,
@@ -178,7 +179,7 @@ class OidcAuthRepositoryTest {
                 accessToken = "old-access-token",
                 refreshToken = "old-refresh-token",
                 idToken = "old-id-token",
-                failRemoveAccessToken = true
+                failRemoveTokens = true
             )
             val storage = AuthStorage(
                 tokenStore = tokenStore,
@@ -468,7 +469,7 @@ class OidcAuthRepositoryTest {
     @Test
     fun `late login response cannot commit after failed local clear removed active exchange`() =
         runTest(UnconfinedTestDispatcher()) {
-            val tokenStore = RecordingTokenStore(failRemoveAccessToken = true)
+            val tokenStore = RecordingTokenStore(failRemoveTokens = true)
             val storage = AuthStorage(
                 tokenStore = tokenStore,
                 settings = MapSettings().toSuspendSettings(),
@@ -872,7 +873,7 @@ class OidcAuthRepositoryTest {
                 accessToken = "old-access-token",
                 refreshToken = "old-refresh-token",
                 idToken = "old-id-token",
-                failRemoveAccessToken = true
+                failRemoveTokens = true
             )
             val committedStorage = AuthStorage(
                 tokenStore = tokenStore,
@@ -927,7 +928,7 @@ class OidcAuthRepositoryTest {
                 accessToken = "old-access-token",
                 refreshToken = null,
                 idToken = "old-id-token",
-                failRemoveAccessToken = true
+                failRemoveTokens = true
             )
             val committedStorage = AuthStorage(
                 tokenStore = tokenStore,
@@ -978,7 +979,7 @@ class OidcAuthRepositoryTest {
                 accessToken = "old-access-token",
                 refreshToken = "old-refresh-token",
                 idToken = "old-id-token",
-                failRemoveAccessToken = true
+                failRemoveTokens = true
             )
             val committedStorage = AuthStorage(
                 tokenStore = tokenStore,
@@ -1382,7 +1383,7 @@ class OidcAuthRepositoryTest {
                 accessToken = "old-access-token",
                 refreshToken = "old-refresh-token",
                 idToken = "old-id-token",
-                failRemoveAccessToken = true
+                failRemoveTokens = true
             )
             val committedStorage = AuthStorage(
                 tokenStore = tokenStore,
@@ -2188,7 +2189,7 @@ class OidcAuthRepositoryTest {
                 accessToken = "old-access-token",
                 refreshToken = "old-refresh-token",
                 idToken = "old-id-token",
-                failRemoveAccessToken = true
+                failRemoveTokens = true
             )
             val loadedStorage = AuthStorage(
                 tokenStore = tokenStore,
@@ -2226,7 +2227,7 @@ class OidcAuthRepositoryTest {
                 accessToken = "old-access-token",
                 refreshToken = "old-refresh-token",
                 idToken = "old-id-token",
-                failRemoveAccessToken = true,
+                failRemoveTokens = true,
                 suspendAccessTokenReadOnCall = 1
             )
             val loadedStorage = AuthStorage(
@@ -2571,30 +2572,35 @@ private class BlockingRefreshOidcClient(
         throw UnsupportedOperationException("Not needed for this test")
 }
 
+@Suppress("OVERRIDE_DEPRECATION")
 private class RecordingTokenStore(
     accessToken: String? = null,
     refreshToken: String? = null,
     idToken: String? = null,
-    private val failRemoveAccessToken: Boolean = false,
+    private val failRemoveTokens: Boolean = false,
     private val cancelBeforeSaveTokens: Boolean = false,
     private val cancelAfterPartialSaveTokens: Boolean = false,
     private val suspendAccessTokenReadOnCall: Int? = null
 ) : TokenStore() {
-    private val accessTokenState = MutableStateFlow(accessToken)
-    private val refreshTokenState = MutableStateFlow(refreshToken)
-    private val idTokenState = MutableStateFlow(idToken)
+    private val tokenResponseState = MutableStateFlow(
+        accessToken?.let {
+            AccessTokenResponse(
+                access_token = it,
+                refresh_token = refreshToken,
+                id_token = idToken
+            )
+        }
+    )
 
-    private var accessToken: String? = accessToken
-    private var refreshToken: String? = refreshToken
-    private var idToken: String? = idToken
     private var saveTokensCalls = 0
     private var accessTokenReadCalls = 0
     val accessTokenReadStarted = CompletableDeferred<Unit>()
     val accessTokenReadCanFinish = CompletableDeferred<Unit>()
 
-    override val accessTokenFlow: StateFlow<String?> = accessTokenState
-    override val refreshTokenFlow: StateFlow<String?> = refreshTokenState
-    override val idTokenFlow: StateFlow<String?> = idTokenState
+    override val accessTokenFlow = tokenResponseState.map { it?.access_token }
+    override val refreshTokenFlow = tokenResponseState.map { it?.refresh_token }
+    override val idTokenFlow = tokenResponseState.map { it?.id_token }
+    override val tokenResponseFlow: StateFlow<AccessTokenResponse?> = tokenResponseState
 
     override suspend fun getAccessToken(): String? {
         accessTokenReadCalls += 1
@@ -2602,46 +2608,35 @@ private class RecordingTokenStore(
             accessTokenReadStarted.complete(Unit)
             accessTokenReadCanFinish.await()
         }
-        return accessToken
+        return tokenResponseState.value?.access_token
     }
 
-    override suspend fun getRefreshToken(): String? = refreshToken
+    override suspend fun getRefreshToken(): String? = tokenResponseState.value?.refresh_token
 
-    override suspend fun getIdToken(): String? = idToken
+    override suspend fun getIdToken(): String? = tokenResponseState.value?.id_token
 
-    override suspend fun removeAccessToken() {
-        if (failRemoveAccessToken) {
-            throw IllegalStateException("access token clear failed")
+    override suspend fun getTokenResponse(): AccessTokenResponse? = tokenResponseState.value
+
+    override suspend fun removeTokens() {
+        if (failRemoveTokens) {
+            throw IllegalStateException("token clear failed")
         }
-        accessToken = null
-        accessTokenState.value = null
+        tokenResponseState.value = null
     }
 
-    override suspend fun removeRefreshToken() {
-        refreshToken = null
-        refreshTokenState.value = null
-    }
-
-    override suspend fun removeIdToken() {
-        idToken = null
-        idTokenState.value = null
-    }
-
-    override suspend fun saveTokens(accessToken: String, refreshToken: String?, idToken: String?) {
+    override suspend fun saveTokens(tokens: AccessTokenResponse) {
         saveTokensCalls += 1
         if (cancelBeforeSaveTokens && saveTokensCalls == 1) {
             throw CancellationException("token save canceled")
         }
         if (cancelAfterPartialSaveTokens && saveTokensCalls == 1) {
-            this.accessToken = accessToken
-            accessTokenState.value = accessToken
+            val previousTokens = tokenResponseState.value
+            tokenResponseState.value = tokens.copy(
+                refresh_token = previousTokens?.refresh_token,
+                id_token = previousTokens?.id_token
+            )
             throw CancellationException("token save canceled after access token")
         }
-        this.accessToken = accessToken
-        this.refreshToken = refreshToken
-        this.idToken = idToken
-        accessTokenState.value = accessToken
-        refreshTokenState.value = refreshToken
-        idTokenState.value = idToken
+        tokenResponseState.value = tokens
     }
 }

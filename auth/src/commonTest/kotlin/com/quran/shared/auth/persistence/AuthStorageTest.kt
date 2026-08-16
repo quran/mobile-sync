@@ -8,9 +8,11 @@ import com.russhwolf.settings.coroutines.toSuspendSettings
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import org.publicvalue.multiplatform.oidc.tokenstore.TokenStore
+import org.publicvalue.multiplatform.oidc.types.remote.AccessTokenResponse
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -143,6 +145,16 @@ class AuthStorageTest {
                 scope = "old-scope"
             )
         )
+        val previousTokenResponse = AccessTokenResponse(
+            access_token = "old-access-token",
+            token_type = "Custom",
+            expires_in = 120,
+            refresh_token = "old-refresh-token",
+            id_token = "old-id-token",
+            scope = "old-scope",
+            received_at = 123
+        )
+        tokenStore.saveTokens(previousTokenResponse)
         val oldExpiration = storage.retrieveTokenExpiration()
         val cancellingStorage = authStorage(
             tokenStore = tokenStore,
@@ -168,6 +180,7 @@ class AuthStorageTest {
         assertEquals("old-access-token", tokenStore.accessToken)
         assertEquals("old-refresh-token", tokenStore.refreshToken)
         assertEquals("old-id-token", tokenStore.idToken)
+        assertEquals(previousTokenResponse, tokenStore.getTokenResponse())
         assertEquals("old-scope", storage.retrieveStoredScope())
         assertEquals(oldExpiration, storage.retrieveTokenExpiration())
     }
@@ -393,7 +406,7 @@ class AuthStorageTest {
             accessToken = "access-token",
             refreshToken = "refresh-token",
             idToken = "id-token",
-            failRemoveAccessToken = true
+            failRemoveTokens = true
         )
         val baseSettings = MapSettings().toSuspendSettings()
         val storage = authStorage(tokenStore, baseSettings)
@@ -593,26 +606,31 @@ private class FailingRemoveSettings(
     override suspend fun getBooleanOrNull(key: String): Boolean? = delegate.getBooleanOrNull(key)
 }
 
+@Suppress("OVERRIDE_DEPRECATION")
 private class RecordingTokenStore(
     accessToken: String? = null,
     refreshToken: String? = null,
     idToken: String? = null,
-    private val failRemoveAccessToken: Boolean = false
+    private val failRemoveTokens: Boolean = false
 ) : TokenStore() {
-    private val accessTokenState = MutableStateFlow(accessToken)
-    private val refreshTokenState = MutableStateFlow(refreshToken)
-    private val idTokenState = MutableStateFlow(idToken)
+    private val tokenResponseState = MutableStateFlow(
+        accessToken?.let {
+            AccessTokenResponse(
+                access_token = it,
+                refresh_token = refreshToken,
+                id_token = idToken
+            )
+        }
+    )
 
-    var accessToken: String? = accessToken
-        private set
-    var refreshToken: String? = refreshToken
-        private set
-    var idToken: String? = idToken
-        private set
+    val accessToken: String? get() = tokenResponseState.value?.access_token
+    val refreshToken: String? get() = tokenResponseState.value?.refresh_token
+    val idToken: String? get() = tokenResponseState.value?.id_token
 
-    override val accessTokenFlow: StateFlow<String?> = accessTokenState
-    override val refreshTokenFlow: StateFlow<String?> = refreshTokenState
-    override val idTokenFlow: StateFlow<String?> = idTokenState
+    override val accessTokenFlow = tokenResponseState.map { it?.access_token }
+    override val refreshTokenFlow = tokenResponseState.map { it?.refresh_token }
+    override val idTokenFlow = tokenResponseState.map { it?.id_token }
+    override val tokenResponseFlow: StateFlow<AccessTokenResponse?> = tokenResponseState
 
     override suspend fun getAccessToken(): String? = accessToken
 
@@ -620,30 +638,16 @@ private class RecordingTokenStore(
 
     override suspend fun getIdToken(): String? = idToken
 
-    override suspend fun removeAccessToken() {
-        if (failRemoveAccessToken) {
-            throw IllegalStateException("access token clear failed")
+    override suspend fun getTokenResponse(): AccessTokenResponse? = tokenResponseState.value
+
+    override suspend fun removeTokens() {
+        if (failRemoveTokens) {
+            throw IllegalStateException("token clear failed")
         }
-        accessToken = null
-        accessTokenState.value = null
+        tokenResponseState.value = null
     }
 
-    override suspend fun removeRefreshToken() {
-        refreshToken = null
-        refreshTokenState.value = null
-    }
-
-    override suspend fun removeIdToken() {
-        idToken = null
-        idTokenState.value = null
-    }
-
-    override suspend fun saveTokens(accessToken: String, refreshToken: String?, idToken: String?) {
-        this.accessToken = accessToken
-        this.refreshToken = refreshToken
-        this.idToken = idToken
-        accessTokenState.value = accessToken
-        refreshTokenState.value = refreshToken
-        idTokenState.value = idToken
+    override suspend fun saveTokens(tokens: AccessTokenResponse) {
+        tokenResponseState.value = tokens
     }
 }
