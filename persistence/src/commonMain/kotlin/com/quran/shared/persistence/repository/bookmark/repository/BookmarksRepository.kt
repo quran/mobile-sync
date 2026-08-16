@@ -6,8 +6,10 @@ import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
 
 interface BookmarksRepository {
     /**
-     * Creates an ayah bookmark if needed, then replaces its saved collection memberships exactly.
-     * Empty memberships normalize to the virtual default collection.
+     * Replaces an ayah bookmark's saved collection memberships exactly.
+     *
+     * Non-empty memberships create the bookmark if needed. Empty memberships remove the saved
+     * bookmark, or do nothing when it does not exist.
      */
     @NativeCoroutines
     suspend fun replaceAyahBookmarkCollections(
@@ -17,9 +19,11 @@ interface BookmarksRepository {
     ): BookmarkCollectionsReplacementResult
 
     /**
-     * Creates an ayah bookmark if needed, then replaces its saved collection memberships exactly
-     * with an explicit mutation timestamp.
-     * Empty memberships normalize to the virtual default collection.
+     * Replaces an ayah bookmark's saved collection memberships exactly with an explicit mutation
+     * timestamp.
+     *
+     * Non-empty memberships create the bookmark if needed. Empty memberships remove the saved
+     * bookmark, or do nothing when it does not exist.
      */
     @NativeCoroutines
     suspend fun replaceAyahBookmarkCollections(

@@ -57,6 +57,7 @@ class BookmarksRepositoryImpl(
         timestamp: PlatformDateTime
     ): BookmarkCollectionsReplacementResult {
         val timestampMillis = timestamp.toEpochMillisecondsFromPlatform()
+        val desiredCollectionIds = normalizeCollectionIds(collectionIds).toSet()
         logger.i { "Replacing ayah bookmark collection memberships for $sura:$ayah" }
         return withContext(Dispatchers.IO) {
             var result: BookmarkCollectionsReplacementResult? = null
@@ -66,6 +67,10 @@ class BookmarksRepositoryImpl(
                     .executeAsOneOrNull()
 
                 if (bookmark == null || bookmark.deleted == 1L) {
+                    if (desiredCollectionIds.isEmpty()) {
+                        result = BookmarkCollectionsReplacementResult(bookmark = null, changed = false)
+                        return@transaction
+                    }
                     bookmarkQueries.value.upsertAyahBookmark(
                         remote_id = null,
                         ayah_id = getAyahId(sura, ayah).toLong(),
@@ -81,13 +86,17 @@ class BookmarksRepositoryImpl(
 
                 val changed = replaceBookmarkCollectionsInTransaction(
                     bookmark = bookmark,
-                    collectionLocalIds = collectionIds,
+                    desiredCollectionIds = desiredCollectionIds,
                     timestampMillis = timestampMillis
                 )
-                val replacedBookmark = bookmarkQueries.value
-                    .getBookmarkForAyah(sura.toLong(), ayah.toLong())
-                    .executeAsOne()
-                    .toAyahBookmark()
+                val replacedBookmark = if (desiredCollectionIds.isEmpty()) {
+                    null
+                } else {
+                    bookmarkQueries.value
+                        .getBookmarkForAyah(sura.toLong(), ayah.toLong())
+                        .executeAsOne()
+                        .toAyahBookmark()
+                }
                 result = BookmarkCollectionsReplacementResult(replacedBookmark, changed)
             }
             requireNotNull(result)
@@ -96,13 +105,12 @@ class BookmarksRepositoryImpl(
 
     private fun replaceBookmarkCollectionsInTransaction(
         bookmark: DatabaseBookmark,
-        collectionLocalIds: List<String>,
+        desiredCollectionIds: Set<String>,
         timestampMillis: Long
     ): Boolean {
         require(bookmark.bookmark_type == "AYAH") {
             "Expected ayah bookmark localId=${bookmark.local_id} before replacing collections."
         }
-        val desiredCollectionIds = normalizeCollectionIds(collectionLocalIds).toSet()
         val currentCollectionIds = bookmark.currentCollectionIds()
         if (currentCollectionIds == desiredCollectionIds) {
             return false
@@ -158,16 +166,10 @@ class BookmarksRepositoryImpl(
     }
 
     private fun normalizeCollectionIds(collectionLocalIds: List<String>): List<String> {
-        val nonBlankIds = collectionLocalIds
+        return collectionLocalIds
             .map(String::trim)
             .filter(String::isNotEmpty)
             .distinct()
-        return nonBlankIds.ifEmpty {
-            val defaultCollection = requireNotNull(
-                collectionQueries.value.getDefaultCollection().executeAsOneOrNull()
-            ) { "Default collection is not available." }
-            listOf(defaultCollection.local_id.toString())
-        }
     }
 
     override suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<RemoteBookmark>> {

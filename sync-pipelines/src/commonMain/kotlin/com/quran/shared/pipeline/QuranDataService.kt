@@ -11,10 +11,10 @@ import com.quran.shared.auth.service.AuthService
 import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.PersistenceImportResult
-import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.AyahHighlight
 import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.model.AyahReadingBookmark
+import com.quran.shared.persistence.model.BookmarkCollectionsReplacementResult
 import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.model.CollectionWithAyahBookmarks
@@ -419,13 +419,16 @@ class QuranDataService internal constructor(
         sura: Int,
         ayah: Int,
         collectionIds: List<String>
-    ): AyahBookmark {
+    ): BookmarkCollectionsReplacementResult {
         return replaceAyahBookmarkCollections(sura, ayah, collectionIds, currentPlatformDateTime())
     }
 
     /**
-     * Creates an ayah bookmark if needed, then replaces its saved collection memberships with an
-     * explicit mutation timestamp and schedules sync only when memberships changed.
+     * Replaces an ayah bookmark's saved collection memberships with an explicit mutation timestamp
+     * and schedules sync only when memberships changed.
+     *
+     * Non-empty memberships create the bookmark if needed. Empty memberships remove the saved
+     * bookmark, or do nothing when it does not exist.
      */
     @NativeCoroutines
     suspend fun replaceAyahBookmarkCollections(
@@ -433,13 +436,13 @@ class QuranDataService internal constructor(
         ayah: Int,
         collectionIds: List<String>,
         timestamp: PlatformDateTime
-    ): AyahBookmark {
+    ): BookmarkCollectionsReplacementResult {
         return mutatingCall("Failed to replace ayah bookmark collection memberships", triggerAfter = false) {
             val result = bookmarksRepository.replaceAyahBookmarkCollections(sura, ayah, collectionIds, timestamp)
             if (result.changed) {
                 triggerSync()
             }
-            result.bookmark
+            result
         }
     }
 
