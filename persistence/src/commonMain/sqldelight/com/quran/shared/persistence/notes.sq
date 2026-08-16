@@ -2,8 +2,10 @@ CREATE TABLE IF NOT EXISTS note(
   local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   remote_id TEXT,
   note TEXT NOT NULL,
-  start_ayah_id INTEGER NOT NULL,
-  end_ayah_id INTEGER NOT NULL,
+  start_sura INTEGER NOT NULL,
+  start_ayah INTEGER NOT NULL,
+  end_sura INTEGER NOT NULL,
+  end_ayah INTEGER NOT NULL,
   created_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
   modified_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
   deleted INTEGER NOT NULL DEFAULT 0,
@@ -14,8 +16,8 @@ CREATE TABLE IF NOT EXISTS note(
   CHECK (is_edited IN (0, 1))
 );
 
-CREATE INDEX IF NOT EXISTS note_start_ayah_idx ON note(start_ayah_id);
-CREATE INDEX IF NOT EXISTS note_end_ayah_idx ON note(end_ayah_id);
+CREATE INDEX IF NOT EXISTS note_start_ayah_idx ON note(start_sura, start_ayah);
+CREATE INDEX IF NOT EXISTS note_end_ayah_idx ON note(end_sura, end_ayah);
 CREATE UNIQUE INDEX IF NOT EXISTS note_remote_id_idx ON note(remote_id);
 CREATE INDEX IF NOT EXISTS note_active_created_idx
 ON note(deleted, created_at DESC);
@@ -39,24 +41,30 @@ getPendingCreatedNotesByContent:
   SELECT * FROM note
   WHERE remote_id IS NULL
     AND note = :note
-    AND start_ayah_id = :start_ayah_id
-    AND end_ayah_id = :end_ayah_id;
+    AND start_sura = :start_sura
+    AND start_ayah = :start_ayah
+    AND end_sura = :end_sura
+    AND end_ayah = :end_ayah;
 
 getPendingDeletedCreatedNotesByContent:
   SELECT * FROM note
   WHERE remote_id IS NULL
     AND deleted = 1
     AND note = :note
-    AND start_ayah_id = :start_ayah_id
-    AND end_ayah_id = :end_ayah_id;
+    AND start_sura = :start_sura
+    AND start_ayah = :start_ayah
+    AND end_sura = :end_sura
+    AND end_ayah = :end_ayah;
 
 getPendingActiveCreatedNotesByContent:
   SELECT * FROM note
   WHERE remote_id IS NULL
     AND deleted = 0
     AND note = :note
-    AND start_ayah_id = :start_ayah_id
-    AND end_ayah_id = :end_ayah_id;
+    AND start_sura = :start_sura
+    AND start_ayah = :start_ayah
+    AND end_sura = :end_sura
+    AND end_ayah = :end_ayah;
 
 getLastInsertedNote:
   SELECT * FROM note WHERE local_id = last_insert_rowid() LIMIT 1;
@@ -65,8 +73,10 @@ addNewNote:
   INSERT INTO note (
     remote_id,
     note,
-    start_ayah_id,
-    end_ayah_id,
+    start_sura,
+    start_ayah,
+    end_sura,
+    end_ayah,
     created_at,
     modified_at,
     deleted,
@@ -75,8 +85,10 @@ addNewNote:
   VALUES (
     NULL,
     :note,
-    :start_ayah_id,
-    :end_ayah_id,
+    :start_sura,
+    :start_ayah,
+    :end_sura,
+    :end_ayah,
     :timestamp,
     :timestamp,
     0,
@@ -87,8 +99,10 @@ insertImportedNote:
   INSERT INTO note (
     remote_id,
     note,
-    start_ayah_id,
-    end_ayah_id,
+    start_sura,
+    start_ayah,
+    end_sura,
+    end_ayah,
     created_at,
     modified_at,
     deleted,
@@ -98,8 +112,10 @@ insertImportedNote:
   VALUES (
     NULL,
     :note,
-    :start_ayah_id,
-    :end_ayah_id,
+    :start_sura,
+    :start_ayah,
+    :end_sura,
+    :end_ayah,
     :created_at,
     :modified_at,
     0,
@@ -110,8 +126,10 @@ insertImportedNote:
 updateNote:
   UPDATE note
   SET note = :note,
-    start_ayah_id = :start_ayah_id,
-    end_ayah_id = :end_ayah_id,
+    start_sura = :start_sura,
+    start_ayah = :start_ayah,
+    end_sura = :end_sura,
+    end_ayah = :end_ayah,
     deleted = 0,
     is_edited = CASE WHEN remote_id IS NULL THEN 0 ELSE 1 END,
     modified_at = :timestamp,
@@ -135,15 +153,19 @@ getUnsyncedNotes:
   ORDER BY created_at DESC;
 
 persistRemoteNote {
-  INSERT INTO note (remote_id, note, start_ayah_id, end_ayah_id, created_at, modified_at, deleted, is_edited)
-  SELECT :remote_id, :note, :start_ayah_id, :end_ayah_id, :created_at, :modified_at, 0, 0
+  INSERT INTO note (
+    remote_id, note, start_sura, start_ayah, end_sura, end_ayah, created_at, modified_at, deleted, is_edited
+  )
+  SELECT :remote_id, :note, :start_sura, :start_ayah, :end_sura, :end_ayah, :created_at, :modified_at, 0, 0
   WHERE NOT EXISTS (
     SELECT 1 FROM note WHERE remote_id = :remote_id
   );
   UPDATE note
   SET note = :note,
-    start_ayah_id = :start_ayah_id,
-    end_ayah_id = :end_ayah_id,
+    start_sura = :start_sura,
+    start_ayah = :start_ayah,
+    end_sura = :end_sura,
+    end_ayah = :end_ayah,
     modified_at = :modified_at,
     deleted = 0,
     is_edited = 0

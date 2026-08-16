@@ -1332,7 +1332,6 @@ class BookmarkSyncArchitectureTest {
         readingRepository.addAyahReadingBookmark(5, 17)
         database.bookmarksQueries.upsertAyahBookmark(
             remote_id = "remote-reading-stale",
-            ayah_id = 1L,
             sura = 5L,
             ayah = 17L,
             created_at = 100L,

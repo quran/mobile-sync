@@ -19,7 +19,6 @@ import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
 import com.quran.shared.persistence.repository.bookmark.extension.toAyahBookmark
 import com.quran.shared.persistence.util.PlatformDateTime
-import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.currentPlatformDateTime
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toEpochMillisecondsFromPlatform
@@ -78,7 +77,6 @@ class BookmarksRepositoryImpl(
                     }
                     bookmarkQueries.value.upsertAyahBookmark(
                         remote_id = null,
-                        ayah_id = getAyahId(sura, ayah).toLong(),
                         sura = sura.toLong(),
                         ayah = ayah.toLong(),
                         created_at = timestampMillis,
@@ -403,7 +401,6 @@ class BookmarksRepositoryImpl(
             is RemoteBookmark.Ayah -> {
                 bookmarkQueries.value.upsertAyahBookmark(
                     remote_id = remote.remoteID,
-                    ayah_id = getAyahId(model.sura, model.ayah).toLong(),
                     sura = model.sura.toLong(),
                     ayah = model.ayah.toLong(),
                     created_at = createdAt,
@@ -542,9 +539,5 @@ class BookmarksRepositoryImpl(
             )
             else -> error("Unsupported bookmark type: $bookmark_type")
         }
-    }
-
-    private fun getAyahId(sura: Int, ayah: Int): Int {
-        return QuranData.getAyahId(sura, ayah)
     }
 }

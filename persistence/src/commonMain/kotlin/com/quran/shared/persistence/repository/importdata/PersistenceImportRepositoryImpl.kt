@@ -14,7 +14,6 @@ import com.quran.shared.persistence.model.DatabaseNote
 import com.quran.shared.persistence.model.isSystemCollectionName
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
 import com.quran.shared.persistence.util.PlatformDateTime
-import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.fromPlatform
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -102,21 +101,14 @@ class PersistenceImportRepositoryImpl(
             }
         }
 
-        val bookmarkCoordinates = data.bookmarks.map { bookmark ->
-            requireAyahId(bookmark.sura, bookmark.ayah, "bookmark ${bookmark.importId}")
-            bookmark.sura to bookmark.ayah
-        }
+        val bookmarkCoordinates = data.bookmarks.map { bookmark -> bookmark.sura to bookmark.ayah }
         requireUnique("bookmark ayah", bookmarkCoordinates)
 
-        val readingSessionCoordinates = data.readingSessions.map { session ->
-            requireAyahId(session.sura, session.ayah, "reading session")
-            session.sura to session.ayah
-        }
+        val readingSessionCoordinates = data.readingSessions.map { session -> session.sura to session.ayah }
         requireUnique("reading session ayah", readingSessionCoordinates)
 
         when (val readingBookmark = data.readingBookmark) {
-            is ImportReadingBookmark.Ayah ->
-                requireAyahId(readingBookmark.sura, readingBookmark.ayah, "reading bookmark")
+            is ImportReadingBookmark.Ayah -> Unit
             is ImportReadingBookmark.Page ->
                 requirePage(readingBookmark.page, "reading bookmark")
             null -> Unit
@@ -124,8 +116,6 @@ class PersistenceImportRepositoryImpl(
 
         data.notes.forEach { note ->
             require(note.body.isNotBlank()) { "Note body cannot be blank." }
-            requireAyahId(note.startSura, note.startAyah, "note start")
-            requireAyahId(note.endSura, note.endAyah, "note end")
         }
 
         val bookmarkIds = data.bookmarks.map { it.importId }.toSet()
@@ -152,11 +142,9 @@ class PersistenceImportRepositoryImpl(
             database.collectionsQueries.getDefaultCollection().executeAsOneOrNull()
         ) { "Default collection is not available for bookmark import." }
         return bookmarks.associate { bookmark ->
-            val ayahId = requireAyahId(bookmark.sura, bookmark.ayah, "bookmark ${bookmark.importId}")
             val timestamp = bookmark.lastUpdated.toImportTimestampMillis()
             database.bookmarksQueries.upsertAyahBookmark(
                 remote_id = null,
-                ayah_id = ayahId.toLong(),
                 sura = bookmark.sura.toLong(),
                 ayah = bookmark.ayah.toLong(),
                 created_at = timestamp,
@@ -211,7 +199,6 @@ class PersistenceImportRepositoryImpl(
             is ImportReadingBookmark.Ayah -> {
                 val timestamp = readingBookmark.lastUpdated.toImportTimestampMillis()
                 database.bookmarksQueries.setAyahReadingBookmark(
-                    ayah_id = requireAyahId(readingBookmark.sura, readingBookmark.ayah, "reading bookmark").toLong(),
                     sura = readingBookmark.sura.toLong(),
                     ayah = readingBookmark.ayah.toLong(),
                     timestamp = timestamp
@@ -253,15 +240,15 @@ class PersistenceImportRepositoryImpl(
 
         notes.forEach { note ->
             val timestamp = note.lastUpdated.toImportTimestampMillis()
-            val startAyahId = requireAyahId(note.startSura, note.startAyah, "note start").toLong()
-            val endAyahId = requireAyahId(note.endSura, note.endAyah, "note end").toLong()
-            if (!noteKeys.add(note.importKey(startAyahId, endAyahId))) {
+            if (!noteKeys.add(note.importKey())) {
                 return@forEach
             }
             database.notesQueries.insertImportedNote(
                 note = note.body,
-                start_ayah_id = startAyahId,
-                end_ayah_id = endAyahId,
+                start_sura = note.startSura.toLong(),
+                start_ayah = note.startAyah.toLong(),
+                end_sura = note.endSura.toLong(),
+                end_ayah = note.endAyah.toLong(),
                 created_at = timestamp,
                 modified_at = timestamp
             )
@@ -291,12 +278,6 @@ class PersistenceImportRepositoryImpl(
         reconciler.reconcile()
     }
 
-    private fun requireAyahId(sura: Int, ayah: Int, label: String): Int {
-        return requireNotNull(QuranData.getAyahIdOrNull(sura, ayah)) {
-            "Invalid ayah for $label: $sura:$ayah."
-        }
-    }
-
     private fun requirePage(page: Int, label: String) {
         require(page in 1..MUSHAF_PAGE_COUNT) { "Invalid page for $label: $page." }
     }
@@ -309,19 +290,23 @@ class PersistenceImportRepositoryImpl(
         return kotlin.time.Clock.System.now().toEpochMilliseconds()
     }
 
-    private fun ImportNote.importKey(startAyahId: Long, endAyahId: Long): NoteImportKey {
+    private fun ImportNote.importKey(): NoteImportKey {
         return NoteImportKey(
             normalizedBody = body.toNormalizedNoteText(),
-            startAyahId = startAyahId,
-            endAyahId = endAyahId
+            startSura = startSura.toLong(),
+            startAyah = startAyah.toLong(),
+            endSura = endSura.toLong(),
+            endAyah = endAyah.toLong()
         )
     }
 
     private fun DatabaseNote.importKey(): NoteImportKey {
         return NoteImportKey(
             normalizedBody = note.toNormalizedNoteText(),
-            startAyahId = start_ayah_id,
-            endAyahId = end_ayah_id
+            startSura = start_sura,
+            startAyah = start_ayah,
+            endSura = end_sura,
+            endAyah = end_ayah
         )
     }
 
@@ -347,6 +332,8 @@ private val NOTE_WHITESPACE_REGEX = Regex("\\s+")
 
 private data class NoteImportKey(
     val normalizedBody: String,
-    val startAyahId: Long,
-    val endAyahId: Long
+    val startSura: Long,
+    val startAyah: Long,
+    val endSura: Long,
+    val endAyah: Long
 )

@@ -5,7 +5,6 @@ CREATE TABLE IF NOT EXISTS bookmark(
   sura INTEGER,
   ayah INTEGER,
   page INTEGER,
-  ayah_id INTEGER,
   mushaf_id INTEGER NOT NULL DEFAULT 1,
   is_reading INTEGER NOT NULL DEFAULT 0,
   deleted INTEGER NOT NULL DEFAULT 0,
@@ -19,9 +18,9 @@ CREATE TABLE IF NOT EXISTS bookmark(
   reading_modified_at INTEGER,
   CHECK (bookmark_type IN ('AYAH', 'PAGE')),
   CHECK (
-    (bookmark_type = 'AYAH' AND sura IS NOT NULL AND ayah IS NOT NULL AND page IS NULL AND ayah_id IS NOT NULL)
+    (bookmark_type = 'AYAH' AND sura IS NOT NULL AND ayah IS NOT NULL AND page IS NULL)
     OR
-    (bookmark_type = 'PAGE' AND page IS NOT NULL AND sura IS NULL AND ayah IS NULL AND ayah_id IS NULL)
+    (bookmark_type = 'PAGE' AND page IS NOT NULL AND sura IS NULL AND ayah IS NULL)
   ),
   CHECK (is_reading IN (0, 1)),
   CHECK (deleted IN (0, 1)),
@@ -128,7 +127,6 @@ upsertAyahBookmark {
     sura,
     ayah,
     page,
-    ayah_id,
     mushaf_id,
     is_reading,
     deleted,
@@ -142,7 +140,6 @@ upsertAyahBookmark {
     :sura,
     :ayah,
     NULL,
-    :ayah_id,
     1,
     0,
     0,
@@ -155,7 +152,6 @@ upsertAyahBookmark {
       WHEN :remote_id IS NULL THEN remote_id
       ELSE :remote_id
     END,
-    ayah_id = :ayah_id,
     deleted = CASE
       WHEN :remote_id IS NOT NULL AND remote_id IS NULL AND deleted = 1 AND bookmark_pending_op = 'DELETED' THEN deleted
       ELSE 0
@@ -182,7 +178,6 @@ upsertPageBookmark {
     sura,
     ayah,
     page,
-    ayah_id,
     mushaf_id,
     is_reading,
     deleted,
@@ -196,7 +191,6 @@ upsertPageBookmark {
     NULL,
     NULL,
     :page,
-    NULL,
     1,
     0,
     0,
@@ -234,7 +228,6 @@ setAyahReadingBookmark {
     sura,
     ayah,
     page,
-    ayah_id,
     mushaf_id,
     is_reading,
     deleted,
@@ -250,7 +243,6 @@ setAyahReadingBookmark {
     :sura,
     :ayah,
     NULL,
-    :ayah_id,
     1,
     1,
     0,
@@ -262,8 +254,7 @@ setAyahReadingBookmark {
     :timestamp
   );
   UPDATE bookmark
-  SET ayah_id = :ayah_id,
-    is_reading = 1,
+  SET is_reading = 1,
     deleted = 0,
     bookmark_pending_op = CASE
       WHEN bookmark_pending_op = 'DELETED' THEN NULL
@@ -289,7 +280,6 @@ setPageReadingBookmark {
     sura,
     ayah,
     page,
-    ayah_id,
     mushaf_id,
     is_reading,
     deleted,
@@ -305,7 +295,6 @@ setPageReadingBookmark {
     NULL,
     NULL,
     :page,
-    NULL,
     1,
     1,
     0,

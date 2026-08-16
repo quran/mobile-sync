@@ -8,7 +8,6 @@ import com.quran.shared.persistence.input.RemoteNote
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.repository.importdata.PersistenceImportRepositoryImpl
 import com.quran.shared.persistence.repository.note.repository.NotesRepositoryImpl
-import com.quran.shared.persistence.util.QuranData
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toPlatform
 import kotlinx.coroutines.test.runTest
@@ -45,6 +44,22 @@ class NotesRepositoryTest {
         assertEquals(13, note.startAyah)
         assertEquals(2, note.endSura)
         assertEquals(13, note.endAyah)
+    }
+
+    @Test
+    fun `addNote preserves coordinates without applying an ayah counting method`() = runTest {
+        val note = repository.addNote(
+            body = "alternate counting note",
+            startSura = 1,
+            startAyah = 8,
+            endSura = 1,
+            endAyah = 8
+        )
+
+        assertEquals(1, note.startSura)
+        assertEquals(8, note.startAyah)
+        assertEquals(1, note.endSura)
+        assertEquals(8, note.endAyah)
     }
 
     @Test
@@ -110,8 +125,10 @@ class NotesRepositoryTest {
                 RemoteModelMutation(
                     model = RemoteNote(
                         body = "test note",
-                        startAyahId = QuranData.getAyahId(2, 13).toLong(),
-                        endAyahId = QuranData.getAyahId(2, 14).toLong(),
+                        startSura = 2,
+                        startAyah = 13,
+                        endSura = 2,
+                        endAyah = 14,
                         lastUpdated = timestamp(1_700_000_002_345L),
                         createdAt = timestamp(1_700_000_001_000L)
                     ),
@@ -132,8 +149,10 @@ class NotesRepositoryTest {
         database.notesQueries.persistRemoteNote(
             remote_id = "remote-note-id",
             note = "test note",
-            start_ayah_id = QuranData.getAyahId(2, 13).toLong(),
-            end_ayah_id = QuranData.getAyahId(2, 14).toLong(),
+            start_sura = 2L,
+            start_ayah = 13L,
+            end_sura = 2L,
+            end_ayah = 14L,
             created_at = 1_700_000_001_000L,
             modified_at = 1_700_000_001_000L
         )
@@ -153,8 +172,10 @@ class NotesRepositoryTest {
         database.notesQueries.persistRemoteNote(
             remote_id = "remote-note-id",
             note = "test note",
-            start_ayah_id = QuranData.getAyahId(2, 13).toLong(),
-            end_ayah_id = QuranData.getAyahId(2, 13).toLong(),
+            start_sura = 2L,
+            start_ayah = 13L,
+            end_sura = 2L,
+            end_ayah = 13L,
             created_at = 1_700_000_001_000L,
             modified_at = 1_700_000_001_000L
         )
@@ -167,8 +188,10 @@ class NotesRepositoryTest {
                 RemoteModelMutation(
                     model = RemoteNote(
                         body = "synced note",
-                        startAyahId = QuranData.getAyahId(2, 14).toLong(),
-                        endAyahId = QuranData.getAyahId(2, 14).toLong(),
+                        startSura = 2,
+                        startAyah = 14,
+                        endSura = 2,
+                        endAyah = 14,
                         lastUpdated = timestamp(1_700_000_002_000L)
                     ),
                     remoteID = "remote-note-id",
@@ -193,8 +216,10 @@ class NotesRepositoryTest {
                     RemoteModelMutation(
                         model = RemoteNote(
                             body = "synced note",
-                            startAyahId = QuranData.getAyahId(2, 13).toLong(),
-                            endAyahId = QuranData.getAyahId(2, 13).toLong(),
+                            startSura = 2,
+                            startAyah = 13,
+                            endSura = 2,
+                            endAyah = 13,
                             lastUpdated = timestamp(1_700_000_002_000L)
                         ),
                         remoteID = "remote-note-id",
@@ -216,8 +241,10 @@ class NotesRepositoryTest {
         database.notesQueries.persistRemoteNote(
             remote_id = "remote-note-id",
             note = "test note",
-            start_ayah_id = QuranData.getAyahId(2, 13).toLong(),
-            end_ayah_id = QuranData.getAyahId(2, 13).toLong(),
+            start_sura = 2L,
+            start_ayah = 13L,
+            end_sura = 2L,
+            end_ayah = 13L,
             created_at = 1_700_000_001_000L,
             modified_at = 1_700_000_001_000L
         )
@@ -231,8 +258,10 @@ class NotesRepositoryTest {
                 RemoteModelMutation(
                     model = RemoteNote(
                         body = "uploaded note",
-                        startAyahId = QuranData.getAyahId(2, 14).toLong(),
-                        endAyahId = QuranData.getAyahId(2, 14).toLong(),
+                        startSura = 2,
+                        startAyah = 14,
+                        endSura = 2,
+                        endAyah = 14,
                         lastUpdated = timestamp(1_700_000_002_000L)
                     ),
                     remoteID = "remote-note-id",
@@ -245,7 +274,8 @@ class NotesRepositoryTest {
         val record = database.notesQueries.getNoteByRemoteId("remote-note-id").executeAsOne()
         val remaining = repository.fetchMutatedNotes(0).single()
         assertEquals("newer note", record.note)
-        assertEquals(QuranData.getAyahId(2, 15).toLong(), record.start_ayah_id)
+        assertEquals(2L, record.start_sura)
+        assertEquals(15L, record.start_ayah)
         assertEquals(1L, record.is_edited)
         assertEquals(Mutation.MODIFIED, remaining.mutation)
     }
@@ -276,8 +306,10 @@ class NotesRepositoryTest {
                 RemoteModelMutation(
                     model = RemoteNote(
                         body = "uploaded note",
-                        startAyahId = QuranData.getAyahId(2, 13).toLong(),
-                        endAyahId = QuranData.getAyahId(2, 13).toLong(),
+                        startSura = 2,
+                        startAyah = 13,
+                        endSura = 2,
+                        endAyah = 13,
                         lastUpdated = timestamp(1_700_000_001_000L)
                     ),
                     remoteID = "remote-created-note-id",
@@ -292,7 +324,8 @@ class NotesRepositoryTest {
         val remaining = repository.fetchMutatedNotes(0).single()
         assertEquals("remote-created-note-id", record.remote_id)
         assertEquals("newer note", record.note)
-        assertEquals(QuranData.getAyahId(2, 14).toLong(), record.start_ayah_id)
+        assertEquals(2L, record.start_sura)
+        assertEquals(14L, record.start_ayah)
         assertEquals(1L, record.is_edited)
         assertEquals(note.id, remaining.localID)
         assertEquals("remote-created-note-id", remaining.remoteID)
@@ -319,8 +352,10 @@ class NotesRepositoryTest {
                 RemoteModelMutation(
                     model = RemoteNote(
                         body = "uploaded note",
-                        startAyahId = QuranData.getAyahId(2, 13).toLong(),
-                        endAyahId = QuranData.getAyahId(2, 13).toLong(),
+                        startSura = 2,
+                        startAyah = 13,
+                        endSura = 2,
+                        endAyah = 13,
                         lastUpdated = timestamp(1_700_000_001_000L)
                     ),
                     remoteID = "remote-created-note-id",
@@ -369,8 +404,10 @@ class NotesRepositoryTest {
                 RemoteModelMutation(
                     model = RemoteNote(
                         body = "uploaded note",
-                        startAyahId = QuranData.getAyahId(2, 13).toLong(),
-                        endAyahId = QuranData.getAyahId(2, 13).toLong(),
+                        startSura = 2,
+                        startAyah = 13,
+                        endSura = 2,
+                        endAyah = 13,
                         lastUpdated = timestamp(1_700_000_001_000L)
                     ),
                     remoteID = "remote-created-note-id",
@@ -406,8 +443,10 @@ class NotesRepositoryTest {
                 RemoteModelMutation(
                     model = RemoteNote(
                         body = "same note",
-                        startAyahId = QuranData.getAyahId(2, 13).toLong(),
-                        endAyahId = QuranData.getAyahId(2, 13).toLong(),
+                        startSura = 2,
+                        startAyah = 13,
+                        endSura = 2,
+                        endAyah = 13,
                         lastUpdated = timestamp(1_700_000_002_000L)
                     ),
                     remoteID = "remote-created-note-id",
@@ -428,8 +467,10 @@ class NotesRepositoryTest {
         database.notesQueries.persistRemoteNote(
             remote_id = "remote-created-note-id",
             note = "same note",
-            start_ayah_id = QuranData.getAyahId(2, 13).toLong(),
-            end_ayah_id = QuranData.getAyahId(2, 13).toLong(),
+            start_sura = 2L,
+            start_ayah = 13L,
+            end_sura = 2L,
+            end_ayah = 13L,
             created_at = 1_700_000_001_000L,
             modified_at = 1_700_000_001_000L
         )
@@ -447,8 +488,10 @@ class NotesRepositoryTest {
                 RemoteModelMutation(
                     model = RemoteNote(
                         body = "same note",
-                        startAyahId = QuranData.getAyahId(2, 13).toLong(),
-                        endAyahId = QuranData.getAyahId(2, 13).toLong(),
+                        startSura = 2,
+                        startAyah = 13,
+                        endSura = 2,
+                        endAyah = 13,
                         lastUpdated = timestamp(1_700_000_003_000L)
                     ),
                     remoteID = "remote-created-note-id",
@@ -486,8 +529,10 @@ class NotesRepositoryTest {
                 RemoteModelMutation(
                     model = RemoteNote(
                         body = "same note",
-                        startAyahId = QuranData.getAyahId(2, 13).toLong(),
-                        endAyahId = QuranData.getAyahId(2, 13).toLong(),
+                        startSura = 2,
+                        startAyah = 13,
+                        endSura = 2,
+                        endAyah = 13,
                         lastUpdated = timestamp(1_700_000_002_000L)
                     ),
                     remoteID = "remote-created-note-id",
@@ -532,8 +577,10 @@ class NotesRepositoryTest {
                 RemoteModelMutation(
                     model = RemoteNote(
                         body = "same note",
-                        startAyahId = QuranData.getAyahId(2, 13).toLong(),
-                        endAyahId = QuranData.getAyahId(2, 13).toLong(),
+                        startSura = 2,
+                        startAyah = 13,
+                        endSura = 2,
+                        endAyah = 13,
                         lastUpdated = timestamp(1_700_000_003_000L)
                     ),
                     remoteID = "remote-created-note-id",
@@ -569,8 +616,10 @@ class NotesRepositoryTest {
                 RemoteModelMutation(
                     model = RemoteNote(
                         body = "same note",
-                        startAyahId = QuranData.getAyahId(2, 13).toLong(),
-                        endAyahId = QuranData.getAyahId(2, 13).toLong(),
+                        startSura = 2,
+                        startAyah = 13,
+                        endSura = 2,
+                        endAyah = 13,
                         lastUpdated = timestamp(1_700_000_003_000L)
                     ),
                     remoteID = "remote-created-note-id",
@@ -608,8 +657,10 @@ class NotesRepositoryTest {
                 RemoteModelMutation(
                     model = RemoteNote(
                         body = "same note",
-                        startAyahId = QuranData.getAyahId(2, 13).toLong(),
-                        endAyahId = QuranData.getAyahId(2, 13).toLong(),
+                        startSura = 2,
+                        startAyah = 13,
+                        endSura = 2,
+                        endAyah = 13,
                         lastUpdated = timestamp(1_700_000_002_000L),
                         semanticReplayEligible = false
                     ),
@@ -651,8 +702,10 @@ class NotesRepositoryTest {
                 RemoteModelMutation(
                     model = RemoteNote(
                         body = "same note",
-                        startAyahId = QuranData.getAyahId(2, 13).toLong(),
-                        endAyahId = QuranData.getAyahId(2, 13).toLong(),
+                        startSura = 2,
+                        startAyah = 13,
+                        endSura = 2,
+                        endAyah = 13,
                         lastUpdated = timestamp(1_700_000_002_000L)
                     ),
                     remoteID = "remote-created-note-id",
@@ -684,8 +737,10 @@ class NotesRepositoryTest {
                 RemoteModelMutation(
                     model = RemoteNote(
                         body = "remote note",
-                        startAyahId = QuranData.getAyahId(2, 13).toLong(),
-                        endAyahId = QuranData.getAyahId(2, 13).toLong(),
+                        startSura = 2,
+                        startAyah = 13,
+                        endSura = 2,
+                        endAyah = 13,
                         lastUpdated = timestamp(1_700_000_002_000L)
                     ),
                     remoteID = "remote-created-note-id",
