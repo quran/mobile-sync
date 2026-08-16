@@ -6,7 +6,6 @@ import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.TestDatabaseDriver
 import com.quran.shared.persistence.model.AyahHighlight
 import com.quran.shared.persistence.model.AyahHighlightColor
-import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepositoryImpl
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepositoryImpl
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepositoryImpl
 import com.quran.shared.persistence.util.toPlatform
@@ -22,14 +21,12 @@ import kotlin.time.Instant
 
 class AyahHighlightsRepositoryTest {
     private lateinit var database: QuranDatabase
-    private lateinit var bookmarksRepository: BookmarksRepositoryImpl
     private lateinit var collectionsRepository: CollectionsRepositoryImpl
     private lateinit var collectionBookmarksRepository: CollectionBookmarksRepositoryImpl
 
     @BeforeTest
     fun setup() {
         database = QuranDatabase(TestDatabaseDriver().createDriver())
-        bookmarksRepository = BookmarksRepositoryImpl(database)
         collectionsRepository = CollectionsRepositoryImpl(database)
         collectionBookmarksRepository = CollectionBookmarksRepositoryImpl(database)
     }
@@ -93,9 +90,9 @@ class AyahHighlightsRepositoryTest {
 
     @Test
     fun `setHighlight replaces color and preserves default and user collections`() = runTest {
-        val bookmark = bookmarksRepository.addBookmark(2, 255, timestamp(100))
+        collectionBookmarksRepository.addAyahBookmarkToCollection(defaultCollectionId(), 2, 255, timestamp(100))
         val userCollection = collectionsRepository.addCollection("Study", timestamp(200))
-        collectionBookmarksRepository.addBookmarkToCollection(userCollection.id, bookmark, timestamp(300))
+        collectionBookmarksRepository.addAyahBookmarkToCollection(userCollection.id, 2, 255, timestamp(300))
         collectionBookmarksRepository.setHighlight(2, 255, AyahHighlightColor.GREEN, timestamp(400))
 
         collectionBookmarksRepository.setHighlight(2, 255, AyahHighlightColor.PURPLE, timestamp(500))
@@ -111,9 +108,9 @@ class AyahHighlightsRepositoryTest {
 
     @Test
     fun `removeHighlight preserves default and user collections`() = runTest {
-        val bookmark = bookmarksRepository.addBookmark(2, 255, timestamp(100))
+        collectionBookmarksRepository.addAyahBookmarkToCollection(defaultCollectionId(), 2, 255, timestamp(100))
         val userCollection = collectionsRepository.addCollection("Study", timestamp(200))
-        collectionBookmarksRepository.addBookmarkToCollection(userCollection.id, bookmark, timestamp(300))
+        collectionBookmarksRepository.addAyahBookmarkToCollection(userCollection.id, 2, 255, timestamp(300))
         collectionBookmarksRepository.setHighlight(2, 255, AyahHighlightColor.YELLOW, timestamp(400))
 
         val removed = collectionBookmarksRepository.removeHighlight(2, 255, timestamp(500))

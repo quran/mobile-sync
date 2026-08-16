@@ -5,13 +5,6 @@ struct BookmarksTabView: View {
     @ObservedObject var viewModel: SyncViewModel
     let readingBookmark: Shared.ReadingBookmark?
     
-    private let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter
-    }()
-
     var body: some View {
         List {
             Section(header: Text("Current Reading Bookmark")) {
@@ -41,71 +34,18 @@ struct BookmarksTabView: View {
                 }
             }
 
-            Section(header: HStack {
-                Text("Your Bookmarks")
-                Spacer()
-                HStack(spacing: 16) {
-                    Button(action: {
-                        let sura = Shared.QuranActionsUtils().getRandomSura()
-                        let ayah = Shared.QuranActionsUtils().getRandomAyah(sura: sura)
-                        Task {
-                            _ = await viewModel.addBookmark(sura: sura, ayah: ayah)
-                        }
-                    }) {
-                        Image(systemName: "plus.square")
-                    }
-                    Button(action: {
-                        let sura = Shared.QuranActionsUtils().getRandomSura()
-                        let ayah = Shared.QuranActionsUtils().getRandomAyah(sura: sura)
-                        Task {
-                            _ = await viewModel.addReadingBookmark(sura: sura, ayah: ayah)
-                        }
-                    }) {
-                        Image(systemName: "bookmark")
-                            .foregroundColor(.orange)
-                    }
-                    Button(action: {
-                        let page = Shared.QuranActionsUtils().getRandomPage()
-                        Task {
-                            _ = await viewModel.addPageReadingBookmark(page: page)
-                        }
-                    }) {
-                        Image(systemName: "bookmark.fill")
-                            .foregroundColor(.orange)
+            Section(header: Text("Add Reading Bookmark")) {
+                Button("Random Ayah") {
+                    let sura = Shared.QuranActionsUtils().getRandomSura()
+                    let ayah = Shared.QuranActionsUtils().getRandomAyah(sura: sura)
+                    Task {
+                        _ = await viewModel.addReadingBookmark(sura: sura, ayah: ayah)
                     }
                 }
-            }) {
-                if viewModel.bookmarks.isEmpty {
-                    Text("No bookmarks yet.")
-                        .foregroundColor(.secondary)
-                        .italic()
-                } else {
-                    ForEach(viewModel.bookmarks, id: \.id) { bookmark in
-                        HStack {
-                            Image(systemName: "bookmark.fill")
-                                .foregroundColor(.accentColor)
-                            
-                            VStack(alignment: .leading) {
-                                Text("Surah \(bookmark.sura), Ayah \(bookmark.ayah)")
-                                    .font(.body)
-
-                                Text("\(dateFormatter.string(from: bookmark.lastUpdated))")
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                            }
-                            
-                            Spacer()
-                            
-                            Button(action: {
-                                Task {
-                                    await viewModel.deleteBookmark(bookmark: bookmark)
-                                }
-                            }) {
-                                Image(systemName: "trash")
-                                    .foregroundColor(.red)
-                            }
-                            .buttonStyle(BorderlessButtonStyle())
-                        }
+                Button("Random Page") {
+                    let page = Shared.QuranActionsUtils().getRandomPage()
+                    Task {
+                        _ = await viewModel.addPageReadingBookmark(page: page)
                     }
                 }
             }

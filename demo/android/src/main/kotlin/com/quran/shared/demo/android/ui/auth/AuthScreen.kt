@@ -11,7 +11,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.quran.shared.auth.model.AuthState
 import com.quran.shared.auth.model.UserInfo
-import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.CollectionWithAyahBookmarks
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.ReadingBookmark
@@ -32,7 +31,6 @@ fun AuthScreen(
     onAuthenticationSuccess: () -> Unit = {}
 ) {
     val authState by viewModel.authState.collectAsState()
-    val bookmarks by viewModel.bookmarks.collectAsState(initial = emptyList())
     val readingBookmark by viewModel.readingBookmark.collectAsState(initial = null)
     val collectionsWithBookmarks by viewModel.collectionsWithBookmarks.collectAsState(initial = emptyList())
     val notes by viewModel.notes.collectAsState(initial = emptyList())
@@ -107,7 +105,6 @@ fun AuthScreen(
                                 userInfo = null,
                                 signedIn = false,
                                 statusMessage = "Signed out. Local changes are available before sign-in.",
-                                bookmarks = bookmarks,
                                 readingBookmark = readingBookmark,
                                 collectionsWithBookmarks = collectionsWithBookmarks,
                                 notes = notes,
@@ -121,7 +118,6 @@ fun AuthScreen(
                             userInfo = null,
                             signedIn = false,
                             statusMessage = "OAuth credentials are not configured for this build.",
-                            bookmarks = bookmarks,
                             readingBookmark = readingBookmark,
                             collectionsWithBookmarks = collectionsWithBookmarks,
                             notes = notes,
@@ -141,7 +137,6 @@ fun AuthScreen(
                         userInfo = state.userInfo,
                         signedIn = true,
                         statusMessage = null,
-                        bookmarks = bookmarks,
                         readingBookmark = readingBookmark,
                         collectionsWithBookmarks = collectionsWithBookmarks,
                         notes = notes,
@@ -177,7 +172,6 @@ private fun LocalDataContent(
     userInfo: UserInfo?,
     signedIn: Boolean,
     statusMessage: String?,
-    bookmarks: List<AyahBookmark>,
     readingBookmark: ReadingBookmark?,
     collectionsWithBookmarks: List<CollectionWithAyahBookmarks>,
     notes: List<Note>,
@@ -187,20 +181,9 @@ private fun LocalDataContent(
         userInfo = userInfo,
         signedIn = signedIn,
         statusMessage = statusMessage,
-        bookmarks = bookmarks,
         readingBookmark = readingBookmark,
         collectionsWithBookmarks = collectionsWithBookmarks,
         notes = notes,
-        onAddAyahBookmark = {
-            val sura = getRandomSura()
-            val ayah = getRandomAyah(sura)
-            eventScope.launch {
-                try {
-                    viewModel.addBookmark(sura, ayah)
-                } catch (e: Exception) {
-                }
-            }
-        },
         onAddReadingAyahBookmark = {
             val sura = getRandomSura()
             val ayah = getRandomAyah(sura)
@@ -216,14 +199,6 @@ private fun LocalDataContent(
             eventScope.launch {
                 try {
                     viewModel.addPageReadingBookmark(page)
-                } catch (e: Exception) {
-                }
-            }
-        },
-        onDeleteBookmark = {
-            eventScope.launch {
-                try {
-                    viewModel.deleteBookmark(it)
                 } catch (e: Exception) {
                 }
             }
@@ -313,14 +288,11 @@ private fun DataContent(
     userInfo: UserInfo?,
     signedIn: Boolean,
     statusMessage: String?,
-    bookmarks: List<AyahBookmark>,
     readingBookmark: ReadingBookmark?,
     collectionsWithBookmarks: List<CollectionWithAyahBookmarks>,
     notes: List<Note>,
-    onAddAyahBookmark: () -> Unit,
     onAddReadingAyahBookmark: () -> Unit,
     onAddReadingPageBookmark: () -> Unit,
-    onDeleteBookmark: (AyahBookmark) -> Unit,
     onDeleteReadingBookmark: () -> Unit,
     onAddCollection: (String) -> Unit,
     onDeleteCollection: (String) -> Unit,
@@ -402,13 +374,10 @@ private fun DataContent(
         Box(modifier = Modifier.weight(1f)) {
             when (selectedTab) {
                 0 -> BookmarksTab(
-                    bookmarks = bookmarks,
                     readingBookmark = readingBookmark,
-                    onAddAyahBookmark = onAddAyahBookmark,
                     onAddReadingAyahBookmark = onAddReadingAyahBookmark,
                     onAddReadingPageBookmark = onAddReadingPageBookmark,
-                    onDeleteReadingBookmark = onDeleteReadingBookmark,
-                    onDeleteBookmark = onDeleteBookmark
+                    onDeleteReadingBookmark = onDeleteReadingBookmark
                 )
 
                 1 -> CollectionsTab(

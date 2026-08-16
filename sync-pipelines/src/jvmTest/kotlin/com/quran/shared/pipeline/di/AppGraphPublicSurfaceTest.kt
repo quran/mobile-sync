@@ -1,7 +1,6 @@
 package com.quran.shared.pipeline.di
 
 import com.quran.shared.auth.service.AuthService
-import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepository
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepository
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepository
 import com.quran.shared.persistence.repository.importdata.PersistenceImportRepository
@@ -43,7 +42,6 @@ class AppGraphPublicSurfaceTest {
             method.parameterCount == 0
         }
         val hiddenRepositoryTypes = setOf(
-            BookmarksRepository::class.java,
             CollectionsRepository::class.java,
             CollectionBookmarksRepository::class.java,
             PersistenceImportRepository::class.java,
@@ -74,7 +72,6 @@ class AppGraphPublicSurfaceTest {
 
     private companion object {
         val writeCapablePersistenceRepositoryTypes = setOf(
-            BookmarksRepository::class.java,
             CollectionsRepository::class.java,
             CollectionBookmarksRepository::class.java,
             PersistenceImportRepository::class.java,

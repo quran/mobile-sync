@@ -3,7 +3,6 @@ package com.quran.shared.demo.android.ui
 import androidx.lifecycle.ViewModel
 import com.quran.shared.pipeline.SyncAuthService
 import com.quran.shared.pipeline.QuranDataService
-import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.AyahReadingBookmark
 import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.model.CollectionWithAyahBookmarks
@@ -22,7 +21,6 @@ class SyncViewModel(
     val authState: StateFlow<com.quran.shared.auth.model.AuthState> = service.authState
     val isAuthenticationConfigured: Boolean = authService.isAuthenticationConfigured
     
-    val bookmarks: Flow<List<AyahBookmark>> = service.bookmarks
     val readingBookmark: Flow<ReadingBookmark?> = service.readingBookmark
     
     val collectionsWithBookmarks: Flow<List<CollectionWithAyahBookmarks>> =
@@ -55,10 +53,6 @@ class SyncViewModel(
         service.triggerSync()
     }
 
-    suspend fun addBookmark(sura: Int, ayah: Int): AyahBookmark {
-        return service.addBookmark(sura, ayah)
-    }
-
     suspend fun addAyahReadingBookmark(sura: Int, ayah: Int): AyahReadingBookmark {
         return service.addAyahReadingBookmark(sura, ayah)
     }
@@ -69,10 +63,6 @@ class SyncViewModel(
 
     suspend fun deleteReadingBookmark() {
         service.deleteReadingBookmark()
-    }
-
-    suspend fun deleteBookmark(bookmark: AyahBookmark) {
-        service.deleteBookmark(bookmark)
     }
 
     suspend fun addCollection(name: String) {
@@ -87,10 +77,6 @@ class SyncViewModel(
         service.addAyahBookmarkToCollection(collectionId, sura, ayah)
     }
 
-    suspend fun removeBookmarkFromCollection(collectionId: String, bookmark: AyahBookmark) {
-        service.removeBookmarkFromCollection(collectionId, bookmark)
-    }
-
     suspend fun removeAyahBookmarkFromCollection(collectionId: String, bookmark: CollectionAyahBookmark) {
         service.removeAyahBookmarkFromCollection(bookmark)
     }
@@ -102,8 +88,5 @@ class SyncViewModel(
     suspend fun deleteNote(noteId: String) {
         service.deleteNote(noteId)
     }
-
-    fun getBookmarksForCollectionFlow(collectionId: String): Flow<List<com.quran.shared.persistence.model.CollectionAyahBookmark>> =
-        service.getBookmarksForCollectionFlow(collectionId)
 
 }
