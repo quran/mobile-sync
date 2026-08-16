@@ -11,7 +11,6 @@ import com.quran.shared.auth.service.AuthService
 import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.PersistenceImportResult
-import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.AyahHighlight
 import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.model.AyahReadingBookmark
@@ -23,7 +22,6 @@ import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.repository.PersistenceResetRepository
-import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepository
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepository
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepository
 import com.quran.shared.persistence.repository.importdata.PersistenceImportRepository
@@ -150,19 +148,12 @@ class QuranDataService internal constructor(
 
     // Cast the synchronization repository to the transactional repository.
     // This keeps QuranDataService as the single app-facing data entry point.
-    private val bookmarksRepository = pipeline.bookmarksRepository as BookmarksRepository
     private val readingBookmarksRepository = pipeline.readingBookmarksRepository
     private val collectionsRepository = pipeline.collectionsRepository as CollectionsRepository
     private val collectionBookmarksRepository =
         pipeline.collectionBookmarksRepository as CollectionBookmarksRepository
     private val notesRepository = pipeline.notesRepository as NotesRepository
     private val readingSessionsRepository = pipeline.readingSessionsRepository as ReadingSessionsRepository
-
-    /**
-     * Flow of all bookmarks for the UI to observe.
-     */
-    @NativeCoroutines
-    val bookmarks: Flow<List<AyahBookmark>> get() = bookmarksRepository.getBookmarksFlow()
 
     /**
      * Flow of ayah highlights, stored independently from app-facing bookmark collections.
@@ -383,18 +374,6 @@ class QuranDataService internal constructor(
         }
     }
 
-    @NativeCoroutines
-    suspend fun addBookmark(sura: Int, ayah: Int): AyahBookmark {
-        return addBookmark(sura, ayah, currentPlatformDateTime())
-    }
-
-    @NativeCoroutines
-    suspend fun addBookmark(sura: Int, ayah: Int, timestamp: PlatformDateTime): AyahBookmark {
-        return mutatingCall("Failed to add ayah bookmark") {
-            bookmarksRepository.addBookmark(sura, ayah, timestamp)
-        }
-    }
-
     /**
      * Sets the highlight color for one ayah, replacing any existing highlight color.
      * Default and user collection memberships are preserved.
@@ -430,86 +409,6 @@ class QuranDataService internal constructor(
             }
             removed
         }
-    }
-
-    @NativeCoroutines
-    suspend fun addBookmark(sura: Int, ayah: Int, collectionIds: List<String>): AyahBookmark {
-        return addBookmark(sura, ayah, collectionIds, currentPlatformDateTime())
-    }
-
-    @NativeCoroutines
-    suspend fun addBookmark(
-        sura: Int,
-        ayah: Int,
-        collectionIds: List<String>,
-        timestamp: PlatformDateTime
-    ): AyahBookmark {
-        return mutatingCall("Failed to add ayah bookmark with collection memberships") {
-            bookmarksRepository.addBookmark(sura, ayah, collectionIds, timestamp)
-        }
-    }
-
-    @NativeCoroutines
-    suspend fun replaceBookmarkCollections(id: String, collectionIds: List<String>): Boolean {
-        return replaceBookmarkCollections(id, collectionIds, currentPlatformDateTime())
-    }
-
-    /**
-     * Replaces the saved collection memberships for an existing ayah bookmark with an explicit
-     * mutation timestamp and schedules sync only when memberships changed.
-     */
-    @NativeCoroutines
-    suspend fun replaceBookmarkCollections(
-        id: String,
-        collectionIds: List<String>,
-        timestamp: PlatformDateTime
-    ): Boolean {
-        return mutatingCall("Failed to replace bookmark collection memberships", triggerAfter = false) {
-            val changed = bookmarksRepository.replaceBookmarkCollections(id, collectionIds, timestamp)
-            if (changed) {
-                triggerSync()
-            }
-            changed
-        }
-    }
-
-    @NativeCoroutines
-    suspend fun replaceAyahBookmarkCollections(
-        sura: Int,
-        ayah: Int,
-        collectionIds: List<String>
-    ): AyahBookmark {
-        return replaceAyahBookmarkCollections(sura, ayah, collectionIds, currentPlatformDateTime())
-    }
-
-    /**
-     * Creates an ayah bookmark if needed, then replaces its saved collection memberships with an
-     * explicit mutation timestamp and schedules sync only when memberships changed.
-     */
-    @NativeCoroutines
-    suspend fun replaceAyahBookmarkCollections(
-        sura: Int,
-        ayah: Int,
-        collectionIds: List<String>,
-        timestamp: PlatformDateTime
-    ): AyahBookmark {
-        return mutatingCall("Failed to replace ayah bookmark collection memberships", triggerAfter = false) {
-            val result = bookmarksRepository.replaceAyahBookmarkCollections(sura, ayah, collectionIds, timestamp)
-            if (result.changed) {
-                triggerSync()
-            }
-            result.bookmark
-        }
-    }
-
-    @NativeCoroutines
-    suspend fun addReadingBookmark(sura: Int, ayah: Int): AyahReadingBookmark {
-        return addAyahReadingBookmark(sura, ayah, currentPlatformDateTime())
-    }
-
-    @NativeCoroutines
-    suspend fun addReadingBookmark(sura: Int, ayah: Int, timestamp: PlatformDateTime): AyahReadingBookmark {
-        return addAyahReadingBookmark(sura, ayah, timestamp)
     }
 
     @NativeCoroutines
@@ -600,40 +499,6 @@ class QuranDataService internal constructor(
     }
 
     @NativeCoroutines
-    suspend fun deleteBookmark(bookmark: AyahBookmark): Boolean {
-        return deleteBookmarkResult("Failed to delete bookmark") {
-            bookmarksRepository.deleteBookmark(bookmark)
-        }
-    }
-
-    @NativeCoroutines
-    suspend fun deleteBookmark(id: String): Boolean {
-        return deleteBookmarkResult("Failed to delete bookmark") {
-            bookmarksRepository.deleteBookmark(id)
-        }
-    }
-
-    @NativeCoroutines
-    suspend fun deleteBookmark(sura: Int, ayah: Int): Boolean {
-        return deleteBookmarkResult("Failed to delete bookmark") {
-            bookmarksRepository.deleteBookmark(sura, ayah)
-        }
-    }
-
-    private suspend fun deleteBookmarkResult(
-        errorMessage: String,
-        block: suspend () -> Boolean
-    ): Boolean {
-        return mutatingCall(errorMessage, triggerAfter = false) {
-            val deleted = block()
-            if (deleted) {
-                triggerSync()
-            }
-            deleted
-        }
-    }
-
-    @NativeCoroutines
     suspend fun addCollection(name: String): Collection {
         return addCollection(name, currentPlatformDateTime())
     }
@@ -687,22 +552,6 @@ class QuranDataService internal constructor(
     }
 
     @NativeCoroutines
-    suspend fun addBookmarkToCollection(collectionId: String, bookmark: AyahBookmark) {
-        addBookmarkToCollection(collectionId, bookmark, currentPlatformDateTime())
-    }
-
-    @NativeCoroutines
-    suspend fun addBookmarkToCollection(
-        collectionId: String,
-        bookmark: AyahBookmark,
-        timestamp: PlatformDateTime
-    ) {
-        mutatingCall("Failed to add bookmark to collection") {
-            collectionBookmarksRepository.addBookmarkToCollection(collectionId, bookmark, timestamp)
-        }
-    }
-
-    @NativeCoroutines
     suspend fun addAyahBookmarkToCollection(
         collectionId: String,
         sura: Int,
@@ -720,13 +569,6 @@ class QuranDataService internal constructor(
     ): CollectionAyahBookmark {
         return mutatingCall("Failed to add ayah bookmark to collection") {
             collectionBookmarksRepository.addAyahBookmarkToCollection(collectionId, sura, ayah, timestamp)
-        }
-    }
-
-    @NativeCoroutines
-    suspend fun removeBookmarkFromCollection(collectionId: String, bookmark: AyahBookmark) {
-        mutatingCall("Failed to remove bookmark from collection") {
-            collectionBookmarksRepository.removeBookmarkFromCollection(collectionId, bookmark)
         }
     }
 
@@ -799,10 +641,6 @@ class QuranDataService internal constructor(
             notesRepository.deleteNote(id)
         }
     }
-
-    @NativeCoroutines
-    fun getBookmarksForCollectionFlow(collectionId: String): Flow<List<CollectionAyahBookmark>> =
-        collectionBookmarksRepository.getBookmarksForCollectionFlow(collectionId)
 
 }
 

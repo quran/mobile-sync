@@ -30,11 +30,9 @@ import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.input.RemoteNote
 import com.quran.shared.persistence.input.RemoteReadingSession
 import com.quran.shared.persistence.di.PersistenceModule
-import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.AyahHighlight
 import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.model.AyahReadingBookmark
-import com.quran.shared.persistence.model.BookmarkCollectionsReplacementResult
 import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.model.Note
@@ -43,7 +41,6 @@ import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.PersistenceResetRepository
-import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepository
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksSynchronizationRepository
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepository
 import com.quran.shared.persistence.repository.collection.repository.CollectionsSynchronizationRepository
@@ -525,13 +522,13 @@ class QuranDataServiceLifecycleTest {
 
         fixture.lifecycleCoordinator.runManagedReset {
             assertFailsWith<SessionResetInProgressException> {
-                fixture.service.addBookmark(2, 255)
+                fixture.service.addCollection("Blocked")
             }
         }
 
-        fixture.service.addBookmark(2, 255)
+        fixture.service.addCollection("Allowed")
 
-        assertEquals(1, fixture.bookmarksRepository.addCount)
+        assertEquals(1, fixture.collectionsRepository.addCalls.size)
         fixture.clearAndJoin()
     }
 
@@ -710,42 +707,6 @@ class QuranDataServiceLifecycleTest {
     }
 
     @Test
-    fun `deleteBookmark by local id returns false without triggering sync when nothing is deleted`() =
-        runTest(dispatcher) {
-            val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
-            fixture.bookmarksRepository.deleteResult = false
-            advanceUntilIdle()
-
-            val result = fixture.service.deleteBookmark("bookmark-local-id")
-
-            assertFalse(result)
-            assertEquals(
-                listOf<BookmarkDeleteCall>(BookmarkIdDeleteCall("bookmark-local-id")),
-                fixture.bookmarksRepository.deleteCalls
-            )
-            assertEquals(0, fixture.syncClient.localDataUpdatedCount)
-            fixture.clearAndJoin()
-        }
-
-    @Test
-    fun `deleteBookmark by sura and ayah returns true and triggers sync when deletion succeeds`() =
-        runTest(dispatcher) {
-            val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
-            fixture.bookmarksRepository.deleteResult = true
-            advanceUntilIdle()
-
-            val result = fixture.service.deleteBookmark(2, 255)
-
-            assertTrue(result)
-            assertEquals(
-                listOf<BookmarkDeleteCall>(BookmarkAyahDeleteCall(2, 255)),
-                fixture.bookmarksRepository.deleteCalls
-            )
-            assertEquals(1, fixture.syncClient.localDataUpdatedCount)
-            fixture.clearAndJoin()
-        }
-
-    @Test
     fun `deleteCollection returns false without triggering sync when nothing is deleted`() = runTest(dispatcher) {
         val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
         fixture.collectionsRepository.deleteResult = false
@@ -775,151 +736,6 @@ class QuranDataServiceLifecycleTest {
 
 
     @Test
-    fun `replaceBookmarkCollections returns false without triggering sync when memberships are unchanged`() =
-        runTest(dispatcher) {
-            val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
-            fixture.bookmarksRepository.replaceResult = false
-            advanceUntilIdle()
-
-            val result = fixture.service.replaceBookmarkCollections("bookmark-local-id", listOf("collection-a"))
-
-            assertFalse(result)
-            val call = fixture.bookmarksRepository.replaceCalls.single()
-            assertEquals("bookmark-local-id", call.id)
-            assertEquals(listOf("collection-a"), call.collectionIds)
-            assertNotNull(call.timestamp)
-            assertEquals(0, fixture.syncClient.localDataUpdatedCount)
-            fixture.clearAndJoin()
-        }
-
-    @Test
-    fun `replaceBookmarkCollections returns true and triggers sync when memberships change`() =
-        runTest(dispatcher) {
-            val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
-            fixture.bookmarksRepository.replaceResult = true
-            advanceUntilIdle()
-
-            val result = fixture.service.replaceBookmarkCollections("bookmark-local-id", listOf("collection-a"))
-
-            assertTrue(result)
-            val call = fixture.bookmarksRepository.replaceCalls.single()
-            assertEquals("bookmark-local-id", call.id)
-            assertEquals(listOf("collection-a"), call.collectionIds)
-            assertNotNull(call.timestamp)
-            assertEquals(1, fixture.syncClient.localDataUpdatedCount)
-            fixture.clearAndJoin()
-        }
-
-    @Test
-    fun `replaceBookmarkCollections with timestamp delegates and triggers sync when memberships change`() =
-        runTest(dispatcher) {
-            val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
-            val timestamp = Instant.fromEpochMilliseconds(42).toPlatform()
-            fixture.bookmarksRepository.replaceResult = true
-            advanceUntilIdle()
-
-            val result = fixture.service.replaceBookmarkCollections(
-                id = "bookmark-local-id",
-                collectionIds = listOf("collection-a"),
-                timestamp = timestamp
-            )
-
-            assertTrue(result)
-            assertEquals(
-                listOf(BookmarkCollectionsReplaceCall("bookmark-local-id", listOf("collection-a"), timestamp)),
-                fixture.bookmarksRepository.replaceCalls
-            )
-            assertEquals(1, fixture.syncClient.localDataUpdatedCount)
-            fixture.clearAndJoin()
-        }
-
-    @Test
-    fun `replaceAyahBookmarkCollections returns bookmark and triggers sync only when memberships change`() =
-        runTest(dispatcher) {
-            val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
-            fixture.bookmarksRepository.replaceAyahResultChanged = true
-            advanceUntilIdle()
-
-            val result = fixture.service.replaceAyahBookmarkCollections(2, 255, listOf("collection-a"))
-
-            val call = fixture.bookmarksRepository.replaceAyahCalls.single()
-            val timestamp = assertNotNull(call.timestamp)
-            assertEquals(
-                AyahBookmark(
-                    sura = 2,
-                    ayah = 255,
-                    id = "bookmark-replaced",
-                    lastUpdated = timestamp
-                ),
-                result
-            )
-            assertEquals(2, call.sura)
-            assertEquals(255, call.ayah)
-            assertEquals(listOf("collection-a"), call.collectionIds)
-            assertEquals(1, fixture.syncClient.localDataUpdatedCount)
-            fixture.clearAndJoin()
-        }
-
-    @Test
-    fun `replaceAyahBookmarkCollections returns bookmark without triggering sync when memberships are unchanged`() =
-        runTest(dispatcher) {
-            val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
-            fixture.bookmarksRepository.replaceAyahResultChanged = false
-            advanceUntilIdle()
-
-            val result = fixture.service.replaceAyahBookmarkCollections(2, 255, listOf("collection-a"))
-
-            val call = fixture.bookmarksRepository.replaceAyahCalls.single()
-            val timestamp = assertNotNull(call.timestamp)
-            assertEquals(
-                AyahBookmark(
-                    sura = 2,
-                    ayah = 255,
-                    id = "bookmark-replaced",
-                    lastUpdated = timestamp
-                ),
-                result
-            )
-            assertEquals(2, call.sura)
-            assertEquals(255, call.ayah)
-            assertEquals(listOf("collection-a"), call.collectionIds)
-            assertEquals(0, fixture.syncClient.localDataUpdatedCount)
-            fixture.clearAndJoin()
-        }
-
-    @Test
-    fun `replaceAyahBookmarkCollections with timestamp delegates and skips sync when memberships are unchanged`() =
-        runTest(dispatcher) {
-            val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
-            val timestamp = Instant.fromEpochMilliseconds(42).toPlatform()
-            fixture.bookmarksRepository.replaceAyahResultChanged = false
-            advanceUntilIdle()
-
-            val result = fixture.service.replaceAyahBookmarkCollections(
-                sura = 2,
-                ayah = 255,
-                collectionIds = listOf("collection-a"),
-                timestamp = timestamp
-            )
-
-            assertEquals(
-                AyahBookmark(
-                    sura = 2,
-                    ayah = 255,
-                    id = "bookmark-replaced",
-                    lastUpdated = timestamp
-                ),
-                result
-            )
-            assertEquals(
-                listOf(BookmarkAyahCollectionsReplaceCall(2, 255, listOf("collection-a"), timestamp)),
-                fixture.bookmarksRepository.replaceAyahCalls
-            )
-            assertEquals(0, fixture.syncClient.localDataUpdatedCount)
-            fixture.clearAndJoin()
-        }
-
-    @Test
     fun `reset failure leaves marker active and blocks mutating writes`() = runTest(dispatcher) {
         val resetRepository = ServiceResetRepository(failDelete = true)
         val fixture = quranDataServiceFixture(resetRepository = resetRepository)
@@ -931,7 +747,7 @@ class QuranDataServiceLifecycleTest {
 
         assertEquals(true, fixture.lifecycleStore.snapshot().resetInProgress)
         assertFailsWith<SessionResetInProgressException> {
-            fixture.service.addBookmark(2, 255)
+            fixture.service.addCollection("Blocked")
         }
         fixture.clearAndJoin()
     }
@@ -960,7 +776,7 @@ class QuranDataServiceLifecycleTest {
         assertEquals(0, fixture.authRepository.remoteLogoutAttemptCount)
         assertEquals("access-token", fixture.authRepository.getAccessToken())
         assertFailsWith<SessionResetInProgressException> {
-            fixture.service.addBookmark(2, 255)
+            fixture.service.addCollection("Blocked")
         }
         fixture.clearAndJoin()
     }
@@ -988,9 +804,9 @@ class QuranDataServiceLifecycleTest {
             assertEquals(null, fixture.authService.getAccessToken())
             assertEquals(emptyMap(), fixture.authService.getAuthHeaders())
             assertFailsWith<SessionResetInProgressException> {
-                fixture.service.addBookmark(2, 255)
+                fixture.service.addCollection("Blocked")
             }
-            assertEquals(0, fixture.bookmarksRepository.addCount)
+            assertEquals(0, fixture.collectionsRepository.addCalls.size)
         } finally {
             fixture.authRepository.logoutTokenCaptureCanFinish.complete(Unit)
         }
@@ -998,7 +814,7 @@ class QuranDataServiceLifecycleTest {
         logoutJob.join()
         advanceUntilIdle()
 
-        assertEquals(0, fixture.bookmarksRepository.addCount)
+        assertEquals(0, fixture.collectionsRepository.addCalls.size)
         fixture.clearAndJoin()
     }
 }
@@ -1276,103 +1092,7 @@ private class ServiceImportRepository : PersistenceImportRepository {
         )
 }
 
-private class ServiceBookmarksRepository : BookmarksRepository, BookmarksSynchronizationRepository {
-    var addCount = 0
-    val deleteCalls = mutableListOf<BookmarkDeleteCall>()
-    val replaceCalls = mutableListOf<BookmarkCollectionsReplaceCall>()
-    val replaceAyahCalls = mutableListOf<BookmarkAyahCollectionsReplaceCall>()
-    var deleteResult = true
-    var replaceResult = true
-    var replaceAyahResultChanged = true
-    private val bookmarks = MutableStateFlow<List<AyahBookmark>>(emptyList())
-
-    override suspend fun getAllBookmarks(): List<AyahBookmark> = bookmarks.value
-    override fun getBookmarksFlow(): Flow<List<AyahBookmark>> = bookmarks
-    override suspend fun addBookmark(sura: Int, ayah: Int): AyahBookmark =
-        AyahBookmark(
-            sura = sura,
-            ayah = ayah,
-            id = "bookmark-${++addCount}",
-            lastUpdated = testTimestamp()
-        )
-
-    override suspend fun addBookmark(sura: Int, ayah: Int, timestamp: com.quran.shared.persistence.util.PlatformDateTime): AyahBookmark =
-        addBookmark(sura, ayah)
-
-    override suspend fun addBookmark(sura: Int, ayah: Int, collectionIds: List<String>): AyahBookmark =
-        addBookmark(sura, ayah)
-
-    override suspend fun addBookmark(
-        sura: Int,
-        ayah: Int,
-        collectionIds: List<String>,
-        timestamp: com.quran.shared.persistence.util.PlatformDateTime
-    ): AyahBookmark = addBookmark(sura, ayah)
-
-    override suspend fun replaceBookmarkCollections(
-        id: String,
-        collectionIds: List<String>
-    ): Boolean {
-        replaceCalls += BookmarkCollectionsReplaceCall(id, collectionIds)
-        return replaceResult
-    }
-
-    override suspend fun replaceBookmarkCollections(
-        id: String,
-        collectionIds: List<String>,
-        timestamp: com.quran.shared.persistence.util.PlatformDateTime
-    ): Boolean {
-        replaceCalls += BookmarkCollectionsReplaceCall(id, collectionIds, timestamp)
-        return replaceResult
-    }
-
-    override suspend fun replaceAyahBookmarkCollections(
-        sura: Int,
-        ayah: Int,
-        collectionIds: List<String>
-    ): BookmarkCollectionsReplacementResult {
-        replaceAyahCalls += BookmarkAyahCollectionsReplaceCall(sura, ayah, collectionIds)
-        return BookmarkCollectionsReplacementResult(
-            bookmark = AyahBookmark(
-                sura = sura,
-                ayah = ayah,
-                id = "bookmark-replaced",
-                lastUpdated = testTimestamp()
-            ),
-            changed = replaceAyahResultChanged
-        )
-    }
-
-    override suspend fun replaceAyahBookmarkCollections(
-        sura: Int,
-        ayah: Int,
-        collectionIds: List<String>,
-        timestamp: com.quran.shared.persistence.util.PlatformDateTime
-    ): BookmarkCollectionsReplacementResult {
-        replaceAyahCalls += BookmarkAyahCollectionsReplaceCall(sura, ayah, collectionIds, timestamp)
-        return BookmarkCollectionsReplacementResult(
-            bookmark = AyahBookmark(
-                sura = sura,
-                ayah = ayah,
-                id = "bookmark-replaced",
-                lastUpdated = timestamp
-            ),
-            changed = replaceAyahResultChanged
-        )
-    }
-
-    override suspend fun deleteBookmark(sura: Int, ayah: Int): Boolean {
-        deleteCalls += BookmarkAyahDeleteCall(sura, ayah)
-        return deleteResult
-    }
-    override suspend fun deleteBookmark(bookmark: AyahBookmark): Boolean {
-        deleteCalls += BookmarkModelDeleteCall(bookmark)
-        return deleteResult
-    }
-    override suspend fun deleteBookmark(id: String): Boolean {
-        deleteCalls += BookmarkIdDeleteCall(id)
-        return deleteResult
-    }
+private class ServiceBookmarksRepository : BookmarksSynchronizationRepository {
     override suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<RemoteBookmark>> = emptyList()
     override suspend fun markMutatedBookmarksInFlight(acks: List<LocalMutationAck>): List<LocalMutationAck> = emptyList()
     override suspend fun rollbackMutatedBookmarksInFlight(acks: List<LocalMutationAck>) = Unit
@@ -1385,34 +1105,6 @@ private class ServiceBookmarksRepository : BookmarksRepository, BookmarksSynchro
         remoteIDs.associateWith { false }
     override suspend fun fetchBookmarkByRemoteId(remoteId: String): RemoteBookmark? = null
 }
-
-private data class BookmarkCollectionsReplaceCall(
-    val id: String,
-    val collectionIds: List<String>,
-    val timestamp: PlatformDateTime? = null
-)
-
-private data class BookmarkAyahCollectionsReplaceCall(
-    val sura: Int,
-    val ayah: Int,
-    val collectionIds: List<String>,
-    val timestamp: PlatformDateTime? = null
-)
-
-private sealed interface BookmarkDeleteCall
-
-private data class BookmarkAyahDeleteCall(
-    val sura: Int,
-    val ayah: Int
-) : BookmarkDeleteCall
-
-private data class BookmarkIdDeleteCall(
-    val id: String
-) : BookmarkDeleteCall
-
-private data class BookmarkModelDeleteCall(
-    val bookmark: AyahBookmark
-) : BookmarkDeleteCall
 
 private class ServiceReadingBookmarksRepository : ReadingBookmarksRepository {
     override suspend fun getReadingBookmark(): ReadingBookmark? = null
@@ -1547,15 +1239,6 @@ private class ServiceCollectionBookmarksRepository :
 
     override suspend fun getBookmarksForCollection(collectionId: String): List<CollectionAyahBookmark> =
         bookmarksFlow(collectionId).value
-    override suspend fun addBookmarkToCollection(
-        collectionId: String,
-        bookmark: AyahBookmark
-    ): CollectionAyahBookmark = bookmarkLink(collectionId)
-    override suspend fun addBookmarkToCollection(
-        collectionId: String,
-        bookmark: AyahBookmark,
-        timestamp: com.quran.shared.persistence.util.PlatformDateTime
-    ): CollectionAyahBookmark = bookmarkLink(collectionId)
     override suspend fun addAyahBookmarkToCollection(
         collectionId: String,
         sura: Int,
@@ -1567,7 +1250,6 @@ private class ServiceCollectionBookmarksRepository :
         ayah: Int,
         timestamp: com.quran.shared.persistence.util.PlatformDateTime
     ): CollectionAyahBookmark = bookmarkLink(collectionId)
-    override suspend fun removeBookmarkFromCollection(collectionId: String, bookmark: AyahBookmark): Boolean = true
     override suspend fun removeAyahBookmarkFromCollection(collectionAyahBookmark: CollectionAyahBookmark): Boolean = true
     override fun getBookmarksForCollectionFlow(collectionId: String): Flow<List<CollectionAyahBookmark>> {
         flowRequests += collectionId

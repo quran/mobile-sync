@@ -117,70 +117,6 @@ class CollectionBookmarksRepositoryImpl(
             }
     }
 
-    override suspend fun addBookmarkToCollection(
-        collectionId: String,
-        bookmark: AyahBookmark
-    ): CollectionAyahBookmark {
-        return addBookmarkToCollection(collectionId, bookmark, currentPlatformDateTime())
-    }
-
-    override suspend fun addBookmarkToCollection(
-        collectionId: String,
-        bookmark: AyahBookmark,
-        timestamp: PlatformDateTime
-    ): CollectionAyahBookmark {
-        return addBookmarkToCollectionWithTimestampMillis(
-            collectionId,
-            bookmark,
-            timestamp.toEpochMillisecondsFromPlatform()
-        )
-    }
-
-    private suspend fun addBookmarkToCollectionWithTimestampMillis(
-        collectionId: String,
-        bookmark: AyahBookmark,
-        timestampMillis: Long
-    ): CollectionAyahBookmark {
-        return withContext(Dispatchers.IO) {
-            var created: CollectionAyahBookmark? = null
-            database.transaction {
-                val row = requireNotNull(
-                    bookmarkQueries.value.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOneOrNull()
-                ) { "Bookmark not found for id=${bookmark.id}." }
-
-                val collection = collectionQueries.value
-                    .getCollectionByLocalId(collectionId.toLong())
-                    .executeAsOneOrNull()
-                requireNotNull(collection) { "Collection not found for id=$collectionId." }
-
-                bookmarkCollectionQueries.value.addBookmarkToCollection(
-                    bookmark_local_id = row.local_id,
-                    collection_local_id = collection.local_id,
-                    timestamp = timestampMillis
-                )
-                reconciler.reconcile(timestampMillis)
-                val record = bookmarkCollectionQueries.value
-                    .getCollectionBookmarksForCollectionWithDetails(collection.local_id)
-                    .executeAsList()
-                    .first { it.bookmark_local_id == row.local_id }
-                created = toCollectionBookmark(
-                    bookmarkLocalId = record.bookmark_local_id,
-                    bookmarkRemoteId = record.bookmark_remote_id,
-                    sura = record.sura,
-                    ayah = record.ayah,
-                    collectionLocalId = record.collection_local_id,
-                    collectionRemoteId = record.collection_remote_id,
-                    membershipModifiedAt = record.modified_at,
-                    bookmarkModifiedAt = record.bookmark_last_updated_at,
-                    bookmarkCreatedAt = record.bookmark_added_at,
-                    localId = record.local_id,
-                    logMissingBookmark = true
-                )
-            }
-            requireNotNull(created)
-        }
-    }
-
     override suspend fun addAyahBookmarkToCollection(
         collectionId: String,
         sura: Int,
@@ -254,24 +190,6 @@ class CollectionBookmarksRepositoryImpl(
                 )
             }
             requireNotNull(created)
-        }
-    }
-
-    override suspend fun removeBookmarkFromCollection(
-        collectionId: String,
-        bookmark: AyahBookmark
-    ): Boolean {
-        return withContext(Dispatchers.IO) {
-            val timestampMillis = currentEpochMilliseconds()
-            database.transaction {
-                bookmarkCollectionQueries.value.markBookmarkCollectionDeleted(
-                    bookmark_local_id = bookmark.id.toLong(),
-                    collection_local_id = collectionId.toLong(),
-                    timestamp = timestampMillis
-                )
-                reconciler.reconcile(timestampMillis)
-            }
-            true
         }
     }
 

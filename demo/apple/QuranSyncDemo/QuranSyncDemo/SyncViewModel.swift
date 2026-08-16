@@ -14,7 +14,6 @@ class SyncViewModel: ObservableObject {
     private let authService: SyncAuthService
 
     @Published var authState: AuthState = AuthState.Idle()
-    @Published var bookmarks: [Shared.AyahBookmark] = []
     @Published var readingBookmark: Shared.ReadingBookmark? = nil
     @Published var collectionsWithBookmarks: [Shared.CollectionWithAyahBookmarks] = []
     @Published var notes: [Shared.Note_] = []
@@ -40,21 +39,6 @@ class SyncViewModel: ObservableObject {
                     }
                 } catch {
                     print("SyncViewModel: Error observing authState: \(error)")
-                }
-            }
-            group.addTask { @MainActor [weak self] in
-                guard let quranDataService = self?.quranDataService else {
-                    return
-                }
-                do {
-                    for try await list in asyncSequence(for: quranDataService.bookmarks) {
-                        guard let self = self else {
-                            break
-                        }
-                        self.bookmarks = list as [Shared.AyahBookmark]
-                    }
-                } catch {
-                    print("SyncViewModel: Error observing bookmarks: \(error)")
                 }
             }
             group.addTask { @MainActor [weak self] in
@@ -124,23 +108,6 @@ class SyncViewModel: ObservableObject {
         quranDataService.triggerSync()
     }
 
-    func addBookmark(sura: Int32, ayah: Int32) async -> Shared.AyahBookmark? {
-        do {
-            return try await asyncFunction(for: quranDataService.addBookmark(sura: sura, ayah: ayah))
-        } catch {
-            print("SyncViewModel: Failed to add ayah bookmark: \(error)")
-            return nil
-        }
-    }
-
-    func deleteBookmark(bookmark: Shared.AyahBookmark) async {
-        do {
-            try await asyncFunction(for: quranDataService.deleteBookmark(bookmark: bookmark))
-        } catch {
-            print("SyncViewModel: Failed to delete bookmark: \(error)")
-        }
-    }
-
     func addCollection(name: String) async {
         do {
             try await asyncFunction(for: quranDataService.addCollection(name: name))
@@ -181,32 +148,12 @@ class SyncViewModel: ObservableObject {
         }
     }
 
-    func addBookmarkToCollection(collectionId: String, bookmark: Shared.AyahBookmark) async {
-        do {
-            try await asyncFunction(for: quranDataService.addBookmarkToCollection(collectionId: collectionId, bookmark: bookmark))
-        } catch {
-            print("SyncViewModel: Failed to add bookmark to collection: \(error)")
-        }
-    }
-
-    func removeBookmarkFromCollection(collectionId: String, bookmark: Shared.AyahBookmark) async {
-        do {
-            try await asyncFunction(for: quranDataService.removeBookmarkFromCollection(collectionId: collectionId, bookmark: bookmark))
-        } catch {
-            print("SyncViewModel: Failed to remove bookmark from collection: \(error)")
-        }
-    }
-
     func addAyahBookmarkToCollection(collectionId: String, sura: Int32, ayah: Int32) async {
         do {
             try await asyncFunction(for: quranDataService.addAyahBookmarkToCollection(collectionId: collectionId, sura: sura, ayah: ayah))
         } catch {
             print("SyncViewModel: Failed to add random bookmark to collection: \(error)")
         }
-    }
-
-    func bookmarksForCollection(collectionId: String) -> any AsyncSequence {
-        return asyncSequence(for: quranDataService.getBookmarksForCollectionFlow(collectionId: collectionId))
     }
 
     func login() async throws {
