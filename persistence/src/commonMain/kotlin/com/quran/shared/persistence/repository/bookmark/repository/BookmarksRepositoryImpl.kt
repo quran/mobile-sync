@@ -57,7 +57,10 @@ class BookmarksRepositoryImpl(
         timestamp: PlatformDateTime
     ): BookmarkCollectionsReplacementResult {
         val timestampMillis = timestamp.toEpochMillisecondsFromPlatform()
-        val desiredCollectionIds = normalizeCollectionIds(collectionIds).toSet()
+        val desiredCollectionIds = collectionIds
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .toSet()
         logger.i { "Replacing ayah bookmark collection memberships for $sura:$ayah" }
         return withContext(Dispatchers.IO) {
             var result: BookmarkCollectionsReplacementResult? = null
@@ -148,13 +151,6 @@ class BookmarksRepositoryImpl(
             .executeAsList()
             .map { it.toString() }
             .toSet()
-    }
-
-    private fun normalizeCollectionIds(collectionLocalIds: List<String>): List<String> {
-        return collectionLocalIds
-            .map(String::trim)
-            .filter(String::isNotEmpty)
-            .distinct()
     }
 
     override suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<RemoteBookmark>> {
