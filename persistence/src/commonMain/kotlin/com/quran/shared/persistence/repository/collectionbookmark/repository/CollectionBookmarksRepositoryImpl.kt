@@ -61,6 +61,9 @@ class CollectionBookmarksRepositoryImpl(
         timestamp: PlatformDateTime
     ): AyahHighlight = highlightsRepository.setHighlight(sura, ayah, color, timestamp)
 
+    override suspend fun removeHighlight(sura: Int, ayah: Int): Boolean =
+        removeHighlight(sura, ayah, currentPlatformDateTime())
+
     override suspend fun removeHighlight(
         sura: Int,
         ayah: Int,
