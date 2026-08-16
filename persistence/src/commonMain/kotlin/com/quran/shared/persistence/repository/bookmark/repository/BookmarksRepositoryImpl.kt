@@ -11,12 +11,17 @@ import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.input.RemoteBookmark
+import com.quran.shared.persistence.model.BookmarkCollectionsReplacementResult
 import com.quran.shared.persistence.model.DatabaseBookmark
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
+import com.quran.shared.persistence.repository.bookmark.extension.toAyahBookmark
+import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.QuranData
+import com.quran.shared.persistence.util.currentPlatformDateTime
 import com.quran.shared.persistence.util.fromPlatform
+import com.quran.shared.persistence.util.toEpochMillisecondsFromPlatform
 import com.quran.shared.persistence.util.toPlatform
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -30,11 +35,141 @@ import kotlinx.coroutines.withContext
 class BookmarksRepositoryImpl(
     private val database: QuranDatabase,
     private val reconciler: BookmarkDependencyReconciler = BookmarkDependencyReconciler(database)
-) : BookmarksSynchronizationRepository {
+) : BookmarksRepository, BookmarksSynchronizationRepository {
 
     private val logger = Logger.withTag("BookmarksRepository")
     private val bookmarkQueries = lazy { database.bookmarksQueries }
     private val bookmarkCollectionQueries = lazy { database.bookmark_collectionsQueries }
+    private val collectionQueries = lazy { database.collectionsQueries }
+
+    override suspend fun replaceAyahBookmarkCollections(
+        sura: Int,
+        ayah: Int,
+        collectionIds: List<String>
+    ): BookmarkCollectionsReplacementResult {
+        return replaceAyahBookmarkCollections(sura, ayah, collectionIds, currentPlatformDateTime())
+    }
+
+    override suspend fun replaceAyahBookmarkCollections(
+        sura: Int,
+        ayah: Int,
+        collectionIds: List<String>,
+        timestamp: PlatformDateTime
+    ): BookmarkCollectionsReplacementResult {
+        val timestampMillis = timestamp.toEpochMillisecondsFromPlatform()
+        logger.i { "Replacing ayah bookmark collection memberships for $sura:$ayah" }
+        return withContext(Dispatchers.IO) {
+            var result: BookmarkCollectionsReplacementResult? = null
+            database.transaction {
+                var bookmark = bookmarkQueries.value
+                    .getBookmarkForAyah(sura.toLong(), ayah.toLong())
+                    .executeAsOneOrNull()
+
+                if (bookmark == null || bookmark.deleted == 1L) {
+                    bookmarkQueries.value.upsertAyahBookmark(
+                        remote_id = null,
+                        ayah_id = getAyahId(sura, ayah).toLong(),
+                        sura = sura.toLong(),
+                        ayah = ayah.toLong(),
+                        created_at = timestampMillis,
+                        modified_at = timestampMillis
+                    )
+                    bookmark = requireNotNull(
+                        bookmarkQueries.value.getBookmarkForAyah(sura.toLong(), ayah.toLong()).executeAsOneOrNull()
+                    ) { "Expected ayah bookmark for $sura:$ayah after insert." }
+                }
+
+                val changed = replaceBookmarkCollectionsInTransaction(
+                    bookmark = bookmark,
+                    collectionLocalIds = collectionIds,
+                    timestampMillis = timestampMillis
+                )
+                val replacedBookmark = bookmarkQueries.value
+                    .getBookmarkForAyah(sura.toLong(), ayah.toLong())
+                    .executeAsOne()
+                    .toAyahBookmark()
+                result = BookmarkCollectionsReplacementResult(replacedBookmark, changed)
+            }
+            requireNotNull(result)
+        }
+    }
+
+    private fun replaceBookmarkCollectionsInTransaction(
+        bookmark: DatabaseBookmark,
+        collectionLocalIds: List<String>,
+        timestampMillis: Long
+    ): Boolean {
+        require(bookmark.bookmark_type == "AYAH") {
+            "Expected ayah bookmark localId=${bookmark.local_id} before replacing collections."
+        }
+        val desiredCollectionIds = normalizeCollectionIds(collectionLocalIds).toSet()
+        val currentCollectionIds = bookmark.currentCollectionIds()
+        if (currentCollectionIds == desiredCollectionIds) {
+            return false
+        }
+
+        val idsToAdd = desiredCollectionIds
+            .map { collectionLocalId ->
+                val collection = collectionQueries.value
+                    .getCollectionByLocalId(collectionLocalId.toLong())
+                    .executeAsOneOrNull()
+                require(collection?.deleted == 0L) { "Collection not found for localId=$collectionLocalId." }
+                collection.local_id
+            }
+            .toSet()
+        val currentIds = currentCollectionIds.map(String::toLong).toSet()
+
+        if (currentCollectionIds.isEmpty()) {
+            val sura = requireNotNull(bookmark.sura).toInt()
+            val ayah = requireNotNull(bookmark.ayah).toInt()
+            bookmarkQueries.value.upsertAyahBookmark(
+                remote_id = null,
+                ayah_id = getAyahId(sura, ayah).toLong(),
+                sura = sura.toLong(),
+                ayah = ayah.toLong(),
+                created_at = timestampMillis,
+                modified_at = timestampMillis
+            )
+        }
+        (idsToAdd - currentIds).forEach { collectionLocalId ->
+            bookmarkCollectionQueries.value.addBookmarkToCollection(
+                bookmark_local_id = bookmark.local_id,
+                collection_local_id = collectionLocalId,
+                timestamp = timestampMillis
+            )
+        }
+        (currentIds - idsToAdd).forEach { collectionLocalId ->
+            bookmarkCollectionQueries.value.markBookmarkCollectionDeleted(
+                bookmark_local_id = bookmark.local_id,
+                collection_local_id = collectionLocalId,
+                timestamp = timestampMillis
+            )
+        }
+        reconciler.reconcile(timestampMillis)
+        return true
+    }
+
+    private fun DatabaseBookmark.currentCollectionIds(): Set<String> {
+        return bookmarkCollectionQueries.value
+            .getActiveCollectionLocalIdsForBookmark(local_id)
+            .executeAsList()
+            .map { it.toString() }
+            .toSet()
+    }
+
+    private fun normalizeCollectionIds(collectionLocalIds: List<String>): List<String> {
+        val nonBlankIds = collectionLocalIds
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .distinct()
+        return nonBlankIds.ifEmpty {
+            val defaultCollection = requireNotNull(
+                collectionQueries.value.getDefaultCollection().executeAsOneOrNull()
+            ) { "Default collection is not available." }
+            listOf(defaultCollection.local_id.toString())
+        }
+    }
+
     override suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<RemoteBookmark>> {
         return withContext(Dispatchers.IO) {
             bookmarkQueries.value.getUnsyncedBookmarkRows()

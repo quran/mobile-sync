@@ -9,6 +9,7 @@ import dev.zacsweers.metro.ContributesTo
 import dev.zacsweers.metro.Provides
 import dev.zacsweers.metro.SingleIn
 
+import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepository
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepositoryImpl
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksSynchronizationRepository
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepository
@@ -43,6 +44,9 @@ abstract class PersistenceModule {
             return makeDatabase(driverFactory)
         }
     }
+
+    @Binds
+    abstract fun bindBookmarksRepository(impl: BookmarksRepositoryImpl): BookmarksRepository
 
     @Binds
     abstract fun bindBookmarksSynchronizationRepository(impl: BookmarksRepositoryImpl): BookmarksSynchronizationRepository

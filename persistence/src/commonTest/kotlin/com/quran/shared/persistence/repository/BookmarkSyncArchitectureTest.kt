@@ -287,6 +287,30 @@ class BookmarkSyncArchitectureTest {
     }
 
     @Test
+    fun `replaceAyahBookmarkCollections with timestamp applies timestamp when creating missing bookmark`() = runTest {
+        val collectionId = createCollection("ReplaceAyahTimestamp", "remote-replace-ayah-timestamp")
+        val timestamp = at(4300)
+
+        val result = bookmarksRepository.replaceAyahBookmarkCollections(
+            sura = 2,
+            ayah = 14,
+            collectionIds = listOf(collectionId),
+            timestamp = timestamp
+        )
+
+        val row = database.bookmarksQueries.getBookmarkByLocalId(result.bookmark.id.toLong()).executeAsOne()
+        val link = database.bookmark_collectionsQueries
+            .getCollectionBookmarkFor(result.bookmark.id.toLong(), collectionId.toLong())
+            .executeAsOne()
+        assertTrue(result.changed)
+        assertEquals(4300L, row.created_at)
+        assertEquals(4300L, row.modified_at)
+        assertEquals(4300L, row.bookmark_modified_at)
+        assertEquals(4300L, link.created_at)
+        assertEquals(4300L, link.modified_at)
+    }
+
+    @Test
     fun `add page reading bookmark stores reading facet`() = runTest {
         val bookmark = readingRepository.addPageReadingBookmark(42)
 

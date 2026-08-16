@@ -11,6 +11,7 @@ import com.quran.shared.auth.service.AuthService
 import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.PersistenceImportResult
+import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.AyahHighlight
 import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.model.AyahReadingBookmark
@@ -22,6 +23,7 @@ import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.repository.PersistenceResetRepository
+import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepository
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepository
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepository
 import com.quran.shared.persistence.repository.importdata.PersistenceImportRepository
@@ -148,6 +150,7 @@ class QuranDataService internal constructor(
 
     // Cast the synchronization repository to the transactional repository.
     // This keeps QuranDataService as the single app-facing data entry point.
+    private val bookmarksRepository = pipeline.bookmarksRepository as BookmarksRepository
     private val readingBookmarksRepository = pipeline.readingBookmarksRepository
     private val collectionsRepository = pipeline.collectionsRepository as CollectionsRepository
     private val collectionBookmarksRepository =
@@ -408,6 +411,35 @@ class QuranDataService internal constructor(
                 triggerSync()
             }
             removed
+        }
+    }
+
+    @NativeCoroutines
+    suspend fun replaceAyahBookmarkCollections(
+        sura: Int,
+        ayah: Int,
+        collectionIds: List<String>
+    ): AyahBookmark {
+        return replaceAyahBookmarkCollections(sura, ayah, collectionIds, currentPlatformDateTime())
+    }
+
+    /**
+     * Creates an ayah bookmark if needed, then replaces its saved collection memberships with an
+     * explicit mutation timestamp and schedules sync only when memberships changed.
+     */
+    @NativeCoroutines
+    suspend fun replaceAyahBookmarkCollections(
+        sura: Int,
+        ayah: Int,
+        collectionIds: List<String>,
+        timestamp: PlatformDateTime
+    ): AyahBookmark {
+        return mutatingCall("Failed to replace ayah bookmark collection memberships", triggerAfter = false) {
+            val result = bookmarksRepository.replaceAyahBookmarkCollections(sura, ayah, collectionIds, timestamp)
+            if (result.changed) {
+                triggerSync()
+            }
+            result.bookmark
         }
     }
 
