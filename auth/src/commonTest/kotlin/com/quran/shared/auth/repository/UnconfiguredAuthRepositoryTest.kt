@@ -8,9 +8,11 @@ import com.russhwolf.settings.MapSettings
 import com.russhwolf.settings.coroutines.toSuspendSettings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import org.publicvalue.multiplatform.oidc.tokenstore.TokenStore
+import org.publicvalue.multiplatform.oidc.types.remote.AccessTokenResponse
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -115,21 +117,18 @@ class UnconfiguredAuthRepositoryTest {
         )
 }
 
+@Suppress("OVERRIDE_DEPRECATION")
 private class UnconfiguredRecordingTokenStore : TokenStore() {
-    private val accessTokenState = MutableStateFlow<String?>(null)
-    private val refreshTokenState = MutableStateFlow<String?>(null)
-    private val idTokenState = MutableStateFlow<String?>(null)
+    private val tokenResponseState = MutableStateFlow<AccessTokenResponse?>(null)
 
-    var accessToken: String? = null
-        private set
-    var refreshToken: String? = null
-        private set
-    var idToken: String? = null
-        private set
+    val accessToken: String? get() = tokenResponseState.value?.access_token
+    val refreshToken: String? get() = tokenResponseState.value?.refresh_token
+    val idToken: String? get() = tokenResponseState.value?.id_token
 
-    override val accessTokenFlow: StateFlow<String?> = accessTokenState
-    override val refreshTokenFlow: StateFlow<String?> = refreshTokenState
-    override val idTokenFlow: StateFlow<String?> = idTokenState
+    override val accessTokenFlow = tokenResponseState.map { it?.access_token }
+    override val refreshTokenFlow = tokenResponseState.map { it?.refresh_token }
+    override val idTokenFlow = tokenResponseState.map { it?.id_token }
+    override val tokenResponseFlow: StateFlow<AccessTokenResponse?> = tokenResponseState
 
     override suspend fun getAccessToken(): String? = accessToken
 
@@ -137,27 +136,13 @@ private class UnconfiguredRecordingTokenStore : TokenStore() {
 
     override suspend fun getIdToken(): String? = idToken
 
-    override suspend fun removeAccessToken() {
-        accessToken = null
-        accessTokenState.value = null
+    override suspend fun getTokenResponse(): AccessTokenResponse? = tokenResponseState.value
+
+    override suspend fun removeTokens() {
+        tokenResponseState.value = null
     }
 
-    override suspend fun removeRefreshToken() {
-        refreshToken = null
-        refreshTokenState.value = null
-    }
-
-    override suspend fun removeIdToken() {
-        idToken = null
-        idTokenState.value = null
-    }
-
-    override suspend fun saveTokens(accessToken: String, refreshToken: String?, idToken: String?) {
-        this.accessToken = accessToken
-        this.refreshToken = refreshToken
-        this.idToken = idToken
-        accessTokenState.value = accessToken
-        refreshTokenState.value = refreshToken
-        idTokenState.value = idToken
+    override suspend fun saveTokens(tokens: AccessTokenResponse) {
+        tokenResponseState.value = tokens
     }
 }

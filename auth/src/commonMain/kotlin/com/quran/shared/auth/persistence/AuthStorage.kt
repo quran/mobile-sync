@@ -14,13 +14,14 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import org.publicvalue.multiplatform.oidc.tokenstore.TokenStore
+import org.publicvalue.multiplatform.oidc.types.remote.AccessTokenResponse
 
 /**
  * Persists authentication token material and non-secret session metadata across app restarts.
  *
- * OAuth tokens are stored through [TokenStore] so each platform can use its secure storage
- * implementation. Metadata such as expiry, scope, and cached profile data remains outside the
- * token store because the OIDC token-store API intentionally owns only token material.
+ * The OIDC token response is stored through [TokenStore] so each platform can use its secure
+ * storage implementation. App-specific commit markers, normalized expiry, scope, and cached
+ * profile data remain in settings.
  */
 @SingleIn(AppScope::class)
 @HiddenFromObjC
@@ -127,9 +128,9 @@ class AuthStorage @Inject constructor(
         tokenResponse: TokenResponse,
         preserveExistingTokens: Boolean
     ) {
-        val previousAccessToken = tokenStore.getAccessToken()
-        val previousRefreshToken = tokenStore.getRefreshToken()
-        val previousIdToken = tokenStore.getIdToken()
+        // OIDC 0.18 stores tokens as one record. A single snapshot keeps preservation and rollback
+        // on the same version if another token-store implementation updates the record atomically.
+        val previousTokens = tokenStore.getTokenResponse()
         val previousScope = settings.getStringOrNull(KEY_SCOPE)
         val previousExpiration = settings.getLongOrNull(KEY_TOKEN_EXPIRATION)
         val previousRetrievedAt = settings.getLongOrNull(KEY_TOKEN_RETRIEVED_AT)
@@ -146,9 +147,9 @@ class AuthStorage @Inject constructor(
                 currentTimeMillis() + (tokenResponse.expiresIn * 1000)
             }
             val refreshToken = tokenResponse.refreshToken
-                ?: if (preserveExistingTokens) tokenStore.getRefreshToken() else null
+                ?: if (preserveExistingTokens) previousTokens?.refresh_token else null
             val idToken = tokenResponse.idToken
-                ?: if (preserveExistingTokens) tokenStore.getIdToken() else null
+                ?: if (preserveExistingTokens) previousTokens?.id_token else null
 
             tokenStore.saveTokens(
                 accessToken = tokenResponse.accessToken,
@@ -160,9 +161,7 @@ class AuthStorage @Inject constructor(
             settings.putLong(KEY_TOKEN_RETRIEVED_AT, currentTimeMillis())
         } catch (e: Exception) {
             rollbackTokenWrite(
-                accessToken = previousAccessToken,
-                refreshToken = previousRefreshToken,
-                idToken = previousIdToken,
+                tokens = previousTokens,
                 scope = previousScope,
                 expiration = previousExpiration,
                 retrievedAt = previousRetrievedAt,
@@ -193,9 +192,7 @@ class AuthStorage @Inject constructor(
         }
 
         attempt { clearTokenCommitMetadata() }
-        attempt { tokenStore.removeAccessToken() }
-        attempt { tokenStore.removeRefreshToken() }
-        attempt { tokenStore.removeIdToken() }
+        attempt { tokenStore.removeTokens() }
         attempt { clearSessionMetadata() }
 
         failure?.let { throw it }
@@ -209,21 +206,11 @@ class AuthStorage @Inject constructor(
         settings.putLong(KEY_TOKEN_WRITE_GENERATION, writeGenerationBase + 1)
     }
 
-    private suspend fun restoreTokens(
-        accessToken: String?,
-        refreshToken: String?,
-        idToken: String?
-    ) {
-        if (accessToken == null) {
-            tokenStore.removeAccessToken()
-            tokenStore.removeRefreshToken()
-            tokenStore.removeIdToken()
+    private suspend fun restoreTokens(tokens: AccessTokenResponse?) {
+        if (tokens == null) {
+            tokenStore.removeTokens()
         } else {
-            tokenStore.saveTokens(
-                accessToken = accessToken,
-                refreshToken = refreshToken,
-                idToken = idToken
-            )
+            tokenStore.saveTokens(tokens)
         }
     }
 
@@ -250,9 +237,7 @@ class AuthStorage @Inject constructor(
     }
 
     private suspend fun rollbackTokenWrite(
-        accessToken: String?,
-        refreshToken: String?,
-        idToken: String?,
+        tokens: AccessTokenResponse?,
         scope: String?,
         expiration: Long?,
         retrievedAt: Long?,
@@ -260,7 +245,7 @@ class AuthStorage @Inject constructor(
     ) {
         try {
             withContext(NonCancellable) {
-                restoreTokens(accessToken, refreshToken, idToken)
+                restoreTokens(tokens)
                 restoreTokenMetadata(
                     scope = scope,
                     expiration = expiration,
