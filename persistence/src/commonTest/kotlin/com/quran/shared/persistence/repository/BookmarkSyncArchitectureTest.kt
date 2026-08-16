@@ -15,6 +15,7 @@ import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.RemoteBookmark
 import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.input.RemoteCollectionBookmark
+import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
@@ -26,6 +27,7 @@ import com.quran.shared.persistence.repository.readingbookmark.repository.Readin
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.toPlatform
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -298,9 +300,10 @@ class BookmarkSyncArchitectureTest {
             timestamp = timestamp
         )
 
-        val row = database.bookmarksQueries.getBookmarkByLocalId(result.bookmark.id.toLong()).executeAsOne()
+        val bookmark = assertNotNull(result.bookmark)
+        val row = database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOne()
         val link = database.bookmark_collectionsQueries
-            .getCollectionBookmarkFor(result.bookmark.id.toLong(), collectionId.toLong())
+            .getCollectionBookmarkFor(bookmark.id.toLong(), collectionId.toLong())
             .executeAsOne()
         assertTrue(result.changed)
         assertEquals(4300L, row.created_at)
@@ -308,6 +311,123 @@ class BookmarkSyncArchitectureTest {
         assertEquals(4300L, row.bookmark_modified_at)
         assertEquals(4300L, link.created_at)
         assertEquals(4300L, link.modified_at)
+    }
+
+    @Test
+    fun `empty collection replacement removes an existing saved bookmark`() = runTest {
+        val collectionId = createCollection("RemoveWithEmptyReplacement", "remote-remove-with-empty-replacement")
+        collectionBookmarksRepository.addAyahBookmarkToCollection(collectionId, 2, 15, at(100))
+
+        val result = bookmarksRepository.replaceAyahBookmarkCollections(
+            sura = 2,
+            ayah = 15,
+            collectionIds = emptyList(),
+            timestamp = at(200)
+        )
+
+        assertTrue(result.changed)
+        assertNull(result.bookmark)
+        assertNull(database.bookmarksQueries.getBookmarkForAyah(2L, 15L).executeAsOneOrNull())
+        assertEquals(0L, database.bookmark_collectionsQueries.countAll().executeAsOne())
+    }
+
+    @Test
+    fun `empty collection replacement does nothing when bookmark is missing`() = runTest {
+        val result = bookmarksRepository.replaceAyahBookmarkCollections(
+            sura = 2,
+            ayah = 16,
+            collectionIds = emptyList(),
+            timestamp = at(200)
+        )
+
+        assertFalse(result.changed)
+        assertNull(result.bookmark)
+        assertNull(database.bookmarksQueries.getBookmarkForAyah(2L, 16L).executeAsOneOrNull())
+        assertEquals(0L, database.bookmark_collectionsQueries.countAll().executeAsOne())
+    }
+
+    @Test
+    fun `empty collection replacement preserves reading bookmark facet`() = runTest {
+        val collectionId = createCollection("PreserveReadingWithEmpty", "remote-preserve-reading-with-empty")
+        readingRepository.addAyahReadingBookmark(2, 17, at(100))
+        collectionBookmarksRepository.addAyahBookmarkToCollection(collectionId, 2, 17, at(100))
+
+        val result = bookmarksRepository.replaceAyahBookmarkCollections(
+            sura = 2,
+            ayah = 17,
+            collectionIds = emptyList(),
+            timestamp = at(200)
+        )
+
+        val row = database.bookmarksQueries.getBookmarkForAyah(2L, 17L).executeAsOne()
+        assertTrue(result.changed)
+        assertNull(result.bookmark)
+        assertEquals(1L, row.is_reading)
+        assertEquals(0L, database.bookmark_collectionsQueries.countActiveForBookmark(row.local_id).executeAsOne())
+    }
+
+    @Test
+    fun `collection replacement preserves highlight membership`() = runTest {
+        val firstCollectionId = createCollection("ReplacePreserveHighlightFirst", "remote-replace-highlight-first")
+        val secondCollectionId = createCollection("ReplacePreserveHighlightSecond", "remote-replace-highlight-second")
+        collectionBookmarksRepository.setHighlight(2, 18, AyahHighlightColor.GREEN, at(100))
+        collectionBookmarksRepository.addAyahBookmarkToCollection(firstCollectionId, 2, 18, at(100))
+
+        val result = bookmarksRepository.replaceAyahBookmarkCollections(
+            sura = 2,
+            ayah = 18,
+            collectionIds = listOf(secondCollectionId),
+            timestamp = at(200)
+        )
+
+        val bookmark = database.bookmarksQueries.getBookmarkForAyah(2L, 18L).executeAsOne()
+        val highlightCollection = database.collectionsQueries
+            .getCollectionByName(AyahHighlightColor.GREEN.collectionName)
+            .executeAsOne()
+        assertTrue(result.changed)
+        assertNotNull(result.bookmark)
+        assertEquals(
+            setOf(highlightCollection.local_id, secondCollectionId.toLong()),
+            database.bookmark_collectionsQueries
+                .getActiveCollectionLocalIdsForBookmark(bookmark.local_id)
+                .executeAsList()
+                .toSet()
+        )
+        assertEquals(
+            AyahHighlightColor.GREEN,
+            collectionBookmarksRepository.getHighlightsFlow().first().single().color
+        )
+    }
+
+    @Test
+    fun `empty collection replacement preserves highlight membership`() = runTest {
+        val collectionId = createCollection("RemovePreserveHighlight", "remote-remove-preserve-highlight")
+        collectionBookmarksRepository.setHighlight(2, 19, AyahHighlightColor.PURPLE, at(100))
+        collectionBookmarksRepository.addAyahBookmarkToCollection(collectionId, 2, 19, at(100))
+
+        val result = bookmarksRepository.replaceAyahBookmarkCollections(
+            sura = 2,
+            ayah = 19,
+            collectionIds = emptyList(),
+            timestamp = at(200)
+        )
+
+        val bookmark = database.bookmarksQueries.getBookmarkForAyah(2L, 19L).executeAsOne()
+        val highlightCollection = database.collectionsQueries
+            .getCollectionByName(AyahHighlightColor.PURPLE.collectionName)
+            .executeAsOne()
+        assertTrue(result.changed)
+        assertNull(result.bookmark)
+        assertEquals(
+            listOf(highlightCollection.local_id),
+            database.bookmark_collectionsQueries
+                .getActiveCollectionLocalIdsForBookmark(bookmark.local_id)
+                .executeAsList()
+        )
+        assertEquals(
+            AyahHighlightColor.PURPLE,
+            collectionBookmarksRepository.getHighlightsFlow().first().single().color
+        )
     }
 
     @Test

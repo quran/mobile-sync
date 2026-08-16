@@ -92,6 +92,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
@@ -831,13 +832,15 @@ class QuranDataServiceLifecycleTest {
 
         val changedCall = fixture.bookmarksRepository.replaceAyahCalls.single()
         val generatedTimestamp = assertNotNull(changedCall.timestamp)
-        assertEquals(AyahBookmark(2, 255, "bookmark-replaced", generatedTimestamp), changed)
+        assertEquals(AyahBookmark(2, 255, "bookmark-replaced", generatedTimestamp), changed.bookmark)
+        assertTrue(changed.changed)
         assertEquals(1, fixture.syncClient.localDataUpdatedCount)
 
         fixture.bookmarksRepository.replaceAyahResultChanged = false
         val unchanged = fixture.service.replaceAyahBookmarkCollections(2, 255, listOf("collection-a"))
 
-        assertEquals("bookmark-replaced", unchanged.id)
+        assertEquals("bookmark-replaced", unchanged.bookmark?.id)
+        assertFalse(unchanged.changed)
         assertEquals(2, fixture.bookmarksRepository.replaceAyahCalls.size)
         assertEquals(1, fixture.syncClient.localDataUpdatedCount)
         fixture.clearAndJoin()
@@ -857,11 +860,26 @@ class QuranDataServiceLifecycleTest {
             timestamp = timestamp
         )
 
-        assertEquals(AyahBookmark(2, 255, "bookmark-replaced", timestamp), result)
+        assertEquals(AyahBookmark(2, 255, "bookmark-replaced", timestamp), result.bookmark)
+        assertFalse(result.changed)
         assertEquals(
             listOf(BookmarkAyahCollectionsReplaceCall(2, 255, listOf("collection-a"), timestamp)),
             fixture.bookmarksRepository.replaceAyahCalls
         )
+        assertEquals(0, fixture.syncClient.localDataUpdatedCount)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `empty replacement returns no change and skips sync when bookmark is missing`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+        fixture.bookmarksRepository.replaceAyahResultChanged = false
+        advanceUntilIdle()
+
+        val result = fixture.service.replaceAyahBookmarkCollections(2, 255, emptyList())
+
+        assertNull(result.bookmark)
+        assertFalse(result.changed)
         assertEquals(0, fixture.syncClient.localDataUpdatedCount)
         fixture.clearAndJoin()
     }
@@ -1167,7 +1185,11 @@ private class ServiceBookmarksRepository : BookmarksRepository, BookmarksSynchro
     ): BookmarkCollectionsReplacementResult {
         replaceAyahCalls += BookmarkAyahCollectionsReplaceCall(sura, ayah, collectionIds, timestamp)
         return BookmarkCollectionsReplacementResult(
-            bookmark = AyahBookmark(sura, ayah, "bookmark-replaced", timestamp),
+            bookmark = if (collectionIds.isEmpty()) {
+                null
+            } else {
+                AyahBookmark(sura, ayah, "bookmark-replaced", timestamp)
+            },
             changed = replaceAyahResultChanged
         )
     }
