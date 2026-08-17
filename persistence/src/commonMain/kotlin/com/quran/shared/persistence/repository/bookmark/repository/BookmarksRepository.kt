@@ -10,7 +10,8 @@ interface BookmarksRepository {
      *
      * Non-empty memberships create the bookmark if needed. Empty memberships remove the saved
      * bookmark, or do nothing when it does not exist. Highlight collection memberships are always
-     * preserved and excluded from replacement.
+     * preserved and excluded from replacement. The first transition from no saved memberships to
+     * at least one updates the bookmark modification time without changing its creation time.
      */
     @NativeCoroutines
     suspend fun replaceAyahBookmarkCollections(
@@ -25,7 +26,9 @@ interface BookmarksRepository {
      *
      * Non-empty memberships create the bookmark if needed. Empty memberships remove the saved
      * bookmark, or do nothing when it does not exist. Highlight collection memberships are always
-     * preserved and excluded from replacement.
+     * preserved and excluded from replacement. The first transition from no saved memberships to
+     * at least one uses [timestamp] as the bookmark modification time without changing the creation
+     * time of an existing row.
      */
     @NativeCoroutines
     suspend fun replaceAyahBookmarkCollections(

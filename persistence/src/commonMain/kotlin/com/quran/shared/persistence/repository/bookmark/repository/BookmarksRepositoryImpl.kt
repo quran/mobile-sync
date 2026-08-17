@@ -17,6 +17,7 @@ import com.quran.shared.persistence.model.highlightColorForCollectionName
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
+import com.quran.shared.persistence.repository.bookmark.activeSavedCollectionIdsForBookmark
 import com.quran.shared.persistence.repository.bookmark.extension.toAyahBookmark
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.currentPlatformDateTime
@@ -69,6 +70,7 @@ class BookmarksRepositoryImpl(
                 var bookmark = bookmarkQueries.value
                     .getBookmarkForAyah(sura.toLong(), ayah.toLong())
                     .executeAsOneOrNull()
+                val hadActiveBookmark = bookmark?.deleted == 0L
 
                 if (bookmark == null || bookmark.deleted == 1L) {
                     if (desiredSavedCollectionIds.isEmpty()) {
@@ -87,15 +89,31 @@ class BookmarksRepositoryImpl(
                     ) { "Expected ayah bookmark for $sura:$ayah after insert." }
                 }
 
+                val currentSavedCollectionIds = database.activeSavedCollectionIdsForBookmark(bookmark.local_id)
+                // Highlight and reading facets can create the row before it becomes an app-facing
+                // saved bookmark. Preserve that creation time while stamping the first save.
+                if (hadActiveBookmark &&
+                    currentSavedCollectionIds.isEmpty() &&
+                    desiredSavedCollectionIds.isNotEmpty()
+                ) {
+                    bookmarkQueries.value.touchBookmarkForFirstSavedMembership(
+                        local_id = bookmark.local_id,
+                        modified_at = timestampMillis
+                    )
+                }
                 val changed = replaceBookmarkCollectionsInTransaction(
                     bookmark = bookmark,
+                    currentCollectionIds = currentSavedCollectionIds,
                     desiredCollectionIds = desiredSavedCollectionIds,
                     timestampMillis = timestampMillis
                 )
                 val replacedBookmark = if (desiredSavedCollectionIds.isEmpty()) {
                     null
                 } else {
-                    bookmark.toAyahBookmark()
+                    bookmarkQueries.value
+                        .getBookmarkByLocalId(bookmark.local_id)
+                        .executeAsOne()
+                        .toAyahBookmark()
                 }
                 result = BookmarkCollectionsReplacementResult(replacedBookmark, changed)
             }
@@ -105,13 +123,13 @@ class BookmarksRepositoryImpl(
 
     private fun replaceBookmarkCollectionsInTransaction(
         bookmark: DatabaseBookmark,
+        currentCollectionIds: Set<Long>,
         desiredCollectionIds: Set<Long>,
         timestampMillis: Long
     ): Boolean {
         require(bookmark.bookmark_type == "AYAH") {
             "Expected ayah bookmark localId=${bookmark.local_id} before replacing collections."
         }
-        val currentCollectionIds = bookmark.currentSavedCollectionIds()
         if (currentCollectionIds == desiredCollectionIds) {
             return false
         }
@@ -142,19 +160,6 @@ class BookmarksRepositoryImpl(
             require(collection?.deleted == 0L) { "Collection not found for localId=$collectionLocalId." }
             collection.local_id.takeUnless { highlightColorForCollectionName(collection.name) != null }
         }.toSet()
-    }
-
-    private fun DatabaseBookmark.currentSavedCollectionIds(): Set<Long> {
-        return bookmarkCollectionQueries.value
-            .getActiveCollectionLocalIdsForBookmark(local_id)
-            .executeAsList()
-            .filterNot { collectionLocalId ->
-                val collection = collectionQueries.value
-                    .getCollectionByLocalId(collectionLocalId)
-                    .executeAsOne()
-                highlightColorForCollectionName(collection.name) != null
-            }
-            .toSet()
     }
 
     override suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<RemoteBookmark>> {
