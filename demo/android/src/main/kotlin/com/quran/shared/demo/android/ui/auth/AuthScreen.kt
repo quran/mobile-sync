@@ -31,7 +31,7 @@ fun AuthScreen(
     onAuthenticationSuccess: () -> Unit = {}
 ) {
     val authState by viewModel.authState.collectAsState()
-    val readingBookmark by viewModel.readingBookmark.collectAsState(initial = null)
+    val readingBookmarks by viewModel.readingBookmarks.collectAsState(initial = emptyList())
     val collectionsWithBookmarks by viewModel.collectionsWithBookmarks.collectAsState(initial = emptyList())
     val notes by viewModel.notes.collectAsState(initial = emptyList())
     val readingSessions by viewModel.readingSessions.collectAsState(initial = emptyList())
@@ -105,7 +105,7 @@ fun AuthScreen(
                                 userInfo = null,
                                 signedIn = false,
                                 statusMessage = "Signed out. Local changes are available before sign-in.",
-                                readingBookmark = readingBookmark,
+                                readingBookmarks = readingBookmarks,
                                 collectionsWithBookmarks = collectionsWithBookmarks,
                                 notes = notes,
                                 readingSessions = readingSessions
@@ -118,7 +118,7 @@ fun AuthScreen(
                             userInfo = null,
                             signedIn = false,
                             statusMessage = "OAuth credentials are not configured for this build.",
-                            readingBookmark = readingBookmark,
+                            readingBookmarks = readingBookmarks,
                             collectionsWithBookmarks = collectionsWithBookmarks,
                             notes = notes,
                             readingSessions = readingSessions
@@ -137,7 +137,7 @@ fun AuthScreen(
                         userInfo = state.userInfo,
                         signedIn = true,
                         statusMessage = null,
-                        readingBookmark = readingBookmark,
+                        readingBookmarks = readingBookmarks,
                         collectionsWithBookmarks = collectionsWithBookmarks,
                         notes = notes,
                         readingSessions = readingSessions
@@ -172,7 +172,7 @@ private fun LocalDataContent(
     userInfo: UserInfo?,
     signedIn: Boolean,
     statusMessage: String?,
-    readingBookmark: ReadingBookmark?,
+    readingBookmarks: List<ReadingBookmark>,
     collectionsWithBookmarks: List<CollectionWithAyahBookmarks>,
     notes: List<Note>,
     readingSessions: List<ReadingSession>
@@ -181,32 +181,32 @@ private fun LocalDataContent(
         userInfo = userInfo,
         signedIn = signedIn,
         statusMessage = statusMessage,
-        readingBookmark = readingBookmark,
+        readingBookmarks = readingBookmarks,
         collectionsWithBookmarks = collectionsWithBookmarks,
         notes = notes,
-        onAddReadingAyahBookmark = {
+        onSetReadingAyahBookmark = { slot ->
             val sura = getRandomSura()
             val ayah = getRandomAyah(sura)
             eventScope.launch {
                 try {
-                    viewModel.addAyahReadingBookmark(sura, ayah)
+                    viewModel.setAyahReadingBookmark(slot, sura, ayah)
                 } catch (e: Exception) {
                 }
             }
         },
-        onAddReadingPageBookmark = {
+        onSetReadingPageBookmark = { slot ->
             val page = getRandomPage()
             eventScope.launch {
                 try {
-                    viewModel.addPageReadingBookmark(page)
+                    viewModel.setPageReadingBookmark(slot, page)
                 } catch (e: Exception) {
                 }
             }
         },
-        onDeleteReadingBookmark = {
+        onClearReadingBookmark = { slot ->
             eventScope.launch {
                 try {
-                    viewModel.deleteReadingBookmark()
+                    viewModel.clearReadingBookmark(slot)
                 } catch (e: Exception) {
                 }
             }
@@ -288,12 +288,12 @@ private fun DataContent(
     userInfo: UserInfo?,
     signedIn: Boolean,
     statusMessage: String?,
-    readingBookmark: ReadingBookmark?,
+    readingBookmarks: List<ReadingBookmark>,
     collectionsWithBookmarks: List<CollectionWithAyahBookmarks>,
     notes: List<Note>,
-    onAddReadingAyahBookmark: () -> Unit,
-    onAddReadingPageBookmark: () -> Unit,
-    onDeleteReadingBookmark: () -> Unit,
+    onSetReadingAyahBookmark: (Int) -> Unit,
+    onSetReadingPageBookmark: (Int) -> Unit,
+    onClearReadingBookmark: (Int) -> Unit,
     onAddCollection: (String) -> Unit,
     onDeleteCollection: (String) -> Unit,
     onAddNote: (String) -> Unit,
@@ -374,10 +374,10 @@ private fun DataContent(
         Box(modifier = Modifier.weight(1f)) {
             when (selectedTab) {
                 0 -> BookmarksTab(
-                    readingBookmark = readingBookmark,
-                    onAddReadingAyahBookmark = onAddReadingAyahBookmark,
-                    onAddReadingPageBookmark = onAddReadingPageBookmark,
-                    onDeleteReadingBookmark = onDeleteReadingBookmark
+                    readingBookmarks = readingBookmarks,
+                    onSetReadingAyahBookmark = onSetReadingAyahBookmark,
+                    onSetReadingPageBookmark = onSetReadingPageBookmark,
+                    onClearReadingBookmark = onClearReadingBookmark
                 )
 
                 1 -> CollectionsTab(

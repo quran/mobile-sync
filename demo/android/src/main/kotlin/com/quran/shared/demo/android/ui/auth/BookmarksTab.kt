@@ -10,59 +10,47 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.quran.shared.persistence.model.AyahReadingBookmark
+import com.quran.shared.persistence.model.EmptyReadingBookmark
 import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
 
 @Composable
 fun BookmarksTab(
-    readingBookmark: ReadingBookmark?,
-    onAddReadingAyahBookmark: () -> Unit,
-    onAddReadingPageBookmark: () -> Unit,
-    onDeleteReadingBookmark: () -> Unit
+    readingBookmarks: List<ReadingBookmark>,
+    onSetReadingAyahBookmark: (Int) -> Unit,
+    onSetReadingPageBookmark: (Int) -> Unit,
+    onClearReadingBookmark: (Int) -> Unit
 ) {
     Column {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Your Bookmarks",
-                style = MaterialTheme.typography.titleLarge
-            )
-            
-            Row {
-                IconButton(onClick = onAddReadingAyahBookmark) {
-                    Icon(
-                        imageVector = Icons.Default.Bookmark,
-                        contentDescription = "Add Reading Ayah Bookmark",
-                        tint = MaterialTheme.colorScheme.tertiaryContainer
-                    )
-                }
-                IconButton(onClick = onAddReadingPageBookmark) {
-                    Icon(
-                        imageVector = Icons.Default.Bookmark,
-                        contentDescription = "Add Reading Page Bookmark",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-        }
+        Text(
+            text = "Your Reading Bookmarks",
+            style = MaterialTheme.typography.titleLarge
+        )
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        ReadingBookmarkCard(
-            readingBookmark = readingBookmark,
-            onDeleteReadingBookmark = onDeleteReadingBookmark
-        )
+        (1..3).forEach { slot ->
+            ReadingBookmarkCard(
+                slot = slot,
+                readingBookmark = readingBookmarks.firstOrNull { it.slot == slot },
+                onSetReadingAyahBookmark = { onSetReadingAyahBookmark(slot) },
+                onSetReadingPageBookmark = { onSetReadingPageBookmark(slot) },
+                onClearReadingBookmark = { onClearReadingBookmark(slot) }
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+        }
     }
 }
 
 @Composable
 private fun ReadingBookmarkCard(
+    slot: Int,
     readingBookmark: ReadingBookmark?,
-    onDeleteReadingBookmark: () -> Unit
+    onSetReadingAyahBookmark: () -> Unit,
+    onSetReadingPageBookmark: () -> Unit,
+    onClearReadingBookmark: () -> Unit
 ) {
+    val locationText = readingBookmark?.displayText()
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.small,
@@ -75,10 +63,10 @@ private fun ReadingBookmarkCard(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Current Reading Bookmark",
+                    text = "Slot $slot${readingBookmark?.name?.let { ": $it" } ?: ""}",
                     style = MaterialTheme.typography.labelLarge
                 )
-                if (readingBookmark == null) {
+                if (locationText == null) {
                     Text(
                         text = "No reading bookmark set.",
                         style = MaterialTheme.typography.bodyMedium,
@@ -86,14 +74,28 @@ private fun ReadingBookmarkCard(
                     )
                 } else {
                     Text(
-                        text = readingBookmark.displayText(),
+                        text = locationText,
                         style = MaterialTheme.typography.bodyLarge
                     )
                 }
             }
 
-            if (readingBookmark != null) {
-                IconButton(onClick = onDeleteReadingBookmark) {
+            IconButton(onClick = onSetReadingAyahBookmark) {
+                Icon(
+                    imageVector = Icons.Default.Bookmark,
+                    contentDescription = "Set slot $slot to an ayah",
+                    tint = MaterialTheme.colorScheme.tertiary
+                )
+            }
+            IconButton(onClick = onSetReadingPageBookmark) {
+                Icon(
+                    imageVector = Icons.Default.Bookmark,
+                    contentDescription = "Set slot $slot to a page",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+            if (locationText != null) {
+                IconButton(onClick = onClearReadingBookmark) {
                     Icon(
                         imageVector = Icons.Default.Delete,
                         contentDescription = "Delete Reading Bookmark",
@@ -105,9 +107,10 @@ private fun ReadingBookmarkCard(
     }
 }
 
-private fun ReadingBookmark.displayText(): String {
+private fun ReadingBookmark.displayText(): String? {
     return when (this) {
         is AyahReadingBookmark -> "Surah $sura, Ayah $ayah"
         is PageReadingBookmark -> "Page $page"
+        is EmptyReadingBookmark -> null
     }
 }

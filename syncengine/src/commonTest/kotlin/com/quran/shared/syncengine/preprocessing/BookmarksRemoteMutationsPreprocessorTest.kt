@@ -37,12 +37,12 @@ class BookmarksRemoteMutationsPreprocessorTest {
         val preprocessor = BookmarksRemoteMutationsPreprocessor(checkLocalExistence)
         val remoteMutations = listOf(
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("new-1", 10, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("new-1", 10, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "new-1",
                 mutation = Mutation.CREATED
             ),
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("new-2", 20, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("new-2", 20, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "new-2",
                 mutation = Mutation.CREATED
             )
@@ -65,12 +65,12 @@ class BookmarksRemoteMutationsPreprocessorTest {
         val preprocessor = BookmarksRemoteMutationsPreprocessor(checkLocalExistence)
         val remoteMutations = listOf(
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("existing-1", 10, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("existing-1", 10, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "existing-1",
                 mutation = Mutation.DELETED
             ),
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("non-existent-1", 20, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("non-existent-1", 20, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "non-existent-1",
                 mutation = Mutation.DELETED
             )
@@ -92,12 +92,12 @@ class BookmarksRemoteMutationsPreprocessorTest {
         val preprocessor = BookmarksRemoteMutationsPreprocessor(checkLocalExistence)
         val remoteMutations = listOf(
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("existing-1", 10, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("existing-1", 10, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "existing-1",
                 mutation = Mutation.MODIFIED
             ),
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("non-existent-1", 20, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("non-existent-1", 20, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "non-existent-1",
                 mutation = Mutation.MODIFIED
             )
@@ -124,12 +124,12 @@ class BookmarksRemoteMutationsPreprocessorTest {
         val preprocessor = BookmarksRemoteMutationsPreprocessor(checkLocalExistence)
         val remoteMutations = listOf(
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("existing-1", 10, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("existing-1", 10, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "existing-1",
                 mutation = Mutation.MODIFIED
             ),
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("existing-2", 20, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("existing-2", 20, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "existing-2",
                 mutation = Mutation.MODIFIED
             )
@@ -162,7 +162,7 @@ class BookmarksRemoteMutationsPreprocessorTest {
         )
         val remoteMutations = listOf<RemoteModelMutation<SyncBookmark>>(
             RemoteModelMutation(
-                model = PageBookmark("remote-bookmark-id", 10, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("remote-bookmark-id", 10, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "remote-bookmark-id",
                 mutation = Mutation.MODIFIED,
                 ack = ack
@@ -185,12 +185,12 @@ class BookmarksRemoteMutationsPreprocessorTest {
         val preprocessor = BookmarksRemoteMutationsPreprocessor(checkLocalExistence)
         val remoteMutations = listOf(
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("new-1", 10, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("new-1", 10, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "new-1",
                 mutation = Mutation.CREATED
             ),
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("new-2", 20, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("new-2", 20, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "new-2",
                 mutation = Mutation.CREATED
             )
@@ -214,29 +214,29 @@ class BookmarksRemoteMutationsPreprocessorTest {
         val remoteMutations = listOf(
             // CREATED mutations (should be kept)
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("new-1", 10, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("new-1", 10, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "new-1",
                 mutation = Mutation.CREATED
             ),
             // DELETE mutations (should be filtered based on existence)
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("existing-1", 20, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("existing-1", 20, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "existing-1",
                 mutation = Mutation.DELETED
             ),
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("non-existent-1", 30, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("non-existent-1", 30, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "non-existent-1",
                 mutation = Mutation.DELETED
             ),
             // MODIFIED mutations (should ALL be converted to CREATED, regardless of existence)
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("existing-2", 40, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("existing-2", 40, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "existing-2",
                 mutation = Mutation.MODIFIED
             ),
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("non-existent-2", 50, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("non-existent-2", 50, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "non-existent-2",
                 mutation = Mutation.MODIFIED
             )
@@ -271,12 +271,12 @@ class BookmarksRemoteMutationsPreprocessorTest {
         val preprocessor = BookmarksRemoteMutationsPreprocessor(checkLocalExistence)
         val remoteMutations = listOf(
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("any-id", 10, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("any-id", 10, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "any-id",
                 mutation = Mutation.DELETED
             ),
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("any-id-2", 20, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("any-id-2", 20, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "any-id-2",
                 mutation = Mutation.MODIFIED
             )
@@ -299,17 +299,17 @@ class BookmarksRemoteMutationsPreprocessorTest {
         val preprocessor = BookmarksRemoteMutationsPreprocessor(checkLocalExistence)
         val remoteMutations = listOf(
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("existing-1", 10, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("existing-1", 10, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "existing-1",
                 mutation = Mutation.DELETED
             ),
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("new-1", 20, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("new-1", 20, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "new-1",
                 mutation = Mutation.CREATED
             ),
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("existing-2", 30, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("existing-2", 30, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "existing-2",
                 mutation = Mutation.MODIFIED
             )
@@ -340,27 +340,27 @@ class BookmarksRemoteMutationsPreprocessorTest {
         // Create mutations in a specific order
         val remoteMutations = listOf(
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("non-existent-1", 30, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("non-existent-1", 30, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "non-existent-1",
                 mutation = Mutation.DELETED
             ),
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("new-1", 20, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("new-1", 20, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "new-1",
                 mutation = Mutation.CREATED
             ),
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("existing-1", 10, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("existing-1", 10, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "existing-1",
                 mutation = Mutation.DELETED
             ),
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("existing-3", 40, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("existing-3", 40, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "existing-3",
                 mutation = Mutation.MODIFIED
             ),
             RemoteModelMutation<SyncBookmark>(
-                model = PageBookmark("new-2", 50, isReading = false, lastModified = Instant.fromEpochMilliseconds(1000)),
+                model = PageBookmark("new-2", 50, lastModified = Instant.fromEpochMilliseconds(1000)),
                 remoteID = "new-2",
                 mutation = Mutation.CREATED
             )

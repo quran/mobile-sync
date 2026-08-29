@@ -3,11 +3,9 @@ package com.quran.shared.demo.android.ui
 import androidx.lifecycle.ViewModel
 import com.quran.shared.pipeline.SyncAuthService
 import com.quran.shared.pipeline.QuranDataService
-import com.quran.shared.persistence.model.AyahReadingBookmark
 import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.model.CollectionWithAyahBookmarks
 import com.quran.shared.persistence.model.Note
-import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingSession
 import kotlinx.coroutines.flow.Flow
@@ -21,7 +19,7 @@ class SyncViewModel(
     val authState: StateFlow<com.quran.shared.auth.model.AuthState> = service.authState
     val isAuthenticationConfigured: Boolean = authService.isAuthenticationConfigured
     
-    val readingBookmark: Flow<ReadingBookmark?> = service.readingBookmark
+    val readingBookmarks: Flow<List<ReadingBookmark>> = service.readingBookmarks
     
     val collectionsWithBookmarks: Flow<List<CollectionWithAyahBookmarks>> =
         service.collectionsWithBookmarks
@@ -53,16 +51,16 @@ class SyncViewModel(
         service.triggerSync()
     }
 
-    suspend fun addAyahReadingBookmark(sura: Int, ayah: Int): AyahReadingBookmark {
-        return service.addAyahReadingBookmark(sura, ayah)
+    suspend fun setAyahReadingBookmark(slot: Int, sura: Int, ayah: Int): ReadingBookmark {
+        return service.setAyahReadingBookmark(slot, sura, ayah)
     }
 
-    suspend fun addPageReadingBookmark(page: Int): PageReadingBookmark {
-        return service.addPageReadingBookmark(page)
+    suspend fun setPageReadingBookmark(slot: Int, page: Int): ReadingBookmark {
+        return service.setPageReadingBookmark(slot, page)
     }
 
-    suspend fun deleteReadingBookmark() {
-        service.deleteReadingBookmark()
+    suspend fun clearReadingBookmark(slot: Int) {
+        service.clearReadingBookmark(slot)
     }
 
     suspend fun addCollection(name: String) {

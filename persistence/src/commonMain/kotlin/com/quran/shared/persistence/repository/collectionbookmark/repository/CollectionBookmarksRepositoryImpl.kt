@@ -905,8 +905,7 @@ class CollectionBookmarksRepositoryImpl(
     }
 
     private fun DatabaseBookmark.matches(bookmark: RemoteCollectionBookmark.Ayah): Boolean {
-        return bookmark_type == "AYAH" &&
-            sura == bookmark.sura.toLong() &&
+        return sura == bookmark.sura.toLong() &&
             ayah == bookmark.ayah.toLong()
     }
 
@@ -922,8 +921,8 @@ class CollectionBookmarksRepositoryImpl(
 
     /**
      * Releases an old remote identity only for an unambiguous same-ayah replacement whose parent
-     * is retained exclusively by local highlight links. Reading, saved, remote-backed, and
-     * non-highlight pending facets keep ownership and leave the mismatched-ID guard in force.
+     * is retained exclusively by local highlight links. Saved, remote-backed, and non-highlight
+     * pending facets keep ownership and leave the mismatched-ID guard in force.
      */
     private fun releaseRemoteIdentityForLocalHighlightReplacement(
         bookmarkLocalId: Long,
@@ -960,14 +959,10 @@ class CollectionBookmarksRepositoryImpl(
             .executeAsOneOrNull()
             ?: return
         if (bookmark.remote_id != oldRemoteId ||
-            bookmark.bookmark_type != "AYAH" ||
             bookmark.sura != deletedBookmark.sura.toLong() ||
             bookmark.ayah != deletedBookmark.ayah.toLong() ||
             bookmark.deleted != 0L ||
-            bookmark.is_reading != 0L ||
-            bookmark.reading_modified_at != null ||
-            bookmark.bookmark_pending_op != null ||
-            bookmark.reading_pending_op != null
+            bookmark.bookmark_pending_op != null
         ) {
             return
         }

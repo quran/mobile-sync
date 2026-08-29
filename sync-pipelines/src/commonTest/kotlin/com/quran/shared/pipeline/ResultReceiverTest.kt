@@ -5,11 +5,16 @@ package com.quran.shared.pipeline
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.input.RemoteBookmark
+import com.quran.shared.persistence.input.LocalSyncReadingBookmark
+import com.quran.shared.persistence.input.RemoteReadingBookmark
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksSynchronizationRepository
+import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksSynchronizationRepository
 import com.quran.shared.syncengine.SyncOperationInvalidatedException
 import com.quran.shared.syncengine.model.SyncBookmark
+import com.quran.shared.syncengine.model.SyncReadingBookmark
+import com.quran.shared.syncengine.model.SyncReadingBookmarkLocation
 import com.russhwolf.settings.MapSettings
 import com.russhwolf.settings.coroutines.toSuspendSettings
 import kotlinx.coroutines.test.runTest
@@ -49,13 +54,10 @@ class ResultReceiverTest {
     }
 
     @Test
-    fun `page reading bookmark mutations are routed to unified bookmarks repository`() = runTest {
-        val readingUpdates = mutableListOf<RemoteModelMutation<RemoteBookmark>>()
-        val receiver = ResultReceiver(
-            bookmarksRepository = RecordingBookmarksRepository(
-                events = mutableListOf(),
-                remoteUpdates = readingUpdates
-            ),
+    fun `page reading bookmark mutations are routed to reading bookmarks repository`() = runTest {
+        val readingUpdates = mutableListOf<RemoteModelMutation<RemoteReadingBookmark>>()
+        val receiver = ReadingBookmarksResultReceiver(
+            repository = RecordingReadingBookmarksRepository(readingUpdates),
             callback = object : SyncEngineCallback {
                 override suspend fun synchronizationDone(newLastModificationDate: Long) = Unit
                 override suspend fun encounteredError(errorMsg: String) = Unit
@@ -67,10 +69,10 @@ class ResultReceiverTest {
             newToken = 11L,
             newRemoteMutations = listOf(
                 RemoteModelMutation(
-                    model = SyncBookmark.PageBookmark(
-                        id = "remote-page-reading",
-                        page = 42,
-                        isReading = true,
+                    model = SyncReadingBookmark(
+                        slot = 2,
+                        name = "Resume",
+                        location = SyncReadingBookmarkLocation.Page(page = 42),
                         lastModified = Instant.fromEpochMilliseconds(1000),
                         createdAt = createdAt
                     ),
@@ -81,9 +83,10 @@ class ResultReceiverTest {
             processedLocalMutations = emptyList()
         )
 
-        val model = readingUpdates.single().model as RemoteBookmark.Page
+        val model = readingUpdates.single().model
+        assertEquals(2, model.slot)
         assertEquals(42, model.page)
-        assertEquals(true, model.isReading)
+        assertEquals("PAGE", model.type)
         assertEquals(createdAt, model.createdAt?.fromPlatform())
     }
 
@@ -156,6 +159,27 @@ class ResultReceiverTest {
 
         assertEquals(7L, store.localLastModificationDate())
     }
+}
+
+private class RecordingReadingBookmarksRepository(
+    private val remoteUpdates: MutableList<RemoteModelMutation<RemoteReadingBookmark>>
+) : ReadingBookmarksSynchronizationRepository {
+    override suspend fun fetchMutatedReadingBookmarks(): List<LocalModelMutation<LocalSyncReadingBookmark>> =
+        emptyList()
+
+    override suspend fun applyRemoteChanges(
+        updatesToPersist: List<RemoteModelMutation<RemoteReadingBookmark>>,
+        localMutationsToClear: List<LocalModelMutation<LocalSyncReadingBookmark>>,
+        writeBoundaryGuard: PersistenceWriteBoundaryGuard
+    ) {
+        writeBoundaryGuard.checkWriteBoundary()
+        remoteUpdates += updatesToPersist
+    }
+
+    override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
+        remoteIDs.associateWith { false }
+
+    override suspend fun fetchReadingBookmarkByRemoteId(remoteId: String): RemoteReadingBookmark? = null
 }
 
 private class RecordingBookmarksRepository(

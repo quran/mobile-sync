@@ -24,11 +24,13 @@ import com.quran.shared.persistence.input.LocalSyncCollection
 import com.quran.shared.persistence.input.LocalSyncCollectionAyahBookmark
 import com.quran.shared.persistence.input.LocalSyncNote
 import com.quran.shared.persistence.input.LocalSyncReadingSession
+import com.quran.shared.persistence.input.LocalSyncReadingBookmark
 import com.quran.shared.persistence.input.RemoteBookmark
 import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.input.RemoteNote
 import com.quran.shared.persistence.input.RemoteReadingSession
+import com.quran.shared.persistence.input.RemoteReadingBookmark
 import com.quran.shared.persistence.di.PersistenceModule
 import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.AyahHighlight
@@ -36,6 +38,7 @@ import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.model.AyahReadingBookmark
 import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.model.CollectionAyahBookmark
+import com.quran.shared.persistence.model.EmptyReadingBookmark
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
@@ -53,6 +56,7 @@ import com.quran.shared.persistence.repository.importdata.PersistenceImportRepos
 import com.quran.shared.persistence.repository.note.repository.NotesRepository
 import com.quran.shared.persistence.repository.note.repository.NotesSynchronizationRepository
 import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksRepository
+import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksSynchronizationRepository
 import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepository
 import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsSynchronizationRepository
 import com.quran.shared.persistence.util.PlatformDateTime
@@ -911,6 +915,7 @@ private class QuranDataServiceFixture(
     private val pipeline = SyncEnginePipeline(
         bookmarksRepository = bookmarksRepository,
         readingBookmarksRepository = readingBookmarksRepository,
+        readingBookmarksSynchronizationRepository = readingBookmarksRepository,
         collectionsRepository = collectionsRepository,
         collectionBookmarksRepository = collectionBookmarksRepository,
         notesRepository = notesRepository,
@@ -1153,7 +1158,6 @@ private class ServiceImportRepository : PersistenceImportRepository {
             collectionsImported = 0,
             collectionBookmarksImported = 0,
             readingSessionsImported = 0,
-            readingBookmarkImported = false,
             notesImported = 0
         )
 }
@@ -1207,23 +1211,46 @@ private class ServiceBookmarksRepository : BookmarksRepository, BookmarksSynchro
     override suspend fun fetchBookmarkByRemoteId(remoteId: String): RemoteBookmark? = null
 }
 
-private class ServiceReadingBookmarksRepository : ReadingBookmarksRepository {
-    override suspend fun getReadingBookmark(): ReadingBookmark? = null
-    override fun getReadingBookmarkFlow(): Flow<ReadingBookmark?> = MutableStateFlow(null)
-    override suspend fun addAyahReadingBookmark(sura: Int, ayah: Int): AyahReadingBookmark =
-        AyahReadingBookmark(sura, ayah, testTimestamp(), "reading-ayah")
-    override suspend fun addAyahReadingBookmark(
+private class ServiceReadingBookmarksRepository :
+    ReadingBookmarksRepository,
+    ReadingBookmarksSynchronizationRepository {
+    override suspend fun getReadingBookmarks(): List<ReadingBookmark> = emptyList()
+    override fun getReadingBookmarksFlow(): Flow<List<ReadingBookmark>> = MutableStateFlow(emptyList())
+    override suspend fun setAyahReadingBookmark(slot: Int, sura: Int, ayah: Int): ReadingBookmark =
+        AyahReadingBookmark(sura, ayah, testTimestamp(), "reading-ayah-$slot", slot)
+    override suspend fun setAyahReadingBookmark(
+        slot: Int,
         sura: Int,
         ayah: Int,
-        timestamp: com.quran.shared.persistence.util.PlatformDateTime
-    ): AyahReadingBookmark = addAyahReadingBookmark(sura, ayah)
-    override suspend fun addPageReadingBookmark(page: Int): PageReadingBookmark =
-        PageReadingBookmark(page, testTimestamp(), "reading-page")
-    override suspend fun addPageReadingBookmark(
+        timestamp: PlatformDateTime
+    ): ReadingBookmark = AyahReadingBookmark(sura, ayah, timestamp, "reading-ayah-$slot", slot)
+    override suspend fun setPageReadingBookmark(slot: Int, page: Int): ReadingBookmark =
+        PageReadingBookmark(page, testTimestamp(), "reading-page-$slot", slot)
+    override suspend fun setPageReadingBookmark(
+        slot: Int,
         page: Int,
-        timestamp: com.quran.shared.persistence.util.PlatformDateTime
-    ): PageReadingBookmark = addPageReadingBookmark(page)
-    override suspend fun deleteReadingBookmark(): Boolean = true
+        timestamp: PlatformDateTime
+    ): ReadingBookmark = PageReadingBookmark(page, timestamp, "reading-page-$slot", slot)
+    override suspend fun renameReadingBookmark(slot: Int, name: String?): ReadingBookmark =
+        EmptyReadingBookmark(slot, name, testTimestamp(), "reading-$slot")
+    override suspend fun renameReadingBookmark(
+        slot: Int,
+        name: String?,
+        timestamp: PlatformDateTime
+    ): ReadingBookmark = EmptyReadingBookmark(slot, name, timestamp, "reading-$slot")
+    override suspend fun clearReadingBookmark(slot: Int): ReadingBookmark =
+        EmptyReadingBookmark(slot, null, testTimestamp(), "reading-$slot")
+    override suspend fun clearReadingBookmark(slot: Int, timestamp: PlatformDateTime): ReadingBookmark =
+        EmptyReadingBookmark(slot, null, timestamp, "reading-$slot")
+    override suspend fun fetchMutatedReadingBookmarks(): List<LocalModelMutation<LocalSyncReadingBookmark>> = emptyList()
+    override suspend fun applyRemoteChanges(
+        updatesToPersist: List<RemoteModelMutation<RemoteReadingBookmark>>,
+        localMutationsToClear: List<LocalModelMutation<LocalSyncReadingBookmark>>,
+        writeBoundaryGuard: PersistenceWriteBoundaryGuard
+    ) = writeBoundaryGuard.checkWriteBoundary()
+    override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
+        remoteIDs.associateWith { false }
+    override suspend fun fetchReadingBookmarkByRemoteId(remoteId: String): RemoteReadingBookmark? = null
 }
 
 private data class CollectionUpdateCall(

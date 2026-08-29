@@ -39,7 +39,6 @@ class SyncMutationTimestampTest {
                 id = "local-bookmark",
                 sura = 2,
                 ayah = 255,
-                isReading = false,
                 createdAt = Instant.fromEpochMilliseconds(1_000),
                 lastModified = Instant.fromEpochMilliseconds(2_345)
             ),
@@ -204,7 +203,6 @@ class SyncMutationTimestampTest {
                         put("type", "ayah")
                         put("key", 2)
                         put("verseNumber", 255)
-                        put("isReading", false)
                     },
                     timestamp = 9_999
                 )

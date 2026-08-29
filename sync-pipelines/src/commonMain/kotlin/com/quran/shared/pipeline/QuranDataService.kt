@@ -13,13 +13,11 @@ import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.PersistenceImportResult
 import com.quran.shared.persistence.model.AyahHighlight
 import com.quran.shared.persistence.model.AyahHighlightColor
-import com.quran.shared.persistence.model.AyahReadingBookmark
 import com.quran.shared.persistence.model.BookmarkCollectionsReplacementResult
 import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.model.CollectionWithAyahBookmarks
 import com.quran.shared.persistence.model.Note
-import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.repository.PersistenceResetRepository
@@ -165,7 +163,7 @@ class QuranDataService internal constructor(
     val highlights: Flow<List<AyahHighlight>> get() = collectionBookmarksRepository.getHighlightsFlow()
 
     @NativeCoroutines
-    val readingBookmark: Flow<ReadingBookmark?> get() = readingBookmarksRepository.getReadingBookmarkFlow()
+    val readingBookmarks: Flow<List<ReadingBookmark>> get() = readingBookmarksRepository.getReadingBookmarksFlow()
 
     /**
      * Flow of all collections with their bookmarks for the UI to observe.
@@ -448,28 +446,59 @@ class QuranDataService internal constructor(
     }
 
     @NativeCoroutines
-    suspend fun addAyahReadingBookmark(sura: Int, ayah: Int): AyahReadingBookmark {
-        return addAyahReadingBookmark(sura, ayah, currentPlatformDateTime())
+    suspend fun setAyahReadingBookmark(
+        slot: Int,
+        sura: Int,
+        ayah: Int
+    ): ReadingBookmark = setAyahReadingBookmark(slot, sura, ayah, currentPlatformDateTime())
+
+    @NativeCoroutines
+    suspend fun setAyahReadingBookmark(
+        slot: Int,
+        sura: Int,
+        ayah: Int,
+        timestamp: PlatformDateTime
+    ): ReadingBookmark = mutatingCall("Failed to set reading ayah bookmark") {
+        readingBookmarksRepository.setAyahReadingBookmark(slot, sura, ayah, timestamp)
     }
 
     @NativeCoroutines
-    suspend fun addAyahReadingBookmark(sura: Int, ayah: Int, timestamp: PlatformDateTime): AyahReadingBookmark {
-        return mutatingCall("Failed to add reading ayah bookmark") {
-            readingBookmarksRepository.addAyahReadingBookmark(sura, ayah, timestamp)
+    suspend fun setPageReadingBookmark(slot: Int, page: Int): ReadingBookmark =
+        setPageReadingBookmark(slot, page, currentPlatformDateTime())
+
+    @NativeCoroutines
+    suspend fun setPageReadingBookmark(
+        slot: Int,
+        page: Int,
+        timestamp: PlatformDateTime
+    ): ReadingBookmark =
+        mutatingCall("Failed to set reading page bookmark") {
+            readingBookmarksRepository.setPageReadingBookmark(slot, page, timestamp)
         }
-    }
 
     @NativeCoroutines
-    suspend fun addPageReadingBookmark(page: Int): PageReadingBookmark {
-        return addPageReadingBookmark(page, currentPlatformDateTime())
-    }
+    suspend fun renameReadingBookmark(slot: Int, name: String?): ReadingBookmark =
+        renameReadingBookmark(slot, name, currentPlatformDateTime())
 
     @NativeCoroutines
-    suspend fun addPageReadingBookmark(page: Int, timestamp: PlatformDateTime): PageReadingBookmark {
-        return mutatingCall("Failed to add reading page bookmark") {
-            readingBookmarksRepository.addPageReadingBookmark(page, timestamp)
+    suspend fun renameReadingBookmark(
+        slot: Int,
+        name: String?,
+        timestamp: PlatformDateTime
+    ): ReadingBookmark =
+        mutatingCall("Failed to rename reading bookmark") {
+            readingBookmarksRepository.renameReadingBookmark(slot, name, timestamp)
         }
-    }
+
+    @NativeCoroutines
+    suspend fun clearReadingBookmark(slot: Int): ReadingBookmark =
+        clearReadingBookmark(slot, currentPlatformDateTime())
+
+    @NativeCoroutines
+    suspend fun clearReadingBookmark(slot: Int, timestamp: PlatformDateTime): ReadingBookmark =
+        mutatingCall("Failed to clear reading bookmark") {
+            readingBookmarksRepository.clearReadingBookmark(slot, timestamp)
+        }
 
     @NativeCoroutines
     suspend fun addReadingSession(sura: Int, ayah: Int): ReadingSession {
@@ -516,17 +545,6 @@ class QuranDataService internal constructor(
     suspend fun deleteReadingSession(sura: Int, ayah: Int): Boolean {
         return mutatingCall("Failed to delete reading session", triggerAfter = false) {
             val deleted = readingSessionsRepository.deleteReadingSession(sura, ayah)
-            if (deleted) {
-                triggerSync()
-            }
-            deleted
-        }
-    }
-
-    @NativeCoroutines
-    suspend fun deleteReadingBookmark(): Boolean {
-        return mutatingCall("Failed to delete current reading bookmark", triggerAfter = false) {
-            val deleted = readingBookmarksRepository.deleteReadingBookmark()
             if (deleted) {
                 triggerSync()
             }

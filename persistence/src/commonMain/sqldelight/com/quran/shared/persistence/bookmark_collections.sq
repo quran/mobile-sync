@@ -57,9 +57,7 @@ countRetainedForBookmark:
           SELECT 1 FROM bookmark b
           WHERE b.local_id = bookmark_collection.bookmark_local_id
             AND b.deleted = 1
-            AND b.is_reading = 0
             AND b.bookmark_pending_op IS NULL
-            AND b.reading_pending_op IS NULL
         )
       )
     );
@@ -84,10 +82,8 @@ getCollectionBookmarksWithDetails:
     c.remote_id AS collection_remote_id,
     c.name AS collection_name,
     b.remote_id AS bookmark_remote_id,
-    b.bookmark_type AS bookmark_type,
     b.sura AS sura,
     b.ayah AS ayah,
-    b.page AS page,
     b.bookmark_modified_at AS bookmark_last_updated_at,
     b.created_at AS bookmark_added_at
   FROM bookmark_collection bc
@@ -113,10 +109,8 @@ getCollectionBookmarksForCollectionWithDetails:
     c.remote_id AS collection_remote_id,
     c.name AS collection_name,
     b.remote_id AS bookmark_remote_id,
-    b.bookmark_type AS bookmark_type,
     b.sura AS sura,
     b.ayah AS ayah,
-    b.page AS page,
     b.bookmark_modified_at AS bookmark_last_updated_at,
     b.created_at AS bookmark_added_at
   FROM bookmark_collection bc
@@ -143,10 +137,8 @@ getUnsyncedCollectionBookmarksWithDetails:
     c.remote_id AS collection_remote_id,
     c.name AS collection_name,
     b.remote_id AS bookmark_remote_id,
-    b.bookmark_type AS bookmark_type,
     b.sura AS sura,
-    b.ayah AS ayah,
-    b.page AS page
+    b.ayah AS ayah
   FROM bookmark_collection bc
   JOIN collection c ON c.local_id = bc.collection_local_id
   JOIN bookmark b ON b.local_id = bc.bookmark_local_id
@@ -201,10 +193,8 @@ getCollectionBookmarkWithDetailsByRemoteId:
     c.remote_id AS collection_remote_id,
     c.name AS collection_name,
     b.remote_id AS bookmark_remote_id,
-    b.bookmark_type AS bookmark_type,
     b.sura AS sura,
-    b.ayah AS ayah,
-    b.page AS page
+    b.ayah AS ayah
   FROM bookmark_collection bc
   JOIN collection c ON c.local_id = bc.collection_local_id
   JOIN bookmark b ON b.local_id = bc.bookmark_local_id
@@ -474,9 +464,7 @@ deleteInactiveClearedLinks:
         SELECT 1 FROM bookmark b
         WHERE b.local_id = bookmark_collection.bookmark_local_id
           AND b.deleted = 1
-          AND b.is_reading = 0
           AND b.bookmark_pending_op IS NULL
-          AND b.reading_pending_op IS NULL
       )
     );
 
@@ -489,9 +477,7 @@ deleteRetiredInactiveClearedLinksForBookmark:
       SELECT 1 FROM bookmark b
       WHERE b.local_id = :bookmark_local_id
         AND b.deleted = 1
-        AND b.is_reading = 0
         AND b.bookmark_pending_op IS NULL
-        AND b.reading_pending_op IS NULL
     );
 
 deleteLinksForInactiveParents:

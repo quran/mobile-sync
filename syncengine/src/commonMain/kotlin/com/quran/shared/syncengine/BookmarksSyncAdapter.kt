@@ -1,11 +1,7 @@
 package com.quran.shared.syncengine
 
 import co.touchlab.kermit.Logger
-import com.quran.shared.mutations.LOCAL_MUTATION_BOOKMARK_READING_FACET
 import com.quran.shared.mutations.LocalModelMutation
-import com.quran.shared.mutations.LocalMutationAck
-import com.quran.shared.mutations.LocalMutationResource
-import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.syncengine.conflict.ConflictDetector
 import com.quran.shared.syncengine.conflict.ConflictResolutionResult
@@ -135,12 +131,8 @@ internal class BookmarksSyncAdapter(
         private val localMutationsToPush: List<LocalModelMutation<SyncBookmark>>
     ) : ResourceSyncPlan {
         override val resourceName: String = this@BookmarksSyncAdapter.resourceName
-        private var localMutationsToPushForCompletion = localMutationsToPush
-        private var localMutationsToClearForCompletion = localMutationsToClear
-        private var markedInFlightAcks: List<LocalMutationAck> = emptyList()
-
         override suspend fun mutationsToPush(): List<SyncMutation> =
-            localMutationsToPushForCompletion.map {
+            localMutationsToPush.map {
                 it.toSyncMutation(
                     resourceName = resourceName,
                     resourceData = SyncBookmark::toResourceData,
@@ -149,39 +141,15 @@ internal class BookmarksSyncAdapter(
                 )
             }
 
-        override suspend fun markMutationsInFlight() {
-            markedInFlightAcks = configurations.localDataFetcher.markLocalMutationsInFlight(localMutationsToPush)
-            val markedAckKeys = markedInFlightAcks
-                .filter(LocalMutationAck::isBookmarkReadingCreate)
-                .map { it.markerKey() }
-                .toSet()
-            val pushedCreateAckKeys = localMutationsToPush
-                .mapNotNull { it.bookmarkReadingCreateMarkerKey() }
-                .toSet()
-            localMutationsToPushForCompletion = localMutationsToPush
-                .filterPushableCreates(markedAckKeys) { it.bookmarkReadingCreateMarkerKey() }
-                .map { it.withIncrementedAckIfMarked(markedAckKeys) }
-            localMutationsToClearForCompletion = localMutationsToClear
-                .filterClearableCreates(markedAckKeys, pushedCreateAckKeys) { it.bookmarkReadingCreateMarkerKey() }
-                .map { it.withIncrementedAckIfMarked(markedAckKeys) }
-        }
-
-        override suspend fun rollbackMutationsInFlight() {
-            configurations.localDataFetcher.rollbackLocalMutationsInFlight(markedInFlightAcks)
-            markedInFlightAcks = emptyList()
-            localMutationsToPushForCompletion = localMutationsToPush
-            localMutationsToClearForCompletion = localMutationsToClear
-        }
-
         override suspend fun complete(newToken: Long, pushedMutations: List<SyncMutation>) {
             val mappedPushed = mapPushedModelMutations(
                 resourceName,
-                localMutationsToPushForCompletion,
+                localMutationsToPush,
                 pushedMutations
             )
             val preprocessedPushed = preprocessRemoteMutations(mappedPushed)
             val finalRemoteMutations = preprocessedPushed + remoteMutationsToPersist
-            val localMutationsMappedFromReplay = localMutationsToClearForCompletion
+            val localMutationsMappedFromReplay = localMutationsToClear
                 .mapReplayCreatedClears(remoteMutationsToPersist) { it.conflictKey() }
             configurations.resultNotifier.didSucceed(
                 newToken,
@@ -190,16 +158,6 @@ internal class BookmarksSyncAdapter(
             )
         }
     }
-}
-
-private fun LocalMutationAck.isBookmarkReadingCreate(): Boolean =
-    resource == LocalMutationResource.BOOKMARK &&
-        facet == LOCAL_MUTATION_BOOKMARK_READING_FACET &&
-        observedPendingOp == Mutation.CREATED
-
-private fun LocalModelMutation<SyncBookmark>.bookmarkReadingCreateMarkerKey(): String? {
-    val ack = ack ?: return null
-    return if (ack.isBookmarkReadingCreate()) ack.markerKey() else null
 }
 
 private suspend fun SyncMutation.toSyncBookmark(
@@ -219,7 +177,6 @@ private suspend fun SyncMutation.toSyncBookmark(
                     id = id,
                     sura = sura,
                     ayah = ayah,
-                    isReading = data.booleanOrNull("isReading") ?: false,
                     lastModified = lastModified,
                     createdAt = createdAt
                 )
@@ -227,19 +184,9 @@ private suspend fun SyncMutation.toSyncBookmark(
                 null
             }
         }
-        "page" -> {
-            val page = data?.intOrNull("key")
-            if (page != null) {
-                SyncBookmark.PageBookmark(
-                    id = id,
-                    page = page,
-                    isReading = data.booleanOrNull("isReading") ?: false,
-                    lastModified = lastModified,
-                    createdAt = createdAt
-                )
-            } else {
-                null
-            }
+        "page", "surah", "juz" -> {
+            logger.w { "Skipping unsupported non-ayah bookmark type=$normalizedType: resourceId=$resourceId" }
+            null
         }
         else -> {
             val localModel = localDataFetcher.fetchLocalModel(id)
@@ -247,10 +194,6 @@ private suspend fun SyncMutation.toSyncBookmark(
                 logger.d { "Mapped unknown bookmark type using local data: resourceId=$id" }
                 when (localModel) {
                     is SyncBookmark.AyahBookmark -> localModel.copy(
-                        lastModified = lastModified,
-                        createdAt = createdAt ?: localModel.createdAt
-                    )
-                    is SyncBookmark.PageBookmark -> localModel.copy(
                         lastModified = lastModified,
                         createdAt = createdAt ?: localModel.createdAt
                     )
@@ -269,13 +212,6 @@ private fun SyncBookmark.toResourceData(): JsonObject {
             put("type", "ayah")
             put("key", sura)
             put("verseNumber", ayah)
-            put("isReading", isReading)
-            put("mushaf", 1)
-        }
-        is SyncBookmark.PageBookmark -> buildJsonObject {
-            put("type", "page")
-            put("key", page)
-            put("isReading", isReading)
             put("mushaf", 1)
         }
     }
