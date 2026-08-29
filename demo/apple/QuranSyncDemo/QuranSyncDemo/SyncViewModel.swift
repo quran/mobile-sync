@@ -164,7 +164,11 @@ class SyncViewModel: ObservableObject {
         try await asyncFunction(for: authService.loginWithReauthentication())
     }
 
-    func setAyahReadingBookmark(slot: Int32, sura: Int32, ayah: Int32) async -> Shared.ReadingBookmark? {
+    func setAyahReadingBookmark(
+        slot: Shared.ReadingBookmarkSlot,
+        sura: Int32,
+        ayah: Int32
+    ) async -> Shared.ReadingBookmark? {
         do {
             return try await asyncFunction(
                 for: quranDataService.setAyahReadingBookmark(slot: slot, sura: sura, ayah: ayah)
@@ -175,7 +179,10 @@ class SyncViewModel: ObservableObject {
         }
     }
 
-    func setPageReadingBookmark(slot: Int32, page: Int32) async -> Shared.ReadingBookmark? {
+    func setPageReadingBookmark(
+        slot: Shared.ReadingBookmarkSlot,
+        page: Int32
+    ) async -> Shared.ReadingBookmark? {
         do {
             return try await asyncFunction(for: quranDataService.setPageReadingBookmark(slot: slot, page: page))
         } catch {
@@ -193,7 +200,7 @@ class SyncViewModel: ObservableObject {
         }
     }
 
-    func clearReadingBookmark(slot: Int32) async {
+    func clearReadingBookmark(slot: Shared.ReadingBookmarkSlot) async {
         do {
             _ = try await asyncFunction(for: quranDataService.clearReadingBookmark(slot: slot))
         } catch {

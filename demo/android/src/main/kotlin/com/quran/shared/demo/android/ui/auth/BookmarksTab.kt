@@ -13,13 +13,14 @@ import com.quran.shared.persistence.model.AyahReadingBookmark
 import com.quran.shared.persistence.model.EmptyReadingBookmark
 import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
+import com.quran.shared.persistence.model.ReadingBookmarkSlot
 
 @Composable
 fun BookmarksTab(
     readingBookmarks: List<ReadingBookmark>,
-    onSetReadingAyahBookmark: (Int) -> Unit,
-    onSetReadingPageBookmark: (Int) -> Unit,
-    onClearReadingBookmark: (Int) -> Unit
+    onSetReadingAyahBookmark: (ReadingBookmarkSlot) -> Unit,
+    onSetReadingPageBookmark: (ReadingBookmarkSlot) -> Unit,
+    onClearReadingBookmark: (ReadingBookmarkSlot) -> Unit
 ) {
     Column {
         Text(
@@ -29,7 +30,7 @@ fun BookmarksTab(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        (1..3).forEach { slot ->
+        ReadingBookmarkSlot.entries.forEach { slot ->
             ReadingBookmarkCard(
                 slot = slot,
                 readingBookmark = readingBookmarks.firstOrNull { it.slot == slot },
@@ -44,7 +45,7 @@ fun BookmarksTab(
 
 @Composable
 private fun ReadingBookmarkCard(
-    slot: Int,
+    slot: ReadingBookmarkSlot,
     readingBookmark: ReadingBookmark?,
     onSetReadingAyahBookmark: () -> Unit,
     onSetReadingPageBookmark: () -> Unit,
@@ -63,7 +64,7 @@ private fun ReadingBookmarkCard(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Slot $slot${readingBookmark?.name?.let { ": $it" } ?: ""}",
+                    text = "${slot.name.lowercase()}${readingBookmark?.name?.let { ": $it" } ?: ""}",
                     style = MaterialTheme.typography.labelLarge
                 )
                 if (locationText == null) {

@@ -12,6 +12,8 @@ import com.quran.shared.persistence.input.LocalSyncReadingBookmark
 import com.quran.shared.persistence.input.RemoteReadingBookmark
 import com.quran.shared.persistence.model.DatabaseReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
+import com.quran.shared.persistence.model.ReadingBookmarkSlot
+import com.quran.shared.persistence.model.toStorageValue
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
 import com.quran.shared.persistence.repository.readingbookmark.extension.toReadingBookmark
@@ -50,80 +52,80 @@ class ReadingBookmarksRepositoryImpl(
             .map { rows -> rows.map(DatabaseReadingBookmark::toReadingBookmark) }
 
     override suspend fun setAyahReadingBookmark(
-        slot: Int,
+        slot: ReadingBookmarkSlot,
         sura: Int,
         ayah: Int
     ): ReadingBookmark = setAyahReadingBookmark(slot, sura, ayah, currentPlatformDateTime())
 
     override suspend fun setAyahReadingBookmark(
-        slot: Int,
+        slot: ReadingBookmarkSlot,
         sura: Int,
         ayah: Int,
         timestamp: PlatformDateTime
     ): ReadingBookmark = withContext(Dispatchers.IO) {
-        requireValidSlot(slot)
+        val slotValue = slot.toStorageValue()
         val timestampMillis = timestamp.toEpochMillisecondsFromPlatform()
         queries.value.setAyahReadingBookmark(
-            slot = slot.toLong(),
+            slot = slotValue.toLong(),
             sura = sura.toLong(),
             ayah = ayah.toLong(),
             mushaf_id = SUPPORTED_MUSHAF_ID,
             timestamp = timestampMillis
         )
-        requireNotNull(queries.value.getReadingBookmarkForSlot(slot.toLong()).executeAsOneOrNull())
+        requireNotNull(queries.value.getReadingBookmarkForSlot(slotValue.toLong()).executeAsOneOrNull())
             .toReadingBookmark()
     }
 
-    override suspend fun setPageReadingBookmark(slot: Int, page: Int): ReadingBookmark =
+    override suspend fun setPageReadingBookmark(slot: ReadingBookmarkSlot, page: Int): ReadingBookmark =
         setPageReadingBookmark(slot, page, currentPlatformDateTime())
 
     override suspend fun setPageReadingBookmark(
-        slot: Int,
+        slot: ReadingBookmarkSlot,
         page: Int,
         timestamp: PlatformDateTime
     ): ReadingBookmark = withContext(Dispatchers.IO) {
-        requireValidSlot(slot)
+        val slotValue = slot.toStorageValue()
         val timestampMillis = timestamp.toEpochMillisecondsFromPlatform()
         queries.value.setPageReadingBookmark(
-            slot = slot.toLong(),
+            slot = slotValue.toLong(),
             page = page.toLong(),
             mushaf_id = SUPPORTED_MUSHAF_ID,
             timestamp = timestampMillis
         )
-        requireNotNull(queries.value.getReadingBookmarkForSlot(slot.toLong()).executeAsOneOrNull())
+        requireNotNull(queries.value.getReadingBookmarkForSlot(slotValue.toLong()).executeAsOneOrNull())
             .toReadingBookmark()
     }
 
-    override suspend fun renameReadingBookmark(slot: Int, name: String?): ReadingBookmark =
+    override suspend fun renameReadingBookmark(slot: ReadingBookmarkSlot, name: String?): ReadingBookmark =
         renameReadingBookmark(slot, name, currentPlatformDateTime())
 
     override suspend fun renameReadingBookmark(
-        slot: Int,
+        slot: ReadingBookmarkSlot,
         name: String?,
         timestamp: PlatformDateTime
     ): ReadingBookmark =
         withContext(Dispatchers.IO) {
-            requireValidSlot(slot)
+            val slotValue = slot.toStorageValue()
             queries.value.renameReadingBookmark(
-                slot = slot.toLong(),
+                slot = slotValue.toLong(),
                 name = name,
                 timestamp = timestamp.toEpochMillisecondsFromPlatform()
             )
-            requireNotNull(queries.value.getReadingBookmarkForSlot(slot.toLong()).executeAsOneOrNull())
+            requireNotNull(queries.value.getReadingBookmarkForSlot(slotValue.toLong()).executeAsOneOrNull())
                 .toReadingBookmark()
         }
 
-    override suspend fun clearReadingBookmark(slot: Int): ReadingBookmark =
+    override suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot): ReadingBookmark =
         clearReadingBookmark(slot, currentPlatformDateTime())
 
-    override suspend fun clearReadingBookmark(slot: Int, timestamp: PlatformDateTime): ReadingBookmark =
+    override suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot, timestamp: PlatformDateTime): ReadingBookmark =
         withContext(Dispatchers.IO) {
-            requireValidSlot(slot)
+            val slotValue = slot.toStorageValue()
             queries.value.clearReadingBookmark(
-                slot = slot.toLong(),
+                slot = slotValue.toLong(),
                 timestamp = timestamp.toEpochMillisecondsFromPlatform()
             )
-            requireNotNull(queries.value.getReadingBookmarkForSlot(slot.toLong()).executeAsOneOrNull())
+            requireNotNull(queries.value.getReadingBookmarkForSlot(slotValue.toLong()).executeAsOneOrNull())
                 .toReadingBookmark()
         }
 

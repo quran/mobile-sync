@@ -42,6 +42,7 @@ import com.quran.shared.persistence.model.EmptyReadingBookmark
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
+import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.PersistenceResetRepository
@@ -1216,31 +1217,38 @@ private class ServiceReadingBookmarksRepository :
     ReadingBookmarksSynchronizationRepository {
     override suspend fun getReadingBookmarks(): List<ReadingBookmark> = emptyList()
     override fun getReadingBookmarksFlow(): Flow<List<ReadingBookmark>> = MutableStateFlow(emptyList())
-    override suspend fun setAyahReadingBookmark(slot: Int, sura: Int, ayah: Int): ReadingBookmark =
+    override suspend fun setAyahReadingBookmark(
+        slot: ReadingBookmarkSlot,
+        sura: Int,
+        ayah: Int
+    ): ReadingBookmark =
         AyahReadingBookmark(sura, ayah, testTimestamp(), "reading-ayah-$slot", slot)
     override suspend fun setAyahReadingBookmark(
-        slot: Int,
+        slot: ReadingBookmarkSlot,
         sura: Int,
         ayah: Int,
         timestamp: PlatformDateTime
     ): ReadingBookmark = AyahReadingBookmark(sura, ayah, timestamp, "reading-ayah-$slot", slot)
-    override suspend fun setPageReadingBookmark(slot: Int, page: Int): ReadingBookmark =
+    override suspend fun setPageReadingBookmark(slot: ReadingBookmarkSlot, page: Int): ReadingBookmark =
         PageReadingBookmark(page, testTimestamp(), "reading-page-$slot", slot)
     override suspend fun setPageReadingBookmark(
-        slot: Int,
+        slot: ReadingBookmarkSlot,
         page: Int,
         timestamp: PlatformDateTime
     ): ReadingBookmark = PageReadingBookmark(page, timestamp, "reading-page-$slot", slot)
-    override suspend fun renameReadingBookmark(slot: Int, name: String?): ReadingBookmark =
+    override suspend fun renameReadingBookmark(slot: ReadingBookmarkSlot, name: String?): ReadingBookmark =
         EmptyReadingBookmark(slot, name, testTimestamp(), "reading-$slot")
     override suspend fun renameReadingBookmark(
-        slot: Int,
+        slot: ReadingBookmarkSlot,
         name: String?,
         timestamp: PlatformDateTime
     ): ReadingBookmark = EmptyReadingBookmark(slot, name, timestamp, "reading-$slot")
-    override suspend fun clearReadingBookmark(slot: Int): ReadingBookmark =
+    override suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot): ReadingBookmark =
         EmptyReadingBookmark(slot, null, testTimestamp(), "reading-$slot")
-    override suspend fun clearReadingBookmark(slot: Int, timestamp: PlatformDateTime): ReadingBookmark =
+    override suspend fun clearReadingBookmark(
+        slot: ReadingBookmarkSlot,
+        timestamp: PlatformDateTime
+    ): ReadingBookmark =
         EmptyReadingBookmark(slot, null, timestamp, "reading-$slot")
     override suspend fun fetchMutatedReadingBookmarks(): List<LocalModelMutation<LocalSyncReadingBookmark>> = emptyList()
     override suspend fun applyRemoteChanges(

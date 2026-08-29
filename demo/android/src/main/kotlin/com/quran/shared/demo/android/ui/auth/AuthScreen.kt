@@ -14,6 +14,7 @@ import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.persistence.model.CollectionWithAyahBookmarks
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.ReadingBookmark
+import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomAyah
 import com.quran.shared.demo.common.util.QuranActionsUtils.getRandomPage
@@ -291,9 +292,9 @@ private fun DataContent(
     readingBookmarks: List<ReadingBookmark>,
     collectionsWithBookmarks: List<CollectionWithAyahBookmarks>,
     notes: List<Note>,
-    onSetReadingAyahBookmark: (Int) -> Unit,
-    onSetReadingPageBookmark: (Int) -> Unit,
-    onClearReadingBookmark: (Int) -> Unit,
+    onSetReadingAyahBookmark: (ReadingBookmarkSlot) -> Unit,
+    onSetReadingPageBookmark: (ReadingBookmarkSlot) -> Unit,
+    onClearReadingBookmark: (ReadingBookmarkSlot) -> Unit,
     onAddCollection: (String) -> Unit,
     onDeleteCollection: (String) -> Unit,
     onAddNote: (String) -> Unit,

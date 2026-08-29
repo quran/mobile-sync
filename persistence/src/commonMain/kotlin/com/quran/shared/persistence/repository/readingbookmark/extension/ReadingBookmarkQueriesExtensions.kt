@@ -14,6 +14,7 @@ import com.quran.shared.persistence.model.DatabaseUnsyncedReadingBookmark
 import com.quran.shared.persistence.model.EmptyReadingBookmark
 import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
+import com.quran.shared.persistence.model.toReadingBookmarkSlot
 import com.quran.shared.persistence.util.toPlatform
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
@@ -25,20 +26,20 @@ internal fun DatabaseReadingBookmark.toReadingBookmark(): ReadingBookmark {
         "AYAH" -> AyahReadingBookmark(
             sura = requireNotNull(sura).toInt(),
             ayah = requireNotNull(ayah).toInt(),
-            slot = slot.toInt(),
+            slot = slot.toInt().toReadingBookmarkSlot(),
             name = name,
             lastUpdated = lastUpdated,
             id = id
         )
         "PAGE" -> PageReadingBookmark(
             page = requireNotNull(page).toInt(),
-            slot = slot.toInt(),
+            slot = slot.toInt().toReadingBookmarkSlot(),
             name = name,
             lastUpdated = lastUpdated,
             id = id
         )
         null -> EmptyReadingBookmark(
-            slot = slot.toInt(),
+            slot = slot.toInt().toReadingBookmarkSlot(),
             name = name,
             lastUpdated = lastUpdated,
             id = id

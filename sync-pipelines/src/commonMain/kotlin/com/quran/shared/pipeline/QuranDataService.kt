@@ -19,6 +19,7 @@ import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.model.CollectionWithAyahBookmarks
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.ReadingBookmark
+import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.repository.PersistenceResetRepository
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepository
@@ -447,14 +448,14 @@ class QuranDataService internal constructor(
 
     @NativeCoroutines
     suspend fun setAyahReadingBookmark(
-        slot: Int,
+        slot: ReadingBookmarkSlot,
         sura: Int,
         ayah: Int
     ): ReadingBookmark = setAyahReadingBookmark(slot, sura, ayah, currentPlatformDateTime())
 
     @NativeCoroutines
     suspend fun setAyahReadingBookmark(
-        slot: Int,
+        slot: ReadingBookmarkSlot,
         sura: Int,
         ayah: Int,
         timestamp: PlatformDateTime
@@ -463,12 +464,12 @@ class QuranDataService internal constructor(
     }
 
     @NativeCoroutines
-    suspend fun setPageReadingBookmark(slot: Int, page: Int): ReadingBookmark =
+    suspend fun setPageReadingBookmark(slot: ReadingBookmarkSlot, page: Int): ReadingBookmark =
         setPageReadingBookmark(slot, page, currentPlatformDateTime())
 
     @NativeCoroutines
     suspend fun setPageReadingBookmark(
-        slot: Int,
+        slot: ReadingBookmarkSlot,
         page: Int,
         timestamp: PlatformDateTime
     ): ReadingBookmark =
@@ -477,12 +478,12 @@ class QuranDataService internal constructor(
         }
 
     @NativeCoroutines
-    suspend fun renameReadingBookmark(slot: Int, name: String?): ReadingBookmark =
+    suspend fun renameReadingBookmark(slot: ReadingBookmarkSlot, name: String?): ReadingBookmark =
         renameReadingBookmark(slot, name, currentPlatformDateTime())
 
     @NativeCoroutines
     suspend fun renameReadingBookmark(
-        slot: Int,
+        slot: ReadingBookmarkSlot,
         name: String?,
         timestamp: PlatformDateTime
     ): ReadingBookmark =
@@ -491,11 +492,11 @@ class QuranDataService internal constructor(
         }
 
     @NativeCoroutines
-    suspend fun clearReadingBookmark(slot: Int): ReadingBookmark =
+    suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot): ReadingBookmark =
         clearReadingBookmark(slot, currentPlatformDateTime())
 
     @NativeCoroutines
-    suspend fun clearReadingBookmark(slot: Int, timestamp: PlatformDateTime): ReadingBookmark =
+    suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot, timestamp: PlatformDateTime): ReadingBookmark =
         mutatingCall("Failed to clear reading bookmark") {
             readingBookmarksRepository.clearReadingBookmark(slot, timestamp)
         }

@@ -4,12 +4,13 @@ import Shared
 struct BookmarksTabView: View {
     @ObservedObject var viewModel: SyncViewModel
     let readingBookmarks: [Shared.ReadingBookmark]
+    private let slots: [Shared.ReadingBookmarkSlot] = [.coral, .teal, .indigo]
     
     var body: some View {
         List {
-            ForEach(1...3, id: \.self) { slot in
-                Section(header: Text("Reading Bookmark Slot \(slot)")) {
-                    if let readingBookmark = readingBookmarks.first(where: { Int($0.slot) == slot }),
+            ForEach(slots, id: \.name) { slot in
+                Section(header: Text("\(slot.name.capitalized) Reading Bookmark")) {
+                    if let readingBookmark = readingBookmarks.first(where: { $0.slot == slot }),
                        let locationText = readingBookmarkText(readingBookmark) {
                         HStack {
                             Image(systemName: "bookmark.fill")
@@ -18,7 +19,7 @@ struct BookmarksTabView: View {
                             Spacer()
                             Button(action: {
                                 Task {
-                                    await viewModel.clearReadingBookmark(slot: Int32(slot))
+                                    await viewModel.clearReadingBookmark(slot: slot)
                                 }
                             }) {
                                 Image(systemName: "trash")
@@ -37,7 +38,7 @@ struct BookmarksTabView: View {
                         let ayah = Shared.QuranActionsUtils().getRandomAyah(sura: sura)
                         Task {
                             _ = await viewModel.setAyahReadingBookmark(
-                                slot: Int32(slot),
+                                slot: slot,
                                 sura: sura,
                                 ayah: ayah
                             )
@@ -46,7 +47,7 @@ struct BookmarksTabView: View {
                     Button("Random Page") {
                         let page = Shared.QuranActionsUtils().getRandomPage()
                         Task {
-                            _ = await viewModel.setPageReadingBookmark(slot: Int32(slot), page: page)
+                            _ = await viewModel.setPageReadingBookmark(slot: slot, page: page)
                         }
                     }
                 }

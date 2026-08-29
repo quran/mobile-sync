@@ -7,6 +7,7 @@ import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.model.CollectionWithAyahBookmarks
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.ReadingBookmark
+import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.persistence.model.ReadingSession
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
@@ -51,15 +52,15 @@ class SyncViewModel(
         service.triggerSync()
     }
 
-    suspend fun setAyahReadingBookmark(slot: Int, sura: Int, ayah: Int): ReadingBookmark {
+    suspend fun setAyahReadingBookmark(slot: ReadingBookmarkSlot, sura: Int, ayah: Int): ReadingBookmark {
         return service.setAyahReadingBookmark(slot, sura, ayah)
     }
 
-    suspend fun setPageReadingBookmark(slot: Int, page: Int): ReadingBookmark {
+    suspend fun setPageReadingBookmark(slot: ReadingBookmarkSlot, page: Int): ReadingBookmark {
         return service.setPageReadingBookmark(slot, page)
     }
 
-    suspend fun clearReadingBookmark(slot: Int) {
+    suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot) {
         service.clearReadingBookmark(slot)
     }
 
