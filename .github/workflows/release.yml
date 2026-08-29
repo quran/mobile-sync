@@ -87,7 +87,7 @@ jobs:
           echo "target-branch=$TARGET_BRANCH" >> "$GITHUB_OUTPUT"
 
       - name: Set up JDK 
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           java-version: "21"
           distribution: "temurin"
