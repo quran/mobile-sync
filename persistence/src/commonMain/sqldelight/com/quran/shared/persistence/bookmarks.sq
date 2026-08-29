@@ -89,6 +89,7 @@ getBookmarkByLocalId:
 getBookmarkByRemoteId:
   SELECT * FROM bookmark WHERE remote_id = ? LIMIT 1;
 
+-- Detaches a batch-proven retired identity without changing bookmark or facet timestamps.
 clearBookmarkRemoteIdByLocalId:
   UPDATE bookmark
   SET remote_id = NULL
@@ -107,6 +108,22 @@ attachRemoteBookmarkIdByLocalId:
     END
   WHERE local_id = :local_id
     AND remote_id IS NULL;
+
+-- Collection-link sync owns remote identity binding, not bookmark facet timestamps.
+bindRemoteBookmarkIdPreservingTimestampsByLocalId:
+  UPDATE bookmark
+  SET remote_id = :remote_id
+  WHERE local_id = :local_id
+    AND remote_id IS NULL;
+
+-- Reactivates a retained remote parent only after relation replay proves an active child exists.
+reactivateDeletedBookmarkForActiveRemoteRelation:
+  UPDATE bookmark
+  SET deleted = 0
+  WHERE local_id = :local_id
+    AND remote_id = :remote_id
+    AND deleted = 1
+    AND bookmark_pending_op IS NULL;
 
 getBookmarksByRemoteIds:
   SELECT * FROM bookmark WHERE remote_id IN :remote_ids;
@@ -170,6 +187,19 @@ upsertAyahBookmark {
     bookmark_modified_at = :modified_at
   WHERE bookmark_type = 'AYAH' AND sura = :sura AND ayah = :ayah AND mushaf_id = 1;
 }
+
+-- Marks the first saved-collection activation without changing row creation or sync mutation state.
+touchBookmarkForFirstSavedMembership:
+  UPDATE bookmark
+  SET modified_at = CASE
+      WHEN modified_at > :modified_at THEN modified_at
+      ELSE :modified_at
+    END,
+    bookmark_modified_at = CASE
+      WHEN bookmark_modified_at > :modified_at THEN bookmark_modified_at
+      ELSE :modified_at
+    END
+  WHERE local_id = :local_id AND deleted = 0;
 
 upsertPageBookmark {
   INSERT OR IGNORE INTO bookmark (

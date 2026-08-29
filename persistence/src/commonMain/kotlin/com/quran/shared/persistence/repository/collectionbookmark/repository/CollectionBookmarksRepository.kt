@@ -51,8 +51,9 @@ interface CollectionBookmarksRepository {
     suspend fun getBookmarksForCollection(collectionId: String): List<CollectionAyahBookmark>
 
     /**
-     * Atomically creates an ayah bookmark (if missing) and links it to a collection.
-     * This operation must not leave partial state if linking fails.
+     * Atomically creates an ayah bookmark (if missing) and links it to an active saved collection.
+     * Highlight collections must be changed through [setHighlight]. This operation must not leave
+     * partial state if linking fails, and later saved memberships do not rewrite the bookmark time.
      */
     suspend fun addAyahBookmarkToCollection(
         collectionId: String,
@@ -60,6 +61,10 @@ interface CollectionBookmarksRepository {
         ayah: Int
     ): CollectionAyahBookmark
 
+    /**
+     * Links an ayah to an active saved collection using [timestamp] for a new bookmark or its first
+     * saved membership. Highlight collections must be changed through [setHighlight].
+     */
     suspend fun addAyahBookmarkToCollection(
         collectionId: String,
         sura: Int,

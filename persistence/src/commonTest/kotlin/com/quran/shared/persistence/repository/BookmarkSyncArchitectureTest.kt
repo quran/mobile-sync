@@ -236,6 +236,431 @@ class BookmarkSyncArchitectureTest {
     }
 
     @Test
+    fun `remote first saved membership updates an existing highlight bookmark timestamp`() = runTest {
+        val collectionRemoteId = "remote-first-saved-membership"
+        val bookmarkRemoteId = "remote-highlight-bookmark"
+        val collectionId = createCollection("Remote First Saved Membership", collectionRemoteId)
+        collectionBookmarksRepository.setHighlight(2, 255, AyahHighlightColor.BLUE, at(100))
+        val originalBookmark = database.bookmarksQueries.getBookmarkForAyah(2L, 255L).executeAsOne()
+
+        collectionBookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                RemoteModelMutation(
+                    model = RemoteCollectionBookmark.Ayah(
+                        collectionId = collectionRemoteId,
+                        sura = 2,
+                        ayah = 255,
+                        lastUpdated = at(200),
+                        bookmarkId = bookmarkRemoteId,
+                        createdAt = at(200)
+                    ),
+                    remoteID = "$collectionRemoteId-$bookmarkRemoteId",
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        val updatedBookmark = database.bookmarksQueries
+            .getBookmarkByLocalId(originalBookmark.local_id)
+            .executeAsOne()
+        val membership = collectionBookmarksRepository.getBookmarksForCollection(collectionId).single()
+        assertEquals(100L, updatedBookmark.created_at)
+        assertEquals(200L, updatedBookmark.modified_at)
+        assertEquals(200L, updatedBookmark.bookmark_modified_at)
+        assertNull(updatedBookmark.bookmark_pending_op)
+        assertEquals(200L, membership.bookmarkLastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(100L, membership.bookmarkAddedDate.fromPlatform().toEpochMilliseconds())
+        assertEquals(
+            AyahHighlightColor.BLUE,
+            collectionBookmarksRepository.getHighlightsFlow().first().single().color
+        )
+    }
+
+    @Test
+    fun `remote highlight relation backfill preserves bookmark timestamps`() = runTest {
+        val collectionRemoteId = "remote-highlight-backfill"
+        val bookmarkRemoteId = "remote-highlight-backfill-bookmark"
+        collectionBookmarksRepository.setHighlight(2, 252, AyahHighlightColor.BLUE, at(100))
+        val highlightCollection = database.collectionsQueries
+            .getCollectionByName("system:highlights:blue")
+            .executeAsOne()
+        database.collectionsQueries.updateRemoteCollectionByLocalId(
+            remote_id = collectionRemoteId,
+            name = highlightCollection.name,
+            modified_at = 100L,
+            local_id = highlightCollection.local_id,
+            is_default = highlightCollection.is_default,
+            is_system = highlightCollection.is_system
+        )
+
+        collectionBookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                remoteCollectionBookmarkMutation(
+                    collectionId = collectionRemoteId,
+                    sura = 2,
+                    ayah = 252,
+                    bookmarkId = bookmarkRemoteId,
+                    timestamp = 200,
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        val bookmark = database.bookmarksQueries.getBookmarkForAyah(2L, 252L).executeAsOne()
+        assertEquals(bookmarkRemoteId, bookmark.remote_id)
+        assertEquals(100L, bookmark.created_at)
+        assertEquals(100L, bookmark.modified_at)
+        assertEquals(100L, bookmark.bookmark_modified_at)
+    }
+
+    @Test
+    fun `remote first saved memberships use the earliest surviving timestamp`() = runTest {
+        val firstCollectionRemoteId = "remote-first-save-earlier"
+        val secondCollectionRemoteId = "remote-first-save-later"
+        val bookmarkRemoteId = "remote-first-save-order-bookmark"
+        createCollection("Remote First Save Earlier", firstCollectionRemoteId)
+        createCollection("Remote First Save Later", secondCollectionRemoteId)
+        collectionBookmarksRepository.setHighlight(2, 251, AyahHighlightColor.GREEN, at(100))
+        val bookmark = database.bookmarksQueries.getBookmarkForAyah(2L, 251L).executeAsOne()
+        database.bookmarksQueries.attachRemoteBookmarkIdByLocalId(
+            local_id = bookmark.local_id,
+            remote_id = bookmarkRemoteId,
+            modified_at = 100L
+        )
+
+        collectionBookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                remoteCollectionBookmarkMutation(
+                    collectionId = secondCollectionRemoteId,
+                    sura = 2,
+                    ayah = 251,
+                    bookmarkId = bookmarkRemoteId,
+                    timestamp = 300,
+                    mutation = Mutation.CREATED
+                ),
+                remoteCollectionBookmarkMutation(
+                    collectionId = firstCollectionRemoteId,
+                    sura = 2,
+                    ayah = 251,
+                    bookmarkId = bookmarkRemoteId,
+                    timestamp = 200,
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        val updatedBookmark = database.bookmarksQueries.getBookmarkByLocalId(bookmark.local_id).executeAsOne()
+        assertEquals(100L, updatedBookmark.created_at)
+        assertEquals(200L, updatedBookmark.modified_at)
+        assertEquals(200L, updatedBookmark.bookmark_modified_at)
+    }
+
+    @Test
+    fun `remote missing bookmark creation uses earliest relation timestamp`() = runTest {
+        val firstCollectionRemoteId = "remote-missing-earlier"
+        val secondCollectionRemoteId = "remote-missing-later"
+        val bookmarkRemoteId = "remote-missing-order-bookmark"
+        createCollection("Remote Missing Earlier", firstCollectionRemoteId)
+        createCollection("Remote Missing Later", secondCollectionRemoteId)
+
+        collectionBookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                remoteCollectionBookmarkMutation(
+                    collectionId = secondCollectionRemoteId,
+                    sura = 2,
+                    ayah = 250,
+                    bookmarkId = bookmarkRemoteId,
+                    timestamp = 300,
+                    mutation = Mutation.CREATED,
+                    createdTimestamp = 150
+                ),
+                remoteCollectionBookmarkMutation(
+                    collectionId = firstCollectionRemoteId,
+                    sura = 2,
+                    ayah = 250,
+                    bookmarkId = bookmarkRemoteId,
+                    timestamp = 200,
+                    mutation = Mutation.CREATED,
+                    createdTimestamp = 100
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        val bookmark = database.bookmarksQueries.getBookmarkByRemoteId(bookmarkRemoteId).executeAsOne()
+        assertEquals(100L, bookmark.created_at)
+        assertEquals(200L, bookmark.modified_at)
+        assertEquals(200L, bookmark.bookmark_modified_at)
+    }
+
+    @Test
+    fun `remote delete before create replacement preserves saved bookmark timestamp`() = runTest {
+        val firstCollectionRemoteId = "remote-replacement-first"
+        val secondCollectionRemoteId = "remote-replacement-second"
+        val bookmarkRemoteId = "remote-replacement-bookmark"
+        val firstCollectionId = createCollection("Remote Replacement First", firstCollectionRemoteId)
+        val secondCollectionId = createCollection("Remote Replacement Second", secondCollectionRemoteId)
+        collectionBookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                remoteCollectionBookmarkMutation(
+                    collectionId = firstCollectionRemoteId,
+                    sura = 2,
+                    ayah = 254,
+                    bookmarkId = bookmarkRemoteId,
+                    timestamp = 100,
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+        val bookmark = database.bookmarksQueries.getBookmarkByRemoteId(bookmarkRemoteId).executeAsOne()
+
+        collectionBookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                remoteCollectionBookmarkMutation(
+                    collectionId = firstCollectionRemoteId,
+                    sura = 2,
+                    ayah = 254,
+                    bookmarkId = bookmarkRemoteId,
+                    timestamp = 200,
+                    mutation = Mutation.DELETED
+                ),
+                remoteCollectionBookmarkMutation(
+                    collectionId = secondCollectionRemoteId,
+                    sura = 2,
+                    ayah = 254,
+                    bookmarkId = bookmarkRemoteId,
+                    timestamp = 200,
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        val updatedBookmark = database.bookmarksQueries.getBookmarkByLocalId(bookmark.local_id).executeAsOne()
+        assertEquals(bookmark.local_id, updatedBookmark.local_id)
+        assertEquals(100L, updatedBookmark.created_at)
+        assertEquals(100L, updatedBookmark.modified_at)
+        assertEquals(100L, updatedBookmark.bookmark_modified_at)
+        assertTrue(collectionBookmarksRepository.getBookmarksForCollection(firstCollectionId).isEmpty())
+        assertEquals(
+            listOf(bookmark.local_id.toString()),
+            collectionBookmarksRepository.getBookmarksForCollection(secondCollectionId).map { it.bookmarkId }
+        )
+    }
+
+    @Test
+    fun `remote delete before create with new bookmark id preserves replacement relation`() = runTest {
+        val collectionRemoteId = "remote-new-identity-replacement-collection"
+        val originalBookmarkRemoteId = "remote-original-bookmark"
+        val replacementBookmarkRemoteId = "remote-replacement-bookmark"
+        val collectionId = createCollection("Remote New Identity Replacement", collectionRemoteId)
+        collectionBookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                remoteCollectionBookmarkMutation(
+                    collectionId = collectionRemoteId,
+                    sura = 2,
+                    ayah = 255,
+                    bookmarkId = originalBookmarkRemoteId,
+                    timestamp = 100,
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        collectionBookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                remoteCollectionBookmarkMutation(
+                    collectionId = collectionRemoteId,
+                    sura = 2,
+                    ayah = 255,
+                    bookmarkId = originalBookmarkRemoteId,
+                    timestamp = 200,
+                    mutation = Mutation.DELETED
+                ),
+                remoteCollectionBookmarkMutation(
+                    collectionId = collectionRemoteId,
+                    sura = 2,
+                    ayah = 255,
+                    bookmarkId = replacementBookmarkRemoteId,
+                    timestamp = 200,
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        assertNull(database.bookmarksQueries.getBookmarkByRemoteId(originalBookmarkRemoteId).executeAsOneOrNull())
+        val replacement = assertNotNull(
+            database.bookmarksQueries.getBookmarkByRemoteId(replacementBookmarkRemoteId).executeAsOneOrNull()
+        )
+        assertEquals(2L, replacement.sura)
+        assertEquals(255L, replacement.ayah)
+        assertEquals(
+            listOf(replacement.local_id.toString()),
+            collectionBookmarksRepository.getBookmarksForCollection(collectionId).map { it.bookmarkId }
+        )
+    }
+
+    @Test
+    fun `different id replacement reuses parent retained only by local highlight`() = runTest {
+        val collectionRemoteId = "remote-highlight-replacement-collection"
+        val originalBookmarkRemoteId = "remote-highlight-original-bookmark"
+        val replacementBookmarkRemoteId = "remote-highlight-replacement-bookmark"
+        val collectionId = createCollection("Remote Highlight Replacement", collectionRemoteId)
+        collectionBookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                remoteCollectionBookmarkMutation(
+                    collectionId = collectionRemoteId,
+                    sura = 2,
+                    ayah = 251,
+                    bookmarkId = originalBookmarkRemoteId,
+                    timestamp = 100,
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+        val originalBookmark = database.bookmarksQueries
+            .getBookmarkByRemoteId(originalBookmarkRemoteId)
+            .executeAsOne()
+        collectionBookmarksRepository.setHighlight(2, 251, AyahHighlightColor.GREEN, at(150))
+
+        collectionBookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                remoteCollectionBookmarkMutation(
+                    collectionId = collectionRemoteId,
+                    sura = 2,
+                    ayah = 251,
+                    bookmarkId = originalBookmarkRemoteId,
+                    timestamp = 200,
+                    mutation = Mutation.DELETED
+                ),
+                remoteCollectionBookmarkMutation(
+                    collectionId = collectionRemoteId,
+                    sura = 2,
+                    ayah = 251,
+                    bookmarkId = replacementBookmarkRemoteId,
+                    timestamp = 200,
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        assertNull(database.bookmarksQueries.getBookmarkByRemoteId(originalBookmarkRemoteId).executeAsOneOrNull())
+        val replacement = database.bookmarksQueries
+            .getBookmarkByRemoteId(replacementBookmarkRemoteId)
+            .executeAsOne()
+        assertEquals(originalBookmark.local_id, replacement.local_id)
+        assertEquals(originalBookmark.created_at, replacement.created_at)
+        assertEquals(originalBookmark.modified_at, replacement.modified_at)
+        assertEquals(originalBookmark.bookmark_modified_at, replacement.bookmark_modified_at)
+        assertEquals(
+            listOf(replacement.local_id.toString()),
+            collectionBookmarksRepository.getBookmarksForCollection(collectionId).map { it.bookmarkId }
+        )
+        assertEquals(
+            AyahHighlightColor.GREEN,
+            collectionBookmarksRepository.getHighlightsFlow().first().single().color
+        )
+    }
+
+    @Test
+    fun `remote replacement backfills identity without changing bookmark timestamp`() = runTest {
+        val firstCollectionRemoteId = "remote-null-id-replacement-first"
+        val secondCollectionRemoteId = "remote-null-id-replacement-second"
+        val bookmarkRemoteId = "remote-null-id-replacement-bookmark"
+        createCollection("Remote Null Id Replacement First", firstCollectionRemoteId)
+        createCollection("Remote Null Id Replacement Second", secondCollectionRemoteId)
+        collectionBookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                remoteCollectionBookmarkMutation(
+                    collectionId = firstCollectionRemoteId,
+                    sura = 2,
+                    ayah = 249,
+                    bookmarkId = null,
+                    timestamp = 100,
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+        val originalBookmark = database.bookmarksQueries.getBookmarkForAyah(2L, 249L).executeAsOne()
+        assertNull(originalBookmark.remote_id)
+
+        collectionBookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                remoteCollectionBookmarkMutation(
+                    collectionId = firstCollectionRemoteId,
+                    sura = 2,
+                    ayah = 249,
+                    bookmarkId = bookmarkRemoteId,
+                    timestamp = 200,
+                    mutation = Mutation.DELETED
+                ),
+                remoteCollectionBookmarkMutation(
+                    collectionId = secondCollectionRemoteId,
+                    sura = 2,
+                    ayah = 249,
+                    bookmarkId = bookmarkRemoteId,
+                    timestamp = 200,
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        val updatedBookmark = database.bookmarksQueries
+            .getBookmarkByLocalId(originalBookmark.local_id)
+            .executeAsOne()
+        assertEquals(bookmarkRemoteId, updatedBookmark.remote_id)
+        assertEquals(100L, updatedBookmark.created_at)
+        assertEquals(100L, updatedBookmark.modified_at)
+        assertEquals(100L, updatedBookmark.bookmark_modified_at)
+    }
+
+    @Test
+    fun `remote saved membership delete still prunes its orphan bookmark`() = runTest {
+        val collectionRemoteId = "remote-delete-only-collection"
+        val bookmarkRemoteId = "remote-delete-only-bookmark"
+        createCollection("Remote Delete Only", collectionRemoteId)
+        collectionBookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                remoteCollectionBookmarkMutation(
+                    collectionId = collectionRemoteId,
+                    sura = 2,
+                    ayah = 253,
+                    bookmarkId = bookmarkRemoteId,
+                    timestamp = 100,
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        collectionBookmarksRepository.applyRemoteChanges(
+            updatesToPersist = listOf(
+                remoteCollectionBookmarkMutation(
+                    collectionId = collectionRemoteId,
+                    sura = 2,
+                    ayah = 253,
+                    bookmarkId = bookmarkRemoteId,
+                    timestamp = 200,
+                    mutation = Mutation.DELETED
+                )
+            ),
+            localMutationsToClear = emptyList()
+        )
+
+        assertNull(database.bookmarksQueries.getBookmarkByRemoteId(bookmarkRemoteId).executeAsOneOrNull())
+    }
+
+    @Test
     fun `applyRemoteChanges checks write boundary before bookmark transaction`() = runTest {
         assertFailsWith<IllegalStateException> {
             bookmarksRepository.applyRemoteChanges(
@@ -311,6 +736,123 @@ class BookmarkSyncArchitectureTest {
         assertEquals(4300L, row.bookmark_modified_at)
         assertEquals(4300L, link.created_at)
         assertEquals(4300L, link.modified_at)
+    }
+
+    @Test
+    fun `first saved collection updates an existing highlight bookmark timestamp`() = runTest {
+        val collectionId = createCollection("First Saved Membership", "remote-first-saved")
+        collectionBookmarksRepository.setHighlight(2, 15, AyahHighlightColor.GREEN, at(100))
+        val originalBookmark = database.bookmarksQueries.getBookmarkForAyah(2L, 15L).executeAsOne()
+
+        val result = bookmarksRepository.replaceAyahBookmarkCollections(
+            sura = 2,
+            ayah = 15,
+            collectionIds = listOf(collectionId),
+            timestamp = at(200)
+        )
+
+        val resultBookmark = assertNotNull(result.bookmark)
+        val updatedBookmark = database.bookmarksQueries
+            .getBookmarkByLocalId(originalBookmark.local_id)
+            .executeAsOne()
+        val link = database.bookmark_collectionsQueries
+            .getCollectionBookmarkFor(originalBookmark.local_id, collectionId.toLong())
+            .executeAsOne()
+        val membership = collectionBookmarksRepository.getBookmarksForCollection(collectionId).single()
+        assertTrue(result.changed)
+        assertEquals(originalBookmark.local_id.toString(), resultBookmark.id)
+        assertEquals(100L, updatedBookmark.created_at)
+        assertEquals(200L, updatedBookmark.modified_at)
+        assertEquals(200L, updatedBookmark.bookmark_modified_at)
+        assertNull(updatedBookmark.bookmark_pending_op)
+        assertEquals(100L, resultBookmark.addedDate.fromPlatform().toEpochMilliseconds())
+        assertEquals(200L, resultBookmark.lastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(200L, membership.bookmarkLastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(100L, membership.bookmarkAddedDate.fromPlatform().toEpochMilliseconds())
+        assertEquals(200L, link.created_at)
+        assertEquals(200L, link.modified_at)
+        assertEquals(
+            AyahHighlightColor.GREEN,
+            collectionBookmarksRepository.getHighlightsFlow().first().single().color
+        )
+    }
+
+    @Test
+    fun `adding first saved collection updates an existing highlight bookmark timestamp`() = runTest {
+        val collectionId = createCollection("Direct First Saved Membership", "remote-direct-first-saved")
+        collectionBookmarksRepository.setHighlight(2, 17, AyahHighlightColor.PURPLE, at(100))
+        val originalBookmark = database.bookmarksQueries.getBookmarkForAyah(2L, 17L).executeAsOne()
+
+        val membership = collectionBookmarksRepository.addAyahBookmarkToCollection(
+            collectionId = collectionId,
+            sura = 2,
+            ayah = 17,
+            timestamp = at(200)
+        )
+
+        val updatedBookmark = database.bookmarksQueries
+            .getBookmarkByLocalId(originalBookmark.local_id)
+            .executeAsOne()
+        assertEquals(100L, updatedBookmark.created_at)
+        assertEquals(200L, updatedBookmark.modified_at)
+        assertEquals(200L, updatedBookmark.bookmark_modified_at)
+        assertNull(updatedBookmark.bookmark_pending_op)
+        assertEquals(200L, membership.bookmarkLastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(100L, membership.bookmarkAddedDate.fromPlatform().toEpochMilliseconds())
+        assertEquals(
+            AyahHighlightColor.PURPLE,
+            collectionBookmarksRepository.getHighlightsFlow().first().single().color
+        )
+    }
+
+    @Test
+    fun `adding later saved collections preserves the bookmark timestamp`() = runTest {
+        val firstCollectionId = createCollection("Direct Existing First", "remote-direct-existing-first")
+        val secondCollectionId = createCollection("Direct Existing Second", "remote-direct-existing-second")
+        collectionBookmarksRepository.addAyahBookmarkToCollection(firstCollectionId, 2, 20, at(100))
+
+        collectionBookmarksRepository.addAyahBookmarkToCollection(secondCollectionId, 2, 20, at(200))
+        collectionBookmarksRepository.addAyahBookmarkToCollection(firstCollectionId, 2, 20, at(300))
+
+        val bookmark = database.bookmarksQueries.getBookmarkForAyah(2L, 20L).executeAsOne()
+        assertEquals(100L, bookmark.created_at)
+        assertEquals(100L, bookmark.modified_at)
+        assertEquals(100L, bookmark.bookmark_modified_at)
+    }
+
+    @Test
+    fun `later saved collection replacements do not rewrite the bookmark timestamp`() = runTest {
+        val firstCollectionId = createCollection("First Saved Collection", "remote-first-saved-collection")
+        val secondCollectionId = createCollection("Second Saved Collection", "remote-second-saved-collection")
+        collectionBookmarksRepository.addAyahBookmarkToCollection(firstCollectionId, 2, 16, at(100))
+
+        val changed = bookmarksRepository.replaceAyahBookmarkCollections(
+            sura = 2,
+            ayah = 16,
+            collectionIds = listOf(secondCollectionId),
+            timestamp = at(200)
+        )
+        val unchanged = bookmarksRepository.replaceAyahBookmarkCollections(
+            sura = 2,
+            ayah = 16,
+            collectionIds = listOf(secondCollectionId),
+            timestamp = at(300)
+        )
+
+        val bookmark = database.bookmarksQueries.getBookmarkForAyah(2L, 16L).executeAsOne()
+        assertTrue(changed.changed)
+        assertFalse(unchanged.changed)
+        assertEquals(100L, bookmark.created_at)
+        assertEquals(100L, bookmark.modified_at)
+        assertEquals(100L, bookmark.bookmark_modified_at)
+        assertEquals(
+            100L,
+            assertNotNull(changed.bookmark).lastUpdated.fromPlatform().toEpochMilliseconds()
+        )
+        assertEquals(
+            100L,
+            assertNotNull(unchanged.bookmark).lastUpdated.fromPlatform().toEpochMilliseconds()
+        )
     }
 
     @Test
@@ -559,6 +1101,40 @@ class BookmarkSyncArchitectureTest {
     }
 
     @Test
+    fun `custom collection create ack binds parent identity without changing bookmark timestamp`() = runTest {
+        val collectionRemoteId = "remote-proven-custom"
+        val bookmarkRemoteId = "remote-proven-custom-parent"
+        val collectionId = createCollection("Proven Custom Parent", collectionRemoteId)
+        val bookmark = seedBookmark(4, 24, listOf(collectionId), at(100))
+        val localMutation = collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single()
+        val provenRelationAck = LocalModelMutation(
+            model = localMutation.model.copy(
+                bookmarkRemoteId = bookmarkRemoteId,
+                lastUpdated = at(200)
+            ),
+            remoteID = "$collectionRemoteId-$bookmarkRemoteId",
+            localID = localMutation.localID,
+            mutation = localMutation.mutation,
+            ack = localMutation.ack
+        )
+
+        collectionBookmarksRepository.applyRemoteChanges(
+            updatesToPersist = emptyList(),
+            localMutationsToClear = listOf(provenRelationAck)
+        )
+
+        val bookmarkRow = database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOne()
+        val link = database.bookmark_collectionsQueries
+            .getCollectionBookmarkByLocalId(localMutation.localID.toLong())
+            .executeAsOne()
+        assertEquals(bookmarkRemoteId, bookmarkRow.remote_id)
+        assertEquals(100L, bookmarkRow.created_at)
+        assertEquals(100L, bookmarkRow.modified_at)
+        assertEquals(100L, bookmarkRow.bookmark_modified_at)
+        assertNull(link.pending_op)
+    }
+
+    @Test
     fun `custom create ack pending delete without proven parent id binds relation snapshot only`() = runTest {
         val collectionId = createCollection("UnprovenCustomPendingDelete", "remote-unproven-pending-delete")
         val bookmark = seedBookmark(4, 23, listOf(collectionId))
@@ -590,6 +1166,43 @@ class BookmarkSyncArchitectureTest {
         assertEquals("remote-unproven-pending-delete", link.last_synced_collection_remote_id)
         assertEquals(Mutation.DELETED, deleteMutation.mutation)
         assertEquals("remote-unproven-delete-parent", deleteMutation.model.bookmarkRemoteId)
+    }
+
+    @Test
+    fun `custom create ack pending delete binds identity without changing bookmark timestamp`() = runTest {
+        val collectionRemoteId = "remote-proven-pending-delete"
+        val bookmarkRemoteId = "remote-proven-pending-delete-parent"
+        val collectionId = createCollection("Proven Custom Pending Delete", collectionRemoteId)
+        val bookmark = seedBookmark(4, 25, listOf(collectionId), at(100))
+        val createMutation = collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single()
+        collectionBookmarksRepository.markMutatedCollectionBookmarksInFlight(listOf(assertNotNull(createMutation.ack)))
+        removeBookmarkFromCollection(collectionId, bookmark)
+        val provenRelationAck = LocalModelMutation(
+            model = createMutation.model.copy(
+                bookmarkRemoteId = bookmarkRemoteId,
+                lastUpdated = at(200)
+            ),
+            remoteID = "$collectionRemoteId-$bookmarkRemoteId",
+            localID = createMutation.localID,
+            mutation = createMutation.mutation,
+            ack = createMutation.ack
+        )
+
+        collectionBookmarksRepository.applyRemoteChanges(
+            updatesToPersist = emptyList(),
+            localMutationsToClear = listOf(provenRelationAck)
+        )
+
+        val bookmarkRow = database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOne()
+        val link = database.bookmark_collectionsQueries
+            .getCollectionBookmarkByLocalId(createMutation.localID.toLong())
+            .executeAsOne()
+        assertEquals(bookmarkRemoteId, bookmarkRow.remote_id)
+        assertEquals(100L, bookmarkRow.created_at)
+        assertEquals(100L, bookmarkRow.modified_at)
+        assertEquals(100L, bookmarkRow.bookmark_modified_at)
+        assertEquals(0L, link.is_active)
+        assertEquals("DELETED", link.pending_op)
     }
 
     @Test
@@ -2473,6 +3086,9 @@ class BookmarkSyncArchitectureTest {
             .executeAsOne()
         val deleteMutation = collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single()
         assertEquals("remote-replayed-custom-bookmark", row.remote_id)
+        assertEquals(100L, row.created_at)
+        assertEquals(100L, row.modified_at)
+        assertEquals(100L, row.bookmark_modified_at)
         assertEquals(0L, link.is_active)
         assertEquals("DELETED", link.pending_op)
         assertEquals("remote-replayed-custom-bookmark", link.last_synced_bookmark_remote_id)
@@ -2602,6 +3218,29 @@ class BookmarkSyncArchitectureTest {
                 bookmarkId = bookmarkId
             ),
             remoteID = "$collectionId-$bookmarkId",
+            mutation = mutation
+        )
+    }
+
+    private fun remoteCollectionBookmarkMutation(
+        collectionId: String,
+        sura: Int,
+        ayah: Int,
+        bookmarkId: String?,
+        timestamp: Long,
+        mutation: Mutation,
+        createdTimestamp: Long = timestamp
+    ): RemoteModelMutation<RemoteCollectionBookmark> {
+        return RemoteModelMutation(
+            model = RemoteCollectionBookmark.Ayah(
+                collectionId = collectionId,
+                sura = sura,
+                ayah = ayah,
+                lastUpdated = at(timestamp),
+                bookmarkId = bookmarkId,
+                createdAt = at(createdTimestamp)
+            ),
+            remoteID = "$collectionId-${bookmarkId.orEmpty()}",
             mutation = mutation
         )
     }
