@@ -73,6 +73,22 @@ class ReadingBookmarksSyncAdapterTest {
     }
 
     @Test
+    fun `remote page location accepts backend mushaf id`() = runTest {
+        var captured = listOf<RemoteModelMutation<SyncReadingBookmark>>()
+        val adapter = adapterWithLocalMutations(emptyList()) { captured = it }
+
+        adapter.buildPlan(
+            0L,
+            listOf(readingMutation("page-id", 3, "page", 2, null, mushafId = 5))
+        ).complete(1L, emptyList())
+
+        assertEquals(
+            SyncReadingBookmarkLocation.Page(page = 2),
+            captured.single().model.location
+        )
+    }
+
+    @Test
     fun `unsupported location and invalid slot are ignored`() = runTest {
         var captured = listOf<RemoteModelMutation<SyncReadingBookmark>>()
         val adapter = adapterWithLocalMutations(emptyList()) { captured = it }
@@ -81,8 +97,7 @@ class ReadingBookmarksSyncAdapterTest {
             0L,
             listOf(
                 readingMutation("juz-id", 1, "juz", 2, null),
-                readingMutation("slot-id", 4, "page", 20, null),
-                readingMutation("unsupported-mushaf", 2, "page", 20, null, mushafId = 2)
+                readingMutation("slot-id", 4, "page", 20, null)
             )
         ).complete(1L, emptyList())
 

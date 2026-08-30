@@ -117,7 +117,6 @@ internal class ReadingBookmarksSyncAdapter(
 private fun SyncMutation.toSyncReadingBookmark(): SyncReadingBookmark? {
     val slot = data.intOrNull("slot")?.takeIf { it in 1..3 } ?: return null
     val type = data.stringOrNull("type")?.uppercase()
-    val mushafId = data.intOrNull("mushafId")
     val key = data.intOrNull("key")
     val location = when (type) {
         "AYAH" -> {
@@ -128,7 +127,7 @@ private fun SyncMutation.toSyncReadingBookmark(): SyncReadingBookmark? {
                 null
             }
         }
-        "PAGE" -> if (mushafId == SUPPORTED_MUSHAF_ID && key != null) {
+        "PAGE" -> if (key != null) {
             SyncReadingBookmarkLocation.Page(key)
         } else {
             null
@@ -153,12 +152,12 @@ private fun SyncReadingBookmark.toResourceData(): JsonObject = buildJsonObject {
             put("type", "ayah")
             put("key", value.sura)
             put("verseNumber", value.ayah)
-            put("mushafId", SUPPORTED_MUSHAF_ID)
+            put("mushafId", REQUEST_MUSHAF_ID)
         }
         is SyncReadingBookmarkLocation.Page -> {
             put("type", "page")
             put("key", value.page)
-            put("mushafId", SUPPORTED_MUSHAF_ID)
+            put("mushafId", REQUEST_MUSHAF_ID)
         }
         null -> {
             put("type", JsonNull)
@@ -169,4 +168,4 @@ private fun SyncReadingBookmark.toResourceData(): JsonObject = buildJsonObject {
     }
 }
 
-private const val SUPPORTED_MUSHAF_ID = 1
+private const val REQUEST_MUSHAF_ID = 1
