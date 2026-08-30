@@ -17,15 +17,6 @@ class BookmarkDependencyReconciler(
         linkQueries.markSyncedLinksForInactiveParents(modified_at = timestampMillis)
         linkQueries.deleteInactiveClearedLinks()
 
-        val activeReadingRows = bookmarkQueries.getReadingBookmarks().executeAsList()
-        activeReadingRows.drop(1).forEach { row ->
-            bookmarkQueries.clearReadingWithoutPending(
-                local_id = row.local_id,
-                modified_at = activeReadingRows.first().reading_modified_at
-                    ?: activeReadingRows.first().modified_at
-            )
-        }
-
         bookmarkQueries.deleteLocalOrphanBookmarks()
     }
 
@@ -36,13 +27,9 @@ class BookmarkDependencyReconciler(
         linkQueries.deleteInactiveClearedLinks()
         linkQueries.deleteRetiredInactiveClearedLinksForBookmark(bookmark_local_id = bookmarkLocalId)
         val retainedLinks = linkQueries.countRetainedForBookmark(bookmarkLocalId).executeAsOne()
-        val hasPendingFacet = row.bookmark_pending_op != null ||
-            row.reading_pending_op != null
+        val hasPendingFacet = row.bookmark_pending_op != null
 
-        if (row.is_reading == 0L &&
-            retainedLinks == 0L &&
-            !hasPendingFacet
-        ) {
+        if (retainedLinks == 0L && !hasPendingFacet) {
             bookmarkQueries.hardDeleteBookmarkByLocalId(bookmarkLocalId)
         }
     }

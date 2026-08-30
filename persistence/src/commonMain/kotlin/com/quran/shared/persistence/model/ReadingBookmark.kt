@@ -2,38 +2,52 @@ package com.quran.shared.persistence.model
 
 import com.quran.shared.persistence.util.PlatformDateTime
 
-/**
- * App-facing current reading bookmark.
- */
 sealed interface ReadingBookmark {
+    val slot: ReadingBookmarkSlot
+    val name: String?
     val lastUpdated: PlatformDateTime
     val id: String
 }
 
-/**
- * Ayah Reading Bookmark
- *
- * @param sura the sura
- * @parma ayah the ayah
- * @param lastUpdated the last updated
- * @param id the identifier of the ayah reading bookmark
- */
+enum class ReadingBookmarkSlot {
+    CORAL,
+    TEAL,
+    INDIGO
+}
+
+internal fun ReadingBookmarkSlot.toStorageValue(): Int = when (this) {
+    ReadingBookmarkSlot.CORAL -> 1
+    ReadingBookmarkSlot.TEAL -> 2
+    ReadingBookmarkSlot.INDIGO -> 3
+}
+
+internal fun Int.toReadingBookmarkSlot(): ReadingBookmarkSlot = when (this) {
+    1 -> ReadingBookmarkSlot.CORAL
+    2 -> ReadingBookmarkSlot.TEAL
+    3 -> ReadingBookmarkSlot.INDIGO
+    else -> error("Unsupported reading bookmark slot: $this")
+}
+
 data class AyahReadingBookmark(
     val sura: Int,
     val ayah: Int,
     override val lastUpdated: PlatformDateTime,
-    override val id: String
+    override val id: String,
+    override val slot: ReadingBookmarkSlot,
+    override val name: String? = null
 ) : ReadingBookmark
 
-/**
- * Page Reading Bookmark
- *
- * @param page the page
- * @param lastUpdated the last updated time of the ayah reading bookmark
- * @param id the identifier of the page reading bookmark
- */
 data class PageReadingBookmark(
     val page: Int,
+    override val lastUpdated: PlatformDateTime,
+    override val id: String,
+    override val slot: ReadingBookmarkSlot,
+    override val name: String? = null
+) : ReadingBookmark
+
+data class EmptyReadingBookmark(
+    override val slot: ReadingBookmarkSlot,
+    override val name: String?,
     override val lastUpdated: PlatformDateTime,
     override val id: String
 ) : ReadingBookmark

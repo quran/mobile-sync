@@ -1,6 +1,5 @@
 package com.quran.shared.syncengine
 
-import com.quran.shared.mutations.LOCAL_MUTATION_BOOKMARK_READING_FACET
 import com.quran.shared.mutations.LOCAL_MUTATION_COLLECTION_BOOKMARK_LINK_FACET
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.LocalMutationAck
@@ -1323,88 +1322,6 @@ class SynchronizationClientPhasingTest {
         )
     }
 
-    @Test
-    fun `marker no-op creates are excluded from post body`() = runTest {
-        val readingCreate = LocalModelMutation<SyncBookmark>(
-            model = SyncBookmark.AyahBookmark(
-                id = "local-reading",
-                sura = 2,
-                ayah = 255,
-                isReading = true,
-                lastModified = Instant.fromEpochMilliseconds(1000)
-            ),
-            remoteID = null,
-            localID = "local-reading",
-            mutation = Mutation.CREATED,
-            ack = LocalMutationAck(
-                localID = "local-reading",
-                resource = LocalMutationResource.BOOKMARK,
-                facet = LOCAL_MUTATION_BOOKMARK_READING_FACET,
-                observedPendingOp = Mutation.CREATED,
-                observedPendingVersion = 1
-            )
-        )
-        val defaultCreate = LocalModelMutation<SyncCollectionBookmark>(
-            model = SyncCollectionBookmark.AyahBookmark(
-                collectionId = "default-collection",
-                sura = 2,
-                ayah = 255,
-                lastModified = Instant.fromEpochMilliseconds(1001),
-                bookmarkId = "remote-bookmark-default"
-            ),
-            remoteID = null,
-            localID = "default-local-bookmark",
-            mutation = Mutation.CREATED,
-            ack = LocalMutationAck(
-                localID = "default-local-bookmark",
-                resource = LocalMutationResource.COLLECTION_BOOKMARK,
-                facet = LOCAL_MUTATION_COLLECTION_BOOKMARK_LINK_FACET,
-                observedPendingOp = Mutation.CREATED,
-                observedPendingVersion = 1
-            )
-        )
-        val customCreate = LocalModelMutation<SyncCollectionBookmark>(
-            model = SyncCollectionBookmark.AyahBookmark(
-                collectionId = "remote-collection",
-                sura = 3,
-                ayah = 7,
-                lastModified = Instant.fromEpochMilliseconds(1002),
-                bookmarkId = "remote-bookmark-custom"
-            ),
-            remoteID = null,
-            localID = "custom-link",
-            mutation = Mutation.CREATED,
-            ack = LocalMutationAck(
-                localID = "custom-link",
-                resource = LocalMutationResource.COLLECTION_BOOKMARK,
-                facet = LOCAL_MUTATION_COLLECTION_BOOKMARK_LINK_FACET,
-                observedPendingOp = Mutation.CREATED,
-                observedPendingVersion = 1
-            )
-        )
-        val pushedMutations = mutableListOf<List<SyncMutation>>()
-
-        executeDependencyAwareSync(
-            resourceAdapters = listOf(
-                bookmarkAdapter(readingCreate),
-                collectionBookmarksAdapter(defaultCreate, customCreate)
-            ),
-            initialLastModificationDate = 1L,
-            remoteResponse = MutationsResponse(
-                lastModificationDate = 10L,
-                mutations = emptyList()
-            ),
-            pushMutations = { mutations, mutationToken, _ ->
-                pushedMutations += mutations
-                MutationsResponse(
-                    lastModificationDate = mutationToken + 1,
-                    mutations = mutations
-                )
-            }
-        )
-
-        assertEquals(listOf(emptyList(), emptyList()), pushedMutations)
-    }
 
     @Test
     fun `dependency aware phases preserve adapter order inside each phase`() {

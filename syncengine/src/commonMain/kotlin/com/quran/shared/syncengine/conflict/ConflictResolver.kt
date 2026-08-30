@@ -3,7 +3,6 @@ package com.quran.shared.syncengine.conflict
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.syncengine.model.SyncBookmark
-import com.quran.shared.syncengine.model.conflictKey
 
 /**
  * Resolves conflicts between local and remote mutations for bookmarks.
@@ -41,8 +40,6 @@ class ConflictResolver(private val conflicts: List<ResourceConflict<SyncBookmark
         }
         
         // Handling conflicts
-        resolveReadingCreateConflict(resourceConflict)?.let { return it }
-
         if (resourceConflict.remoteWinsByPolicy()) {
             return persistRemoteMutations(resourceConflict.remoteMutations)
         }
@@ -59,50 +56,7 @@ class ConflictResolver(private val conflicts: List<ResourceConflict<SyncBookmark
         }
     }
 
-    private fun resolveReadingCreateConflict(
-        resourceConflict: ResourceConflict<SyncBookmark>
-    ): ConflictResolutionResult<SyncBookmark>? {
-        val localMutation = resourceConflict.localMutations.singleOrNull()
-        val remoteMutation = resourceConflict.remoteMutations.singleOrNull()
-        if (localMutation?.mutation != Mutation.CREATED || remoteMutation?.mutation != Mutation.CREATED) {
-            return null
-        }
-        if (localMutation.model.isReading == remoteMutation.model.isReading) {
-            return null
-        }
-        if (localMutation.model.conflictKey() != remoteMutation.model.conflictKey()) {
-            return if (localMutation.model.lastModified > remoteMutation.model.lastModified) {
-                ConflictResolutionResult(
-                    mutationsToPush = listOf(
-                        localMutation.copySyncState(remoteID = null, mutation = Mutation.CREATED)
-                    ),
-                    mutationsToPersist = listOf(remoteMutation)
-                )
-            } else {
-                null
-            }
-        }
-
-        return if (localMutation.model.lastModified > remoteMutation.model.lastModified) {
-            val remoteIdToUpdate = localMutation.remoteID ?: remoteMutation.remoteID
-            pushLocalMutation(localMutation.copySyncState(remoteID = remoteIdToUpdate, mutation = Mutation.MODIFIED))
-        } else {
-            persistRemoteMutation(remoteMutation)
-        }
-    }
 }
-
-private fun LocalModelMutation<SyncBookmark>.copySyncState(
-    remoteID: String?,
-    mutation: Mutation
-): LocalModelMutation<SyncBookmark> =
-    LocalModelMutation(
-        model = model,
-        remoteID = remoteID,
-        localID = localID,
-        mutation = mutation,
-        ack = ack
-    )
 
 private fun ResourceConflict<SyncBookmark>.remoteWinsByPolicy(): Boolean {
     return hasOnly(local = listOf(Mutation.CREATED), remote = listOf(Mutation.CREATED)) ||

@@ -265,7 +265,6 @@ class BookmarksLocalMutationsPreprocessorTest {
         val model = PageBookmark(
             id = "local_${page}_${timestamp.toEpochMilliseconds()}",
             page = page,
-            isReading = false,
             lastModified = timestamp
         )
         return LocalModelMutation(
@@ -281,7 +280,6 @@ class BookmarksLocalMutationsPreprocessorTest {
         val model = PageBookmark(
             id = "local_${page}_${timestamp.toEpochMilliseconds()}",
             page = page,
-            isReading = false,
             lastModified = timestamp
         )
         return LocalModelMutation(

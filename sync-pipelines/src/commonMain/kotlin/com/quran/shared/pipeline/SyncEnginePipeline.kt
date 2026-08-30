@@ -10,11 +10,13 @@ import com.quran.shared.persistence.input.LocalSyncCollection
 import com.quran.shared.persistence.input.LocalSyncCollectionAyahBookmark
 import com.quran.shared.persistence.input.LocalSyncNote
 import com.quran.shared.persistence.input.LocalSyncReadingSession
+import com.quran.shared.persistence.input.LocalSyncReadingBookmark
 import com.quran.shared.persistence.input.RemoteBookmark
 import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.input.RemoteNote
 import com.quran.shared.persistence.input.RemoteReadingSession
+import com.quran.shared.persistence.input.RemoteReadingBookmark
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksSynchronizationRepository
@@ -22,6 +24,7 @@ import com.quran.shared.persistence.repository.collection.repository.Collections
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksSynchronizationRepository
 import com.quran.shared.persistence.repository.note.repository.NotesSynchronizationRepository
 import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksRepository
+import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksSynchronizationRepository
 import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsSynchronizationRepository
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toPlatform
@@ -33,6 +36,7 @@ import com.quran.shared.syncengine.LocalDataFetcher
 import com.quran.shared.syncengine.LocalModificationDateFetcher
 import com.quran.shared.syncengine.NotesSynchronizationConfigurations
 import com.quran.shared.syncengine.ReadingSessionsSynchronizationConfigurations
+import com.quran.shared.syncengine.ReadingBookmarksSynchronizationConfigurations
 import com.quran.shared.syncengine.ResultNotifier
 import com.quran.shared.syncengine.SyncCompletionFinalizer
 import com.quran.shared.syncengine.SyncLifecycleGate
@@ -47,6 +51,8 @@ import com.quran.shared.syncengine.model.SyncCollection
 import com.quran.shared.syncengine.model.SyncCollectionBookmark
 import com.quran.shared.syncengine.model.SyncNote
 import com.quran.shared.syncengine.model.SyncReadingSession
+import com.quran.shared.syncengine.model.SyncReadingBookmark
+import com.quran.shared.syncengine.model.SyncReadingBookmarkLocation
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlin.native.HiddenFromObjC
@@ -100,6 +106,7 @@ private inline fun <Source, Target> RemoteModelMutation<Source>.mapModel(
 class SyncEnginePipeline(
     val bookmarksRepository: BookmarksSynchronizationRepository,
     val readingBookmarksRepository: ReadingBookmarksRepository,
+    val readingBookmarksSynchronizationRepository: ReadingBookmarksSynchronizationRepository,
     val collectionsRepository: CollectionsSynchronizationRepository,
     val collectionBookmarksRepository: CollectionBookmarksSynchronizationRepository,
     val notesRepository: NotesSynchronizationRepository,
@@ -140,6 +147,15 @@ class SyncEnginePipeline(
             resultNotifier = NotesResultReceiver(notesRepository, callback, writeBoundaryGuard),
             localDataFetcher = NotesRepositoryDataFetcher(notesRepository)
         )
+        val readingBookmarksConf = ReadingBookmarksSynchronizationConfigurations(
+            localModificationDateFetcher = localModificationDateFetcher,
+            resultNotifier = ReadingBookmarksResultReceiver(
+                repository = readingBookmarksSynchronizationRepository,
+                callback = callback,
+                writeBoundaryGuard = writeBoundaryGuard
+            ),
+            localDataFetcher = ReadingBookmarksRepositoryDataFetcher(readingBookmarksSynchronizationRepository)
+        )
         val readingSessionsConf = ReadingSessionsSynchronizationConfigurations(
             localModificationDateFetcher = localModificationDateFetcher,
             resultNotifier = ReadingSessionsResultReceiver(
@@ -156,6 +172,7 @@ class SyncEnginePipeline(
             collectionsConfigurations = collectionsConf,
             collectionBookmarksConfigurations = collectionBookmarksConf,
             notesConfigurations = notesConf,
+            readingBookmarksConfigurations = readingBookmarksConf,
             readingSessionsConfigurations = readingSessionsConf,
             syncLifecycleGate = syncLifecycleGate,
             syncCompletionFinalizer = SyncCompletionFinalizer { token ->
@@ -250,7 +267,6 @@ private class CollectionBookmarksRepositoryDataFetcher(
                 bookmarkId = remoteId,
                 createdAt = bookmark.createdAt?.fromPlatform()
             )
-            is RemoteBookmark.Page -> null
         }
     }
 
@@ -288,6 +304,22 @@ private class NotesRepositoryDataFetcher(
     override suspend fun fetchLocalModel(remoteId: String): SyncNote? {
         return null
     }
+}
+
+private class ReadingBookmarksRepositoryDataFetcher(
+    val repository: ReadingBookmarksSynchronizationRepository
+) : LocalDataFetcher<SyncReadingBookmark> {
+
+    override suspend fun fetchLocalMutations(lastModified: Long): List<LocalModelMutation<SyncReadingBookmark>> =
+        repository.fetchMutatedReadingBookmarks().map { mutation ->
+            mutation.mapModel { it.model.toSyncEngine() }
+        }
+
+    override suspend fun checkLocalExistence(remoteIDs: List<String>): Map<String, Boolean> =
+        repository.remoteResourcesExist(remoteIDs)
+
+    override suspend fun fetchLocalModel(remoteId: String): SyncReadingBookmark? =
+        repository.fetchReadingBookmarkByRemoteId(remoteId)?.toSyncEngine()
 }
 
 private class ReadingSessionsRepositoryDataFetcher(
@@ -466,6 +498,32 @@ private class NotesResultReceiver(
     }
 }
 
+internal class ReadingBookmarksResultReceiver(
+    val repository: ReadingBookmarksSynchronizationRepository,
+    callback: SyncEngineCallback,
+    private val writeBoundaryGuard: SyncWriteBoundaryGuard = NoOpSyncWriteBoundaryGuard
+) : CallbackResultNotifier<SyncReadingBookmark>(callback) {
+
+    override suspend fun didSucceed(
+        newToken: Long,
+        newRemoteMutations: List<RemoteModelMutation<SyncReadingBookmark>>,
+        processedLocalMutations: List<LocalModelMutation<SyncReadingBookmark>>
+    ) {
+        val remotes = newRemoteMutations.map { mutation ->
+            mutation.mapModel { it.model.toRemoteInput() }
+        }
+        val locals = processedLocalMutations.map { mutation ->
+            mutation.mapModel { it.model.toLocalSyncInput(it.localID) }
+        }
+        logPersistingSyncChanges("reading bookmark", remotes.size, locals.size)
+        repository.applyRemoteChanges(
+            updatesToPersist = remotes,
+            localMutationsToClear = locals,
+            writeBoundaryGuard = writeBoundaryGuard.toPersistenceWriteBoundaryGuard()
+        )
+    }
+}
+
 private class ReadingSessionsResultReceiver(
     val repository: ReadingSessionsSynchronizationRepository,
     callback: SyncEngineCallback,
@@ -502,14 +560,6 @@ private fun RemoteBookmark.toSyncEngine(id: String): SyncBookmark {
             sura = this.sura,
             ayah = this.ayah,
             lastModified = this.lastUpdated.fromPlatform(),
-            isReading = this.isReading,
-            createdAt = this.createdAt?.fromPlatform()
-        )
-        is RemoteBookmark.Page -> SyncBookmark.PageBookmark(
-            id = id,
-            page = this.page,
-            lastModified = this.lastUpdated.fromPlatform(),
-            isReading = this.isReading,
             createdAt = this.createdAt?.fromPlatform()
         )
     }
@@ -545,14 +595,6 @@ private fun SyncBookmark.toRemoteInput(): RemoteBookmark {
                 sura = this.sura,
                 ayah = this.ayah,
                 lastUpdated = this.lastModified.toPlatform(),
-                isReading = this.isReading,
-                createdAt = this.createdAt?.toPlatform()
-            )
-        is SyncBookmark.PageBookmark ->
-            RemoteBookmark.Page(
-                page = this.page,
-                lastUpdated = this.lastModified.toPlatform(),
-                isReading = this.isReading,
                 createdAt = this.createdAt?.toPlatform()
             )
     }
@@ -677,6 +719,94 @@ private fun ReadingSession.toSyncEngine(): SyncReadingSession {
         verseNumber = ayah,
         lastModified = lastUpdated.fromPlatform()
     )
+}
+
+private fun LocalSyncReadingBookmark.toSyncEngine(): SyncReadingBookmark =
+    SyncReadingBookmark(
+        slot = slot,
+        name = name,
+        location = readingBookmarkLocation(type, sura, ayah, page),
+        lastModified = lastUpdated.fromPlatform(),
+        createdAt = createdAt.fromPlatform()
+    )
+
+private fun RemoteReadingBookmark.toSyncEngine(): SyncReadingBookmark =
+    SyncReadingBookmark(
+        slot = slot,
+        name = name,
+        location = readingBookmarkLocation(type, sura, ayah, page),
+        lastModified = lastUpdated.fromPlatform(),
+        createdAt = createdAt?.fromPlatform()
+    )
+
+private fun readingBookmarkLocation(
+    type: String?,
+    sura: Int?,
+    ayah: Int?,
+    page: Int?
+): SyncReadingBookmarkLocation? = when (type) {
+    "AYAH" -> SyncReadingBookmarkLocation.Ayah(
+        sura = requireNotNull(sura),
+        ayah = requireNotNull(ayah)
+    )
+    "PAGE" -> SyncReadingBookmarkLocation.Page(
+        page = requireNotNull(page)
+    )
+    null -> null
+    else -> error("Unsupported reading bookmark type: $type")
+}
+
+private fun SyncReadingBookmark.toRemoteInput(): RemoteReadingBookmark {
+    val values = location.toPersistenceValues()
+    return RemoteReadingBookmark(
+        slot = slot,
+        name = name,
+        type = values.type,
+        sura = values.sura,
+        ayah = values.ayah,
+        page = values.page,
+        lastUpdated = lastModified.toPlatform(),
+        createdAt = createdAt?.toPlatform()
+    )
+}
+
+private fun SyncReadingBookmark.toLocalSyncInput(localId: String): LocalSyncReadingBookmark {
+    val values = location.toPersistenceValues()
+    val updatedAt = lastModified.toPlatform()
+    return LocalSyncReadingBookmark(
+        slot = slot,
+        name = name,
+        type = values.type,
+        sura = values.sura,
+        ayah = values.ayah,
+        page = values.page,
+        lastUpdated = updatedAt,
+        localId = localId,
+        createdAt = createdAt?.toPlatform() ?: updatedAt
+    )
+}
+
+private data class ReadingBookmarkPersistenceValues(
+    val type: String?,
+    val sura: Int?,
+    val ayah: Int?,
+    val page: Int?
+)
+
+private fun SyncReadingBookmarkLocation?.toPersistenceValues(): ReadingBookmarkPersistenceValues = when (this) {
+    is SyncReadingBookmarkLocation.Ayah -> ReadingBookmarkPersistenceValues(
+        type = "AYAH",
+        sura = sura,
+        ayah = ayah,
+        page = null
+    )
+    is SyncReadingBookmarkLocation.Page -> ReadingBookmarkPersistenceValues(
+        type = "PAGE",
+        sura = null,
+        ayah = null,
+        page = page
+    )
+    null -> ReadingBookmarkPersistenceValues(null, null, null, null)
 }
 
 private fun LocalSyncReadingSession.toSyncEngine(): SyncReadingSession {

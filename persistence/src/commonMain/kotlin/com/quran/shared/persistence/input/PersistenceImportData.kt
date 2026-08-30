@@ -7,7 +7,6 @@ data class PersistenceImportData(
     val collections: List<ImportCollection> = emptyList(),
     val collectionBookmarks: List<ImportCollectionAyahBookmark> = emptyList(),
     val readingSessions: List<ImportReadingSession> = emptyList(),
-    val readingBookmark: ImportReadingBookmark? = null,
     val notes: List<ImportNote> = emptyList()
 )
 
@@ -36,21 +35,6 @@ data class ImportReadingSession(
     val lastUpdated: PlatformDateTime
 )
 
-sealed class ImportReadingBookmark {
-    abstract val lastUpdated: PlatformDateTime
-
-    data class Ayah(
-        val sura: Int,
-        val ayah: Int,
-        override val lastUpdated: PlatformDateTime
-    ) : ImportReadingBookmark()
-
-    data class Page(
-        val page: Int,
-        override val lastUpdated: PlatformDateTime
-    ) : ImportReadingBookmark()
-}
-
 data class ImportNote(
     val body: String,
     val startSura: Int,
@@ -65,6 +49,5 @@ data class PersistenceImportResult(
     val collectionsImported: Int,
     val collectionBookmarksImported: Int,
     val readingSessionsImported: Int,
-    val readingBookmarkImported: Boolean,
     val notesImported: Int
 )

@@ -10,7 +10,6 @@ import com.quran.shared.persistence.TestDatabaseDriver
 import com.quran.shared.persistence.input.ImportAyahBookmark
 import com.quran.shared.persistence.input.ImportCollection
 import com.quran.shared.persistence.input.ImportCollectionAyahBookmark
-import com.quran.shared.persistence.input.ImportReadingBookmark
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.RemoteBookmark
 import com.quran.shared.persistence.input.RemoteCollection
@@ -140,7 +139,6 @@ class BookmarkSyncArchitectureTest {
                     model = RemoteBookmark.Ayah(
                         sura = 2,
                         ayah = 255,
-                        isReading = false,
                         lastUpdated = at(2345),
                         createdAt = at(1000)
                     ),
@@ -157,29 +155,6 @@ class BookmarkSyncArchitectureTest {
         assertEquals(2345L, row.bookmark_modified_at)
     }
 
-    @Test
-    fun `remote created page bookmark persists created_at separately from modified_at`() = runTest {
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Page(
-                        page = 22,
-                        isReading = false,
-                        lastUpdated = at(2345),
-                        createdAt = at(1000)
-                    ),
-                    remoteID = "remote-page-created-at",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = emptyList()
-        )
-
-        val row = database.bookmarksQueries.getBookmarkByRemoteId("remote-page-created-at").executeAsOne()
-        assertEquals(1000L, row.created_at)
-        assertEquals(2345L, row.modified_at)
-        assertEquals(2345L, row.bookmark_modified_at)
-    }
 
     @Test
     fun `remote created custom collection bookmark persists created_at separately from modified_at`() = runTest {
@@ -197,7 +172,6 @@ class BookmarkSyncArchitectureTest {
                     model = RemoteBookmark.Ayah(
                         sura = 2,
                         ayah = 255,
-                        isReading = false,
                         lastUpdated = at(1500),
                         createdAt = at(1500)
                     ),
@@ -669,7 +643,6 @@ class BookmarkSyncArchitectureTest {
                         model = RemoteBookmark.Ayah(
                             sura = 2,
                             ayah = 255,
-                            isReading = false,
                             lastUpdated = Instant.fromEpochMilliseconds(2000L).toPlatform()
                         ),
                         remoteID = "remote-bookmark-id",
@@ -888,25 +861,6 @@ class BookmarkSyncArchitectureTest {
         assertEquals(0L, database.bookmark_collectionsQueries.countAll().executeAsOne())
     }
 
-    @Test
-    fun `empty collection replacement preserves reading bookmark facet`() = runTest {
-        val collectionId = createCollection("PreserveReadingWithEmpty", "remote-preserve-reading-with-empty")
-        readingRepository.addAyahReadingBookmark(2, 17, at(100))
-        collectionBookmarksRepository.addAyahBookmarkToCollection(collectionId, 2, 17, at(100))
-
-        val result = bookmarksRepository.replaceAyahBookmarkCollections(
-            sura = 2,
-            ayah = 17,
-            collectionIds = emptyList(),
-            timestamp = at(200)
-        )
-
-        val row = database.bookmarksQueries.getBookmarkForAyah(2L, 17L).executeAsOne()
-        assertTrue(result.changed)
-        assertNull(result.bookmark)
-        assertEquals(1L, row.is_reading)
-        assertEquals(0L, database.bookmark_collectionsQueries.countActiveForBookmark(row.local_id).executeAsOne())
-    }
 
     @Test
     fun `collection replacement preserves highlight membership`() = runTest {
@@ -972,104 +926,6 @@ class BookmarkSyncArchitectureTest {
         )
     }
 
-    @Test
-    fun `add page reading bookmark stores reading facet`() = runTest {
-        val bookmark = readingRepository.addPageReadingBookmark(42)
-
-        val row = database.bookmarksQueries.getBookmarkForPage(42L).executeAsOne()
-        assertEquals(bookmark.page.toLong(), row.page)
-        assertEquals(1L, row.is_reading)
-    }
-
-    @Test
-    fun `re-adding remote-backed reading bookmark clears stale full-row delete`() = runTest {
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(3, 6, isReading = true, lastUpdated = at(100)),
-                    remoteID = "remote-reading-3-6",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = emptyList()
-        )
-
-        assertTrue(readingRepository.deleteReadingBookmark())
-        readingRepository.addAyahReadingBookmark(3, 6)
-
-        val row = database.bookmarksQueries.getBookmarkForAyah(3L, 6L).executeAsOne()
-        assertEquals(1L, row.is_reading)
-        assertNull(row.bookmark_pending_op)
-        assertTrue(bookmarksRepository.fetchMutatedBookmarks().none { it.mutation == Mutation.DELETED })
-    }
-
-
-    @Test
-    fun `clearing stale local delete does not retarget same-location bookmark remote id`() = runTest {
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(3, 9, isReading = true, lastUpdated = at(100)),
-                    remoteID = "remote-reading-recreate-old",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = emptyList()
-        )
-        assertTrue(readingRepository.deleteReadingBookmark())
-        val staleLocalDelete = bookmarksRepository.fetchMutatedBookmarks().single {
-            it.remoteID == "remote-reading-recreate-old"
-        }
-
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(3, 9, isReading = true, lastUpdated = at(200)),
-                    remoteID = "remote-reading-recreate-new",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = listOf(staleLocalDelete)
-        )
-
-        assertNull(database.bookmarksQueries.getBookmarkForAyah(3L, 9L).executeAsOneOrNull())
-        assertNull(database.bookmarksQueries.getBookmarkByRemoteId("remote-reading-recreate-old").executeAsOneOrNull())
-        assertNull(database.bookmarksQueries.getBookmarkByRemoteId("remote-reading-recreate-new").executeAsOneOrNull())
-    }
-
-    @Test
-    fun `remote bookmark id already owned by pending different location is not moved`() = runTest {
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(3, 11, isReading = true, lastUpdated = at(100)),
-                    remoteID = "remote-stable-bookmark-id",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = emptyList()
-        )
-        val original = database.bookmarksQueries.getBookmarkForAyah(3L, 11L).executeAsOne()
-        database.bookmarksQueries.clearReadingBookmark(local_id = original.local_id, timestamp = 150L)
-
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(3, 12, isReading = true, lastUpdated = at(200)),
-                    remoteID = "remote-stable-bookmark-id",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = emptyList()
-        )
-
-        val retained = database.bookmarksQueries.getBookmarkByRemoteId("remote-stable-bookmark-id").executeAsOne()
-        assertEquals(original.local_id, retained.local_id)
-        assertEquals(3L, retained.sura)
-        assertEquals(11L, retained.ayah)
-        assertNotNull(retained.reading_pending_op)
-        assertNull(database.bookmarksQueries.getBookmarkForAyah(3L, 12L).executeAsOneOrNull())
-    }
 
     @Test
     fun `custom collection create ack without proven parent id stores relation snapshot only`() = runTest {
@@ -1276,95 +1132,6 @@ class BookmarkSyncArchitectureTest {
         assertNull(database.bookmarksQueries.getBookmarkForAyah(4L, 5L).executeAsOneOrNull())
     }
 
-    @Test
-    fun `acknowledged custom link delete does not restore stale bookmark remote id`() = runTest {
-        val collectionId = createCollection("DeleteStaleBookmarkId", "remote-delete-stale-bookmark-id")
-        seedBookmark(4, 14, listOf(collectionId))
-        val createMutation = collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single()
-        collectionBookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                customRemoteMutation(
-                    collectionId = "remote-delete-stale-bookmark-id",
-                    sura = 4,
-                    ayah = 14,
-                    bookmarkId = "remote-bookmark-old-delete",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = listOf(createMutation)
-        )
-
-        val bookmark = collectionBookmarksRepository.getBookmarksForCollection(collectionId).single()
-        removeBookmarkFromCollection(collectionId, bookmark)
-        val deleteMutation = collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single()
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(4, 14, isReading = true, lastUpdated = at(200)),
-                    remoteID = "remote-bookmark-new-delete",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = emptyList()
-        )
-
-        collectionBookmarksRepository.applyRemoteChanges(
-            updatesToPersist = emptyList(),
-            localMutationsToClear = listOf(deleteMutation)
-        )
-
-        val row = database.bookmarksQueries.getBookmarkForAyah(4L, 14L).executeAsOne()
-        assertEquals("remote-bookmark-old-delete", row.remote_id)
-        assertNull(database.bookmarksQueries.getBookmarkByRemoteId("remote-bookmark-new-delete").executeAsOneOrNull())
-    }
-
-    @Test
-    fun `remote custom relation create preserves parent bookmark pending delete`() = runTest {
-        val collectionId = createCollection("ReactivateCustom", "remote-reactivate-custom")
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(4, 7, isReading = true, lastUpdated = at(100)),
-                    remoteID = "remote-bookmark-4-7",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = emptyList()
-        )
-        assertTrue(readingRepository.deleteReadingBookmark())
-        val pendingDelete = bookmarksRepository.fetchMutatedBookmarks().single {
-            it.remoteID == "remote-bookmark-4-7"
-        }
-        assertEquals(Mutation.DELETED, pendingDelete.mutation)
-
-        collectionBookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                customRemoteMutation(
-                    collectionId = "remote-reactivate-custom",
-                    sura = 4,
-                    ayah = 7,
-                    bookmarkId = "remote-bookmark-4-7",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = emptyList()
-        )
-
-        val row = database.bookmarksQueries.getBookmarkByRemoteId("remote-bookmark-4-7").executeAsOne()
-        assertEquals(1L, row.deleted)
-        assertEquals("DELETED", row.bookmark_pending_op)
-        val link = database.bookmark_collectionsQueries
-            .getCollectionBookmarkFor(row.local_id, collectionId.toLong())
-            .executeAsOne()
-        assertEquals(0L, link.is_active)
-        assertEquals("DELETED", link.pending_op)
-        assertEquals("remote-bookmark-4-7", link.last_synced_bookmark_remote_id)
-        assertEquals("remote-reactivate-custom", link.last_synced_collection_remote_id)
-        val retainedDelete = bookmarksRepository.fetchMutatedBookmarks().single {
-            it.remoteID == "remote-bookmark-4-7"
-        }
-        assertEquals(Mutation.DELETED, retainedDelete.mutation)
-    }
 
     @Test
     fun `stale remote relation delete does not restore old bookmark remote id`() = runTest {
@@ -1372,7 +1139,7 @@ class BookmarkSyncArchitectureTest {
         bookmarksRepository.applyRemoteChanges(
             updatesToPersist = listOf(
                 RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(4, 8, isReading = false, lastUpdated = at(100)),
+                    model = RemoteBookmark.Ayah(4, 8, lastUpdated = at(100)),
                     remoteID = "remote-bookmark-new",
                     mutation = Mutation.CREATED
                 )
@@ -1631,7 +1398,7 @@ class BookmarkSyncArchitectureTest {
         bookmarksRepository.applyRemoteChanges(
             updatesToPersist = listOf(
                 RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(4, 11, isReading = false, lastUpdated = at(100)),
+                    model = RemoteBookmark.Ayah(4, 11, lastUpdated = at(100)),
                     remoteID = "remote-current-bookmark",
                     mutation = Mutation.CREATED
                 )
@@ -1651,7 +1418,7 @@ class BookmarkSyncArchitectureTest {
         bookmarksRepository.applyRemoteChanges(
             updatesToPersist = listOf(
                 RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(5, 4, isReading = false, lastUpdated = at(100)),
+                    model = RemoteBookmark.Ayah(5, 4, lastUpdated = at(100)),
                     remoteID = "remote-bookmark-mismatch",
                     mutation = Mutation.CREATED
                 )
@@ -1685,7 +1452,7 @@ class BookmarkSyncArchitectureTest {
         bookmarksRepository.applyRemoteChanges(
             updatesToPersist = listOf(
                 RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(5, 6, isReading = false, lastUpdated = at(200)),
+                    model = RemoteBookmark.Ayah(5, 6, lastUpdated = at(200)),
                     remoteID = "remote-bookmark-current-link",
                     mutation = Mutation.CREATED
                 )
@@ -1716,7 +1483,7 @@ class BookmarkSyncArchitectureTest {
         bookmarksRepository.applyRemoteChanges(
             updatesToPersist = listOf(
                 RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(5, 10, isReading = false, lastUpdated = at(100)),
+                    model = RemoteBookmark.Ayah(5, 10, lastUpdated = at(100)),
                     remoteID = "remote-bookmark-direct-mismatch",
                     mutation = Mutation.CREATED
                 )
@@ -1727,7 +1494,7 @@ class BookmarkSyncArchitectureTest {
         bookmarksRepository.applyRemoteChanges(
             updatesToPersist = listOf(
                 RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(5, 11, isReading = false, lastUpdated = at(200)),
+                    model = RemoteBookmark.Ayah(5, 11, lastUpdated = at(200)),
                     remoteID = "remote-bookmark-direct-mismatch",
                     mutation = Mutation.CREATED
                 )
@@ -1746,7 +1513,7 @@ class BookmarkSyncArchitectureTest {
         bookmarksRepository.applyRemoteChanges(
             updatesToPersist = listOf(
                 RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(5, 12, isReading = false, lastUpdated = at(100)),
+                    model = RemoteBookmark.Ayah(5, 12, lastUpdated = at(100)),
                     remoteID = "remote-bookmark-direct-original",
                     mutation = Mutation.CREATED
                 )
@@ -1756,7 +1523,7 @@ class BookmarkSyncArchitectureTest {
         bookmarksRepository.applyRemoteChanges(
             updatesToPersist = listOf(
                 RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(5, 13, isReading = false, lastUpdated = at(100)),
+                    model = RemoteBookmark.Ayah(5, 13, lastUpdated = at(100)),
                     remoteID = "remote-bookmark-direct-target",
                     mutation = Mutation.CREATED
                 )
@@ -1767,7 +1534,7 @@ class BookmarkSyncArchitectureTest {
         bookmarksRepository.applyRemoteChanges(
             updatesToPersist = listOf(
                 RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(5, 13, isReading = false, lastUpdated = at(200)),
+                    model = RemoteBookmark.Ayah(5, 13, lastUpdated = at(200)),
                     remoteID = "remote-bookmark-direct-original",
                     mutation = Mutation.CREATED
                 )
@@ -1787,7 +1554,7 @@ class BookmarkSyncArchitectureTest {
         bookmarksRepository.applyRemoteChanges(
             updatesToPersist = listOf(
                 RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(5, 13, isReading = false, lastUpdated = at(100)),
+                    model = RemoteBookmark.Ayah(5, 13, lastUpdated = at(100)),
                     remoteID = "remote-ayah-old",
                     mutation = Mutation.CREATED
                 )
@@ -1798,7 +1565,7 @@ class BookmarkSyncArchitectureTest {
         bookmarksRepository.applyRemoteChanges(
             updatesToPersist = listOf(
                 RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(5, 13, isReading = true, lastUpdated = at(200)),
+                    model = RemoteBookmark.Ayah(5, 13, lastUpdated = at(200)),
                     remoteID = "remote-ayah-new",
                     mutation = Mutation.CREATED
                 )
@@ -1808,116 +1575,11 @@ class BookmarkSyncArchitectureTest {
 
         val row = database.bookmarksQueries.getBookmarkForAyah(5L, 13L).executeAsOne()
         assertEquals("remote-ayah-old", row.remote_id)
-        assertEquals(0L, row.is_reading)
         assertEquals(100L, row.modified_at)
         assertEquals(100L, row.bookmark_modified_at)
-        assertEquals(100L, row.reading_modified_at)
         assertNull(database.bookmarksQueries.getBookmarkByRemoteId("remote-ayah-new").executeAsOneOrNull())
     }
 
-    @Test
-    fun `remote bookmark create does not overwrite pending same-location ayah remote id`() = runTest {
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(5, 16, isReading = false, lastUpdated = at(100)),
-                    remoteID = "remote-ayah-pending-old",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = emptyList()
-        )
-        readingRepository.addAyahReadingBookmark(5, 16, at(150))
-        val pending = bookmarksRepository.fetchMutatedBookmarks().single()
-        assertEquals("remote-ayah-pending-old", pending.remoteID)
-
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(5, 16, isReading = false, lastUpdated = at(200)),
-                    remoteID = "remote-ayah-pending-new",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = emptyList()
-        )
-
-        val row = database.bookmarksQueries.getBookmarkForAyah(5L, 16L).executeAsOne()
-        val remaining = bookmarksRepository.fetchMutatedBookmarks().single()
-        assertEquals("remote-ayah-pending-old", row.remote_id)
-        assertEquals(1L, row.is_reading)
-        assertEquals("CREATED", row.reading_pending_op)
-        assertEquals("remote-ayah-pending-old", remaining.remoteID)
-        assertNull(database.bookmarksQueries.getBookmarkByRemoteId("remote-ayah-pending-new").executeAsOneOrNull())
-    }
-
-
-    @Test
-    fun `remote bookmark create does not overwrite same-location remote id with pending entity delete`() = runTest {
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(5, 18, isReading = true, lastUpdated = at(100)),
-                    remoteID = "remote-ayah-delete-old",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = emptyList()
-        )
-        assertTrue(readingRepository.deleteReadingBookmark())
-        val rowWithPendingDelete = database.bookmarksQueries.getBookmarkForAyah(5L, 18L).executeAsOne()
-        assertEquals("DELETED", rowWithPendingDelete.bookmark_pending_op)
-
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(5, 18, isReading = true, lastUpdated = at(200)),
-                    remoteID = "remote-ayah-delete-new",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = emptyList()
-        )
-
-        val row = database.bookmarksQueries.getBookmarkForAyah(5L, 18L).executeAsOne()
-        assertEquals("remote-ayah-delete-old", row.remote_id)
-        assertEquals("DELETED", row.bookmark_pending_op)
-        assertEquals(1L, row.deleted)
-        assertNull(database.bookmarksQueries.getBookmarkByRemoteId("remote-ayah-delete-new").executeAsOneOrNull())
-    }
-
-    @Test
-    fun `remote bookmark create does not overwrite existing page remote id at same location`() = runTest {
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Page(88, isReading = false, lastUpdated = at(100)),
-                    remoteID = "remote-page-old",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = emptyList()
-        )
-
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Page(88, isReading = true, lastUpdated = at(200)),
-                    remoteID = "remote-page-new",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = emptyList()
-        )
-
-        val row = database.bookmarksQueries.getBookmarkForPage(88L).executeAsOne()
-        assertEquals("remote-page-old", row.remote_id)
-        assertEquals(0L, row.is_reading)
-        assertEquals(100L, row.modified_at)
-        assertEquals(100L, row.bookmark_modified_at)
-        assertEquals(100L, row.reading_modified_at)
-        assertNull(database.bookmarksQueries.getBookmarkByRemoteId("remote-page-new").executeAsOneOrNull())
-    }
 
     @Test
     fun `remote bookmark create backfills null remote id at same ayah location`() = runTest {
@@ -1927,7 +1589,7 @@ class BookmarkSyncArchitectureTest {
         bookmarksRepository.applyRemoteChanges(
             updatesToPersist = listOf(
                 RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(5, 14, isReading = false, lastUpdated = at(200)),
+                    model = RemoteBookmark.Ayah(5, 14, lastUpdated = at(200)),
                     remoteID = "remote-ayah-backfill",
                     mutation = Mutation.CREATED
                 )
@@ -1940,45 +1602,6 @@ class BookmarkSyncArchitectureTest {
         assertEquals("remote-ayah-backfill", database.bookmarksQueries.getBookmarkByRemoteId("remote-ayah-backfill").executeAsOne().remote_id)
     }
 
-    @Test
-    fun `remote bookmark create does not replace pending reading remote id before fetched stale row persists`() = runTest {
-        readingRepository.addAyahReadingBookmark(5, 17)
-        database.bookmarksQueries.upsertAyahBookmark(
-            remote_id = "remote-reading-stale",
-            sura = 5L,
-            ayah = 17L,
-            created_at = 100L,
-            modified_at = 100L
-        )
-        val localMutation = bookmarksRepository.fetchMutatedBookmarks().single {
-            it.remoteID == "remote-reading-stale"
-        }
-
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(5, 17, isReading = true, lastUpdated = at(200)),
-                    remoteID = "remote-reading-new",
-                    mutation = Mutation.CREATED
-                ),
-                RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(5, 18, isReading = false, lastUpdated = at(100)),
-                    remoteID = "remote-reading-stale",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = listOf(localMutation)
-        )
-
-        val readingRow = database.bookmarksQueries.getBookmarkForAyah(5L, 17L).executeAsOne()
-        val staleRow = database.bookmarksQueries.getBookmarkByRemoteId("remote-reading-stale").executeAsOne()
-        assertEquals("remote-reading-stale", readingRow.remote_id)
-        assertEquals(1L, readingRow.is_reading)
-        assertNull(readingRow.reading_pending_op)
-        assertEquals(5L, staleRow.sura)
-        assertEquals(17L, staleRow.ayah)
-        assertNull(database.bookmarksQueries.getBookmarkByRemoteId("remote-reading-new").executeAsOneOrNull())
-    }
 
     @Test
     fun `remote bookmark delete leaves custom relation tombstone fetchable`() = runTest {
@@ -2001,7 +1624,7 @@ class BookmarkSyncArchitectureTest {
         bookmarksRepository.applyRemoteChanges(
             updatesToPersist = listOf(
                 RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(4, 12, isReading = false, lastUpdated = at(200)),
+                    model = RemoteBookmark.Ayah(4, 12, lastUpdated = at(200)),
                     remoteID = "remote-bookmark-4-12",
                     mutation = Mutation.DELETED
                 )
@@ -2026,7 +1649,7 @@ class BookmarkSyncArchitectureTest {
         bookmarksRepository.applyRemoteChanges(
             updatesToPersist = listOf(
                 RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(5, 15, isReading = false, lastUpdated = at(100)),
+                    model = RemoteBookmark.Ayah(5, 15, lastUpdated = at(100)),
                     remoteID = "remote-custom-delete-bookmark",
                     mutation = Mutation.CREATED
                 )
@@ -2190,220 +1813,6 @@ class BookmarkSyncArchitectureTest {
         })
     }
 
-    @Test
-    fun `remote reading changes respect latest timestamp singleton`() = runTest {
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(6, 1, isReading = true, lastUpdated = at(100)),
-                    remoteID = "remote-reading-old",
-                    mutation = Mutation.CREATED
-                ),
-                RemoteModelMutation(
-                    model = RemoteBookmark.Page(77, isReading = true, lastUpdated = at(200)),
-                    remoteID = "remote-reading-new",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = emptyList()
-        )
-
-        val reading = readingRepository.getReadingBookmark() as PageReadingBookmark
-        assertEquals(77, reading.page)
-        assertEquals(0L, database.bookmarksQueries.getBookmarkByRemoteId("remote-reading-old").executeAsOne().is_reading)
-    }
-
-    @Test
-    fun `replacing remote reading-only bookmark tombstones old bookmark`() = runTest {
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(6, 2, isReading = true, lastUpdated = at(100)),
-                    remoteID = "remote-reading-only-old",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = emptyList()
-        )
-
-        readingRepository.addAyahReadingBookmark(6, 3)
-
-        val oldRow = database.bookmarksQueries.getBookmarkByRemoteId("remote-reading-only-old").executeAsOne()
-        assertEquals(1L, oldRow.deleted)
-        assertEquals("DELETED", oldRow.bookmark_pending_op)
-        assertNull(oldRow.reading_pending_op)
-        val deleteMutation = bookmarksRepository.fetchMutatedBookmarks().single {
-            it.remoteID == "remote-reading-only-old"
-        }
-        assertEquals(Mutation.DELETED, deleteMutation.mutation)
-    }
-
-    @Test
-    fun `full reading bookmark delete exports fresh delete timestamp`() = runTest {
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(6, 7, isReading = true, lastUpdated = at(100)),
-                    remoteID = "remote-reading-delete-timestamp",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = emptyList()
-        )
-
-        assertTrue(readingRepository.deleteReadingBookmark())
-
-        val deleteMutation = bookmarksRepository.fetchMutatedBookmarks().single {
-            it.remoteID == "remote-reading-delete-timestamp"
-        }
-        assertEquals(Mutation.DELETED, deleteMutation.mutation)
-        assertTrue(deleteMutation.model.lastUpdated.fromPlatform().toEpochMilliseconds() > 100L)
-    }
-
-    @Test
-    fun `reading bookmark delete stamps derived inactive custom link delete with same timestamp`() = runTest {
-        val collectionId = createCollection("ReadingDeleteLinkTimestamp", "remote-reading-delete-link-timestamp")
-        collectionBookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                customRemoteMutation(
-                    collectionId = "remote-reading-delete-link-timestamp",
-                    sura = 6,
-                    ayah = 8,
-                    bookmarkId = "remote-reading-delete-link-bookmark",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = emptyList()
-        )
-        val bookmark = collectionBookmarksRepository.getBookmarksForCollection(collectionId).single()
-        removeBookmarkFromCollection(collectionId, bookmark)
-        val linkDelete = collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single()
-        collectionBookmarksRepository.applyRemoteChanges(
-            updatesToPersist = emptyList(),
-            localMutationsToClear = listOf(linkDelete)
-        )
-
-        readingRepository.addAyahReadingBookmark(6, 8, at(200))
-        assertTrue(readingRepository.deleteReadingBookmark())
-
-        val bookmarkRow = database.bookmarksQueries
-            .getBookmarkByRemoteId("remote-reading-delete-link-bookmark")
-            .executeAsOne()
-        val linkRow = database.bookmark_collectionsQueries
-            .getCollectionBookmarkByLocalId(linkDelete.localID.toLong())
-            .executeAsOne()
-        val derivedLinkDelete = collectionBookmarksRepository.fetchMutatedCollectionBookmarks().single()
-        assertEquals("DELETED", linkRow.pending_op)
-        assertEquals(bookmarkRow.modified_at, linkRow.modified_at)
-        assertEquals(bookmarkRow.modified_at, derivedLinkDelete.model.lastUpdated.fromPlatform().toEpochMilliseconds())
-    }
-
-    @Test
-    fun `imported reading bookmark tombstones displaced remote reading-only bookmark`() = runTest {
-        persistDefaultCollection()
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(7, 2, isReading = true, lastUpdated = at(100)),
-                    remoteID = "remote-import-reading-old",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = emptyList()
-        )
-
-        val importRepository = PersistenceImportRepositoryImpl(database)
-        importRepository.importData(
-            PersistenceImportData(
-                readingBookmark = ImportReadingBookmark.Ayah(7, 3, at(200))
-            ),
-            deleteExisting = false
-        )
-
-        val oldRow = database.bookmarksQueries.getBookmarkByRemoteId("remote-import-reading-old").executeAsOne()
-        assertEquals(1L, oldRow.deleted)
-        assertEquals("DELETED", oldRow.bookmark_pending_op)
-        val deleteMutation = bookmarksRepository.fetchMutatedBookmarks().single {
-            it.remoteID == "remote-import-reading-old"
-        }
-        assertEquals(Mutation.DELETED, deleteMutation.mutation)
-    }
-
-    @Test
-    fun `stale bookmark entity ACK does not clear readded reading bookmark`() = runTest {
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(8, 1, isReading = true, lastUpdated = at(100)),
-                    remoteID = "remote-stale-entity",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = emptyList()
-        )
-        assertTrue(readingRepository.deleteReadingBookmark())
-        val staleDelete = bookmarksRepository.fetchMutatedBookmarks().single()
-
-        readingRepository.addAyahReadingBookmark(8, 1, at(200))
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = emptyList(),
-            localMutationsToClear = listOf(staleDelete)
-        )
-
-        val row = database.bookmarksQueries.getBookmarkByRemoteId("remote-stale-entity").executeAsOne()
-        assertEquals(0L, row.deleted)
-        assertEquals(1L, row.is_reading)
-        assertNull(row.bookmark_pending_op)
-        assertEquals(Mutation.CREATED, bookmarksRepository.fetchMutatedBookmarks().single().mutation)
-    }
-
-    @Test
-    fun `pushed bookmark delete ACK does not apply stale remote delete after readd`() = runTest {
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(8, 11, isReading = true, lastUpdated = at(100)),
-                    remoteID = "remote-stale-delete-ack",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = emptyList()
-        )
-        assertTrue(readingRepository.deleteReadingBookmark())
-        val staleDelete = bookmarksRepository.fetchMutatedBookmarks().single()
-
-        readingRepository.addAyahReadingBookmark(8, 11, at(200))
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(8, 11, isReading = true, lastUpdated = at(150)),
-                    remoteID = "remote-stale-delete-ack",
-                    mutation = Mutation.DELETED,
-                    ack = staleDelete.ack
-                )
-            ),
-            localMutationsToClear = listOf(staleDelete)
-        )
-
-        val rowAfterAck = database.bookmarksQueries.getBookmarkByRemoteId("remote-stale-delete-ack").executeAsOne()
-        assertEquals(0L, rowAfterAck.deleted)
-        assertEquals(1L, rowAfterAck.is_reading)
-        assertEquals("CREATED", rowAfterAck.reading_pending_op)
-
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(8, 11, isReading = true, lastUpdated = at(250)),
-                    remoteID = "remote-stale-delete-ack",
-                    mutation = Mutation.DELETED
-                )
-            ),
-            localMutationsToClear = emptyList()
-        )
-
-        assertNull(database.bookmarksQueries.getBookmarkByRemoteId("remote-stale-delete-ack").executeAsOneOrNull())
-        assertNull(database.bookmarksQueries.getBookmarkForAyah(8L, 11L).executeAsOneOrNull())
-    }
 
     @Test
     fun `stale custom collection link ACK does not erase custom readd`() = runTest {
@@ -2578,45 +1987,6 @@ class BookmarkSyncArchitectureTest {
         assertEquals("remote-bookmark-readd-after-ack", createMutation.model.bookmarkRemoteId)
     }
 
-    @Test
-    fun `deleteExisting import keeps pending reading create tombstone until bookmark ACK binds`() = runTest {
-        persistDefaultCollection()
-        val bookmark = readingRepository.addAyahReadingBookmark(8, 12, at(100))
-        val readingCreate = bookmarksRepository.fetchMutatedBookmarks().single()
-
-        PersistenceImportRepositoryImpl(database).importData(PersistenceImportData(), deleteExisting = true)
-
-        val tombstoneBeforeAck = database.bookmarksQueries
-            .getBookmarkByLocalId(bookmark.id.toLong())
-            .executeAsOne()
-        assertEquals(1L, tombstoneBeforeAck.deleted)
-        assertEquals(0L, tombstoneBeforeAck.is_reading)
-        assertEquals("DELETED", tombstoneBeforeAck.bookmark_pending_op)
-        assertNull(tombstoneBeforeAck.remote_id)
-        assertTrue(bookmarksRepository.fetchMutatedBookmarks().none())
-
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(8, 12, isReading = true, lastUpdated = at(100)),
-                    remoteID = "remote-import-reading-create",
-                    mutation = Mutation.CREATED,
-                    ack = readingCreate.ack
-                )
-            ),
-            localMutationsToClear = listOf(readingCreate)
-        )
-
-        val tombstoneAfterAck = database.bookmarksQueries
-            .getBookmarkByLocalId(bookmark.id.toLong())
-            .executeAsOne()
-        assertEquals("remote-import-reading-create", tombstoneAfterAck.remote_id)
-        assertEquals(1L, tombstoneAfterAck.deleted)
-        assertEquals("DELETED", tombstoneAfterAck.bookmark_pending_op)
-        val deleteMutation = bookmarksRepository.fetchMutatedBookmarks().single()
-        assertEquals(Mutation.DELETED, deleteMutation.mutation)
-        assertEquals("remote-import-reading-create", deleteMutation.remoteID)
-    }
 
 
     @Test
@@ -2855,122 +2225,6 @@ class BookmarkSyncArchitectureTest {
         assertTrue(collectionBookmarksRepository.fetchMutatedCollectionBookmarks().none())
     }
 
-    @Test
-    fun `deleting in-flight reading-only create keeps bookmark tombstone until create ACK binds delete`() = runTest {
-        val bookmark = readingRepository.addAyahReadingBookmark(9, 5, at(100))
-        val readingCreate = bookmarksRepository.fetchMutatedBookmarks().single()
-        bookmarksRepository.markMutatedBookmarksInFlight(listOf(assertNotNull(readingCreate.ack)))
-
-        assertTrue(readingRepository.deleteReadingBookmark())
-
-        val tombstoneBeforeAck = database.bookmarksQueries
-            .getBookmarkByLocalId(bookmark.id.toLong())
-            .executeAsOne()
-        assertEquals(1L, tombstoneBeforeAck.deleted)
-        assertEquals(0L, tombstoneBeforeAck.is_reading)
-        assertEquals("DELETED", tombstoneBeforeAck.bookmark_pending_op)
-        assertNull(tombstoneBeforeAck.reading_pending_op)
-        assertNull(tombstoneBeforeAck.remote_id)
-        assertTrue(bookmarksRepository.fetchMutatedBookmarks().none())
-
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(9, 5, isReading = true, lastUpdated = at(100)),
-                    remoteID = "remote-pending-reading-create",
-                    mutation = Mutation.CREATED,
-                    ack = readingCreate.ack
-                )
-            ),
-            localMutationsToClear = listOf(readingCreate)
-        )
-
-        val tombstoneAfterAck = database.bookmarksQueries
-            .getBookmarkByLocalId(bookmark.id.toLong())
-            .executeAsOne()
-        assertEquals("remote-pending-reading-create", tombstoneAfterAck.remote_id)
-        assertEquals(1L, tombstoneAfterAck.deleted)
-        assertEquals("DELETED", tombstoneAfterAck.bookmark_pending_op)
-        val deleteMutation = bookmarksRepository.fetchMutatedBookmarks().single()
-        assertEquals(Mutation.DELETED, deleteMutation.mutation)
-        assertEquals("remote-pending-reading-create", deleteMutation.remoteID)
-    }
-
-
-    @Test
-    fun `clearing saved reading after marker leaves newer final state pending`() = runTest {
-        persistDefaultCollection()
-        val bookmark = readingRepository.addAyahReadingBookmark(9, 22, at(100))
-        seedBookmark(9, 22, at(125))
-        val readingCreate = bookmarksRepository.fetchMutatedBookmarks().single {
-            it.localID == bookmark.id
-        }
-        val ack = assertNotNull(readingCreate.ack)
-
-        val marked = bookmarksRepository.markMutatedBookmarksInFlight(listOf(ack))
-        assertEquals(listOf(ack), marked)
-        assertTrue(readingRepository.deleteReadingBookmark())
-
-        val markedAck = ack.copy(observedPendingVersion = ack.observedPendingVersion + 1)
-        val markedMutation = LocalModelMutation(
-            model = readingCreate.model,
-            remoteID = readingCreate.remoteID,
-            localID = readingCreate.localID,
-            mutation = readingCreate.mutation,
-            ack = markedAck
-        )
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = readingCreate.model,
-                    remoteID = "remote-inflight-saved-reading",
-                    mutation = Mutation.CREATED,
-                    ack = markedAck
-                )
-            ),
-            localMutationsToClear = listOf(markedMutation)
-        )
-
-        val row = database.bookmarksQueries
-            .getBookmarkByLocalId(bookmark.id.toLong())
-            .executeAsOne()
-        assertEquals("remote-inflight-saved-reading", row.remote_id)
-        assertEquals(0L, row.is_reading)
-        assertEquals("CREATED", row.reading_pending_op)
-        assertEquals(markedAck.observedPendingVersion + 1, row.reading_pending_version)
-
-        val finalReadingState = bookmarksRepository.fetchMutatedBookmarks().single {
-            it.localID == bookmark.id
-        }
-        assertEquals(Mutation.CREATED, finalReadingState.mutation)
-        assertEquals(false, finalReadingState.model.isReading)
-        assertEquals(row.reading_pending_version, assertNotNull(finalReadingState.ack).observedPendingVersion)
-    }
-
-    @Test
-    fun `failed push rollback cleans removed in-flight reading-only create tombstone`() = runTest {
-        val bookmark = readingRepository.addAyahReadingBookmark(9, 29, at(100))
-        val readingCreate = bookmarksRepository.fetchMutatedBookmarks().single()
-        val marked = bookmarksRepository.markMutatedBookmarksInFlight(listOf(assertNotNull(readingCreate.ack)))
-
-        assertTrue(readingRepository.deleteReadingBookmark())
-        bookmarksRepository.rollbackMutatedBookmarksInFlight(marked)
-
-        assertNull(database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOneOrNull())
-        assertTrue(bookmarksRepository.fetchMutatedBookmarks().none())
-    }
-
-    @Test
-    fun `deleting never-pushed reading-only create removes local row`() = runTest {
-        val bookmark = readingRepository.addAyahReadingBookmark(9, 20, at(100))
-        val readingCreate = bookmarksRepository.fetchMutatedBookmarks().single()
-        assertEquals(Mutation.CREATED, readingCreate.mutation)
-
-        assertTrue(readingRepository.deleteReadingBookmark())
-
-        assertNull(database.bookmarksQueries.getBookmarkByLocalId(bookmark.id.toLong()).executeAsOneOrNull())
-        assertTrue(bookmarksRepository.fetchMutatedBookmarks().none())
-    }
 
     @Test
     fun `custom link snapshots retire after bookmark and link deletes are ACKed`() = runTest {
@@ -3022,37 +2276,6 @@ class BookmarkSyncArchitectureTest {
         )
     }
 
-    @Test
-    fun `remote bookmark create replay after local reading delete backfills id and leaves delete pending`() = runTest {
-        val bookmark = readingRepository.addAyahReadingBookmark(10, 1, at(100))
-        val readingCreate = bookmarksRepository.fetchMutatedBookmarks().single()
-        bookmarksRepository.markMutatedBookmarksInFlight(listOf(assertNotNull(readingCreate.ack)))
-
-        assertTrue(readingRepository.deleteReadingBookmark())
-        assertTrue(bookmarksRepository.fetchMutatedBookmarks().none())
-
-        bookmarksRepository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteBookmark.Ayah(10, 1, isReading = true, lastUpdated = at(200)),
-                    remoteID = "remote-replayed-reading-bookmark",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = emptyList()
-        )
-
-        val row = database.bookmarksQueries
-            .getBookmarkByLocalId(bookmark.id.toLong())
-            .executeAsOne()
-        val deleteMutation = bookmarksRepository.fetchMutatedBookmarks().single()
-        assertEquals("remote-replayed-reading-bookmark", row.remote_id)
-        assertEquals(1L, row.deleted)
-        assertEquals(0L, row.is_reading)
-        assertEquals("DELETED", row.bookmark_pending_op)
-        assertEquals(Mutation.DELETED, deleteMutation.mutation)
-        assertEquals("remote-replayed-reading-bookmark", deleteMutation.remoteID)
-    }
 
 
     @Test

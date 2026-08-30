@@ -17,6 +17,7 @@ class PersistenceResetRepositoryImpl @Inject constructor(
             database.collectionsQueries.deleteAll()
             database.collectionsQueries.seedSystemCollections()
             database.notesQueries.deleteAll()
+            database.reading_bookmarksQueries.deleteAll()
             database.reading_sessionsQueries.deleteAll()
         }
     }

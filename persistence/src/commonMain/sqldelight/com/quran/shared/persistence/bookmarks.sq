@@ -1,68 +1,36 @@
 CREATE TABLE IF NOT EXISTS bookmark(
   local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
   remote_id TEXT,
-  bookmark_type TEXT NOT NULL,
-  sura INTEGER,
-  ayah INTEGER,
-  page INTEGER,
+  sura INTEGER NOT NULL,
+  ayah INTEGER NOT NULL,
   mushaf_id INTEGER NOT NULL DEFAULT 1,
-  is_reading INTEGER NOT NULL DEFAULT 0,
   deleted INTEGER NOT NULL DEFAULT 0,
   bookmark_pending_op TEXT,
   bookmark_pending_version INTEGER NOT NULL DEFAULT 0,
-  reading_pending_op TEXT,
-  reading_pending_version INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
   modified_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
   bookmark_modified_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
-  reading_modified_at INTEGER,
-  CHECK (bookmark_type IN ('AYAH', 'PAGE')),
-  CHECK (
-    (bookmark_type = 'AYAH' AND sura IS NOT NULL AND ayah IS NOT NULL AND page IS NULL)
-    OR
-    (bookmark_type = 'PAGE' AND page IS NOT NULL AND sura IS NULL AND ayah IS NULL)
-  ),
-  CHECK (is_reading IN (0, 1)),
   CHECK (deleted IN (0, 1)),
-  CHECK (bookmark_pending_op IS NULL OR bookmark_pending_op IN ('CREATED', 'MODIFIED', 'DELETED')),
-  CHECK (reading_pending_op IS NULL OR reading_pending_op IN ('CREATED', 'MODIFIED', 'DELETED'))
+  CHECK (bookmark_pending_op IS NULL OR bookmark_pending_op IN ('CREATED', 'MODIFIED', 'DELETED'))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS bookmark_remote_id_idx ON bookmark(remote_id);
 CREATE UNIQUE INDEX IF NOT EXISTS bookmark_ayah_identity_idx
-ON bookmark(bookmark_type, sura, ayah, mushaf_id)
-WHERE bookmark_type = 'AYAH';
-CREATE UNIQUE INDEX IF NOT EXISTS bookmark_page_identity_idx
-ON bookmark(bookmark_type, page, mushaf_id)
-WHERE bookmark_type = 'PAGE';
+ON bookmark(sura, ayah, mushaf_id);
 CREATE INDEX IF NOT EXISTS bookmark_active_modified_idx
 ON bookmark(deleted, modified_at DESC);
-CREATE INDEX IF NOT EXISTS bookmark_reading_idx
-ON bookmark(is_reading, reading_modified_at DESC);
 CREATE INDEX IF NOT EXISTS bookmark_pending_idx
-ON bookmark(bookmark_pending_op, reading_pending_op, modified_at DESC);
+ON bookmark(bookmark_pending_op, modified_at DESC);
 
 getSavedAyahBookmarks:
   SELECT b.* FROM bookmark b
   WHERE b.deleted = 0
-    AND b.bookmark_type = 'AYAH'
     AND EXISTS (
       SELECT 1 FROM bookmark_collection bc
       WHERE bc.bookmark_local_id = b.local_id
         AND bc.is_active = 1
     )
   ORDER BY b.modified_at DESC;
-
-getReadingBookmarks:
-  SELECT * FROM bookmark
-  WHERE deleted = 0 AND is_reading = 1
-  ORDER BY reading_modified_at DESC, modified_at DESC;
-
-getCurrentReadingBookmark:
-  SELECT * FROM bookmark
-  WHERE deleted = 0 AND is_reading = 1
-  ORDER BY reading_modified_at DESC, modified_at DESC
-  LIMIT 1;
 
 countAll:
   SELECT COUNT(*) FROM bookmark;
@@ -75,12 +43,7 @@ changedRowCount:
 
 getBookmarkForAyah:
   SELECT * FROM bookmark
-  WHERE bookmark_type = 'AYAH' AND sura = ? AND ayah = ? AND mushaf_id = 1
-  LIMIT 1;
-
-getBookmarkForPage:
-  SELECT * FROM bookmark
-  WHERE bookmark_type = 'PAGE' AND page = ? AND mushaf_id = 1
+  WHERE sura = ? AND ayah = ? AND mushaf_id = 1
   LIMIT 1;
 
 getBookmarkByLocalId:
@@ -91,23 +54,15 @@ getBookmarkByRemoteId:
 
 -- Detaches a batch-proven retired identity without changing bookmark or facet timestamps.
 clearBookmarkRemoteIdByLocalId:
-  UPDATE bookmark
-  SET remote_id = NULL
+  UPDATE bookmark SET remote_id = NULL
   WHERE local_id = :local_id AND remote_id = :remote_id;
 
 attachRemoteBookmarkIdByLocalId:
   UPDATE bookmark
   SET remote_id = :remote_id,
-    modified_at = CASE
-      WHEN modified_at > :modified_at THEN modified_at
-      ELSE :modified_at
-    END,
-    bookmark_modified_at = CASE
-      WHEN bookmark_modified_at > :modified_at THEN bookmark_modified_at
-      ELSE :modified_at
-    END
-  WHERE local_id = :local_id
-    AND remote_id IS NULL;
+    modified_at = MAX(modified_at, :modified_at),
+    bookmark_modified_at = MAX(bookmark_modified_at, :modified_at)
+  WHERE local_id = :local_id AND remote_id IS NULL;
 
 -- Collection-link sync owns remote identity binding, not bookmark facet timestamps.
 bindRemoteBookmarkIdPreservingTimestampsByLocalId:
@@ -130,51 +85,28 @@ getBookmarksByRemoteIds:
 
 getUnsyncedBookmarkRows:
   SELECT * FROM bookmark
-  WHERE (
-      bookmark_pending_op IS NOT NULL
-      AND (bookmark_pending_op != 'DELETED' OR remote_id IS NOT NULL)
-    )
-    OR (reading_pending_op IS NOT NULL AND deleted = 0)
+  WHERE bookmark_pending_op IS NOT NULL
+    AND (bookmark_pending_op != 'DELETED' OR remote_id IS NOT NULL)
   ORDER BY modified_at DESC;
 
 upsertAyahBookmark {
   INSERT OR IGNORE INTO bookmark (
-    remote_id,
-    bookmark_type,
-    sura,
-    ayah,
-    page,
-    mushaf_id,
-    is_reading,
-    deleted,
-    created_at,
-    modified_at,
-    bookmark_modified_at
-  )
-  VALUES (
-    :remote_id,
-    'AYAH',
-    :sura,
-    :ayah,
-    NULL,
-    1,
-    0,
-    0,
-    :created_at,
-    :modified_at,
-    :modified_at
+    remote_id, sura, ayah, mushaf_id, deleted,
+    created_at, modified_at, bookmark_modified_at
+  ) VALUES (
+    :remote_id, :sura, :ayah, 1, 0,
+    :created_at, :modified_at, :modified_at
   );
   UPDATE bookmark
-  SET remote_id = CASE
-      WHEN :remote_id IS NULL THEN remote_id
-      ELSE :remote_id
-    END,
+  SET remote_id = CASE WHEN :remote_id IS NULL THEN remote_id ELSE :remote_id END,
     deleted = CASE
-      WHEN :remote_id IS NOT NULL AND remote_id IS NULL AND deleted = 1 AND bookmark_pending_op = 'DELETED' THEN deleted
+      WHEN :remote_id IS NOT NULL AND remote_id IS NULL
+        AND deleted = 1 AND bookmark_pending_op = 'DELETED' THEN deleted
       ELSE 0
     END,
     bookmark_pending_op = CASE
-      WHEN :remote_id IS NOT NULL AND remote_id IS NULL AND deleted = 1 AND bookmark_pending_op = 'DELETED' THEN bookmark_pending_op
+      WHEN :remote_id IS NOT NULL AND remote_id IS NULL
+        AND deleted = 1 AND bookmark_pending_op = 'DELETED' THEN bookmark_pending_op
       WHEN :remote_id IS NOT NULL THEN NULL
       WHEN bookmark_pending_op = 'DELETED' THEN NULL
       ELSE bookmark_pending_op
@@ -185,7 +117,7 @@ upsertAyahBookmark {
     END,
     modified_at = :modified_at,
     bookmark_modified_at = :modified_at
-  WHERE bookmark_type = 'AYAH' AND sura = :sura AND ayah = :ayah AND mushaf_id = 1;
+  WHERE sura = :sura AND ayah = :ayah AND mushaf_id = 1;
 }
 
 -- Marks the first saved-collection activation without changing row creation or sync mutation state.
@@ -201,289 +133,13 @@ touchBookmarkForFirstSavedMembership:
     END
   WHERE local_id = :local_id AND deleted = 0;
 
-upsertPageBookmark {
-  INSERT OR IGNORE INTO bookmark (
-    remote_id,
-    bookmark_type,
-    sura,
-    ayah,
-    page,
-    mushaf_id,
-    is_reading,
-    deleted,
-    created_at,
-    modified_at,
-    bookmark_modified_at
-  )
-  VALUES (
-    :remote_id,
-    'PAGE',
-    NULL,
-    NULL,
-    :page,
-    1,
-    0,
-    0,
-    :created_at,
-    :modified_at,
-    :modified_at
-  );
-  UPDATE bookmark
-  SET remote_id = CASE
-      WHEN :remote_id IS NULL THEN remote_id
-      ELSE :remote_id
-    END,
-    deleted = CASE
-      WHEN :remote_id IS NOT NULL AND remote_id IS NULL AND deleted = 1 AND bookmark_pending_op = 'DELETED' THEN deleted
-      ELSE 0
-    END,
-    bookmark_pending_op = CASE
-      WHEN :remote_id IS NOT NULL AND remote_id IS NULL AND deleted = 1 AND bookmark_pending_op = 'DELETED' THEN bookmark_pending_op
-      WHEN :remote_id IS NOT NULL THEN NULL
-      WHEN bookmark_pending_op = 'DELETED' THEN NULL
-      ELSE bookmark_pending_op
-    END,
-    bookmark_pending_version = CASE
-      WHEN :remote_id IS NULL AND bookmark_pending_op = 'DELETED' THEN bookmark_pending_version + 1
-      ELSE bookmark_pending_version
-    END,
-    modified_at = :modified_at,
-    bookmark_modified_at = :modified_at
-  WHERE bookmark_type = 'PAGE' AND page = :page AND mushaf_id = 1;
-}
-
-setAyahReadingBookmark {
-  INSERT OR IGNORE INTO bookmark (
-    bookmark_type,
-    sura,
-    ayah,
-    page,
-    mushaf_id,
-    is_reading,
-    deleted,
-    reading_pending_op,
-    reading_pending_version,
-    created_at,
-    modified_at,
-    bookmark_modified_at,
-    reading_modified_at
-  )
-  VALUES (
-    'AYAH',
-    :sura,
-    :ayah,
-    NULL,
-    1,
-    1,
-    0,
-    'CREATED',
-    1,
-    :timestamp,
-    :timestamp,
-    :timestamp,
-    :timestamp
-  );
-  UPDATE bookmark
-  SET is_reading = 1,
-    deleted = 0,
-    bookmark_pending_op = CASE
-      WHEN bookmark_pending_op = 'DELETED' THEN NULL
-      ELSE bookmark_pending_op
-    END,
-    bookmark_pending_version = CASE
-      WHEN bookmark_pending_op = 'DELETED' THEN bookmark_pending_version + 1
-      ELSE bookmark_pending_version
-    END,
-    reading_pending_op = 'CREATED',
-    reading_pending_version = CASE
-      WHEN is_reading = 1 AND reading_pending_op = 'CREATED' THEN reading_pending_version
-      ELSE reading_pending_version + 1
-    END,
-    modified_at = :timestamp,
-    reading_modified_at = :timestamp
-  WHERE bookmark_type = 'AYAH' AND sura = :sura AND ayah = :ayah AND mushaf_id = 1;
-}
-
-setPageReadingBookmark {
-  INSERT OR IGNORE INTO bookmark (
-    bookmark_type,
-    sura,
-    ayah,
-    page,
-    mushaf_id,
-    is_reading,
-    deleted,
-    reading_pending_op,
-    reading_pending_version,
-    created_at,
-    modified_at,
-    bookmark_modified_at,
-    reading_modified_at
-  )
-  VALUES (
-    'PAGE',
-    NULL,
-    NULL,
-    :page,
-    1,
-    1,
-    0,
-    'CREATED',
-    1,
-    :timestamp,
-    :timestamp,
-    :timestamp,
-    :timestamp
-  );
-  UPDATE bookmark
-  SET is_reading = 1,
-    deleted = 0,
-    bookmark_pending_op = CASE
-      WHEN bookmark_pending_op = 'DELETED' THEN NULL
-      ELSE bookmark_pending_op
-    END,
-    bookmark_pending_version = CASE
-      WHEN bookmark_pending_op = 'DELETED' THEN bookmark_pending_version + 1
-      ELSE bookmark_pending_version
-    END,
-    reading_pending_op = 'CREATED',
-    reading_pending_version = CASE
-      WHEN is_reading = 1 AND reading_pending_op = 'CREATED' THEN reading_pending_version
-      ELSE reading_pending_version + 1
-    END,
-    modified_at = :timestamp,
-    reading_modified_at = :timestamp
-  WHERE bookmark_type = 'PAGE' AND page = :page AND mushaf_id = 1;
-}
-
-clearOtherReadingBookmarks:
-  UPDATE bookmark
-  SET is_reading = 0,
-    deleted = CASE
-      WHEN remote_id IS NOT NULL
-        AND NOT EXISTS (
-          SELECT 1 FROM bookmark_collection bc
-          WHERE bc.bookmark_local_id = bookmark.local_id
-            AND (
-              bc.is_active = 1
-              OR bc.pending_op IS NOT NULL
-              OR bc.last_synced_bookmark_remote_id IS NOT NULL
-              OR bc.last_synced_collection_remote_id IS NOT NULL
-            )
-        ) THEN 1
-      ELSE deleted
-    END,
-    bookmark_pending_op = CASE
-      WHEN remote_id IS NOT NULL
-        AND NOT EXISTS (
-          SELECT 1 FROM bookmark_collection bc
-          WHERE bc.bookmark_local_id = bookmark.local_id
-            AND (
-              bc.is_active = 1
-              OR bc.pending_op IS NOT NULL
-              OR bc.last_synced_bookmark_remote_id IS NOT NULL
-              OR bc.last_synced_collection_remote_id IS NOT NULL
-            )
-        ) THEN 'DELETED'
-      ELSE bookmark_pending_op
-    END,
-    bookmark_pending_version = CASE
-      WHEN remote_id IS NOT NULL
-        AND bookmark_pending_op != 'DELETED'
-        AND NOT EXISTS (
-          SELECT 1 FROM bookmark_collection bc
-          WHERE bc.bookmark_local_id = bookmark.local_id
-            AND (
-              bc.is_active = 1
-              OR bc.pending_op IS NOT NULL
-              OR bc.last_synced_bookmark_remote_id IS NOT NULL
-              OR bc.last_synced_collection_remote_id IS NOT NULL
-            )
-        ) THEN bookmark_pending_version + 1
-      WHEN remote_id IS NOT NULL
-        AND bookmark_pending_op IS NULL
-        AND NOT EXISTS (
-          SELECT 1 FROM bookmark_collection bc
-          WHERE bc.bookmark_local_id = bookmark.local_id
-            AND (
-              bc.is_active = 1
-              OR bc.pending_op IS NOT NULL
-              OR bc.last_synced_bookmark_remote_id IS NOT NULL
-              OR bc.last_synced_collection_remote_id IS NOT NULL
-            )
-        ) THEN bookmark_pending_version + 1
-      ELSE bookmark_pending_version
-    END,
-    reading_pending_op = CASE
-      WHEN remote_id IS NULL
-        AND NOT EXISTS (
-          SELECT 1 FROM bookmark_collection bc
-          WHERE bc.bookmark_local_id = bookmark.local_id
-            AND (
-              bc.is_active = 1
-              OR bc.pending_op IS NOT NULL
-              OR bc.last_synced_bookmark_remote_id IS NOT NULL
-              OR bc.last_synced_collection_remote_id IS NOT NULL
-            )
-        ) THEN NULL
-      WHEN remote_id IS NOT NULL
-        AND NOT EXISTS (
-          SELECT 1 FROM bookmark_collection bc
-          WHERE bc.bookmark_local_id = bookmark.local_id
-            AND (
-              bc.is_active = 1
-              OR bc.pending_op IS NOT NULL
-              OR bc.last_synced_bookmark_remote_id IS NOT NULL
-              OR bc.last_synced_collection_remote_id IS NOT NULL
-            )
-        ) THEN NULL
-      ELSE 'CREATED'
-    END,
-    reading_pending_version = reading_pending_version + 1,
-    modified_at = :timestamp,
-    reading_modified_at = :timestamp
-  WHERE deleted = 0 AND is_reading = 1 AND local_id != :local_id;
-
-clearReadingBookmark:
-  UPDATE bookmark
-  SET is_reading = 0,
-    reading_pending_op = CASE
-      WHEN reading_pending_op = 'CREATED' THEN 'CREATED'
-      WHEN remote_id IS NULL THEN NULL
-      ELSE 'CREATED'
-    END,
-    reading_pending_version = reading_pending_version + 1,
-    modified_at = :timestamp,
-    reading_modified_at = :timestamp
-  WHERE local_id = :local_id;
-
 markBookmarkDeleted:
   UPDATE bookmark
   SET deleted = 1,
-    is_reading = 0,
     bookmark_pending_op = 'DELETED',
     bookmark_pending_version = bookmark_pending_version + 1,
-    reading_pending_op = NULL,
-    reading_pending_version = reading_pending_version + 1,
     modified_at = :timestamp
   WHERE local_id = :local_id AND remote_id IS NOT NULL;
-
-markPendingReadingBookmarkDeleted:
-  UPDATE bookmark
-  SET deleted = 1,
-    is_reading = 0,
-    bookmark_pending_op = 'DELETED',
-    bookmark_pending_version = CASE
-      WHEN bookmark_pending_op = 'DELETED' THEN bookmark_pending_version
-      ELSE bookmark_pending_version + 1
-    END,
-    reading_pending_op = NULL,
-    reading_pending_version = reading_pending_version + 1,
-    modified_at = :timestamp,
-    reading_modified_at = :timestamp
-  WHERE local_id = :local_id
-    AND remote_id IS NULL
-    AND reading_pending_op = 'CREATED';
 
 deleteLocalBookmark:
   DELETE FROM bookmark WHERE local_id = :local_id AND remote_id IS NULL;
@@ -498,9 +154,7 @@ applyRemoteBookmarkDeletedByLocalId:
   UPDATE bookmark
   SET deleted = 1,
     remote_id = NULL,
-    is_reading = 0,
     bookmark_pending_op = NULL,
-    reading_pending_op = NULL,
     modified_at = :modified_at
   WHERE local_id = :local_id;
 
@@ -508,9 +162,7 @@ deleteLocalOrphanBookmarks:
   DELETE FROM bookmark
   WHERE remote_id IS NULL
     AND deleted = 0
-    AND is_reading = 0
     AND bookmark_pending_op IS NULL
-    AND reading_pending_op IS NULL
     AND NOT EXISTS (
       SELECT 1 FROM bookmark_collection bc
       WHERE bc.bookmark_local_id = bookmark.local_id
@@ -522,57 +174,13 @@ deleteLocalOrphanBookmarks:
         )
     );
 
-clearReadingWithoutPending:
-  UPDATE bookmark
-  SET is_reading = 0,
-    reading_pending_op = NULL,
-    modified_at = :modified_at,
-    reading_modified_at = :modified_at
-  WHERE local_id = :local_id;
-
-markReadingCreateInFlight:
-  UPDATE bookmark
-  SET reading_pending_version = reading_pending_version + 1
-  WHERE local_id = :local_id
-    AND reading_pending_op = 'CREATED'
-    AND reading_pending_version = :pending_version;
-
-rollbackActiveReadingCreateInFlight:
-  UPDATE bookmark
-  SET reading_pending_version = :pending_version
-  WHERE local_id = :local_id
-    AND is_reading = 1
-    AND reading_pending_op = 'CREATED'
-    AND reading_pending_version = :marked_pending_version;
-
-clearCanceledReadingCreateInFlight:
-  UPDATE bookmark
-  SET reading_pending_op = NULL
-  WHERE local_id = :local_id
-    AND is_reading = 0
-    AND reading_pending_op = 'CREATED'
-    AND reading_pending_version = :canceled_pending_version;
-
 clearBookmarkPending:
   UPDATE bookmark
   SET bookmark_pending_op = NULL,
-    reading_pending_op = CASE
-      WHEN :clear_reading = 1 THEN NULL
-      ELSE reading_pending_op
-    END,
-    remote_id = CASE
-      WHEN remote_id IS NULL THEN :remote_id
-      ELSE remote_id
-    END,
+    remote_id = CASE WHEN remote_id IS NULL THEN :remote_id ELSE remote_id END,
     deleted = 0,
-    modified_at = CASE
-      WHEN modified_at > :modified_at THEN modified_at
-      ELSE :modified_at
-    END,
-    bookmark_modified_at = CASE
-      WHEN bookmark_modified_at > :modified_at THEN bookmark_modified_at
-      ELSE :modified_at
-    END
+    modified_at = MAX(modified_at, :modified_at),
+    bookmark_modified_at = MAX(bookmark_modified_at, :modified_at)
   WHERE local_id = :local_id
     AND bookmark_pending_op = :pending_op
     AND bookmark_pending_version = :pending_version;
@@ -580,104 +188,37 @@ clearBookmarkPending:
 clearBookmarkDeletePending:
   UPDATE bookmark
   SET bookmark_pending_op = NULL,
-    remote_id = CASE
-      WHEN remote_id IS NULL THEN :remote_id
-      ELSE remote_id
-    END,
-    modified_at = CASE
-      WHEN modified_at > :modified_at THEN modified_at
-      ELSE :modified_at
-    END,
-    bookmark_modified_at = CASE
-      WHEN bookmark_modified_at > :modified_at THEN bookmark_modified_at
-      ELSE :modified_at
-    END
+    remote_id = CASE WHEN remote_id IS NULL THEN :remote_id ELSE remote_id END,
+    modified_at = MAX(modified_at, :modified_at),
+    bookmark_modified_at = MAX(bookmark_modified_at, :modified_at)
   WHERE local_id = :local_id
     AND deleted = 1
     AND bookmark_pending_op = :pending_op
     AND bookmark_pending_version = :pending_version;
 
-clearReadingPending:
-  UPDATE bookmark
-  SET reading_pending_op = NULL,
-    remote_id = CASE
-      WHEN remote_id IS NULL THEN :remote_id
-      ELSE remote_id
-    END,
-    deleted = 0,
-    modified_at = CASE
-      WHEN modified_at > :modified_at THEN modified_at
-      ELSE :modified_at
-    END,
-    reading_modified_at = CASE
-      WHEN reading_modified_at IS NOT NULL AND reading_modified_at > :modified_at THEN reading_modified_at
-      ELSE :modified_at
-    END
-  WHERE local_id = :local_id
-    AND reading_pending_op = :pending_op
-    AND reading_pending_version = :pending_version;
-
-applyRemoteReading:
-  UPDATE bookmark
-  SET remote_id = CASE
-      WHEN :remote_id IS NULL THEN remote_id
-      ELSE :remote_id
-    END,
-    is_reading = CASE
-      WHEN deleted = 1 AND bookmark_pending_op = 'DELETED' THEN is_reading
-      ELSE :is_reading
-    END,
-    reading_pending_op = reading_pending_op,
-    deleted = CASE
-      WHEN deleted = 1 AND bookmark_pending_op = 'DELETED' THEN deleted
-      ELSE 0
-    END,
-    modified_at = :modified_at,
-    reading_modified_at = :modified_at
-  WHERE local_id = :local_id;
-
 deleteUnsyncedBookmarks:
-  DELETE FROM bookmark
-  WHERE remote_id IS NULL
-    AND (
-      bookmark_pending_op IS NOT NULL
-      OR reading_pending_op IS NOT NULL
-    );
+  DELETE FROM bookmark WHERE remote_id IS NULL AND bookmark_pending_op IS NOT NULL;
 
 markUnsyncedBookmarksDeletedForImport:
   UPDATE bookmark
   SET deleted = 1,
-    is_reading = 0,
     bookmark_pending_op = CASE
       WHEN bookmark_pending_op IS NOT NULL THEN 'DELETED'
-      WHEN reading_pending_op IS NOT NULL THEN 'DELETED'
       ELSE bookmark_pending_op
     END,
     bookmark_pending_version = CASE
       WHEN bookmark_pending_op = 'DELETED' THEN bookmark_pending_version
-      WHEN bookmark_pending_op IS NOT NULL OR reading_pending_op IS NOT NULL THEN bookmark_pending_version + 1
+      WHEN bookmark_pending_op IS NOT NULL THEN bookmark_pending_version + 1
       ELSE bookmark_pending_version
     END,
-    reading_pending_op = NULL,
-    reading_pending_version = CASE
-      WHEN reading_pending_op IS NOT NULL OR is_reading = 1 THEN reading_pending_version + 1
-      ELSE reading_pending_version
-    END,
-    modified_at = :modified_at,
-    reading_modified_at = CASE
-      WHEN reading_pending_op IS NOT NULL OR is_reading = 1 THEN :modified_at
-      ELSE reading_modified_at
-    END
-  WHERE remote_id IS NULL
-    AND deleted = 0;
+    modified_at = :modified_at
+  WHERE remote_id IS NULL AND deleted = 0;
 
 markRemoteBookmarksDeleted:
   UPDATE bookmark
   SET deleted = 1,
     bookmark_pending_op = 'DELETED',
     bookmark_pending_version = bookmark_pending_version + 1,
-    reading_pending_op = NULL,
-    reading_pending_version = reading_pending_version + 1,
     modified_at = :modified_at
   WHERE remote_id IS NOT NULL;
 

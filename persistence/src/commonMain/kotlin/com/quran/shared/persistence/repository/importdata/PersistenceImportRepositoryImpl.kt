@@ -6,7 +6,6 @@ import com.quran.shared.persistence.input.ImportAyahBookmark
 import com.quran.shared.persistence.input.ImportCollection
 import com.quran.shared.persistence.input.ImportCollectionAyahBookmark
 import com.quran.shared.persistence.input.ImportNote
-import com.quran.shared.persistence.input.ImportReadingBookmark
 import com.quran.shared.persistence.input.ImportReadingSession
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.PersistenceImportResult
@@ -49,7 +48,6 @@ class PersistenceImportRepositoryImpl(
         val bookmarkLocalIds = importBookmarks(data.bookmarks)
         val collectionLocalIds = importCollections(data.collections)
         importReadingSessions(data.readingSessions)
-        importReadingBookmark(data.readingBookmark)
         importNotes(data.notes)
         importCollectionBookmarks(
             links = data.collectionBookmarks,
@@ -62,7 +60,6 @@ class PersistenceImportRepositoryImpl(
             collectionsImported = data.collections.size,
             collectionBookmarksImported = data.collectionBookmarks.size,
             readingSessionsImported = data.readingSessions.size,
-            readingBookmarkImported = data.readingBookmark != null,
             notesImported = data.notes.size
         )
     }
@@ -77,6 +74,7 @@ class PersistenceImportRepositoryImpl(
         database.collectionsQueries.markRemoteCollectionsDeleted(modified_at = timestamp)
         database.notesQueries.markUnsyncedNotesDeletedForImport(modified_at = timestamp)
         database.notesQueries.markRemoteNotesDeleted(modified_at = timestamp)
+        database.reading_bookmarksQueries.markAllForImportReplacement(modified_at = timestamp)
         database.reading_sessionsQueries.markUnsyncedReadingSessionsDeletedForImport(modified_at = timestamp)
         database.reading_sessionsQueries.markRemoteReadingSessionsDeleted(modified_at = timestamp)
     }
@@ -106,13 +104,6 @@ class PersistenceImportRepositoryImpl(
 
         val readingSessionCoordinates = data.readingSessions.map { session -> session.sura to session.ayah }
         requireUnique("reading session ayah", readingSessionCoordinates)
-
-        when (val readingBookmark = data.readingBookmark) {
-            is ImportReadingBookmark.Ayah -> Unit
-            is ImportReadingBookmark.Page ->
-                requirePage(readingBookmark.page, "reading bookmark")
-            null -> Unit
-        }
 
         data.notes.forEach { note ->
             require(note.body.isNotBlank()) { "Note body cannot be blank." }
@@ -194,45 +185,6 @@ class PersistenceImportRepositoryImpl(
         }
     }
 
-    private fun importReadingBookmark(readingBookmark: ImportReadingBookmark?) {
-        when (readingBookmark) {
-            is ImportReadingBookmark.Ayah -> {
-                val timestamp = readingBookmark.lastUpdated.toImportTimestampMillis()
-                database.bookmarksQueries.setAyahReadingBookmark(
-                    sura = readingBookmark.sura.toLong(),
-                    ayah = readingBookmark.ayah.toLong(),
-                    timestamp = timestamp
-                )
-                val row = requireNotNull(
-                    database.bookmarksQueries
-                        .getBookmarkForAyah(readingBookmark.sura.toLong(), readingBookmark.ayah.toLong())
-                        .executeAsOneOrNull()
-                ) { "Expected imported reading bookmark for ${readingBookmark.sura}:${readingBookmark.ayah}." }
-                database.bookmarksQueries.clearOtherReadingBookmarks(
-                    local_id = row.local_id,
-                    timestamp = timestamp
-                )
-            }
-            is ImportReadingBookmark.Page -> {
-                val timestamp = readingBookmark.lastUpdated.toImportTimestampMillis()
-                database.bookmarksQueries.setPageReadingBookmark(
-                    page = readingBookmark.page.toLong(),
-                    timestamp = timestamp
-                )
-                val row = requireNotNull(
-                    database.bookmarksQueries
-                        .getBookmarkForPage(readingBookmark.page.toLong())
-                        .executeAsOneOrNull()
-                ) { "Expected imported page reading bookmark for page=${readingBookmark.page}." }
-                database.bookmarksQueries.clearOtherReadingBookmarks(
-                    local_id = row.local_id,
-                    timestamp = timestamp
-                )
-            }
-            null -> Unit
-        }
-    }
-
     private fun importNotes(notes: List<ImportNote>) {
         val noteKeys = database.notesQueries.getNotes()
             .executeAsList()
@@ -276,10 +228,6 @@ class PersistenceImportRepositoryImpl(
             )
         }
         reconciler.reconcile()
-    }
-
-    private fun requirePage(page: Int, label: String) {
-        require(page in 1..MUSHAF_PAGE_COUNT) { "Invalid page for $label: $page." }
     }
 
     private fun PlatformDateTime.toImportTimestampMillis(): Long {
@@ -327,7 +275,6 @@ class PersistenceImportRepositoryImpl(
     }
 }
 
-private const val MUSHAF_PAGE_COUNT = 604
 private val NOTE_WHITESPACE_REGEX = Regex("\\s+")
 
 private data class NoteImportKey(

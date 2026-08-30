@@ -10,6 +10,7 @@ import com.quran.shared.syncengine.model.SyncCollectionBookmark
 import com.quran.shared.syncengine.model.SyncCollection
 import com.quran.shared.syncengine.model.SyncNote
 import com.quran.shared.syncengine.model.SyncReadingSession
+import com.quran.shared.syncengine.model.SyncReadingBookmark
 import com.quran.shared.syncengine.network.HttpClientFactory
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.currentCoroutineContext
@@ -102,6 +103,12 @@ class ReadingSessionsSynchronizationConfigurations(
     val localModificationDateFetcher: LocalModificationDateFetcher
 )
 
+class ReadingBookmarksSynchronizationConfigurations(
+    val localDataFetcher: LocalDataFetcher<SyncReadingBookmark>,
+    val resultNotifier: ResultNotifier<SyncReadingBookmark>,
+    val localModificationDateFetcher: LocalModificationDateFetcher
+)
+
 interface AuthenticationDataFetcher {
     suspend fun fetchAuthenticationHeaders(): Map<String, String>
     fun isLoggedIn(): Boolean
@@ -154,6 +161,7 @@ object SynchronizationClientBuilder {
         collectionsConfigurations: CollectionsSynchronizationConfigurations? = null,
         collectionBookmarksConfigurations: CollectionBookmarksSynchronizationConfigurations? = null,
         notesConfigurations: NotesSynchronizationConfigurations? = null,
+        readingBookmarksConfigurations: ReadingBookmarksSynchronizationConfigurations? = null,
         readingSessionsConfigurations: ReadingSessionsSynchronizationConfigurations? = null,
         syncCompletionFinalizer: SyncCompletionFinalizer = SyncCompletionFinalizer { },
         syncLifecycleGate: SyncLifecycleGate = object : SyncLifecycleGate {},
@@ -164,6 +172,7 @@ object SynchronizationClientBuilder {
             collectionsConfigurations?.let { add(CollectionsSyncAdapter(it)) }
             collectionBookmarksConfigurations?.let { add(CollectionBookmarksSyncAdapter(it)) }
             notesConfigurations?.let { add(NotesSyncAdapter(it)) }
+            readingBookmarksConfigurations?.let { add(ReadingBookmarksSyncAdapter(it)) }
             readingSessionsConfigurations?.let { add(ReadingSessionsSyncAdapter(it)) }
         }
         return SynchronizationClientImpl(

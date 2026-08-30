@@ -1,31 +1,56 @@
 package com.quran.shared.persistence.repository.readingbookmark.repository
 
-import com.quran.shared.persistence.model.AyahReadingBookmark
-import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
+import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
 import kotlinx.coroutines.flow.Flow
 
 interface ReadingBookmarksRepository {
     @NativeCoroutines
-    suspend fun getReadingBookmark(): ReadingBookmark?
+    suspend fun getReadingBookmarks(): List<ReadingBookmark>
 
     @NativeCoroutines
-    fun getReadingBookmarkFlow(): Flow<ReadingBookmark?>
+    fun getReadingBookmarksFlow(): Flow<List<ReadingBookmark>>
 
     @NativeCoroutines
-    suspend fun addAyahReadingBookmark(sura: Int, ayah: Int): AyahReadingBookmark
+    suspend fun setAyahReadingBookmark(
+        slot: ReadingBookmarkSlot,
+        sura: Int,
+        ayah: Int
+    ): ReadingBookmark
 
     @NativeCoroutines
-    suspend fun addAyahReadingBookmark(sura: Int, ayah: Int, timestamp: PlatformDateTime): AyahReadingBookmark
+    suspend fun setAyahReadingBookmark(
+        slot: ReadingBookmarkSlot,
+        sura: Int,
+        ayah: Int,
+        timestamp: PlatformDateTime
+    ): ReadingBookmark
 
     @NativeCoroutines
-    suspend fun addPageReadingBookmark(page: Int): PageReadingBookmark
+    suspend fun setPageReadingBookmark(slot: ReadingBookmarkSlot, page: Int): ReadingBookmark
 
     @NativeCoroutines
-    suspend fun addPageReadingBookmark(page: Int, timestamp: PlatformDateTime): PageReadingBookmark
+    suspend fun setPageReadingBookmark(
+        slot: ReadingBookmarkSlot,
+        page: Int,
+        timestamp: PlatformDateTime
+    ): ReadingBookmark
 
     @NativeCoroutines
-    suspend fun deleteReadingBookmark(): Boolean
+    suspend fun renameReadingBookmark(slot: ReadingBookmarkSlot, name: String?): ReadingBookmark
+
+    @NativeCoroutines
+    suspend fun renameReadingBookmark(
+        slot: ReadingBookmarkSlot,
+        name: String?,
+        timestamp: PlatformDateTime
+    ): ReadingBookmark
+
+    @NativeCoroutines
+    suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot): ReadingBookmark
+
+    @NativeCoroutines
+    suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot, timestamp: PlatformDateTime): ReadingBookmark
 }

@@ -1,0 +1,168 @@
+CREATE TABLE IF NOT EXISTS reading_bookmark(
+  local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  remote_id TEXT,
+  slot INTEGER NOT NULL,
+  name TEXT,
+  bookmark_type TEXT,
+  sura INTEGER,
+  ayah INTEGER,
+  page INTEGER,
+  mushaf_id INTEGER,
+  pending_op TEXT,
+  pending_version INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
+  modified_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000) NOT NULL,
+  CHECK (slot > 0),
+  CHECK (bookmark_type IS NULL OR bookmark_type IN ('AYAH', 'PAGE')),
+  CHECK (
+    (bookmark_type IS NULL AND sura IS NULL AND ayah IS NULL AND page IS NULL AND mushaf_id IS NULL)
+    OR
+    (bookmark_type = 'AYAH' AND sura IS NOT NULL AND ayah IS NOT NULL AND page IS NULL AND mushaf_id IS NOT NULL)
+    OR
+    (bookmark_type = 'PAGE' AND page IS NOT NULL AND sura IS NULL AND ayah IS NULL AND mushaf_id IS NOT NULL)
+  ),
+  CHECK (pending_op IS NULL OR pending_op IN ('CREATED', 'MODIFIED'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS reading_bookmark_slot_idx ON reading_bookmark(slot);
+CREATE UNIQUE INDEX IF NOT EXISTS reading_bookmark_remote_id_idx ON reading_bookmark(remote_id);
+CREATE INDEX IF NOT EXISTS reading_bookmark_pending_idx
+ON reading_bookmark(pending_op, modified_at DESC);
+
+getReadingBookmarks:
+  SELECT * FROM reading_bookmark ORDER BY slot;
+
+getReadingBookmarkForSlot:
+  SELECT * FROM reading_bookmark WHERE slot = ? LIMIT 1;
+
+getReadingBookmarkByRemoteId:
+  SELECT * FROM reading_bookmark WHERE remote_id = ? LIMIT 1;
+
+getUnsyncedReadingBookmarks:
+  SELECT * FROM reading_bookmark WHERE pending_op IS NOT NULL ORDER BY modified_at DESC;
+
+setAyahReadingBookmark {
+  INSERT OR IGNORE INTO reading_bookmark (
+    slot, bookmark_type, sura, ayah, page, mushaf_id, pending_op,
+    pending_version, created_at, modified_at
+  ) VALUES (
+    :slot, 'AYAH', :sura, :ayah, NULL, :mushaf_id, 'CREATED',
+    0, :timestamp, :timestamp
+  );
+  UPDATE reading_bookmark
+  SET bookmark_type = 'AYAH',
+    sura = :sura,
+    ayah = :ayah,
+    page = NULL,
+    mushaf_id = :mushaf_id,
+    pending_op = CASE WHEN remote_id IS NULL THEN 'CREATED' ELSE 'MODIFIED' END,
+    pending_version = pending_version + 1,
+    modified_at = :timestamp
+  WHERE slot = :slot;
+}
+
+setPageReadingBookmark {
+  INSERT OR IGNORE INTO reading_bookmark (
+    slot, bookmark_type, sura, ayah, page, mushaf_id, pending_op,
+    pending_version, created_at, modified_at
+  ) VALUES (
+    :slot, 'PAGE', NULL, NULL, :page, :mushaf_id, 'CREATED',
+    0, :timestamp, :timestamp
+  );
+  UPDATE reading_bookmark
+  SET bookmark_type = 'PAGE',
+    sura = NULL,
+    ayah = NULL,
+    page = :page,
+    mushaf_id = :mushaf_id,
+    pending_op = CASE WHEN remote_id IS NULL THEN 'CREATED' ELSE 'MODIFIED' END,
+    pending_version = pending_version + 1,
+    modified_at = :timestamp
+  WHERE slot = :slot;
+}
+
+renameReadingBookmark {
+  INSERT OR IGNORE INTO reading_bookmark (
+    slot, name, pending_op, pending_version, created_at, modified_at
+  ) VALUES (
+    :slot, :name, 'CREATED', 0, :timestamp, :timestamp
+  );
+  UPDATE reading_bookmark
+  SET name = :name,
+    pending_op = CASE WHEN remote_id IS NULL THEN 'CREATED' ELSE 'MODIFIED' END,
+    pending_version = pending_version + 1,
+    modified_at = :timestamp
+  WHERE slot = :slot;
+}
+
+clearReadingBookmark {
+  INSERT OR IGNORE INTO reading_bookmark (
+    slot, pending_op, pending_version, created_at, modified_at
+  ) VALUES (
+    :slot, 'CREATED', 0, :timestamp, :timestamp
+  );
+  UPDATE reading_bookmark
+  SET bookmark_type = NULL,
+    sura = NULL,
+    ayah = NULL,
+    page = NULL,
+    mushaf_id = NULL,
+    pending_op = CASE WHEN remote_id IS NULL THEN 'CREATED' ELSE 'MODIFIED' END,
+    pending_version = pending_version + 1,
+    modified_at = :timestamp
+  WHERE slot = :slot;
+}
+
+persistRemoteReadingBookmark {
+  INSERT OR IGNORE INTO reading_bookmark (
+    remote_id, slot, name, bookmark_type, sura, ayah, page, mushaf_id,
+    pending_op, pending_version, created_at, modified_at
+  ) VALUES (
+    :remote_id, :slot, :name, :bookmark_type, :sura, :ayah, :page, :mushaf_id,
+    NULL, 0, :created_at, :modified_at
+  );
+  UPDATE reading_bookmark
+  SET remote_id = :remote_id,
+    name = :name,
+    bookmark_type = :bookmark_type,
+    sura = :sura,
+    ayah = :ayah,
+    page = :page,
+    mushaf_id = :mushaf_id,
+    pending_op = NULL,
+    created_at = :created_at,
+    modified_at = :modified_at
+  WHERE slot = :slot;
+}
+
+acknowledgeReadingBookmarkMutation:
+  UPDATE reading_bookmark
+  SET remote_id = CASE WHEN remote_id IS NULL THEN :remote_id ELSE remote_id END,
+    pending_op = CASE
+      WHEN pending_op = :pending_op AND pending_version = :pending_version THEN NULL
+      WHEN remote_id IS NULL THEN 'MODIFIED'
+      ELSE pending_op
+    END,
+    modified_at = CASE
+      WHEN pending_op = :pending_op AND pending_version = :pending_version THEN :modified_at
+      ELSE modified_at
+    END
+  WHERE local_id = :local_id
+    AND (remote_id IS NULL OR remote_id = :remote_id);
+
+checkRemoteIDsExistence:
+  SELECT remote_id FROM reading_bookmark WHERE remote_id IN :queried_ids;
+
+deleteAll:
+  DELETE FROM reading_bookmark;
+
+markAllForImportReplacement:
+  UPDATE reading_bookmark
+  SET bookmark_type = NULL,
+    sura = NULL,
+    ayah = NULL,
+    page = NULL,
+    mushaf_id = NULL,
+    pending_op = CASE WHEN remote_id IS NULL THEN 'CREATED' ELSE 'MODIFIED' END,
+    pending_version = pending_version + 1,
+    modified_at = :modified_at;

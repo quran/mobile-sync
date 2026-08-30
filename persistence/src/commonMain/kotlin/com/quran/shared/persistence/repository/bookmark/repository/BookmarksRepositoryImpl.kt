@@ -3,7 +3,6 @@ package com.quran.shared.persistence.repository.bookmark.repository
 import co.touchlab.kermit.Logger
 import com.quran.shared.di.AppScope
 import com.quran.shared.mutations.LOCAL_MUTATION_BOOKMARK_ENTITY_FACET
-import com.quran.shared.mutations.LOCAL_MUTATION_BOOKMARK_READING_FACET
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.LocalMutationAck
 import com.quran.shared.mutations.LocalMutationResource
@@ -13,6 +12,7 @@ import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.input.RemoteBookmark
 import com.quran.shared.persistence.model.BookmarkCollectionsReplacementResult
 import com.quran.shared.persistence.model.DatabaseBookmark
+import com.quran.shared.persistence.model.DatabaseUnsyncedBookmark
 import com.quran.shared.persistence.model.highlightColorForCollectionName
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
@@ -90,8 +90,8 @@ class BookmarksRepositoryImpl(
                 }
 
                 val currentSavedCollectionIds = database.activeSavedCollectionIdsForBookmark(bookmark.local_id)
-                // Highlight and reading facets can create the row before it becomes an app-facing
-                // saved bookmark. Preserve that creation time while stamping the first save.
+                // A highlight can create the row before it becomes an app-facing saved bookmark.
+                // Preserve that creation time while stamping the first save.
                 if (hadActiveBookmark &&
                     currentSavedCollectionIds.isEmpty() &&
                     desiredSavedCollectionIds.isNotEmpty()
@@ -127,9 +127,6 @@ class BookmarksRepositoryImpl(
         desiredCollectionIds: Set<Long>,
         timestampMillis: Long
     ): Boolean {
-        require(bookmark.bookmark_type == "AYAH") {
-            "Expected ayah bookmark localId=${bookmark.local_id} before replacing collections."
-        }
         if (currentCollectionIds == desiredCollectionIds) {
             return false
         }
@@ -171,75 +168,11 @@ class BookmarksRepositoryImpl(
     }
 
     override suspend fun markMutatedBookmarksInFlight(acks: List<LocalMutationAck>): List<LocalMutationAck> {
-        if (acks.isEmpty()) {
-            return emptyList()
-        }
-        return withContext(Dispatchers.IO) {
-            val markedAcks = mutableListOf<LocalMutationAck>()
-            database.transaction {
-                acks.forEach { ack ->
-                    if (ack.resource == LocalMutationResource.BOOKMARK &&
-                        ack.facet == LOCAL_MUTATION_BOOKMARK_READING_FACET &&
-                        ack.observedPendingOp == Mutation.CREATED
-                    ) {
-                        val localId = ack.localID.toLongOrNull() ?: return@forEach
-                        bookmarkQueries.value.markReadingCreateInFlight(
-                            local_id = localId,
-                            pending_version = ack.observedPendingVersion
-                        )
-                        val changedRows = bookmarkQueries.value.changedRowCount().executeAsOne()
-                        val row = bookmarkQueries.value.getBookmarkByLocalId(localId).executeAsOneOrNull()
-                        if (changedRows > 0 &&
-                            row?.deleted == 0L &&
-                            row.reading_pending_op == "CREATED" &&
-                            row.reading_pending_version == ack.observedPendingVersion + 1
-                        ) {
-                            markedAcks += ack
-                        }
-                    }
-                }
-            }
-            markedAcks
-        }
+        return emptyList()
     }
 
     override suspend fun rollbackMutatedBookmarksInFlight(acks: List<LocalMutationAck>) {
-        if (acks.isEmpty()) {
-            return
-        }
-        withContext(Dispatchers.IO) {
-            database.transaction {
-                acks.forEach { ack ->
-                    if (ack.resource != LocalMutationResource.BOOKMARK ||
-                        ack.facet != LOCAL_MUTATION_BOOKMARK_READING_FACET ||
-                        ack.observedPendingOp != Mutation.CREATED
-                    ) {
-                        return@forEach
-                    }
-                    val localId = ack.localID.toLongOrNull() ?: return@forEach
-                    bookmarkQueries.value.rollbackActiveReadingCreateInFlight(
-                        local_id = localId,
-                        pending_version = ack.observedPendingVersion,
-                        marked_pending_version = ack.observedPendingVersion + 1
-                    )
-                    bookmarkQueries.value.clearCanceledReadingCreateInFlight(
-                        local_id = localId,
-                        canceled_pending_version = ack.observedPendingVersion + 2
-                    )
-                    val row = bookmarkQueries.value.getBookmarkByLocalId(localId).executeAsOneOrNull()
-                    if (row?.remote_id == null &&
-                        row?.deleted == 1L &&
-                        row.bookmark_pending_op == "DELETED" &&
-                        row.reading_pending_op == null &&
-                        row.reading_pending_version == ack.observedPendingVersion + 2
-                    ) {
-                        bookmarkQueries.value.hardDeleteBookmarkByLocalId(localId)
-                    }
-                    reconciler.pruneBookmarkIfOrphan(localId)
-                }
-                reconciler.reconcile()
-            }
-        }
+        return
     }
 
     override suspend fun applyRemoteChanges(
@@ -325,16 +258,6 @@ class BookmarksRepositoryImpl(
                     local_id = localId,
                     remote_id = remoteIdToBackfill,
                     modified_at = remoteTimestamp,
-                    clear_reading = 0L,
-                    pending_op = ack.observedPendingOp.name,
-                    pending_version = ack.observedPendingVersion
-                )
-            }
-            LOCAL_MUTATION_BOOKMARK_READING_FACET -> {
-                bookmarkQueries.value.clearReadingPending(
-                    local_id = localId,
-                    remote_id = remoteIdToBackfill,
-                    modified_at = remoteTimestamp,
                     pending_op = ack.observedPendingOp.name,
                     pending_version = ack.observedPendingVersion
                 )
@@ -402,7 +325,7 @@ class BookmarksRepositoryImpl(
             }
             return
         }
-        val row = when (val model = remote.model) {
+        when (val model = remote.model) {
             is RemoteBookmark.Ayah -> {
                 bookmarkQueries.value.upsertAyahBookmark(
                     remote_id = remote.remoteID,
@@ -411,27 +334,8 @@ class BookmarksRepositoryImpl(
                     created_at = createdAt,
                     modified_at = updatedAt
                 )
-                bookmarkQueries.value.getBookmarkForAyah(model.sura.toLong(), model.ayah.toLong())
-                    .executeAsOne()
-            }
-            is RemoteBookmark.Page -> {
-                bookmarkQueries.value.upsertPageBookmark(
-                    remote_id = remote.remoteID,
-                    page = model.page.toLong(),
-                    created_at = createdAt,
-                    modified_at = updatedAt
-                )
-                bookmarkQueries.value.getBookmarkForPage(model.page.toLong())
-                    .executeAsOne()
             }
         }
-
-        bookmarkQueries.value.applyRemoteReading(
-            local_id = row.local_id,
-            remote_id = remote.remoteID,
-            is_reading = if (remote.model.isReading) 1L else 0L,
-            modified_at = updatedAt
-        )
     }
 
     private fun getBookmarkAtLocation(bookmark: RemoteBookmark): DatabaseBookmark? {
@@ -439,21 +343,14 @@ class BookmarksRepositoryImpl(
             is RemoteBookmark.Ayah -> bookmarkQueries.value
                 .getBookmarkForAyah(bookmark.sura.toLong(), bookmark.ayah.toLong())
                 .executeAsOneOrNull()
-            is RemoteBookmark.Page -> bookmarkQueries.value
-                .getBookmarkForPage(bookmark.page.toLong())
-                .executeAsOneOrNull()
         }
     }
 
     private fun DatabaseBookmark.matches(bookmark: RemoteBookmark): Boolean {
         return when (bookmark) {
             is RemoteBookmark.Ayah ->
-                bookmark_type == "AYAH" &&
-                    sura == bookmark.sura.toLong() &&
+                sura == bookmark.sura.toLong() &&
                     ayah == bookmark.ayah.toLong()
-            is RemoteBookmark.Page ->
-                bookmark_type == "PAGE" &&
-                    page == bookmark.page.toLong()
         }
     }
 
@@ -476,23 +373,19 @@ class BookmarksRepositoryImpl(
         reconciler.pruneBookmarkIfOrphan(row.local_id)
     }
 
-    private fun DatabaseBookmark.toRemoteBookmarkMutation(): LocalModelMutation<RemoteBookmark>? {
-        val model = toRemoteBookmark()
-        val pendingOp = when {
-            deleted == 1L || bookmark_pending_op == "DELETED" -> Mutation.DELETED
-            reading_pending_op != null -> reading_pending_op.toMutationOrNull() ?: Mutation.CREATED
-            bookmark_pending_op == "MODIFIED" -> Mutation.MODIFIED
-            bookmark_pending_op == "CREATED" -> Mutation.CREATED
-            else -> return null
-        }
-        val facet = when {
-            deleted == 1L || bookmark_pending_op != null -> LOCAL_MUTATION_BOOKMARK_ENTITY_FACET
-            reading_pending_op != null -> LOCAL_MUTATION_BOOKMARK_READING_FACET
-            else -> return null
-        }
-        val version = when (facet) {
-            LOCAL_MUTATION_BOOKMARK_ENTITY_FACET -> bookmark_pending_version
-            LOCAL_MUTATION_BOOKMARK_READING_FACET -> reading_pending_version
+    private fun DatabaseUnsyncedBookmark.toRemoteBookmarkMutation(): LocalModelMutation<RemoteBookmark>? {
+        val model = RemoteBookmark.Ayah(
+            sura = sura.toInt(),
+            ayah = ayah.toInt(),
+            lastUpdated = Instant.fromEpochMilliseconds(
+                if (deleted == 1L || bookmark_pending_op == "DELETED") modified_at else bookmark_modified_at
+            ).toPlatform(),
+            createdAt = Instant.fromEpochMilliseconds(created_at).toPlatform()
+        )
+        val pendingOp = when (bookmark_pending_op) {
+            "DELETED" -> Mutation.DELETED
+            "MODIFIED" -> Mutation.MODIFIED
+            "CREATED" -> Mutation.CREATED
             else -> return null
         }
         return LocalModelMutation(
@@ -503,20 +396,11 @@ class BookmarksRepositoryImpl(
             ack = LocalMutationAck(
                 localID = local_id.toString(),
                 resource = LocalMutationResource.BOOKMARK,
-                facet = facet,
+                facet = LOCAL_MUTATION_BOOKMARK_ENTITY_FACET,
                 observedPendingOp = pendingOp,
-                observedPendingVersion = version
+                observedPendingVersion = bookmark_pending_version
             )
         )
-    }
-
-    private fun String?.toMutationOrNull(): Mutation? {
-        return when (this) {
-            "CREATED" -> Mutation.CREATED
-            "MODIFIED" -> Mutation.MODIFIED
-            "DELETED" -> Mutation.DELETED
-            else -> null
-        }
     }
 
     private fun DatabaseBookmark.toRemoteBookmark(): RemoteBookmark {
@@ -524,25 +408,13 @@ class BookmarksRepositoryImpl(
         val updatedAt = Instant.fromEpochMilliseconds(
             if (deleted == 1L || bookmark_pending_op == "DELETED") {
                 modified_at
-            } else {
-                reading_modified_at ?: bookmark_modified_at
-            }
+            } else bookmark_modified_at
         ).toPlatform()
-        return when (bookmark_type) {
-            "AYAH" -> RemoteBookmark.Ayah(
-                sura = requireNotNull(sura).toInt(),
-                ayah = requireNotNull(ayah).toInt(),
-                isReading = is_reading == 1L,
-                lastUpdated = updatedAt,
-                createdAt = createdAt
-            )
-            "PAGE" -> RemoteBookmark.Page(
-                page = requireNotNull(page).toInt(),
-                isReading = is_reading == 1L,
-                lastUpdated = updatedAt,
-                createdAt = createdAt
-            )
-            else -> error("Unsupported bookmark type: $bookmark_type")
-        }
+        return RemoteBookmark.Ayah(
+            sura = sura.toInt(),
+            ayah = ayah.toInt(),
+            lastUpdated = updatedAt,
+            createdAt = createdAt
+        )
     }
 }

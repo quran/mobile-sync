@@ -8,14 +8,12 @@ import kotlin.time.Instant
 fun PageBookmark(
     id: String,
     page: Int,
-    isReading: Boolean = false,
     lastModified: Instant
 ): SyncBookmark.AyahBookmark {
     return SyncBookmark.AyahBookmark(
         id = id,
         sura = page,
         ayah = 1,
-        isReading = isReading,
         lastModified = lastModified
     )
 }
