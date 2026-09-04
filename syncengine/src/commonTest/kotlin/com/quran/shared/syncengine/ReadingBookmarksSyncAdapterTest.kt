@@ -8,6 +8,7 @@ import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.syncengine.model.SyncReadingBookmark
 import com.quran.shared.syncengine.model.SyncReadingBookmarkLocation
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
@@ -19,6 +20,39 @@ import kotlin.test.fail
 import kotlin.time.Instant
 
 class ReadingBookmarksSyncAdapterTest {
+    @Test
+    fun `unplaced creates and updates explicitly clear every location field`() = runTest {
+        for (mutationType in listOf(Mutation.CREATED, Mutation.MODIFIED)) {
+            val adapter = adapterWithLocalMutations(
+                listOf(
+                    LocalModelMutation(
+                        model = SyncReadingBookmark(
+                            slot = 2,
+                            name = "Night reading",
+                            location = null,
+                            lastModified = Instant.fromEpochMilliseconds(1000),
+                            createdAt = Instant.fromEpochMilliseconds(500)
+                        ),
+                        remoteID = if (mutationType == Mutation.CREATED) null else "remote-slot-2",
+                        localID = "2",
+                        mutation = mutationType
+                    )
+                )
+            )
+
+            val mutation = adapter.buildPlan(0L, emptyList()).mutationsToPush().single()
+            val data = assertNotNull(mutation.data)
+
+            assertEquals(mutationType, mutation.mutation)
+            assertEquals("READING_BOOKMARK", mutation.resource)
+            assertEquals(2, data["slot"]?.jsonPrimitive?.int)
+            assertEquals("Night reading", data["name"]?.jsonPrimitive?.content)
+            for (field in listOf("type", "group", "key", "verseNumber", "mushafId")) {
+                assertEquals(JsonNull, data[field], "$mutationType must explicitly clear $field")
+            }
+        }
+    }
+
     @Test
     fun `page reading bookmark uses its dedicated resource`() = runTest {
         val adapter = adapterWithLocalMutations(
