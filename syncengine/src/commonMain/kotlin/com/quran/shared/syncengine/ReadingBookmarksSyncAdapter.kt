@@ -161,6 +161,7 @@ private fun SyncReadingBookmark.toResourceData(): JsonObject = buildJsonObject {
         }
         null -> {
             put("type", JsonNull)
+            put("group", JsonNull)
             put("key", JsonNull)
             put("verseNumber", JsonNull)
             put("mushafId", JsonNull)
