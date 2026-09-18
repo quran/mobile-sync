@@ -33,7 +33,8 @@ interface SyncLocalModificationDateStore : LocalModificationDateFetcher {
  */
 @HiddenFromObjC
 @SingleIn(AppScope::class)
-class SyncSettingsLocalModificationDateStore @Inject constructor(
+@Inject
+class SyncSettingsLocalModificationDateStore(
     private val settings: SuspendSettings
 ) : SyncLocalModificationDateStore {
 

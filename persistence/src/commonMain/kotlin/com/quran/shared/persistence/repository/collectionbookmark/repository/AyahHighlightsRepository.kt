@@ -34,12 +34,10 @@ internal class AyahHighlightsRepository(
                 records.mapNotNull { record ->
                     val color = highlightColorForCollectionName(record.collection_name)
                         ?: return@mapNotNull null
-                    val sura = record.sura ?: return@mapNotNull null
-                    val ayah = record.ayah ?: return@mapNotNull null
                     HighlightRecord(
                         highlight = AyahHighlight(
-                            sura = sura.toInt(),
-                            ayah = ayah.toInt(),
+                            sura = record.sura.toInt(),
+                            ayah = record.ayah.toInt(),
                             color = color,
                             lastUpdated = Instant.fromEpochMilliseconds(record.modified_at).toPlatform()
                         ),

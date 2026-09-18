@@ -7,7 +7,8 @@ interface PersistenceResetRepository {
     fun deleteAllData()
 }
 
-class PersistenceResetRepositoryImpl @Inject constructor(
+@Inject
+class PersistenceResetRepositoryImpl(
     private val database: QuranDatabase
 ) : PersistenceResetRepository {
     override fun deleteAllData() {

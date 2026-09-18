@@ -23,7 +23,8 @@ class AuthNotConfiguredException : IllegalStateException(
  */
 @SingleIn(AppScope::class)
 @HiddenFromObjC
-class UnconfiguredAuthRepository @Inject constructor(
+@Inject
+class UnconfiguredAuthRepository(
     private val authStorage: AuthStorage
 ) : AuthRepository {
     override suspend fun login() {
