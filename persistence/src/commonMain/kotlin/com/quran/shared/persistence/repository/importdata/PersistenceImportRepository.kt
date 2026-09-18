@@ -11,6 +11,9 @@ interface PersistenceImportRepository {
      * The import is all-or-nothing. If [deleteExisting] is true, existing rows are
      * deleted first using sync-aware deletion semantics before the payload is merged.
      * If [deleteExisting] is false, the payload is merged into the current data.
+     * Reading bookmarks replace the location and name of each supplied slot. Omitted
+     * slots are unchanged on merge; replacement clears their locations using sync-aware
+     * semantics while retaining their identities and names.
      */
     @NativeCoroutines
     suspend fun importData(data: PersistenceImportData): PersistenceImportResult {

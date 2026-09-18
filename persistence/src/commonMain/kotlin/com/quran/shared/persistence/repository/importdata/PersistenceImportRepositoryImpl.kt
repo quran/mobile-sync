@@ -6,11 +6,13 @@ import com.quran.shared.persistence.input.ImportAyahBookmark
 import com.quran.shared.persistence.input.ImportCollection
 import com.quran.shared.persistence.input.ImportCollectionAyahBookmark
 import com.quran.shared.persistence.input.ImportNote
+import com.quran.shared.persistence.input.ImportReadingBookmark
 import com.quran.shared.persistence.input.ImportReadingSession
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.PersistenceImportResult
 import com.quran.shared.persistence.model.DatabaseNote
 import com.quran.shared.persistence.model.isSystemCollectionName
+import com.quran.shared.persistence.model.toStorageValue
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.fromPlatform
@@ -48,6 +50,7 @@ class PersistenceImportRepositoryImpl(
         val bookmarkLocalIds = importBookmarks(data.bookmarks)
         val collectionLocalIds = importCollections(data.collections)
         importReadingSessions(data.readingSessions)
+        importReadingBookmarks(data.readingBookmarks)
         importNotes(data.notes)
         importCollectionBookmarks(
             links = data.collectionBookmarks,
@@ -60,7 +63,8 @@ class PersistenceImportRepositoryImpl(
             collectionsImported = data.collections.size,
             collectionBookmarksImported = data.collectionBookmarks.size,
             readingSessionsImported = data.readingSessions.size,
-            notesImported = data.notes.size
+            notesImported = data.notes.size,
+            readingBookmarksImported = data.readingBookmarks.size
         )
     }
 
@@ -104,6 +108,15 @@ class PersistenceImportRepositoryImpl(
 
         val readingSessionCoordinates = data.readingSessions.map { session -> session.sura to session.ayah }
         requireUnique("reading session ayah", readingSessionCoordinates)
+
+        requireUnique("reading bookmark slot", data.readingBookmarks.map { it.slot })
+        data.readingBookmarks.forEach { bookmark ->
+            if (bookmark is ImportReadingBookmark.Page) {
+                require(bookmark.page in 1..MUSHAF_PAGE_COUNT) {
+                    "Invalid page for reading bookmark: ${bookmark.page}."
+                }
+            }
+        }
 
         data.notes.forEach { note ->
             require(note.body.isNotBlank()) { "Note body cannot be blank." }
@@ -181,6 +194,33 @@ class PersistenceImportRepositoryImpl(
                 verse_number = session.ayah.toLong(),
                 created_at = timestamp,
                 modified_at = timestamp
+            )
+        }
+    }
+
+    private fun importReadingBookmarks(readingBookmarks: List<ImportReadingBookmark>) {
+        readingBookmarks.forEach { bookmark ->
+            val slot = bookmark.slot.toStorageValue().toLong()
+            val timestamp = bookmark.lastUpdated.toImportTimestampMillis()
+            when (bookmark) {
+                is ImportReadingBookmark.Ayah -> database.reading_bookmarksQueries.setAyahReadingBookmark(
+                    slot = slot,
+                    sura = bookmark.sura.toLong(),
+                    ayah = bookmark.ayah.toLong(),
+                    mushaf_id = SUPPORTED_MUSHAF_ID,
+                    timestamp = timestamp
+                )
+                is ImportReadingBookmark.Page -> database.reading_bookmarksQueries.setPageReadingBookmark(
+                    slot = slot,
+                    page = bookmark.page.toLong(),
+                    mushaf_id = SUPPORTED_MUSHAF_ID,
+                    timestamp = timestamp
+                )
+            }
+            database.reading_bookmarksQueries.renameReadingBookmark(
+                slot = slot,
+                name = bookmark.name,
+                timestamp = timestamp
             )
         }
     }
@@ -275,6 +315,8 @@ class PersistenceImportRepositoryImpl(
     }
 }
 
+private const val MUSHAF_PAGE_COUNT = 604
+private const val SUPPORTED_MUSHAF_ID = 1L
 private val NOTE_WHITESPACE_REGEX = Regex("\\s+")
 
 private data class NoteImportKey(
