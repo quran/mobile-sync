@@ -243,7 +243,7 @@ Core API examples:
 
 Import local data through `QuranDataService.importData(PersistenceImportData(...))`.
 Use `readingBookmarks` with `ImportReadingBookmark.Ayah` or `.Page`, each specifying a
-`ReadingBookmarkSlot` (`CORAL`, `TEAL`, or `INDIGO`), `lastUpdated`, and an optional `name`.
+`ReadingBookmarkSlot` (`GREEN`, `PURPLE`, or `BLUE`), `lastUpdated`, and an optional `name`.
 Each slot may appear once; page numbers must be in `1..604`. An imported slot replaces its
 location, name (including clearing it when null), and modification time. Merge imports leave
 omitted slots unchanged; `deleteExisting = true` clears their locations while preserving slot
