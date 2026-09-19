@@ -1,5 +1,6 @@
 package com.quran.shared.persistence.input
 
+import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.persistence.util.PlatformDateTime
 
 data class PersistenceImportData(
@@ -7,7 +8,8 @@ data class PersistenceImportData(
     val collections: List<ImportCollection> = emptyList(),
     val collectionBookmarks: List<ImportCollectionAyahBookmark> = emptyList(),
     val readingSessions: List<ImportReadingSession> = emptyList(),
-    val notes: List<ImportNote> = emptyList()
+    val notes: List<ImportNote> = emptyList(),
+    val readingBookmarks: List<ImportReadingBookmark> = emptyList()
 )
 
 data class ImportAyahBookmark(
@@ -35,6 +37,27 @@ data class ImportReadingSession(
     val lastUpdated: PlatformDateTime
 )
 
+sealed class ImportReadingBookmark {
+    abstract val slot: ReadingBookmarkSlot
+    abstract val name: String?
+    abstract val lastUpdated: PlatformDateTime
+
+    data class Ayah(
+        val sura: Int,
+        val ayah: Int,
+        override val lastUpdated: PlatformDateTime,
+        override val slot: ReadingBookmarkSlot,
+        override val name: String? = null
+    ) : ImportReadingBookmark()
+
+    data class Page(
+        val page: Int,
+        override val lastUpdated: PlatformDateTime,
+        override val slot: ReadingBookmarkSlot,
+        override val name: String? = null
+    ) : ImportReadingBookmark()
+}
+
 data class ImportNote(
     val body: String,
     val startSura: Int,
@@ -49,5 +72,6 @@ data class PersistenceImportResult(
     val collectionsImported: Int,
     val collectionBookmarksImported: Int,
     val readingSessionsImported: Int,
-    val notesImported: Int
+    val notesImported: Int,
+    val readingBookmarksImported: Int = 0
 )
