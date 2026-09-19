@@ -23,7 +23,7 @@ android {
 
     defaultConfig {
         minSdk = libs.versions.android.min.sdk.get().toInt()
-        targetSdk = 36
+        targetSdk = 37
         manifestPlaceholders["oidcRedirectScheme"] = "com.quran.oauth"
         manifestPlaceholders["oidcRedirectHost"] = "callback"
         manifestPlaceholders["oidcPostLogoutRedirectScheme"] = "com.quran.oauth"

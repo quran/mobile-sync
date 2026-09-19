@@ -89,7 +89,8 @@ internal fun interface QuranDataServiceSynchronizationClientFactory {
  * Production sync client factory that delegates to [SyncEnginePipeline.setup].
  */
 @HiddenFromObjC
-internal class DefaultQuranDataServiceSynchronizationClientFactory @Inject constructor() :
+@Inject
+internal class DefaultQuranDataServiceSynchronizationClientFactory() :
     QuranDataServiceSynchronizationClientFactory {
     override fun create(
         pipeline: SyncEnginePipeline,

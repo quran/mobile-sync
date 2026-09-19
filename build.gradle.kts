@@ -6,7 +6,6 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform) apply false
     alias(libs.plugins.sqldelight) apply false
     alias(libs.plugins.vanniktech.maven.publish) apply false
-    alias(libs.plugins.ksp) apply false
     alias(libs.plugins.native.coroutines) apply false
 }
 

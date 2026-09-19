@@ -30,7 +30,8 @@ interface SessionLifecycleStateStore {
 
 @HiddenFromObjC
 @SingleIn(AppScope::class)
-class SettingsSessionLifecycleStateStore @Inject constructor(
+@Inject
+class SettingsSessionLifecycleStateStore(
     private val settings: SuspendSettings
 ) : SessionLifecycleStateStore {
 
@@ -82,7 +83,8 @@ class SettingsSessionLifecycleStateStore @Inject constructor(
 
 @HiddenFromObjC
 @SingleIn(AppScope::class)
-class SessionLifecycleCoordinator @Inject constructor(
+@Inject
+class SessionLifecycleCoordinator(
     private val stateStore: SessionLifecycleStateStore
 ) : SyncLifecycleGate {
     private val stateMutex = Mutex()

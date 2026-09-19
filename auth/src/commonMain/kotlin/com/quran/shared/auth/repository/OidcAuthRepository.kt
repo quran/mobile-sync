@@ -31,7 +31,8 @@ import org.publicvalue.multiplatform.oidc.types.remote.AccessTokenResponse
  */
 @SingleIn(AppScope::class)
 @HiddenFromObjC
-class OidcAuthRepository @Inject constructor(
+@Inject
+class OidcAuthRepository(
     private val authConfig: AuthConfig,
     private val authStorage: AuthStorage,
     private val oidcClient: OpenIdConnectClient,

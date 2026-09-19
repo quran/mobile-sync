@@ -25,7 +25,8 @@ import org.publicvalue.multiplatform.oidc.types.remote.AccessTokenResponse
  */
 @SingleIn(AppScope::class)
 @HiddenFromObjC
-class AuthStorage @Inject constructor(
+@Inject
+class AuthStorage(
     private val tokenStore: TokenStore,
     private val settings: SuspendSettings,
     private val json: Json

@@ -23,7 +23,8 @@ import kotlinx.coroutines.launch
  * @property authService The service handling the underlying OIDC logic and state management.
  */
 @HiddenFromObjC
-class AuthViewModel @Inject constructor(
+@Inject
+class AuthViewModel(
     private val authService: AuthService
 ) : ViewModel() {
 

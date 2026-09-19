@@ -6,7 +6,6 @@ plugins {
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.sqldelight)
     alias(libs.plugins.vanniktech.maven.publish)
-    alias(libs.plugins.ksp)
     alias(libs.plugins.native.coroutines)
 }
 
@@ -58,16 +57,12 @@ kotlin {
             implementation(libs.sqldelight.jdbc.driver)
         }
 
-        val iosMain by getting {
-            dependencies {
-                implementation(libs.sqldelight.native.driver)
-            }
+        iosMain.dependencies {
+            implementation(libs.sqldelight.native.driver)
         }
 
-        val iosTest by getting {
-            dependencies {
-                implementation(libs.sqldelight.native.driver)
-            }
+        iosTest.dependencies {
+            implementation(libs.sqldelight.native.driver)
         }
     }
 

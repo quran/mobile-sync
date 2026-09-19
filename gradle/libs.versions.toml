@@ -3,7 +3,6 @@ agp = "9.4.0"
 kotlin = "2.4.10"
 kotlinx-serialization = "1.11.0"
 kotlinx-datetime = "0.8.0-0.6.x-compat"
-ksp = "2.3.11"
 
 kermit = "2.1.0"
 native-coroutines = "1.0.5"
@@ -114,7 +113,6 @@ kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref 
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
 vanniktech-maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "maven-publish" }
-ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 native-coroutines = { id = "com.rickclephas.kmp.nativecoroutines", version.ref = "native-coroutines" }
 buildkonfig = { id = "com.codingfeline.buildkonfig", version.ref = "buildkonfig" }
 metro = { id = "dev.zacsweers.metro", version.ref = "metro" }

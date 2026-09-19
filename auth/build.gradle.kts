@@ -85,10 +85,8 @@ kotlin {
             implementation(libs.ktor.client.okhttp)
         }
         
-        val iosMain by getting {
-            dependencies {
-                implementation(libs.ktor.client.darwin)
-            }
+        iosMain.dependencies {
+            implementation(libs.ktor.client.darwin)
         }
     }
 

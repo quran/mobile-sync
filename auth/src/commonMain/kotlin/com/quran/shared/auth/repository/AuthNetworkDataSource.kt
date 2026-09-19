@@ -14,7 +14,8 @@ import kotlin.native.HiddenFromObjC
 
 @SingleIn(AppScope::class)
 @HiddenFromObjC
-class AuthNetworkDataSource @Inject constructor(
+@Inject
+class AuthNetworkDataSource(
     private val authConfig: AuthConfig,
     private val httpClient: HttpClient
 ) {
