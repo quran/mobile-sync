@@ -46,9 +46,9 @@ class ReadingBookmarksImportTest {
         val result = repository.importData(
             PersistenceImportData(
                 readingBookmarks = listOf(
-                    ImportReadingBookmark.Page(604, at(300), ReadingBookmarkSlot.INDIGO),
-                    ImportReadingBookmark.Ayah(2, 255, at(100), ReadingBookmarkSlot.CORAL, "Daily"),
-                    ImportReadingBookmark.Ayah(2, 255, at(200), ReadingBookmarkSlot.TEAL, "Study")
+                    ImportReadingBookmark.Page(604, at(300), ReadingBookmarkSlot.BLUE),
+                    ImportReadingBookmark.Ayah(2, 255, at(100), ReadingBookmarkSlot.GREEN, "Daily"),
+                    ImportReadingBookmark.Ayah(2, 255, at(200), ReadingBookmarkSlot.PURPLE, "Study")
                 )
             )
         )
@@ -70,14 +70,14 @@ class ReadingBookmarksImportTest {
 
     @Test
     fun `merge replaces supplied slots and names while preserving identities and other slots`() = runTest {
-        persistRemoteSlot(1, "Coral")
-        persistRemoteSlot(2, "Teal")
-        readingBookmarks.setPageReadingBookmark(ReadingBookmarkSlot.INDIGO, 88, at(100))
+        persistRemoteSlot(1, "Green")
+        persistRemoteSlot(2, "Purple")
+        readingBookmarks.setPageReadingBookmark(ReadingBookmarkSlot.BLUE, 88, at(100))
         val before = database.reading_bookmarksQueries.getReadingBookmarks().executeAsList()
         val data = PersistenceImportData(
             readingBookmarks = listOf(
-                ImportReadingBookmark.Ayah(18, 10, at(200), ReadingBookmarkSlot.CORAL, "Imported"),
-                ImportReadingBookmark.Page(1, at(300), ReadingBookmarkSlot.TEAL)
+                ImportReadingBookmark.Ayah(18, 10, at(200), ReadingBookmarkSlot.GREEN, "Imported"),
+                ImportReadingBookmark.Page(1, at(300), ReadingBookmarkSlot.PURPLE)
             )
         )
 
@@ -103,15 +103,15 @@ class ReadingBookmarksImportTest {
 
     @Test
     fun `replacement restores supplied slots and syncs clearing of omitted slots`() = runTest {
-        persistRemoteSlot(1, "Coral")
-        persistRemoteSlot(2, "Teal")
-        readingBookmarks.setAyahReadingBookmark(ReadingBookmarkSlot.INDIGO, 2, 255, at(100))
+        persistRemoteSlot(1, "Green")
+        persistRemoteSlot(2, "Purple")
+        readingBookmarks.setAyahReadingBookmark(ReadingBookmarkSlot.BLUE, 2, 255, at(100))
         val before = database.reading_bookmarksQueries.getReadingBookmarks().executeAsList()
 
         val result = repository.importData(
             PersistenceImportData(
                 readingBookmarks = listOf(
-                    ImportReadingBookmark.Page(42, at(200), ReadingBookmarkSlot.CORAL, "Restored")
+                    ImportReadingBookmark.Page(42, at(200), ReadingBookmarkSlot.GREEN, "Restored")
                 )
             ),
             deleteExisting = true
@@ -140,11 +140,11 @@ class ReadingBookmarksImportTest {
         val before = database.reading_bookmarksQueries.getReadingBookmarks().executeAsList()
         val invalidBookmarks = listOf(
             listOf(
-                ImportReadingBookmark.Ayah(2, 255, at(200), ReadingBookmarkSlot.CORAL),
-                ImportReadingBookmark.Page(42, at(200), ReadingBookmarkSlot.CORAL)
+                ImportReadingBookmark.Ayah(2, 255, at(200), ReadingBookmarkSlot.GREEN),
+                ImportReadingBookmark.Page(42, at(200), ReadingBookmarkSlot.GREEN)
             ),
-            listOf(ImportReadingBookmark.Page(0, at(200), ReadingBookmarkSlot.TEAL)),
-            listOf(ImportReadingBookmark.Page(605, at(200), ReadingBookmarkSlot.TEAL))
+            listOf(ImportReadingBookmark.Page(0, at(200), ReadingBookmarkSlot.PURPLE)),
+            listOf(ImportReadingBookmark.Page(605, at(200), ReadingBookmarkSlot.PURPLE))
         )
 
         invalidBookmarks.forEach { bookmarks ->
@@ -175,12 +175,12 @@ class ReadingBookmarksImportTest {
 
     @Test
     fun `stale create acknowledgment preserves imported slot changes`() = runTest {
-        readingBookmarks.setPageReadingBookmark(ReadingBookmarkSlot.CORAL, 1, at(100))
+        readingBookmarks.setPageReadingBookmark(ReadingBookmarkSlot.GREEN, 1, at(100))
         val staleCreate = readingBookmarks.fetchMutatedReadingBookmarks().single()
         repository.importData(
             PersistenceImportData(
                 readingBookmarks = listOf(
-                    ImportReadingBookmark.Ayah(18, 10, at(200), ReadingBookmarkSlot.CORAL, "Imported")
+                    ImportReadingBookmark.Ayah(18, 10, at(200), ReadingBookmarkSlot.GREEN, "Imported")
                 )
             )
         )
@@ -198,7 +198,7 @@ class ReadingBookmarksImportTest {
                         lastUpdated = at(100),
                         createdAt = at(100)
                     ),
-                    remoteID = "remote-coral",
+                    remoteID = "remote-green",
                     mutation = Mutation.CREATED,
                     ack = staleCreate.ack
                 )
@@ -209,7 +209,7 @@ class ReadingBookmarksImportTest {
 
         val row = database.reading_bookmarksQueries.getReadingBookmarkForSlot(1).executeAsOne()
         assertEquals(staleCreate.localID, row.local_id.toString())
-        assertEquals("remote-coral", row.remote_id)
+        assertEquals("remote-green", row.remote_id)
         assertEquals("Imported", row.name)
         assertEquals("AYAH", row.bookmark_type)
         assertEquals(18L, row.sura)

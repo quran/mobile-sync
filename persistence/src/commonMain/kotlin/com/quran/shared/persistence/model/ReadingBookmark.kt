@@ -9,22 +9,23 @@ sealed interface ReadingBookmark {
     val id: String
 }
 
+/** Reading bookmark colors with stable storage and sync IDs: green = 1, purple = 2, blue = 3. */
 enum class ReadingBookmarkSlot {
-    CORAL,
-    TEAL,
-    INDIGO
+    GREEN,
+    PURPLE,
+    BLUE
 }
 
 internal fun ReadingBookmarkSlot.toStorageValue(): Int = when (this) {
-    ReadingBookmarkSlot.CORAL -> 1
-    ReadingBookmarkSlot.TEAL -> 2
-    ReadingBookmarkSlot.INDIGO -> 3
+    ReadingBookmarkSlot.GREEN -> 1
+    ReadingBookmarkSlot.PURPLE -> 2
+    ReadingBookmarkSlot.BLUE -> 3
 }
 
 internal fun Int.toReadingBookmarkSlot(): ReadingBookmarkSlot = when (this) {
-    1 -> ReadingBookmarkSlot.CORAL
-    2 -> ReadingBookmarkSlot.TEAL
-    3 -> ReadingBookmarkSlot.INDIGO
+    1 -> ReadingBookmarkSlot.GREEN
+    2 -> ReadingBookmarkSlot.PURPLE
+    3 -> ReadingBookmarkSlot.BLUE
     else -> error("Unsupported reading bookmark slot: $this")
 }
 
