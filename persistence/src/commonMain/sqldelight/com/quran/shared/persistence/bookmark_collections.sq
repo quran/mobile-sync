@@ -25,9 +25,6 @@ ON bookmark_collection(pending_op, modified_at DESC);
 CREATE INDEX IF NOT EXISTS bookmark_collection_snapshots_idx
 ON bookmark_collection(last_synced_collection_remote_id, last_synced_bookmark_remote_id);
 
-getCollectionBookmarks:
-  SELECT * FROM bookmark_collection WHERE is_active = 1 ORDER BY created_at DESC;
-
 countAll:
   SELECT COUNT(*) FROM bookmark_collection;
 
@@ -61,11 +58,6 @@ countRetainedForBookmark:
         )
       )
     );
-
-getCollectionBookmarksForCollection:
-  SELECT * FROM bookmark_collection
-  WHERE collection_local_id = ? AND is_active = 1
-  ORDER BY created_at DESC;
 
 getCollectionBookmarksWithDetails:
   SELECT
@@ -504,12 +496,6 @@ markSyncedLinksForInactiveParents:
       NOT EXISTS (SELECT 1 FROM bookmark b WHERE b.local_id = bookmark_collection.bookmark_local_id AND b.deleted = 0)
       OR NOT EXISTS (SELECT 1 FROM collection c WHERE c.local_id = bookmark_collection.collection_local_id AND c.deleted = 0)
     );
-
-deleteUnsyncedBookmarkCollections:
-  DELETE FROM bookmark_collection
-  WHERE pending_op = 'CREATED'
-    AND last_synced_bookmark_remote_id IS NULL
-    AND last_synced_collection_remote_id IS NULL;
 
 markUnsyncedBookmarkCollectionsDeletedForImport:
   UPDATE bookmark_collection

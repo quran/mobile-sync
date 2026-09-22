@@ -16,6 +16,8 @@ import com.quran.shared.persistence.model.DatabaseReadingSession
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
+import com.quran.shared.persistence.repository.readingsession.extension.hasPendingLocalMutation
+import com.quran.shared.persistence.repository.readingsession.extension.pendingMutation
 import com.quran.shared.persistence.repository.readingsession.extension.toReadingSession
 import com.quran.shared.persistence.repository.readingsession.extension.toReadingSessionMutation
 import com.quran.shared.persistence.util.PlatformDateTime
@@ -417,17 +419,6 @@ class ReadingSessionsRepositoryImpl(
         return row.pending_version == ack.observedPendingVersion &&
             row.pendingMutation() == ack.observedPendingOp
     }
-
-    private fun DatabaseReadingSession.pendingMutation(): Mutation? {
-        return when {
-            remote_id == null -> Mutation.CREATED
-            deleted == 1L -> Mutation.DELETED
-            is_edited == 1L -> Mutation.MODIFIED
-            else -> null
-        }
-    }
-
-    private fun DatabaseReadingSession.hasPendingLocalMutation(): Boolean = pendingMutation() != null
 
     private fun RemoteModelMutation<RemoteReadingSession>.createdAckOrNull(): CreatedReadingSessionAck? {
         val ack = ack ?: return null

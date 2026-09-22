@@ -18,6 +18,7 @@ import com.quran.shared.persistence.model.isSystemCollectionName
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
+import com.quran.shared.persistence.repository.collection.CollectionStore
 import com.quran.shared.persistence.repository.collection.extension.toCollection
 import com.quran.shared.persistence.repository.collection.extension.toCollectionMutation
 import com.quran.shared.persistence.util.PlatformDateTime
@@ -43,6 +44,7 @@ class CollectionsRepositoryImpl(
     private val logger = Logger.withTag("CollectionsRepository")
     private val collectionQueries = lazy { database.collectionsQueries }
     private val bookmarkCollectionQueries = lazy { database.bookmark_collectionsQueries }
+    private val store = CollectionStore(database)
 
     override suspend fun getAllCollections(): List<Collection> {
         return withContext(Dispatchers.IO) {
@@ -70,22 +72,9 @@ class CollectionsRepositoryImpl(
     }
 
     private suspend fun addCollectionWithTimestampMillis(name: String, timestampMillis: Long): Collection {
-        require(!isSystemCollectionName(name)) {
-            "System collection name is reserved: $name."
-        }
         logger.i { "Adding collection with name=$name" }
         return withContext(Dispatchers.IO) {
-            collectionQueries.value.addNewCollection(
-                name = name,
-                timestamp = timestampMillis,
-                is_system = 0L
-            )
-            val record = requireNotNull(
-                collectionQueries.value.getCollectionByName(name)
-                    .executeAsOneOrNull()
-            ) { "Expected collection for name=$name after insert." }
-            require(record.is_system == 0L) { "System collection name is reserved: $name." }
-            record.toCollection()
+            store.add(name, timestampMillis).toCollection()
         }
     }
 

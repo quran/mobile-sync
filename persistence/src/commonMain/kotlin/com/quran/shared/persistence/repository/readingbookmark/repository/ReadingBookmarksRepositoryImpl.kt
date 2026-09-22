@@ -13,9 +13,10 @@ import com.quran.shared.persistence.input.RemoteReadingBookmark
 import com.quran.shared.persistence.model.DatabaseReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
-import com.quran.shared.persistence.model.toStorageValue
+import com.quran.shared.persistence.model.SUPPORTED_MUSHAF_ID
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
+import com.quran.shared.persistence.repository.readingbookmark.ReadingBookmarkStore
 import com.quran.shared.persistence.repository.readingbookmark.extension.toReadingBookmark
 import com.quran.shared.persistence.repository.readingbookmark.extension.toReadingBookmarkMutation
 import com.quran.shared.persistence.util.PlatformDateTime
@@ -39,6 +40,7 @@ class ReadingBookmarksRepositoryImpl(
 ) : ReadingBookmarksRepository, ReadingBookmarksSynchronizationRepository {
 
     private val queries = lazy { database.reading_bookmarksQueries }
+    private val store = ReadingBookmarkStore(database)
 
     override suspend fun getReadingBookmarks(): List<ReadingBookmark> =
         withContext(Dispatchers.IO) {
@@ -63,17 +65,7 @@ class ReadingBookmarksRepositoryImpl(
         ayah: Int,
         timestamp: PlatformDateTime
     ): ReadingBookmark = withContext(Dispatchers.IO) {
-        val slotValue = slot.toStorageValue()
-        val timestampMillis = timestamp.toEpochMillisecondsFromPlatform()
-        queries.value.setAyahReadingBookmark(
-            slot = slotValue.toLong(),
-            sura = sura.toLong(),
-            ayah = ayah.toLong(),
-            mushaf_id = SUPPORTED_MUSHAF_ID,
-            timestamp = timestampMillis
-        )
-        requireNotNull(queries.value.getReadingBookmarkForSlot(slotValue.toLong()).executeAsOneOrNull())
-            .toReadingBookmark()
+        store.setAyah(slot, sura, ayah, timestamp.toEpochMillisecondsFromPlatform()).toReadingBookmark()
     }
 
     override suspend fun setPageReadingBookmark(slot: ReadingBookmarkSlot, page: Int): ReadingBookmark =
@@ -84,16 +76,7 @@ class ReadingBookmarksRepositoryImpl(
         page: Int,
         timestamp: PlatformDateTime
     ): ReadingBookmark = withContext(Dispatchers.IO) {
-        val slotValue = slot.toStorageValue()
-        val timestampMillis = timestamp.toEpochMillisecondsFromPlatform()
-        queries.value.setPageReadingBookmark(
-            slot = slotValue.toLong(),
-            page = page.toLong(),
-            mushaf_id = SUPPORTED_MUSHAF_ID,
-            timestamp = timestampMillis
-        )
-        requireNotNull(queries.value.getReadingBookmarkForSlot(slotValue.toLong()).executeAsOneOrNull())
-            .toReadingBookmark()
+        store.setPage(slot, page, timestamp.toEpochMillisecondsFromPlatform()).toReadingBookmark()
     }
 
     override suspend fun renameReadingBookmark(slot: ReadingBookmarkSlot, name: String?): ReadingBookmark =
@@ -105,14 +88,7 @@ class ReadingBookmarksRepositoryImpl(
         timestamp: PlatformDateTime
     ): ReadingBookmark =
         withContext(Dispatchers.IO) {
-            val slotValue = slot.toStorageValue()
-            queries.value.renameReadingBookmark(
-                slot = slotValue.toLong(),
-                name = name,
-                timestamp = timestamp.toEpochMillisecondsFromPlatform()
-            )
-            requireNotNull(queries.value.getReadingBookmarkForSlot(slotValue.toLong()).executeAsOneOrNull())
-                .toReadingBookmark()
+            store.rename(slot, name, timestamp.toEpochMillisecondsFromPlatform()).toReadingBookmark()
         }
 
     override suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot): ReadingBookmark =
@@ -120,13 +96,7 @@ class ReadingBookmarksRepositoryImpl(
 
     override suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot, timestamp: PlatformDateTime): ReadingBookmark =
         withContext(Dispatchers.IO) {
-            val slotValue = slot.toStorageValue()
-            queries.value.clearReadingBookmark(
-                slot = slotValue.toLong(),
-                timestamp = timestamp.toEpochMillisecondsFromPlatform()
-            )
-            requireNotNull(queries.value.getReadingBookmarkForSlot(slotValue.toLong()).executeAsOneOrNull())
-                .toReadingBookmark()
+            store.clear(slot, timestamp.toEpochMillisecondsFromPlatform()).toReadingBookmark()
         }
 
     override suspend fun fetchMutatedReadingBookmarks(): List<LocalModelMutation<LocalSyncReadingBookmark>> =
@@ -229,9 +199,5 @@ class ReadingBookmarksRepositoryImpl(
 
     private fun requireValidSlot(slot: Int) {
         require(slot in 1..3) { "Reading bookmark slot must be between 1 and 3: $slot" }
-    }
-
-    private companion object {
-        const val SUPPORTED_MUSHAF_ID = 1L
     }
 }

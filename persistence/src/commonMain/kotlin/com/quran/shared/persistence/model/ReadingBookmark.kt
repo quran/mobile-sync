@@ -2,6 +2,8 @@ package com.quran.shared.persistence.model
 
 import com.quran.shared.persistence.util.PlatformDateTime
 
+internal const val SUPPORTED_MUSHAF_ID = 1L
+
 sealed interface ReadingBookmark {
     val slot: ReadingBookmarkSlot
     val name: String?

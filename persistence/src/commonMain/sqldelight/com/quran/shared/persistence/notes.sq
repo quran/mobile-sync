@@ -37,15 +37,6 @@ getNoteByLocalId:
 getNoteByRemoteId:
   SELECT * FROM note WHERE remote_id = ? LIMIT 1;
 
-getPendingCreatedNotesByContent:
-  SELECT * FROM note
-  WHERE remote_id IS NULL
-    AND note = :note
-    AND start_sura = :start_sura
-    AND start_ayah = :start_ayah
-    AND end_sura = :end_sura
-    AND end_ayah = :end_ayah;
-
 getPendingDeletedCreatedNotesByContent:
   SELECT * FROM note
   WHERE remote_id IS NULL
@@ -234,9 +225,6 @@ checkRemoteIDsExistence:
 
 deleteAll:
   DELETE FROM note;
-
-deleteUnsyncedNotes:
-  DELETE FROM note WHERE remote_id IS NULL;
 
 markUnsyncedNotesDeletedForImport:
   UPDATE note
