@@ -16,6 +16,7 @@ import com.quran.shared.persistence.model.DatabaseUnsyncedBookmark
 import com.quran.shared.persistence.model.highlightColorForCollectionName
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
+import com.quran.shared.persistence.repository.bookmark.AyahBookmarkStore
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
 import com.quran.shared.persistence.repository.bookmark.activeSavedCollectionIdsForBookmark
 import com.quran.shared.persistence.repository.bookmark.extension.toAyahBookmark
@@ -42,6 +43,7 @@ class BookmarksRepositoryImpl(
     private val bookmarkQueries = lazy { database.bookmarksQueries }
     private val bookmarkCollectionQueries = lazy { database.bookmark_collectionsQueries }
     private val collectionQueries = lazy { database.collectionsQueries }
+    private val ayahBookmarkStore = AyahBookmarkStore(database)
 
     override suspend fun replaceAyahBookmarkCollections(
         sura: Int,
@@ -67,9 +69,8 @@ class BookmarksRepositoryImpl(
             var result: BookmarkCollectionsReplacementResult? = null
             database.transaction {
                 val desiredSavedCollectionIds = resolveSavedCollectionIds(desiredCollectionIds)
-                var bookmark = bookmarkQueries.value
-                    .getBookmarkForAyah(sura.toLong(), ayah.toLong())
-                    .executeAsOneOrNull()
+                val existingBookmark = ayahBookmarkStore.get(sura, ayah)
+                var bookmark = existingBookmark
                 val hadActiveBookmark = bookmark?.deleted == 0L
 
                 if (bookmark == null || bookmark.deleted == 1L) {
@@ -77,16 +78,13 @@ class BookmarksRepositoryImpl(
                         result = BookmarkCollectionsReplacementResult(bookmark = null, changed = false)
                         return@transaction
                     }
-                    bookmarkQueries.value.upsertAyahBookmark(
-                        remote_id = null,
-                        sura = sura.toLong(),
-                        ayah = ayah.toLong(),
-                        created_at = timestampMillis,
-                        modified_at = timestampMillis
-                    )
-                    bookmark = requireNotNull(
-                        bookmarkQueries.value.getBookmarkForAyah(sura.toLong(), ayah.toLong()).executeAsOneOrNull()
-                    ) { "Expected ayah bookmark for $sura:$ayah after insert." }
+                    bookmark = ayahBookmarkStore.resolve(
+                        sura = sura,
+                        ayah = ayah,
+                        createdAt = timestampMillis,
+                        modifiedAt = timestampMillis,
+                        existing = existingBookmark
+                    ).bookmark
                 }
 
                 val currentSavedCollectionIds = database.activeSavedCollectionIdsForBookmark(bookmark.local_id)

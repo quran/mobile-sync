@@ -50,3 +50,12 @@ internal fun DatabaseReadingSession.toReadingSessionMutation(): LocalModelMutati
         )
     )
 }
+
+internal fun DatabaseReadingSession.pendingMutation(): Mutation? = when {
+    remote_id == null -> Mutation.CREATED
+    deleted == 1L -> Mutation.DELETED
+    is_edited == 1L -> Mutation.MODIFIED
+    else -> null
+}
+
+internal fun DatabaseReadingSession.hasPendingLocalMutation(): Boolean = pendingMutation() != null

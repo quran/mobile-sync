@@ -329,9 +329,6 @@ checkRemoteIDsExistence:
 deleteAll:
   DELETE FROM collection;
 
-deleteUnsyncedCollections:
-  DELETE FROM collection WHERE remote_id IS NULL AND is_system = 0;
-
 markUnsyncedCollectionsDeletedForImport:
   UPDATE collection
   SET deleted = 1,

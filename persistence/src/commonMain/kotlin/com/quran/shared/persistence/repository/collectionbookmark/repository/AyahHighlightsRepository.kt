@@ -5,9 +5,10 @@ import app.cash.sqldelight.coroutines.mapToList
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.model.AyahHighlight
 import com.quran.shared.persistence.model.AyahHighlightColor
-import com.quran.shared.persistence.model.DatabaseCollection
 import com.quran.shared.persistence.model.highlightColorForCollectionName
+import com.quran.shared.persistence.repository.bookmark.AyahBookmarkStore
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
+import com.quran.shared.persistence.repository.collection.CollectionStore
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.toEpochMillisecondsFromPlatform
 import com.quran.shared.persistence.util.toPlatform
@@ -24,7 +25,8 @@ internal class AyahHighlightsRepository(
 ) {
     private val bookmarkCollectionQueries = database.bookmark_collectionsQueries
     private val bookmarkQueries = database.bookmarksQueries
-    private val collectionQueries = database.collectionsQueries
+    private val ayahBookmarkStore = AyahBookmarkStore(database)
+    private val collectionStore = CollectionStore(database)
 
     fun getHighlightsFlow(): Flow<List<AyahHighlight>> =
         bookmarkCollectionQueries.getCollectionBookmarksWithDetails()
@@ -60,30 +62,19 @@ internal class AyahHighlightsRepository(
         return withContext(Dispatchers.IO) {
             var result: AyahHighlight? = null
             database.transaction {
-                val existingHighlightCollections = activeHighlightCollections()
-                val targetCollection = activateHighlightCollection(
+                val existingHighlightCollections = collectionStore.activeHighlightCollections()
+                val targetCollection = collectionStore.getOrCreateActiveHighlight(
+                    color,
+                    timestampMillis,
                     existingHighlightCollections
-                    .firstOrNull { it.first == color }
-                    ?.second
-                        ?: createHighlightCollection(color, timestampMillis),
-                    timestampMillis
-                )
+                ).collection
 
-                val bookmark = bookmarkQueries
-                    .getBookmarkForAyah(sura.toLong(), ayah.toLong())
-                    .executeAsOneOrNull()
-                    ?: run {
-                        bookmarkQueries.upsertAyahBookmark(
-                            remote_id = null,
-                            sura = sura.toLong(),
-                            ayah = ayah.toLong(),
-                            created_at = timestampMillis,
-                            modified_at = timestampMillis
-                        )
-                        requireNotNull(
-                            bookmarkQueries.getBookmarkForAyah(sura.toLong(), ayah.toLong()).executeAsOneOrNull()
-                        ) { "Expected ayah bookmark for $sura:$ayah after insert." }
-                    }
+                val bookmark = ayahBookmarkStore.resolve(
+                    sura = sura,
+                    ayah = ayah,
+                    createdAt = timestampMillis,
+                    modifiedAt = timestampMillis
+                ).bookmark
 
                 if (!hasActiveMembership(bookmark.local_id, targetCollection.local_id)) {
                     bookmarkCollectionQueries.addBookmarkToCollection(
@@ -134,14 +125,14 @@ internal class AyahHighlightsRepository(
                     .getBookmarkForAyah(sura.toLong(), ayah.toLong())
                     .executeAsOneOrNull() ?: return@transaction
 
-                activeHighlightCollections()
+                collectionStore.activeHighlightCollections()
                     .asSequence()
                     .map { it.second }
                     .filter { collection ->
                         bookmarkCollectionQueries
-                            .getCollectionBookmarksForCollection(collection.local_id)
-                            .executeAsList()
-                            .any { it.bookmark_local_id == bookmark.local_id }
+                            .getCollectionBookmarkFor(bookmark.local_id, collection.local_id)
+                            .executeAsOneOrNull()
+                            ?.is_active == 1L
                     }
                     .forEach { collection ->
                         bookmarkCollectionQueries.markBookmarkCollectionDeleted(
@@ -160,48 +151,11 @@ internal class AyahHighlightsRepository(
         }
     }
 
-    private fun createHighlightCollection(
-        color: AyahHighlightColor,
-        timestampMillis: Long
-    ): DatabaseCollection {
-        collectionQueries.addNewCollection(
-            name = color.collectionName,
-            timestamp = timestampMillis,
-            is_system = 1L
-        )
-        return requireNotNull(
-            collectionQueries.getCollectionByName(color.collectionName).executeAsOneOrNull()
-        ) { "Expected highlight collection ${color.collectionName} after insert." }
-    }
-
-    private fun activateHighlightCollection(
-        collection: DatabaseCollection,
-        timestampMillis: Long
-    ): DatabaseCollection {
-        if (collection.remote_id == null && collection.pending_version == 0L) {
-            collectionQueries.addNewCollection(
-                name = collection.name,
-                timestamp = timestampMillis,
-                is_system = 1L
-            )
-        }
-        return requireNotNull(
-            collectionQueries.getCollectionByLocalId(collection.local_id).executeAsOneOrNull()
-        ) { "Expected active highlight collection ${collection.name}." }
-    }
-
     private fun hasActiveMembership(bookmarkLocalId: Long, collectionLocalId: Long): Boolean =
         bookmarkCollectionQueries
-            .getCollectionBookmarksForCollection(collectionLocalId)
-            .executeAsList()
-            .any { it.bookmark_local_id == bookmarkLocalId }
-
-    private fun activeHighlightCollections(): List<Pair<AyahHighlightColor, DatabaseCollection>> =
-        collectionQueries.getCollections()
-            .executeAsList()
-            .mapNotNull { collection ->
-                highlightColorForCollectionName(collection.name)?.let { it to collection }
-            }
+            .getCollectionBookmarkFor(bookmarkLocalId, collectionLocalId)
+            .executeAsOneOrNull()
+            ?.is_active == 1L
 
     private data class HighlightRecord(
         val highlight: AyahHighlight,

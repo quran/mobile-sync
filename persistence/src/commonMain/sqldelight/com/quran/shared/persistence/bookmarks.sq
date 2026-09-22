@@ -22,24 +22,11 @@ ON bookmark(deleted, modified_at DESC);
 CREATE INDEX IF NOT EXISTS bookmark_pending_idx
 ON bookmark(bookmark_pending_op, modified_at DESC);
 
-getSavedAyahBookmarks:
-  SELECT b.* FROM bookmark b
-  WHERE b.deleted = 0
-    AND EXISTS (
-      SELECT 1 FROM bookmark_collection bc
-      WHERE bc.bookmark_local_id = b.local_id
-        AND bc.is_active = 1
-    )
-  ORDER BY b.modified_at DESC;
-
 countAll:
   SELECT COUNT(*) FROM bookmark;
 
 countActive:
   SELECT COUNT(*) FROM bookmark WHERE deleted = 0;
-
-changedRowCount:
-  SELECT changes();
 
 getBookmarkForAyah:
   SELECT * FROM bookmark
@@ -79,9 +66,6 @@ reactivateDeletedBookmarkForActiveRemoteRelation:
     AND remote_id = :remote_id
     AND deleted = 1
     AND bookmark_pending_op IS NULL;
-
-getBookmarksByRemoteIds:
-  SELECT * FROM bookmark WHERE remote_id IN :remote_ids;
 
 getUnsyncedBookmarkRows:
   SELECT * FROM bookmark
@@ -141,9 +125,6 @@ markBookmarkDeleted:
     modified_at = :timestamp
   WHERE local_id = :local_id AND remote_id IS NOT NULL;
 
-deleteLocalBookmark:
-  DELETE FROM bookmark WHERE local_id = :local_id AND remote_id IS NULL;
-
 hardDeleteBookmarkByLocalId:
   DELETE FROM bookmark WHERE local_id = :local_id;
 
@@ -195,9 +176,6 @@ clearBookmarkDeletePending:
     AND deleted = 1
     AND bookmark_pending_op = :pending_op
     AND bookmark_pending_version = :pending_version;
-
-deleteUnsyncedBookmarks:
-  DELETE FROM bookmark WHERE remote_id IS NULL AND bookmark_pending_op IS NOT NULL;
 
 markUnsyncedBookmarksDeletedForImport:
   UPDATE bookmark

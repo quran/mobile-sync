@@ -22,6 +22,7 @@ import com.quran.shared.persistence.model.DatabaseBookmarkCollection
 import com.quran.shared.persistence.model.highlightColorForCollectionName
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
+import com.quran.shared.persistence.repository.bookmark.AyahBookmarkStore
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
 import com.quran.shared.persistence.repository.bookmark.activeSavedCollectionIdsForBookmark
 import com.quran.shared.persistence.repository.bookmark.extension.toAyahBookmark
@@ -52,6 +53,7 @@ class CollectionBookmarksRepositoryImpl(
     private val bookmarkQueries = lazy { database.bookmarksQueries }
     private val collectionQueries = lazy { database.collectionsQueries }
     private val highlightsRepository = AyahHighlightsRepository(database, reconciler)
+    private val ayahBookmarkStore = AyahBookmarkStore(database)
 
     /** A replayed relation create whose final active state can reactivate or timestamp its parent. */
     private data class RemoteRelationActivationCandidate(
@@ -167,9 +169,8 @@ class CollectionBookmarksRepositoryImpl(
                     "Highlight collections must be changed through setHighlight."
                 }
 
-                var bookmark = bookmarkQueries.value
-                    .getBookmarkForAyah(sura.toLong(), ayah.toLong())
-                    .executeAsOneOrNull()
+                val existingBookmark = ayahBookmarkStore.get(sura, ayah)
+                var bookmark = existingBookmark
                 val hadActiveBookmark = bookmark?.deleted == 0L
                 val currentSavedCollectionIds = if (hadActiveBookmark) {
                     database.activeSavedCollectionIdsForBookmark(requireNotNull(bookmark).local_id)
@@ -177,16 +178,13 @@ class CollectionBookmarksRepositoryImpl(
                     emptySet()
                 }
                 if (!hadActiveBookmark) {
-                    bookmarkQueries.value.upsertAyahBookmark(
-                        remote_id = null,
-                        sura = sura.toLong(),
-                        ayah = ayah.toLong(),
-                        created_at = timestampMillis,
-                        modified_at = timestampMillis
-                    )
-                    bookmark = bookmarkQueries.value
-                        .getBookmarkForAyah(sura.toLong(), ayah.toLong())
-                        .executeAsOneOrNull()
+                    bookmark = ayahBookmarkStore.resolve(
+                        sura = sura,
+                        ayah = ayah,
+                        createdAt = timestampMillis,
+                        modifiedAt = timestampMillis,
+                        existing = existingBookmark
+                    ).bookmark
                 }
                 val activeBookmark = requireNotNull(bookmark) {
                     "Expected ayah bookmark for $sura:$ayah before linking."
