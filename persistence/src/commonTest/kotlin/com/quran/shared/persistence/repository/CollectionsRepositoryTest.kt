@@ -72,25 +72,25 @@ class CollectionsRepositoryTest {
     }
 
     @Test
-    fun `import rejects active system collection name without merging into seed`() = runTest {
+    fun `import recognizes Favorites and reuses the seeded default collection`() = runTest {
         val seededDatabase = QuranDatabase(TestDatabaseDriver().createDriver())
 
-        assertFailsWith<IllegalArgumentException> {
-            PersistenceImportRepositoryImpl(seededDatabase).importData(
-                data = PersistenceImportData(
-                    collections = listOf(
-                        ImportCollection(
-                            importId = "custom-favorites",
-                            name = DEFAULT_COLLECTION_NAME,
-                            lastUpdated = timestamp(1_000L)
-                        )
+        val result = PersistenceImportRepositoryImpl(seededDatabase).importData(
+            data = PersistenceImportData(
+                collections = listOf(
+                    ImportCollection(
+                        importId = "custom-favorites",
+                        name = " favorites ",
+                        lastUpdated = timestamp(1_000L)
                     )
-                ),
-                deleteExisting = false
-            )
-        }
+                )
+            ),
+            deleteExisting = false
+        )
 
         val retained = seededDatabase.collectionsQueries.getDefaultCollection().executeAsOne()
+        assertEquals(1, result.matched)
+        assertEquals(0, result.collectionsImported)
         assertEquals(DEFAULT_COLLECTION_NAME, retained.name)
         assertEquals(1L, retained.is_default)
         assertEquals(1L, retained.is_system)

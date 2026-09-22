@@ -6,7 +6,6 @@ import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.TestDatabaseDriver
 import com.quran.shared.persistence.input.ImportReadingBookmark
-import com.quran.shared.persistence.input.ImportReadingSession
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.RemoteReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
@@ -18,7 +17,6 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.time.Instant
 
@@ -64,6 +62,7 @@ class ReadingBookmarksImportTest {
         assertEquals(listOf(255L, 255L, null), rows.map { it.ayah })
         assertEquals(listOf(null, null, 604L), rows.map { it.page })
         assertEquals(listOf(1L, 1L, 1L), rows.map { it.mushaf_id })
+        assertEquals(listOf(2L, 2L, 2L), rows.map { it.pending_version })
         assertEquals(List(3) { Mutation.CREATED }, readingBookmarks.fetchMutatedReadingBookmarks().map { it.mutation })
         assertEquals(0L, database.bookmarksQueries.countAll().executeAsOne())
     }
@@ -135,31 +134,23 @@ class ReadingBookmarksImportTest {
     }
 
     @Test
-    fun `duplicate slots and invalid pages reject replacement before any writes`() = runTest {
-        persistRemoteSlot(1, "Keep")
-        val before = database.reading_bookmarksQueries.getReadingBookmarks().executeAsList()
-        val invalidBookmarks = listOf(
-            listOf(
-                ImportReadingBookmark.Ayah(2, 255, at(200), ReadingBookmarkSlot.GREEN),
-                ImportReadingBookmark.Page(42, at(200), ReadingBookmarkSlot.GREEN)
-            ),
-            listOf(ImportReadingBookmark.Page(0, at(200), ReadingBookmarkSlot.PURPLE)),
-            listOf(ImportReadingBookmark.Page(605, at(200), ReadingBookmarkSlot.PURPLE))
+    fun `duplicate slots and out of range pages use normal setter behavior`() = runTest {
+        val result = repository.importData(
+            PersistenceImportData(
+                readingBookmarks = listOf(
+                    ImportReadingBookmark.Ayah(2, 255, at(200), ReadingBookmarkSlot.GREEN),
+                    ImportReadingBookmark.Page(0, at(300), ReadingBookmarkSlot.GREEN),
+                    ImportReadingBookmark.Page(605, at(400), ReadingBookmarkSlot.PURPLE)
+                )
+            )
         )
 
-        invalidBookmarks.forEach { bookmarks ->
-            assertFailsWith<IllegalArgumentException> {
-                repository.importData(
-                    PersistenceImportData(
-                        readingSessions = listOf(ImportReadingSession(18, 10, at(200))),
-                        readingBookmarks = bookmarks
-                    ),
-                    deleteExisting = true
-                )
-            }
-            assertEquals(before, database.reading_bookmarksQueries.getReadingBookmarks().executeAsList())
-            assertEquals(emptyList(), database.reading_sessionsQueries.getReadingSessions().executeAsList())
-        }
+        val rows = database.reading_bookmarksQueries.getReadingBookmarks().executeAsList()
+        assertEquals(3, result.readingBookmarksImported)
+        assertEquals(0L, rows[0].page)
+        assertEquals(300L, rows[0].modified_at)
+        assertEquals(605L, rows[1].page)
+        assertEquals(400L, rows[1].modified_at)
     }
 
     @Test

@@ -2,24 +2,16 @@ package com.quran.shared.persistence.repository.importdata
 
 import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.QuranDatabase
-import com.quran.shared.persistence.input.ImportAyahBookmark
-import com.quran.shared.persistence.input.ImportCollection
-import com.quran.shared.persistence.input.ImportCollectionAyahBookmark
-import com.quran.shared.persistence.input.ImportNote
-import com.quran.shared.persistence.input.ImportReadingBookmark
-import com.quran.shared.persistence.input.ImportReadingSession
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.PersistenceImportResult
-import com.quran.shared.persistence.model.DatabaseNote
-import com.quran.shared.persistence.model.isSystemCollectionName
-import com.quran.shared.persistence.model.toStorageValue
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
-import com.quran.shared.persistence.util.PlatformDateTime
-import com.quran.shared.persistence.util.fromPlatform
+import com.quran.shared.persistence.util.currentEpochMilliseconds
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 @Inject
@@ -34,295 +26,37 @@ class PersistenceImportRepositoryImpl(
         deleteExisting: Boolean
     ): PersistenceImportResult {
         return withContext(Dispatchers.IO) {
-            validate(data)
+            val context = currentCoroutineContext()
+            context.ensureActive()
             var result: PersistenceImportResult? = null
             database.transaction {
                 if (deleteExisting) {
                     deleteExistingData()
                 }
-                result = mergeData(data)
+                val merged = PersistenceImportMerger(
+                    database = database,
+                    reconciler = reconciler,
+                    data = data,
+                    context = context
+                ).merge()
+                result = merged.copy(changed = deleteExisting || merged.changed)
             }
             requireNotNull(result)
         }
     }
 
-    private fun mergeData(data: PersistenceImportData): PersistenceImportResult {
-        val bookmarkLocalIds = importBookmarks(data.bookmarks)
-        val collectionLocalIds = importCollections(data.collections)
-        importReadingSessions(data.readingSessions)
-        importReadingBookmarks(data.readingBookmarks)
-        importNotes(data.notes)
-        importCollectionBookmarks(
-            links = data.collectionBookmarks,
-            bookmarkLocalIds = bookmarkLocalIds,
-            collectionLocalIds = collectionLocalIds
-        )
-
-        return PersistenceImportResult(
-            bookmarksImported = data.bookmarks.size,
-            collectionsImported = data.collections.size,
-            collectionBookmarksImported = data.collectionBookmarks.size,
-            readingSessionsImported = data.readingSessions.size,
-            notesImported = data.notes.size,
-            readingBookmarksImported = data.readingBookmarks.size
-        )
-    }
-
     private fun deleteExistingData() {
-        val timestamp = currentImportTimestampMillis()
-        database.bookmark_collectionsQueries.markUnsyncedBookmarkCollectionsDeletedForImport(modified_at = timestamp)
-        database.bookmark_collectionsQueries.markRemoteBookmarkCollectionsDeleted(modified_at = timestamp)
-        database.bookmarksQueries.markUnsyncedBookmarksDeletedForImport(modified_at = timestamp)
-        database.bookmarksQueries.markRemoteBookmarksDeleted(modified_at = timestamp)
-        database.collectionsQueries.markUnsyncedCollectionsDeletedForImport(modified_at = timestamp)
-        database.collectionsQueries.markRemoteCollectionsDeleted(modified_at = timestamp)
-        database.notesQueries.markUnsyncedNotesDeletedForImport(modified_at = timestamp)
-        database.notesQueries.markRemoteNotesDeleted(modified_at = timestamp)
-        database.reading_bookmarksQueries.markAllForImportReplacement(modified_at = timestamp)
-        database.reading_sessionsQueries.markUnsyncedReadingSessionsDeletedForImport(modified_at = timestamp)
-        database.reading_sessionsQueries.markRemoteReadingSessionsDeleted(modified_at = timestamp)
-    }
-
-    private fun validate(data: PersistenceImportData) {
-        requireUniqueNonBlank(
-            label = "bookmark importId",
-            values = data.bookmarks.map { it.importId }
-        )
-        requireUniqueNonBlank(
-            label = "collection importId",
-            values = data.collections.map { it.importId }
-        )
-        requireUnique(
-            label = "collection name",
-            values = data.collections.map { it.name }
-        )
-        data.collections.forEach { collection ->
-            require(collection.name.isNotBlank()) { "Collection name cannot be blank." }
-            require(!isSystemCollectionName(collection.name)) {
-                "System collection name is reserved: ${collection.name}."
-            }
-        }
-
-        val bookmarkCoordinates = data.bookmarks.map { bookmark -> bookmark.sura to bookmark.ayah }
-        requireUnique("bookmark ayah", bookmarkCoordinates)
-
-        val readingSessionCoordinates = data.readingSessions.map { session -> session.sura to session.ayah }
-        requireUnique("reading session ayah", readingSessionCoordinates)
-
-        requireUnique("reading bookmark slot", data.readingBookmarks.map { it.slot })
-        data.readingBookmarks.forEach { bookmark ->
-            if (bookmark is ImportReadingBookmark.Page) {
-                require(bookmark.page in 1..MUSHAF_PAGE_COUNT) {
-                    "Invalid page for reading bookmark: ${bookmark.page}."
-                }
-            }
-        }
-
-        data.notes.forEach { note ->
-            require(note.body.isNotBlank()) { "Note body cannot be blank." }
-        }
-
-        val bookmarkIds = data.bookmarks.map { it.importId }.toSet()
-        val collectionIds = data.collections.map { it.importId }.toSet()
-        val linkPairs = data.collectionBookmarks.map { link ->
-            require(link.bookmarkImportId.isNotBlank()) { "Collection bookmark bookmarkImportId cannot be blank." }
-            require(link.collectionImportId.isNotBlank()) { "Collection bookmark collectionImportId cannot be blank." }
-            require(link.bookmarkImportId in bookmarkIds) {
-                "Collection bookmark references unknown bookmark importId=${link.bookmarkImportId}."
-            }
-            require(link.collectionImportId in collectionIds) {
-                "Collection bookmark references unknown collection importId=${link.collectionImportId}."
-            }
-            link.collectionImportId to link.bookmarkImportId
-        }
-        requireUnique("collection bookmark link", linkPairs)
-    }
-
-    private fun importBookmarks(bookmarks: List<ImportAyahBookmark>): Map<String, String> {
-        if (bookmarks.isEmpty()) {
-            return emptyMap()
-        }
-        val defaultCollection = requireNotNull(
-            database.collectionsQueries.getDefaultCollection().executeAsOneOrNull()
-        ) { "Default collection is not available for bookmark import." }
-        return bookmarks.associate { bookmark ->
-            val timestamp = bookmark.lastUpdated.toImportTimestampMillis()
-            database.bookmarksQueries.upsertAyahBookmark(
-                remote_id = null,
-                sura = bookmark.sura.toLong(),
-                ayah = bookmark.ayah.toLong(),
-                created_at = timestamp,
-                modified_at = timestamp
-            )
-            val record = database.bookmarksQueries
-                .getBookmarkForAyah(bookmark.sura.toLong(), bookmark.ayah.toLong())
-                .executeAsOneOrNull()
-            requireNotNull(record) { "Expected imported bookmark ${bookmark.importId}." }
-            database.bookmark_collectionsQueries.addBookmarkToCollection(
-                bookmark_local_id = record.local_id,
-                collection_local_id = defaultCollection.local_id,
-                timestamp = timestamp
-            )
-            bookmark.importId to record.local_id.toString()
-        }
-    }
-
-    private fun importCollections(collections: List<ImportCollection>): Map<String, Long> {
-        return collections.associate { collection ->
-            val timestamp = collection.lastUpdated.toImportTimestampMillis()
-            database.collectionsQueries.insertImportedCollection(
-                name = collection.name,
-                created_at = timestamp,
-                modified_at = timestamp
-            )
-            val record = database.collectionsQueries
-                .getCollectionByName(collection.name)
-                .executeAsOneOrNull()
-            requireNotNull(record) { "Expected imported collection ${collection.importId}." }
-            require(record.is_system == 0L) {
-                "System collection name is reserved: ${collection.name}."
-            }
-            collection.importId to record.local_id
-        }
-    }
-
-    private fun importReadingSessions(readingSessions: List<ImportReadingSession>) {
-        readingSessions.forEach { session ->
-            val timestamp = session.lastUpdated.toImportTimestampMillis()
-            database.reading_sessionsQueries.insertImportedReadingSession(
-                chapter_number = session.sura.toLong(),
-                verse_number = session.ayah.toLong(),
-                created_at = timestamp,
-                modified_at = timestamp
-            )
-        }
-    }
-
-    private fun importReadingBookmarks(readingBookmarks: List<ImportReadingBookmark>) {
-        readingBookmarks.forEach { bookmark ->
-            val slot = bookmark.slot.toStorageValue().toLong()
-            val timestamp = bookmark.lastUpdated.toImportTimestampMillis()
-            when (bookmark) {
-                is ImportReadingBookmark.Ayah -> database.reading_bookmarksQueries.setAyahReadingBookmark(
-                    slot = slot,
-                    sura = bookmark.sura.toLong(),
-                    ayah = bookmark.ayah.toLong(),
-                    mushaf_id = SUPPORTED_MUSHAF_ID,
-                    timestamp = timestamp
-                )
-                is ImportReadingBookmark.Page -> database.reading_bookmarksQueries.setPageReadingBookmark(
-                    slot = slot,
-                    page = bookmark.page.toLong(),
-                    mushaf_id = SUPPORTED_MUSHAF_ID,
-                    timestamp = timestamp
-                )
-            }
-            database.reading_bookmarksQueries.renameReadingBookmark(
-                slot = slot,
-                name = bookmark.name,
-                timestamp = timestamp
-            )
-        }
-    }
-
-    private fun importNotes(notes: List<ImportNote>) {
-        val noteKeys = database.notesQueries.getNotes()
-            .executeAsList()
-            .mapTo(mutableSetOf()) { it.importKey() }
-
-        notes.forEach { note ->
-            val timestamp = note.lastUpdated.toImportTimestampMillis()
-            if (!noteKeys.add(note.importKey())) {
-                return@forEach
-            }
-            database.notesQueries.insertImportedNote(
-                note = note.body,
-                start_sura = note.startSura.toLong(),
-                start_ayah = note.startAyah.toLong(),
-                end_sura = note.endSura.toLong(),
-                end_ayah = note.endAyah.toLong(),
-                created_at = timestamp,
-                modified_at = timestamp
-            )
-        }
-    }
-
-    private fun importCollectionBookmarks(
-        links: List<ImportCollectionAyahBookmark>,
-        bookmarkLocalIds: Map<String, String>,
-        collectionLocalIds: Map<String, Long>
-    ) {
-        links.forEach { link ->
-            val bookmarkLocalId = requireNotNull(bookmarkLocalIds[link.bookmarkImportId]) {
-                "Missing local bookmark for importId=${link.bookmarkImportId}."
-            }
-            val collectionLocalId = requireNotNull(collectionLocalIds[link.collectionImportId]) {
-                "Missing local collection for importId=${link.collectionImportId}."
-            }
-            val timestamp = link.lastUpdated.toImportTimestampMillis()
-            database.bookmark_collectionsQueries.insertImportedBookmarkCollection(
-                bookmark_local_id = bookmarkLocalId.toLong(),
-                collection_local_id = collectionLocalId,
-                created_at = timestamp,
-                modified_at = timestamp
-            )
-        }
-        reconciler.reconcile()
-    }
-
-    private fun PlatformDateTime.toImportTimestampMillis(): Long {
-        return fromPlatform().toEpochMilliseconds()
-    }
-
-    private fun currentImportTimestampMillis(): Long {
-        return kotlin.time.Clock.System.now().toEpochMilliseconds()
-    }
-
-    private fun ImportNote.importKey(): NoteImportKey {
-        return NoteImportKey(
-            normalizedBody = body.toNormalizedNoteText(),
-            startSura = startSura.toLong(),
-            startAyah = startAyah.toLong(),
-            endSura = endSura.toLong(),
-            endAyah = endAyah.toLong()
-        )
-    }
-
-    private fun DatabaseNote.importKey(): NoteImportKey {
-        return NoteImportKey(
-            normalizedBody = note.toNormalizedNoteText(),
-            startSura = start_sura,
-            startAyah = start_ayah,
-            endSura = end_sura,
-            endAyah = end_ayah
-        )
-    }
-
-    private fun String.toNormalizedNoteText(): String {
-        return trim().replace(NOTE_WHITESPACE_REGEX, " ")
-    }
-
-    private fun <T> requireUnique(label: String, values: List<T>) {
-        val duplicates = values.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
-        require(duplicates.isEmpty()) { "Duplicate $label values: ${duplicates.joinToString()}." }
-    }
-
-    private fun requireUniqueNonBlank(label: String, values: List<String>) {
-        values.forEach { value ->
-            require(value.isNotBlank()) { "$label cannot be blank." }
-        }
-        requireUnique(label, values)
+        val timestamp = currentEpochMilliseconds()
+        database.bookmark_collectionsQueries.markUnsyncedBookmarkCollectionsDeletedForImport(timestamp)
+        database.bookmark_collectionsQueries.markRemoteBookmarkCollectionsDeleted(timestamp)
+        database.bookmarksQueries.markUnsyncedBookmarksDeletedForImport(timestamp)
+        database.bookmarksQueries.markRemoteBookmarksDeleted(timestamp)
+        database.collectionsQueries.markUnsyncedCollectionsDeletedForImport(timestamp)
+        database.collectionsQueries.markRemoteCollectionsDeleted(timestamp)
+        database.notesQueries.markUnsyncedNotesDeletedForImport(timestamp)
+        database.notesQueries.markRemoteNotesDeleted(timestamp)
+        database.reading_bookmarksQueries.markAllForImportReplacement(timestamp)
+        database.reading_sessionsQueries.markUnsyncedReadingSessionsDeletedForImport(timestamp)
+        database.reading_sessionsQueries.markRemoteReadingSessionsDeleted(timestamp)
     }
 }
-
-private const val MUSHAF_PAGE_COUNT = 604
-private const val SUPPORTED_MUSHAF_ID = 1L
-private val NOTE_WHITESPACE_REGEX = Regex("\\s+")
-
-private data class NoteImportKey(
-    val normalizedBody: String,
-    val startSura: Long,
-    val startAyah: Long,
-    val endSura: Long,
-    val endAyah: Long
-)

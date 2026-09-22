@@ -36,6 +36,15 @@ internal class CollectionStore(
         return requireUserCollection(name, "after insert")
     }
 
+    fun insertImported(
+        name: String,
+        createdAt: Long,
+        modifiedAt: Long
+    ): DatabaseCollection {
+        queries.insertImportedCollection(name, createdAt, modifiedAt)
+        return requireUserCollection(name, "after import")
+    }
+
     fun getOrCreateActiveHighlight(
         color: AyahHighlightColor,
         timestampMillis: Long,
