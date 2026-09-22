@@ -51,6 +51,10 @@ kotlin {
             implementation(libs.multiplatform.settings.test)
         }
 
+        jvmTest.dependencies {
+            implementation(libs.sqldelight.sqlite.driver)
+        }
+
     }
 
     sourceSets.all {
