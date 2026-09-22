@@ -27,6 +27,7 @@ internal class PersistenceImportMerger(
     private val database: QuranDatabase,
     private val reconciler: BookmarkDependencyReconciler,
     private val data: PersistenceImportData,
+    private val trackHistory: Boolean,
     private val context: CoroutineContext
 ) {
     private val ayahBookmarkStore = AyahBookmarkStore(database)
@@ -42,6 +43,7 @@ internal class PersistenceImportMerger(
     private var readingSessionsUpdated = 0
     private var matched = 0
     private var keptExisting = 0
+    private var alreadyProcessed = 0
     private var didChange = false
 
     fun merge(): PersistenceImportResult {
@@ -97,12 +99,44 @@ internal class PersistenceImportMerger(
             createdAt = { effectiveCreatedAtMillis(it.createdAt, it.lastUpdated) }
         )
 
-        val emptyCollections = emptyCollectionCandidates
-        val memberships = membershipCandidates
-        val sessions = sessionCandidates
-        val notes = noteCandidates
-        val readingBookmarks = readingBookmarkCandidates
-        val highlights = highlightCandidates
+        val history = if (trackHistory) {
+            ImportHistoryTracker(
+                database = database,
+                fingerprints = buildList {
+                    emptyCollectionCandidates.mapTo(this, ImportFingerprint::collection)
+                    membershipCandidates.mapTo(this) {
+                        ImportFingerprint.collectionMembership(
+                            it,
+                            collectionsByImportId.getValue(it.collectionImportId)
+                        )
+                    }
+                    sessionCandidates.mapTo(this, ImportFingerprint::readingSession)
+                    noteCandidates.mapTo(this, ImportFingerprint::note)
+                    readingBookmarkCandidates.mapTo(this, ImportFingerprint::readingBookmark)
+                    highlightCandidates.mapTo(this, ImportFingerprint::highlight)
+                }
+            )
+        } else {
+            null
+        }
+        val emptyCollections = history?.unseen(emptyCollectionCandidates, ImportFingerprint::collection)
+            ?: emptyCollectionCandidates
+        val memberships = history?.unseen(membershipCandidates) {
+            ImportFingerprint.collectionMembership(
+                it,
+                collectionsByImportId.getValue(it.collectionImportId)
+            )
+        } ?: membershipCandidates
+        val sessions = history?.unseen(sessionCandidates, ImportFingerprint::readingSession) ?: sessionCandidates
+        val notes = history?.unseen(noteCandidates, ImportFingerprint::note) ?: noteCandidates
+        val readingBookmarks = history?.unseen(readingBookmarkCandidates, ImportFingerprint::readingBookmark)
+            ?: readingBookmarkCandidates
+        val highlights = history?.unseen(highlightCandidates, ImportFingerprint::highlight) ?: highlightCandidates
+        val candidateCount = emptyCollectionCandidates.size + membershipCandidates.size + sessionCandidates.size +
+            noteCandidates.size + readingBookmarkCandidates.size + highlightCandidates.size
+        val unseenCount = emptyCollections.size + memberships.size + sessions.size + notes.size +
+            readingBookmarks.size + highlights.size
+        alreadyProcessed = candidateCount - unseenCount
         val collectionIndex = CollectionIndex(collectionStore.activeCollections())
         val bookmarkIndex = mutableMapOf<Pair<Int, Int>, Long>()
         val noteKeys = if (notes.isEmpty()) {
@@ -143,6 +177,7 @@ internal class PersistenceImportMerger(
             } else {
                 matched++
             }
+            history?.record(ImportFingerprint.collection(collection))
         }
 
         memberships.forEach { membership ->
@@ -176,6 +211,7 @@ internal class PersistenceImportMerger(
                 if (existing == null) collectionBookmarksImported++
                 didChange = true
             }
+            history?.record(ImportFingerprint.collectionMembership(membership, destination))
         }
 
         notes.forEach { note ->
@@ -203,6 +239,7 @@ internal class PersistenceImportMerger(
                 notesImported++
                 didChange = true
             }
+            history?.record(ImportFingerprint.note(note))
         }
 
         sessions.forEach { session ->
@@ -237,11 +274,13 @@ internal class PersistenceImportMerger(
                     didChange = true
                 }
             }
+            history?.record(ImportFingerprint.readingSession(session))
         }
 
         importHighlights(
             highlights,
             bookmarkDatesByPosition,
+            history,
             context,
             bookmarkIndex,
             highlightColors
@@ -269,6 +308,7 @@ internal class PersistenceImportMerger(
             )
             readingBookmarksImported++
             didChange = true
+            history?.record(ImportFingerprint.readingBookmark(bookmark))
         }
 
         context.ensureActive()
@@ -281,6 +321,7 @@ internal class PersistenceImportMerger(
     private fun importHighlights(
         highlights: List<ImportAyahHighlight>,
         bookmarkDatesByPosition: Map<Pair<Int, Int>, BookmarkDates>,
+        history: ImportHistoryTracker?,
         context: CoroutineContext,
         bookmarkIndex: MutableMap<Pair<Int, Int>, Long>,
         highlightColors: MutableMap<Pair<Int, Int>, MutableSet<AyahHighlightColor>>
@@ -291,6 +332,7 @@ internal class PersistenceImportMerger(
             if (existingColors.isNotEmpty()) {
                 candidates.forEach { candidate ->
                     if (candidate.color in existingColors) matched++ else keptExisting++
+                    history?.record(ImportFingerprint.highlight(candidate))
                 }
                 return@forEach
             }
@@ -327,8 +369,10 @@ internal class PersistenceImportMerger(
                 highlightsImported++
                 didChange = true
             }
+            history?.record(ImportFingerprint.highlight(winner))
             candidates.filterNot { it === winner }.forEach { candidate ->
                 keptExisting++
+                history?.record(ImportFingerprint.highlight(candidate))
             }
         }
     }
@@ -385,6 +429,7 @@ internal class PersistenceImportMerger(
         readingSessionsUpdated = readingSessionsUpdated,
         matched = matched,
         keptExisting = keptExisting,
+        alreadyProcessed = alreadyProcessed,
         changed = didChange
     )
 }

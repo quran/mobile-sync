@@ -87,6 +87,8 @@ data class PersistenceImportResult(
     val matched: Int = 0,
     /** Components ignored to preserve conflicting current data or another winning import candidate. */
     val keptExisting: Int = 0,
+    /** Components skipped because their fingerprints were recorded by an earlier tracked import. */
+    val alreadyProcessed: Int = 0,
     /** Whether this call changed sync-managed user data; history-only writes do not count. */
     val changed: Boolean = false
 )
