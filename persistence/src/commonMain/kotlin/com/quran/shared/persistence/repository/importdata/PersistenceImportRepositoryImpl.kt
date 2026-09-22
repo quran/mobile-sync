@@ -23,8 +23,12 @@ class PersistenceImportRepositoryImpl(
 
     override suspend fun importData(
         data: PersistenceImportData,
-        deleteExisting: Boolean
+        deleteExisting: Boolean,
+        trackHistory: Boolean
     ): PersistenceImportResult {
+        require(!(deleteExisting && trackHistory)) {
+            "deleteExisting and trackHistory cannot both be true."
+        }
         return withContext(Dispatchers.IO) {
             val context = currentCoroutineContext()
             context.ensureActive()
@@ -37,6 +41,7 @@ class PersistenceImportRepositoryImpl(
                     database = database,
                     reconciler = reconciler,
                     data = data,
+                    trackHistory = trackHistory,
                     context = context
                 ).merge()
                 result = merged.copy(changed = deleteExisting || merged.changed)

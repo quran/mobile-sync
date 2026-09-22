@@ -13,6 +13,7 @@ class PersistenceResetRepositoryImpl(
 ) : PersistenceResetRepository {
     override fun deleteAllData() {
         database.transaction {
+            database.import_trackingQueries.clearImportHistory()
             database.bookmark_collectionsQueries.deleteAll()
             database.bookmarksQueries.deleteAll()
             database.collectionsQueries.deleteAll()

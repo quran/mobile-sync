@@ -1,0 +1,13 @@
+CREATE TABLE IF NOT EXISTS import_history(
+  payload_fingerprint TEXT NOT NULL PRIMARY KEY
+);
+
+getRecordedImportHistory:
+  SELECT payload_fingerprint FROM import_history
+  WHERE payload_fingerprint IN :payload_fingerprints;
+
+recordImportHistory:
+  INSERT OR IGNORE INTO import_history (payload_fingerprint) VALUES (:payload_fingerprint);
+
+clearImportHistory:
+  DELETE FROM import_history;

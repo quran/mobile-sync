@@ -1152,7 +1152,8 @@ private class ServiceResetRepository(
 private class ServiceImportRepository : PersistenceImportRepository {
     override suspend fun importData(
         data: PersistenceImportData,
-        deleteExisting: Boolean
+        deleteExisting: Boolean,
+        trackHistory: Boolean
     ): PersistenceImportResult =
         PersistenceImportResult(
             bookmarksImported = 0,
