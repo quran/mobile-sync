@@ -44,6 +44,7 @@ class SyncAuthService internal constructor(
 
     @NativeCoroutines
     suspend fun login() {
+        quranDataService.awaitInitialization()
         sessionLifecycleCoordinator.withMutatingWrite {
             authService.login()
         }
@@ -51,6 +52,7 @@ class SyncAuthService internal constructor(
 
     @NativeCoroutines
     suspend fun loginWithReauthentication() {
+        quranDataService.awaitInitialization()
         sessionLifecycleCoordinator.withMutatingWrite {
             authService.loginWithReauthentication()
         }
@@ -63,11 +65,13 @@ class SyncAuthService internal constructor(
 
     @NativeCoroutines
     suspend fun refreshAuthentication(): Boolean = withAuthenticationErrors {
+        quranDataService.awaitInitialization()
         authService.refreshAccessTokenIfNeeded()
     }
 
     @NativeCoroutines
     suspend fun authenticationHeaders(): Map<String, String> = withAuthenticationErrors {
+        quranDataService.awaitInitialization()
         authService.getAuthHeaders()
     }
 

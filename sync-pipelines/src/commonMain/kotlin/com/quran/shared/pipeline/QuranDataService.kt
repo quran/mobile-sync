@@ -42,9 +42,11 @@ import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
@@ -53,6 +55,8 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.native.HiddenFromObjC
 import kotlin.time.Instant
 
@@ -132,6 +136,10 @@ class QuranDataService internal constructor(
     private val serviceJob: Job = SupervisorJob()
     private val scope = CoroutineScope(Dispatchers.Main + serviceJob)
     private val syncClient: SynchronizationClient
+    private val initializationMutex = Mutex()
+    private var initializationAttempt: Deferred<Unit>? = null
+    private var initialized = false
+    private var syncLifecycleStarted = false
 
     fun clear() {
         serviceJob.cancel()
@@ -143,6 +151,59 @@ class QuranDataService internal constructor(
         clear()
         serviceJob.cancelAndJoin()
         syncClient.cancelSyncingAndJoin()
+    }
+
+    @HiddenFromObjC
+    internal suspend fun awaitInitialization() {
+        val attempt = initializationMutex.withLock {
+            if (initialized) {
+                null
+            } else {
+                initializationAttempt ?: scope.async {
+                    sessionLifecycleCoordinator.completePersistedResetIfNeeded {
+                        syncClient.cancelSyncingAndJoin()
+                        resetLocalAuthDataAndToken()
+                    }
+                }.also { initializationAttempt = it }
+            }
+        } ?: return
+
+        try {
+            attempt.await()
+        } catch (failure: Throwable) {
+            if (attempt.isCompleted) {
+                initializationMutex.withLock {
+                    if (initializationAttempt === attempt) initializationAttempt = null
+                }
+            }
+            throw failure
+        }
+
+        val shouldStartSyncLifecycle = initializationMutex.withLock {
+            initialized = true
+            if (initializationAttempt === attempt) initializationAttempt = null
+            if (syncLifecycleStarted || !serviceJob.isActive) {
+                false
+            } else {
+                syncLifecycleStarted = true
+                true
+            }
+        }
+        if (shouldStartSyncLifecycle) startSyncLifecycle()
+    }
+
+    private fun startSyncLifecycle() {
+        scope.launch {
+            syncClient.applicationStarted()
+
+            // Observe auth state and trigger sync when a session is published. Logged-out sync
+            // attempts no-op after fetching empty headers; managed reset owns cancellation.
+            authState.collect { state ->
+                if (state is AuthState.Success && sessionLifecycleCoordinator.canStartSync()) {
+                    syncClient.triggerSyncImmediately()
+                }
+            }
+        }
     }
 
     @NativeCoroutinesState
@@ -228,29 +289,18 @@ class QuranDataService internal constructor(
 
         scope.launch {
             try {
-                sessionLifecycleCoordinator.completePersistedResetIfNeeded {
-                    syncClient.cancelSyncingAndJoin()
-                    resetLocalAuthDataAndToken()
-                }
+                awaitInitialization()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Logger.e(e) { "Failed to recover persisted session reset" }
-                return@launch
-            }
-
-            syncClient.applicationStarted()
-
-            // Observe auth state and trigger sync when a session is published. Logged-out sync
-            // attempts no-op after fetching empty headers; managed reset owns cancellation.
-            authState.collect { state ->
-                if (state is AuthState.Success && sessionLifecycleCoordinator.canStartSync()) {
-                    syncClient.triggerSyncImmediately()
-                }
             }
         }
     }
 
     @NativeCoroutines
     suspend fun logout(clearLocalData: Boolean = true): LogoutResult {
+        awaitInitialization()
         if (!clearLocalData) {
             throw UnsupportedOperationException("Keep-local logout is not implemented yet")
         }
@@ -339,17 +389,20 @@ class QuranDataService internal constructor(
 
     private suspend fun <T> mutatingCall(
         errorMessage: String,
-        triggerAfter: Boolean = true,
+        shouldTriggerSync: (T) -> Boolean = { true },
         block: suspend () -> T
     ): T {
         try {
+            awaitInitialization()
             return sessionLifecycleCoordinator.withMutatingWrite {
                 val result = block()
-                if (triggerAfter) {
+                if (shouldTriggerSync(result)) {
                     triggerSync()
                 }
                 result
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.e(e) { errorMessage }
             throw e
@@ -360,7 +413,8 @@ class QuranDataService internal constructor(
     suspend fun importData(data: PersistenceImportData): PersistenceImportResult {
         return importData(
             data = data,
-            deleteExisting = false
+            deleteExisting = false,
+            trackHistory = false
         )
     }
 
@@ -368,13 +422,18 @@ class QuranDataService internal constructor(
     suspend fun importData(
         data: PersistenceImportData,
         deleteExisting: Boolean
-    ): PersistenceImportResult {
-        return mutatingCall("Failed to import persistence data") {
-            persistenceImportRepository.importData(
-                data = data,
-                deleteExisting = deleteExisting
-            )
-        }
+    ): PersistenceImportResult = importData(data, deleteExisting, trackHistory = false)
+
+    @NativeCoroutines
+    suspend fun importData(
+        data: PersistenceImportData,
+        deleteExisting: Boolean,
+        trackHistory: Boolean
+    ): PersistenceImportResult = mutatingCall(
+        errorMessage = "Failed to import persistence data",
+        shouldTriggerSync = { result -> result.changed }
+    ) {
+        persistenceImportRepository.importData(data, deleteExisting, trackHistory)
     }
 
     /**
@@ -405,12 +464,11 @@ class QuranDataService internal constructor(
      */
     @NativeCoroutines
     suspend fun removeHighlight(sura: Int, ayah: Int): Boolean {
-        return mutatingCall("Failed to remove ayah highlight", triggerAfter = false) {
-            val removed = collectionBookmarksRepository.removeHighlight(sura, ayah)
-            if (removed) {
-                triggerSync()
-            }
-            removed
+        return mutatingCall(
+            errorMessage = "Failed to remove ayah highlight",
+            shouldTriggerSync = { removed -> removed }
+        ) {
+            collectionBookmarksRepository.removeHighlight(sura, ayah)
         }
     }
 
@@ -438,12 +496,11 @@ class QuranDataService internal constructor(
         collectionIds: List<String>,
         timestamp: PlatformDateTime
     ): BookmarkCollectionsReplacementResult {
-        return mutatingCall("Failed to replace ayah bookmark collection memberships", triggerAfter = false) {
-            val result = bookmarksRepository.replaceAyahBookmarkCollections(sura, ayah, collectionIds, timestamp)
-            if (result.changed) {
-                triggerSync()
-            }
-            result
+        return mutatingCall(
+            errorMessage = "Failed to replace ayah bookmark collection memberships",
+            shouldTriggerSync = { result -> result.changed }
+        ) {
+            bookmarksRepository.replaceAyahBookmarkCollections(sura, ayah, collectionIds, timestamp)
         }
     }
 
@@ -545,12 +602,11 @@ class QuranDataService internal constructor(
      */
     @NativeCoroutines
     suspend fun deleteReadingSession(sura: Int, ayah: Int): Boolean {
-        return mutatingCall("Failed to delete reading session", triggerAfter = false) {
-            val deleted = readingSessionsRepository.deleteReadingSession(sura, ayah)
-            if (deleted) {
-                triggerSync()
-            }
-            deleted
+        return mutatingCall(
+            errorMessage = "Failed to delete reading session",
+            shouldTriggerSync = { deleted -> deleted }
+        ) {
+            readingSessionsRepository.deleteReadingSession(sura, ayah)
         }
     }
 
@@ -598,12 +654,11 @@ class QuranDataService internal constructor(
     /** Deletes a custom collection and schedules sync when a row was removed. */
     @NativeCoroutines
     suspend fun deleteCollection(id: String): Boolean {
-        return mutatingCall("Failed to delete collection", triggerAfter = false) {
-            val deleted = collectionsRepository.deleteCollection(id)
-            if (deleted) {
-                triggerSync()
-            }
-            deleted
+        return mutatingCall(
+            errorMessage = "Failed to delete collection",
+            shouldTriggerSync = { deleted -> deleted }
+        ) {
+            collectionsRepository.deleteCollection(id)
         }
     }
 

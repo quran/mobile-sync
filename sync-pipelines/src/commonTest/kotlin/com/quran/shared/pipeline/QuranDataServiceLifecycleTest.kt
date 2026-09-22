@@ -525,6 +525,59 @@ class QuranDataServiceLifecycleTest {
     }
 
     @Test
+    fun `sync auth facade waits for startup reset recovery`() = runTest(dispatcher) {
+        val settings = MapSettings().toSuspendSettings()
+        val lifecycleStore = SettingsSessionLifecycleStateStore(settings)
+        lifecycleStore.beginReset()
+        val fixture = quranDataServiceFixture(
+            resetRepository = ServiceResetRepository(failDelete = true),
+            lifecycleStore = lifecycleStore,
+            useRecordingSyncClient = true
+        )
+        val authFacade = SyncAuthService(fixture.authService, fixture.service, fixture.lifecycleCoordinator)
+        advanceUntilIdle()
+
+        val error = assertFailsWith<IllegalStateException> {
+            authFacade.login()
+        }
+
+        assertEquals("delete failed", error.message)
+        assertEquals(0, fixture.authRepository.loginCalls)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `startup reset recovery failure can be retried`() = runTest(dispatcher) {
+        val settings = MapSettings().toSuspendSettings()
+        val lifecycleStore = SettingsSessionLifecycleStateStore(settings)
+        lifecycleStore.beginReset()
+        val resetRepository = ServiceResetRepository(transientDeleteFailures = 1)
+        val fixture = quranDataServiceFixture(
+            resetRepository = resetRepository,
+            lifecycleStore = lifecycleStore,
+            useRecordingSyncClient = true
+        )
+        val authFacade = SyncAuthService(fixture.authService, fixture.service, fixture.lifecycleCoordinator)
+
+        val error = assertFailsWith<IllegalStateException> {
+            fixture.service.awaitInitialization()
+        }
+        assertEquals("delete failed", error.message)
+        assertEquals(1, resetRepository.deleteAttempts)
+        assertTrue(lifecycleStore.snapshot().resetInProgress)
+
+        fixture.service.awaitInitialization()
+        authFacade.login()
+        advanceUntilIdle()
+
+        assertEquals(1, fixture.authRepository.loginCalls)
+        assertEquals(2, resetRepository.deleteAttempts)
+        assertEquals(1, resetRepository.deleteCount)
+        assertFalse(lifecycleStore.snapshot().resetInProgress)
+        fixture.clearAndJoin()
+    }
+
+    @Test
     fun `mutating calls throw during reset and logged out writes are allowed after reset`() = runTest(dispatcher) {
         val fixture = quranDataServiceFixture()
         advanceUntilIdle()
@@ -1137,12 +1190,17 @@ private class ServiceSynchronizationClient : SynchronizationClient {
 }
 
 private class ServiceResetRepository(
-    private val failDelete: Boolean = false
+    private val failDelete: Boolean = false,
+    private var transientDeleteFailures: Int = 0
 ) : PersistenceResetRepository {
+    var deleteAttempts = 0
+        private set
     var deleteCount = 0
 
     override fun deleteAllData() {
-        if (failDelete) {
+        deleteAttempts++
+        if (failDelete || transientDeleteFailures > 0) {
+            if (transientDeleteFailures > 0) transientDeleteFailures--
             throw IllegalStateException("delete failed")
         }
         deleteCount++
@@ -1162,6 +1220,7 @@ private class ServiceImportRepository : PersistenceImportRepository {
             readingSessionsImported = 0,
             notesImported = 0
         )
+
 }
 
 private data class BookmarkAyahCollectionsReplaceCall(
