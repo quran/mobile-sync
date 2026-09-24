@@ -18,7 +18,6 @@ import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconc
 import com.quran.shared.persistence.repository.bookmark.activeSavedCollectionIdsForBookmark
 import com.quran.shared.persistence.repository.collection.CollectionStore
 import com.quran.shared.persistence.repository.readingbookmark.ReadingBookmarkStore
-import com.quran.shared.persistence.repository.readingsession.extension.hasPendingLocalMutation
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.toEpochMillisecondsFromPlatform
 import kotlinx.coroutines.ensureActive
@@ -278,9 +277,8 @@ internal class PersistenceImportMerger(
                     didChange = true
                 }
                 existing.modified_at == modifiedAt -> matched++
-                existing.hasPendingLocalMutation() || existing.modified_at > modifiedAt -> {
-                    keptExisting++
-                }
+                // Advance older sessions even when unsynced; a newer visit to the same ayah loses nothing.
+                existing.modified_at > modifiedAt -> keptExisting++
                 else -> {
                     database.reading_sessionsQueries.updateReadingSession(
                         chapter_number = session.sura.toLong(),

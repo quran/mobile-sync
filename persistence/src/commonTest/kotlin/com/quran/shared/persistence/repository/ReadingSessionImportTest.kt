@@ -77,8 +77,24 @@ class ReadingSessionImportTest {
     }
 
     @Test
-    fun `session with pending local changes is kept even when the visit is newer`() = runTest {
+    fun `older unsynced session advances to a newer visit`() = runTest {
         readingSessions.addReadingSession(2, 255, at(100))
+        val pending = storedSession()
+
+        val result = repository.importData(sessionData(ImportReadingSession(2, 255, at(200))))
+
+        val advanced = storedSession()
+        assertEquals(1, result.readingSessionsUpdated)
+        assertTrue(result.changed)
+        assertEquals(pending.local_id, advanced.local_id)
+        assertEquals(pending.created_at, advanced.created_at)
+        assertEquals(200L, advanced.modified_at)
+        assertEquals(Mutation.CREATED, readingSessions.fetchMutatedReadingSessions().single().mutation)
+    }
+
+    @Test
+    fun `newer unsynced session is kept`() = runTest {
+        readingSessions.addReadingSession(2, 255, at(300))
         val pending = storedSession()
 
         val result = repository.importData(sessionData(ImportReadingSession(2, 255, at(200))))
@@ -86,6 +102,27 @@ class ReadingSessionImportTest {
         assertEquals(1, result.keptExisting)
         assertFalse(result.changed)
         assertEquals(pending, storedSession())
+    }
+
+    @Test
+    fun `tracked catch-up advances an imported session that never synced`() = runTest {
+        repository.importData(
+            sessionData(ImportReadingSession(18, 1, at(100))),
+            deleteExisting = false,
+            trackHistory = true
+        )
+
+        val catchUp = repository.importData(
+            sessionData(ImportReadingSession(18, 1, at(200))),
+            deleteExisting = false,
+            trackHistory = true
+        )
+
+        assertEquals(1, catchUp.readingSessionsUpdated)
+        assertEquals(
+            200L,
+            database.reading_sessionsQueries.getReadingSessionForChapterVerse(18, 1).executeAsOne().modified_at
+        )
     }
 
     @Test
