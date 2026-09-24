@@ -15,6 +15,7 @@ import com.quran.shared.persistence.model.isSystemCollectionName
 import com.quran.shared.persistence.repository.bookmark.AyahBookmarkResolutionState
 import com.quran.shared.persistence.repository.bookmark.AyahBookmarkStore
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
+import com.quran.shared.persistence.repository.bookmark.activeSavedCollectionIdsForBookmark
 import com.quran.shared.persistence.repository.collection.CollectionStore
 import com.quran.shared.persistence.repository.readingbookmark.ReadingBookmarkStore
 import com.quran.shared.persistence.repository.readingsession.extension.hasPendingLocalMutation
@@ -138,7 +139,7 @@ internal class PersistenceImportMerger(
             readingBookmarks.size + highlights.size
         alreadyProcessed = candidateCount - unseenCount
         val collectionIndex = CollectionIndex(collectionStore.activeCollections())
-        val bookmarkIndex = mutableMapOf<Pair<Int, Int>, Long>()
+        val bookmarkIndex = mutableMapOf<Pair<Int, Int>, ResolvedBookmark>()
         val noteKeys = if (notes.isEmpty()) {
             mutableSetOf()
         } else {
@@ -160,7 +161,14 @@ internal class PersistenceImportMerger(
             }
         }
 
-        val bookmarkDatesByPosition = buildBookmarkDatesByPosition(memberships, highlights)
+        val highlightsByPosition = highlights.groupBy { it.sura to it.ayah }
+        val highlightWinners = highlightsByPosition.mapValues { (_, candidates) ->
+            candidates.minWith(HIGHLIGHT_PRIORITY)
+        }
+        val bookmarkDatesByPosition = buildBookmarkDatesByPosition(memberships, highlightWinners.values)
+        val firstSaveModifiedAtByPosition = memberships
+            .groupBy { it.sura to it.ayah }
+            .mapValues { (_, candidates) -> candidates.maxOf { it.lastUpdated.toEpochMillisecondsFromPlatform() } }
 
         emptyCollections.forEach { collection ->
             context.ensureActive()
@@ -197,17 +205,27 @@ internal class PersistenceImportMerger(
             val bookmarkDates = requireNotNull(bookmarkDatesByPosition[membership.sura to membership.ayah])
             val bookmark = resolveBookmark(membership.sura, membership.ayah, bookmarkDates, bookmarkIndex)
             val existing = database.bookmark_collectionsQueries
-                .getCollectionBookmarkFor(bookmark, collection.localId)
+                .getCollectionBookmarkFor(bookmark.localId, collection.localId)
                 .executeAsOneOrNull()
             if (existing?.is_active == 1L) {
                 matched++
             } else {
+                // A highlight can create the parent before it becomes an app-facing saved bookmark.
+                // Match repository writes by stamping the first saved membership.
+                val isFirstSavedMembership = bookmark.preexisting &&
+                    database.activeSavedCollectionIdsForBookmark(bookmark.localId).isEmpty()
                 database.bookmark_collectionsQueries.insertImportedBookmarkCollection(
-                    bookmark_local_id = bookmark,
+                    bookmark_local_id = bookmark.localId,
                     collection_local_id = collection.localId,
                     created_at = effectiveCreatedAtMillis(membership.createdAt, membership.lastUpdated),
                     modified_at = modifiedAt
                 )
+                if (isFirstSavedMembership) {
+                    database.bookmarksQueries.touchBookmarkForFirstSavedMembership(
+                        local_id = bookmark.localId,
+                        modified_at = firstSaveModifiedAtByPosition.getValue(membership.sura to membership.ayah)
+                    )
+                }
                 if (existing == null) collectionBookmarksImported++
                 didChange = true
             }
@@ -278,7 +296,8 @@ internal class PersistenceImportMerger(
         }
 
         importHighlights(
-            highlights,
+            highlightsByPosition,
+            highlightWinners,
             bookmarkDatesByPosition,
             history,
             context,
@@ -319,14 +338,15 @@ internal class PersistenceImportMerger(
     }
 
     private fun importHighlights(
-        highlights: List<ImportAyahHighlight>,
+        highlightsByPosition: Map<Pair<Int, Int>, List<ImportAyahHighlight>>,
+        highlightWinners: Map<Pair<Int, Int>, ImportAyahHighlight>,
         bookmarkDatesByPosition: Map<Pair<Int, Int>, BookmarkDates>,
         history: ImportHistoryTracker?,
         context: CoroutineContext,
-        bookmarkIndex: MutableMap<Pair<Int, Int>, Long>,
+        bookmarkIndex: MutableMap<Pair<Int, Int>, ResolvedBookmark>,
         highlightColors: MutableMap<Pair<Int, Int>, MutableSet<AyahHighlightColor>>
     ) {
-        highlights.groupBy { it.sura to it.ayah }.forEach { (position, candidates) ->
+        highlightsByPosition.forEach { (position, candidates) ->
             context.ensureActive()
             val existingColors = highlightColors[position].orEmpty()
             if (existingColors.isNotEmpty()) {
@@ -337,10 +357,7 @@ internal class PersistenceImportMerger(
                 return@forEach
             }
 
-            val winner = candidates.sortedWith(
-                compareByDescending<ImportAyahHighlight> { it.lastUpdated.toEpochMillisecondsFromPlatform() }
-                    .thenBy(ImportFingerprint::highlight)
-            ).first()
+            val winner = highlightWinners.getValue(position)
             val modifiedAt = winner.lastUpdated.toEpochMillisecondsFromPlatform()
             val collectionResolution = collectionStore.getOrCreateActiveHighlight(
                 winner.color,
@@ -353,7 +370,7 @@ internal class PersistenceImportMerger(
                 winner.ayah,
                 requireNotNull(bookmarkDatesByPosition[position]),
                 bookmarkIndex
-            )
+            ).localId
             val existingLink = database.bookmark_collectionsQueries
                 .getCollectionBookmarkFor(bookmark, collection.local_id)
                 .executeAsOneOrNull()
@@ -397,8 +414,8 @@ internal class PersistenceImportMerger(
         sura: Int,
         ayah: Int,
         bookmarkDates: BookmarkDates,
-        index: MutableMap<Pair<Int, Int>, Long>
-    ): Long {
+        index: MutableMap<Pair<Int, Int>, ResolvedBookmark>
+    ): ResolvedBookmark {
         val position = sura to ayah
         index[position]?.let { return it }
         val resolution = ayahBookmarkStore.resolve(
@@ -415,7 +432,10 @@ internal class PersistenceImportMerger(
             }
             AyahBookmarkResolutionState.REACTIVATED -> didChange = true
         }
-        return resolution.bookmark.local_id.also { index[position] = it }
+        return ResolvedBookmark(
+            localId = resolution.bookmark.local_id,
+            preexisting = resolution.state == AyahBookmarkResolutionState.EXISTING
+        ).also { index[position] = it }
     }
 
     private fun result() = PersistenceImportResult(
@@ -436,6 +456,13 @@ internal class PersistenceImportMerger(
 
 private data class CollectionResolution(val localId: Long, val inserted: Boolean)
 private data class BookmarkDates(val createdAt: Long, val modifiedAt: Long)
+
+/** A parent bookmark resolved for this import; [preexisting] is true when it was already active. */
+private data class ResolvedBookmark(val localId: Long, val preexisting: Boolean)
+
+private val HIGHLIGHT_PRIORITY = compareByDescending<ImportAyahHighlight> {
+    it.lastUpdated.toEpochMillisecondsFromPlatform()
+}.thenBy(ImportFingerprint::highlight)
 
 private data class NoteKey(
     val normalizedBody: String,
@@ -472,7 +499,7 @@ private fun effectiveCreatedAtMillis(createdAt: PlatformDateTime?, lastUpdated: 
 
 private fun buildBookmarkDatesByPosition(
     memberships: List<ImportCollectionAyahBookmark>,
-    highlights: List<ImportAyahHighlight>
+    highlights: Collection<ImportAyahHighlight>
 ): Map<Pair<Int, Int>, BookmarkDates> {
     val bookmarkDatesByPosition = mutableMapOf<Pair<Int, Int>, BookmarkDates>()
     memberships.forEach { membership ->

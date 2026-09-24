@@ -30,6 +30,7 @@ import dev.zacsweers.metro.Provides
 import dev.zacsweers.metro.createDynamicGraphFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -37,6 +38,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Instant
@@ -47,6 +49,7 @@ class QuranDataServiceImportTest {
     private lateinit var database: QuranDatabase
     private lateinit var authService: AuthService
     private lateinit var service: QuranDataService
+    private lateinit var lifecycleCoordinator: SessionLifecycleCoordinator
     private val syncClient = ImportSyncClientSpy()
     private val data = PersistenceImportData(notes = listOf(
         ImportNote("Imported note", 2, 1, 2, 1, Instant.fromEpochMilliseconds(100).toPlatform())
@@ -60,6 +63,9 @@ class QuranDataServiceImportTest {
         database = QuranDatabase(driver)
         authService = AuthService(LoggedOutAuthRepository())
         val readingBookmarks = ReadingBookmarksRepositoryImpl(database)
+        lifecycleCoordinator = SessionLifecycleCoordinator(
+            SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings())
+        )
         val pipeline = SyncEnginePipeline(
             bookmarksRepository = BookmarksRepositoryImpl(database),
             readingBookmarksRepository = readingBookmarks,
@@ -77,9 +83,7 @@ class QuranDataServiceImportTest {
                 persistenceResetRepository = PersistenceResetRepositoryImpl(database),
                 persistenceImportRepository = PersistenceImportRepositoryImpl(database),
                 syncLocalModificationDateStore = SyncSettingsLocalModificationDateStore(MapSettings().toSuspendSettings()),
-                sessionLifecycleCoordinator = SessionLifecycleCoordinator(
-                    SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings())
-                )
+                sessionLifecycleCoordinator = lifecycleCoordinator
             ).quranDataService
     }
 
@@ -126,6 +130,23 @@ class QuranDataServiceImportTest {
         assertFalse(result.changed)
         assertEquals(1, result.alreadyProcessed)
         assertEquals(1, syncClient.localDataUpdatedCount)
+    }
+
+    @Test
+    fun `import during managed reset throws without writing data or history`() = runTest(dispatcher) {
+        advanceUntilIdle()
+
+        lifecycleCoordinator.runManagedReset {
+            assertFailsWith<SessionResetInProgressException> {
+                service.importData(data, deleteExisting = false, trackHistory = true)
+            }
+        }
+
+        assertEquals(0L, database.notesQueries.countAll().executeAsOne())
+        assertEquals(0, syncClient.localDataUpdatedCount)
+        val retry = service.importData(data, deleteExisting = false, trackHistory = true)
+        assertEquals(0, retry.alreadyProcessed)
+        assertEquals(1, retry.notesImported)
     }
 }
 

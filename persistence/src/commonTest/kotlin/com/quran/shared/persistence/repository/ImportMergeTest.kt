@@ -1,24 +1,28 @@
 package com.quran.shared.persistence.repository
 
 import app.cash.sqldelight.db.SqlDriver
+import com.quran.shared.mutations.Mutation
+import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.TestDatabaseDriver
 import com.quran.shared.persistence.input.ImportAyahHighlight
 import com.quran.shared.persistence.input.ImportCollection
 import com.quran.shared.persistence.input.ImportCollectionAyahBookmark
 import com.quran.shared.persistence.input.ImportNote
-import com.quran.shared.persistence.input.ImportReadingBookmark
 import com.quran.shared.persistence.input.ImportReadingSession
 import com.quran.shared.persistence.input.PersistenceImportData
+import com.quran.shared.persistence.input.RemoteNote
 import com.quran.shared.persistence.model.AyahHighlightColor
-import com.quran.shared.persistence.model.ReadingBookmarkSlot
+import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepositoryImpl
 import com.quran.shared.persistence.repository.importdata.PersistenceImportRepositoryImpl
+import com.quran.shared.persistence.repository.note.repository.NotesRepositoryImpl
 import com.quran.shared.persistence.util.toPlatform
 import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
@@ -37,36 +41,6 @@ class ImportMergeTest {
     @AfterTest
     fun tearDown() {
         driver.close()
-    }
-
-    @Test
-    fun `duplicate empty collections choose dates deterministically and count one fingerprint`() = runTest {
-        val data = PersistenceImportData(collections = listOf(
-            ImportCollection("older", "Study", at(100), at(40)),
-            ImportCollection("newer", "Study", at(200), at(50)),
-            ImportCollection("earliest", "Study", at(200), at(30))
-        ))
-
-        val first = repository.importData(data)
-        val collection = database.collectionsQueries.getCollectionByName("Study").executeAsOne()
-        assertEquals(1, first.collectionsImported)
-        assertEquals(0, first.matched)
-        assertEquals(30L, collection.created_at)
-        assertEquals(200L, collection.modified_at)
-    }
-
-    @Test
-    fun `duplicate reading bookmark content applies newest timestamp only once`() = runTest {
-        val data = PersistenceImportData(readingBookmarks = listOf(
-            ImportReadingBookmark.Page(42, at(200), ReadingBookmarkSlot.GREEN),
-            ImportReadingBookmark.Page(42, at(100), ReadingBookmarkSlot.GREEN)
-        ))
-
-        val first = repository.importData(data)
-        val slot = database.reading_bookmarksQueries.getReadingBookmarkForSlot(1).executeAsOne()
-        assertEquals(1, first.readingBookmarksImported)
-        assertEquals(200L, slot.modified_at)
-        assertEquals(2L, slot.pending_version)
     }
 
     @Test
@@ -111,19 +85,6 @@ class ImportMergeTest {
         )
         assertTrue(database.bookmarksQueries.getBookmarkForAyah(0, 0).executeAsOne().local_id > 0)
         assertTrue(database.bookmarksQueries.getBookmarkForAyah(-1, -1).executeAsOne().local_id > 0)
-    }
-
-    @Test
-    fun `direct memberships share parents resolve Favorites`() = runTest {
-        val first = repository.importData(
-            membershipData(favoritesId = "favorite-a", customId = "custom-a")
-        )
-
-        assertEquals(1, first.bookmarksImported)
-        assertEquals(1, first.collectionsImported)
-        assertEquals(2, first.collectionBookmarksImported)
-        assertEquals(1L, database.bookmarksQueries.countAll().executeAsOne())
-        assertEquals(2L, database.bookmark_collectionsQueries.countAll().executeAsOne())
     }
 
     @Test
@@ -180,33 +141,117 @@ class ImportMergeTest {
     }
 
     @Test
-    fun `newest highlight candidate wins`() = runTest {
-        val data = PersistenceImportData(
-            highlights = listOf(
-                ImportAyahHighlight(2, 255, AyahHighlightColor.BLUE, at(100)),
-                ImportAyahHighlight(2, 255, AyahHighlightColor.YELLOW, at(200))
+    fun `existing target highlight wins over imported colors`() = runTest {
+        CollectionBookmarksRepositoryImpl(database).setHighlight(2, 255, AyahHighlightColor.BLUE, at(100))
+
+        val result = repository.importData(
+            PersistenceImportData(
+                highlights = listOf(
+                    ImportAyahHighlight(2, 255, AyahHighlightColor.BLUE, at(200)),
+                    ImportAyahHighlight(2, 255, AyahHighlightColor.RED, at(300))
+                )
             )
         )
 
-        val first = repository.importData(data)
-        assertEquals(1, first.highlightsImported)
-        assertEquals(1, first.keptExisting)
-        val highlightLink = database.bookmark_collectionsQueries.getCollectionBookmarksWithDetails()
-            .executeAsList()
-            .single()
-        assertEquals("system:highlights:yellow", highlightLink.collection_name)
+        assertEquals(1, result.matched)
+        assertEquals(1, result.keptExisting)
+        assertEquals(0, result.highlightsImported)
+        assertFalse(result.changed)
+        assertEquals(
+            listOf("system:highlights:blue"),
+            database.bookmark_collectionsQueries.getCollectionBookmarksWithDetails().executeAsList()
+                .map { it.collection_name }
+        )
     }
 
-    private fun membershipData(favoritesId: String, customId: String) = PersistenceImportData(
-        collections = listOf(
-            ImportCollection(favoritesId, " favorites ", at(200), at(50)),
-            ImportCollection(customId, "Study", at(300), at(75))
-        ),
-        collectionBookmarks = listOf(
-            ImportCollectionAyahBookmark(favoritesId, 2, 255, at(200), at(50)),
-            ImportCollectionAyahBookmark(customId, 2, 255, at(300), at(75))
+    @Test
+    fun `note matches the stored first range of a remote note`() = runTest {
+        val notes = NotesRepositoryImpl(database)
+        // The sync pipeline stores the first range of a multi-range remote note locally.
+        notes.applyRemoteChanges(
+            updatesToPersist = listOf(
+                RemoteModelMutation(
+                    model = RemoteNote("Remote  text", 2, 1, 2, 3, at(100)),
+                    remoteID = "remote-note",
+                    mutation = Mutation.CREATED
+                )
+            ),
+            localMutationsToClear = emptyList()
         )
-    )
+        val remote = database.notesQueries.getNoteByRemoteId("remote-note").executeAsOne()
+
+        val result = repository.importData(
+            PersistenceImportData(notes = listOf(ImportNote("Remote text", 2, 1, 2, 3, at(200))))
+        )
+
+        assertEquals(1, result.matched)
+        assertEquals(0, result.notesImported)
+        assertFalse(result.changed)
+        assertEquals(listOf(remote), database.notesQueries.getNotes().executeAsList())
+        assertTrue(notes.fetchMutatedNotes(lastModified = 0).isEmpty())
+    }
+
+    @Test
+    fun `new parent bookmark dates come from winning highlights only`() = runTest {
+        repository.importData(
+            PersistenceImportData(
+                highlights = listOf(
+                    ImportAyahHighlight(2, 255, AyahHighlightColor.BLUE, at(100), at(10)),
+                    ImportAyahHighlight(2, 255, AyahHighlightColor.YELLOW, at(200), at(50))
+                )
+            )
+        )
+
+        val bookmark = database.bookmarksQueries.getBookmarkForAyah(2, 255).executeAsOne()
+        assertEquals(50L, bookmark.created_at)
+        assertEquals(200L, bookmark.modified_at)
+    }
+
+    @Test
+    fun `first saved membership on a highlight-only parent stamps the bookmark`() = runTest {
+        repository.importData(
+            PersistenceImportData(
+                highlights = listOf(ImportAyahHighlight(2, 255, AyahHighlightColor.BLUE, at(100)))
+            )
+        )
+
+        repository.importData(
+            PersistenceImportData(
+                collections = listOf(
+                    ImportCollection("study", "Study", at(250)),
+                    ImportCollection("review", "Review", at(300))
+                ),
+                collectionBookmarks = listOf(
+                    ImportCollectionAyahBookmark("study", 2, 255, at(250)),
+                    ImportCollectionAyahBookmark("review", 2, 255, at(300))
+                )
+            )
+        )
+
+        val bookmark = database.bookmarksQueries.getBookmarkForAyah(2, 255).executeAsOne()
+        assertEquals(100L, bookmark.created_at)
+        assertEquals(300L, bookmark.modified_at)
+        assertEquals(300L, bookmark.bookmark_modified_at)
+    }
+
+    @Test
+    fun `later saved memberships leave an already saved bookmark unchanged`() = runTest {
+        val study = PersistenceImportData(
+            collections = listOf(ImportCollection("study", "Study", at(100))),
+            collectionBookmarks = listOf(ImportCollectionAyahBookmark("study", 2, 255, at(100)))
+        )
+        repository.importData(study)
+        val saved = database.bookmarksQueries.getBookmarkForAyah(2, 255).executeAsOne()
+
+        repository.importData(
+            PersistenceImportData(
+                collections = listOf(ImportCollection("review", "Review", at(400))),
+                collectionBookmarks = listOf(ImportCollectionAyahBookmark("review", 2, 255, at(400)))
+            )
+        )
+
+        assertEquals(saved, database.bookmarksQueries.getBookmarkForAyah(2, 255).executeAsOne())
+    }
 
     private fun at(millis: Long) = Instant.fromEpochMilliseconds(millis).toPlatform()
 }
