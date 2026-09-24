@@ -1,6 +1,8 @@
 package com.quran.shared.persistence.repository
 
+import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
+import app.cash.sqldelight.db.SqlPreparedStatement
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.TestDatabaseDriver
 import com.quran.shared.persistence.input.ImportAyahHighlight
@@ -14,13 +16,17 @@ import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.persistence.repository.importdata.PersistenceImportRepositoryImpl
 import com.quran.shared.persistence.util.toPlatform
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
@@ -205,6 +211,90 @@ class TrackedImportTest {
         assertFalse(replay.changed)
     }
 
+    @Test
+    fun `failure after recording history rolls back targets and history`() = runTest {
+        driver.execute(null, "UPDATE collection SET is_default = 0 WHERE is_default = 1", 0)
+        val data = PersistenceImportData(
+            collections = listOf(
+                ImportCollection("study", "Study", at(100)),
+                ImportCollection("favorites", "Favorites", at(100))
+            ),
+            collectionBookmarks = listOf(ImportCollectionAyahBookmark("favorites", 2, 255, at(100)))
+        )
+
+        assertFailsWith<IllegalArgumentException> {
+            repository.importData(data, deleteExisting = false, trackHistory = true)
+        }
+
+        assertNull(database.collectionsQueries.getCollectionByName("Study").executeAsOneOrNull())
+        driver.execute(null, "UPDATE collection SET is_default = 1 WHERE name = 'Favorites'", 0)
+        val retry = repository.importData(data, deleteExisting = false, trackHistory = true)
+        assertEquals(0, retry.alreadyProcessed)
+        assertEquals(1, retry.collectionsImported)
+    }
+
+    @Test
+    fun `cancellation after recording history rolls back targets and history`() = runTest {
+        val importJob = Job()
+        val cancellingRepository = PersistenceImportRepositoryImpl(
+            QuranDatabase(CancelOnHistoryWriteDriver(driver) { importJob.cancel() })
+        )
+        val data = PersistenceImportData(
+            notes = listOf(
+                ImportNote("First", 2, 1, 2, 1, at(100)),
+                ImportNote("Second", 2, 2, 2, 2, at(100))
+            )
+        )
+
+        assertFailsWith<CancellationException> {
+            withContext(importJob) {
+                cancellingRepository.importData(data, deleteExisting = false, trackHistory = true)
+            }
+        }
+
+        assertEquals(0L, database.notesQueries.countAll().executeAsOne())
+        val retry = repository.importData(data, deleteExisting = false, trackHistory = true)
+        assertEquals(0, retry.alreadyProcessed)
+        assertEquals(2, retry.notesImported)
+    }
+
+    @Test
+    fun `renamed destination keeps handled memberships while new content recreates its name`() = runTest {
+        val handled = oldPageBookmarks(2 to 255)
+        repository.importData(handled, deleteExisting = false, trackHistory = true)
+        val original = database.collectionsQueries.getCollectionByName(OLD_PAGE_BOOKMARKS).executeAsOne()
+        database.collectionsQueries.updateCollectionName(name = "Renamed", timestamp = 500, id = original.local_id)
+
+        val replay = repository.importData(handled, deleteExisting = false, trackHistory = true)
+        assertEquals(1, replay.alreadyProcessed)
+        assertFalse(replay.changed)
+        assertNull(database.collectionsQueries.getCollectionByName(OLD_PAGE_BOOKMARKS).executeAsOneOrNull())
+
+        val withNewContent = repository.importData(
+            oldPageBookmarks(2 to 255, 3 to 1),
+            deleteExisting = false,
+            trackHistory = true
+        )
+        val recreated = database.collectionsQueries.getCollectionByName(OLD_PAGE_BOOKMARKS).executeAsOne()
+        assertEquals(1, withNewContent.alreadyProcessed)
+        assertEquals(1, withNewContent.collectionsImported)
+        assertEquals(1, withNewContent.collectionBookmarksImported)
+        assertEquals(listOf(3L to 1L), membersOf(recreated.local_id))
+        assertEquals(listOf(2L to 255L), membersOf(original.local_id))
+    }
+
+    private fun oldPageBookmarks(vararg ayahs: Pair<Int, Int>) = PersistenceImportData(
+        collections = listOf(ImportCollection("old-pages", OLD_PAGE_BOOKMARKS, at(100))),
+        collectionBookmarks = ayahs.map { (sura, ayah) ->
+            ImportCollectionAyahBookmark("old-pages", sura, ayah, at(100))
+        }
+    )
+
+    private fun membersOf(collectionLocalId: Long) =
+        database.bookmark_collectionsQueries.getCollectionBookmarksWithDetails().executeAsList()
+            .filter { it.collection_local_id == collectionLocalId }
+            .map { it.sura to it.ayah }
+
     private fun noteData(body: String) = PersistenceImportData(
         notes = listOf(ImportNote(body, 2, 1, 2, 3, at(100), at(50)))
     )
@@ -221,4 +311,23 @@ class TrackedImportTest {
     )
 
     private fun at(millis: Long) = Instant.fromEpochMilliseconds(millis).toPlatform()
+}
+
+private const val OLD_PAGE_BOOKMARKS = "Old Page Bookmarks"
+
+/** Cancels the import job once history is written, so cancellation lands after target writes. */
+private class CancelOnHistoryWriteDriver(
+    private val delegate: SqlDriver,
+    private val onHistoryWrite: () -> Unit
+) : SqlDriver by delegate {
+    override fun execute(
+        identifier: Int?,
+        sql: String,
+        parameters: Int,
+        binders: (SqlPreparedStatement.() -> Unit)?
+    ): QueryResult<Long> {
+        val result = delegate.execute(identifier, sql, parameters, binders)
+        if (sql.contains("INTO import_history")) onHistoryWrite()
+        return result
+    }
 }
