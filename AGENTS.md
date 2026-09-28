@@ -93,4 +93,4 @@ Default timings:
 - When adding a sync resource, update the sync model, adapter, serialization/network mapping, persistence schema/repository, `SyncEnginePipeline`, `QuranDataService` surface if needed, and tests.
 - When changing auth or environment behavior, check `AuthConfig`, `AppEnvironment`, `SharedDependencyGraph`, storage factories, and Android manifest placeholders.
 - Android demo OAuth configuration comes from `local.properties` via `OAUTH_CLIENT_ID`.
-- Android backup exclusions for DataStore/token state are documented in `README.md`.
+- Sync and session lifecycle metadata lives in the `key_value_store` table of `quran.db` (`@SyncMetadataSettings`); auth metadata stays in its own DataStore and tokens in the platform token store so database loss does not sign users out. Android backup exclusions are documented in `README.md`.

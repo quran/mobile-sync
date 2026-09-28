@@ -17,12 +17,12 @@ class MobileSyncStorageJvmTest {
         val storageAAgain = createMobileSyncStorage(directoryA)
         val storageB = createMobileSyncStorage(directoryB)
 
-        storageA.settings.putLong("test-key", 1L)
-        storageB.settings.putLong("test-key", 2L)
+        storageA.authSettings.putLong("test-key", 1L)
+        storageB.authSettings.putLong("test-key", 2L)
 
         assertTrue(storageA === storageAAgain)
         assertTrue(storageA !== storageB)
-        assertEquals(1L, storageAAgain.settings.getLong("test-key", 0L))
-        assertEquals(2L, storageB.settings.getLong("test-key", 0L))
+        assertEquals(1L, storageAAgain.authSettings.getLong("test-key", 0L))
+        assertEquals(2L, storageB.authSettings.getLong("test-key", 0L))
     }
 }

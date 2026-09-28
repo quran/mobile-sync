@@ -31,6 +31,8 @@ import com.quran.shared.persistence.repository.PersistenceResetRepository
 import com.quran.shared.persistence.repository.PersistenceResetRepositoryImpl
 import com.quran.shared.persistence.repository.importdata.PersistenceImportRepository
 import com.quran.shared.persistence.repository.importdata.PersistenceImportRepositoryImpl
+import com.quran.shared.persistence.repository.keyvalue.KeyValueRepository
+import com.quran.shared.persistence.repository.keyvalue.KeyValueRepositoryImpl
 
 import dev.zacsweers.metro.Binds
 
@@ -89,4 +91,7 @@ abstract class PersistenceModule {
 
     @Binds
     abstract fun bindPersistenceImportRepository(impl: PersistenceImportRepositoryImpl): PersistenceImportRepository
+
+    @Binds
+    abstract fun bindKeyValueRepository(impl: KeyValueRepositoryImpl): KeyValueRepository
 }

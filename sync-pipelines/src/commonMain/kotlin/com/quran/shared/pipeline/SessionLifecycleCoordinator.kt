@@ -3,6 +3,7 @@ package com.quran.shared.pipeline
 import com.quran.shared.di.AppScope
 import com.quran.shared.syncengine.SyncLifecycleGate
 import com.quran.shared.syncengine.SyncOperationInvalidatedException
+import com.quran.shared.pipeline.storage.SyncMetadataSettings
 import com.russhwolf.settings.coroutines.SuspendSettings
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -32,7 +33,7 @@ interface SessionLifecycleStateStore {
 @SingleIn(AppScope::class)
 @Inject
 class SettingsSessionLifecycleStateStore(
-    private val settings: SuspendSettings
+    @SyncMetadataSettings private val settings: SuspendSettings
 ) : SessionLifecycleStateStore {
 
     override suspend fun snapshot(): SessionLifecycleState =

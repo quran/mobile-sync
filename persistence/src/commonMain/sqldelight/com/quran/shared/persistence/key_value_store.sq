@@ -1,0 +1,19 @@
+CREATE TABLE IF NOT EXISTS key_value_store(
+  key TEXT NOT NULL PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+getValue:
+  SELECT value FROM key_value_store WHERE key = :key;
+
+getKeys:
+  SELECT key FROM key_value_store;
+
+putValue:
+  INSERT OR REPLACE INTO key_value_store (key, value) VALUES (:key, :value);
+
+removeValue:
+  DELETE FROM key_value_store WHERE key = :key;
+
+deleteAll:
+  DELETE FROM key_value_store;
