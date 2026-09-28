@@ -75,6 +75,11 @@ Current sync resources are:
 
 The sync engine uses `SyncResourceAdapter` implementations and dependency-aware phases. Primary resources (`BOOKMARK`, `COLLECTION`) run before `COLLECTION_BOOKMARK`; remaining resources run afterward.
 
+## Sync Protocol Notes
+
+- `GET /v1/sync` is offset-paginated (`page`, `limit` up to 1000, `hasMore`). `GetMutationsRequest` collects every page before the sync applies anything, so a failed sync never saves a partial page set.
+- The returned `lastMutationAt` is the account's sync head, not the last item's timestamp. Pages are combined only when they all report the same head; a changed head restarts from the first page. Transient failures (IO, 5xx, 429) on later pages retry that page.
+
 ## Scheduler Notes
 
 `Scheduler` uses exception-based failure handling. Task functions should throw to signal failure and complete normally to signal success.
