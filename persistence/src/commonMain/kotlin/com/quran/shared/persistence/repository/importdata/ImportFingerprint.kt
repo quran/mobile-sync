@@ -127,7 +127,7 @@ internal object ImportFingerprint {
 
     private fun AyahHighlightColor.fingerprintTag(): Int = when (this) {
         AyahHighlightColor.BLUE -> 1
-        AyahHighlightColor.RED -> 2
+        AyahHighlightColor.PINK -> 2
         AyahHighlightColor.GREEN -> 3
         AyahHighlightColor.YELLOW -> 4
         AyahHighlightColor.PURPLE -> 5

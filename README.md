@@ -248,7 +248,7 @@ Each `ImportCollectionAyahBookmark.collectionName` must name an `ImportCollectio
 batch. Names match exactly, except that any case or surrounding-whitespace variant of Favorites
 resolves to the default collection; entries sharing a name describe one destination.
 Use `readingBookmarks` with `ImportReadingBookmark.Ayah` or `.Page`, each specifying a
-`ReadingBookmarkSlot` (`GREEN`, `PURPLE`, or `BLUE`), `lastUpdated`, and an optional `name`.
+`ReadingBookmarkSlot` (`TEAL`, `ORANGE`, or `RED`), `lastUpdated`, and an optional `name`.
 Each slot may appear once; page numbers must be in `1..604`. An imported slot replaces its
 location, name (including clearing it when null), and modification time. Merge imports leave
 omitted slots unchanged; `deleteExisting = true` clears their locations while preserving slot

@@ -44,9 +44,9 @@ class ReadingBookmarksImportTest {
         val result = repository.importData(
             PersistenceImportData(
                 readingBookmarks = listOf(
-                    ImportReadingBookmark.Page(604, at(300), ReadingBookmarkSlot.BLUE),
-                    ImportReadingBookmark.Ayah(2, 255, at(100), ReadingBookmarkSlot.GREEN, "Daily"),
-                    ImportReadingBookmark.Ayah(2, 255, at(200), ReadingBookmarkSlot.PURPLE, "Study")
+                    ImportReadingBookmark.Page(604, at(300), ReadingBookmarkSlot.RED),
+                    ImportReadingBookmark.Ayah(2, 255, at(100), ReadingBookmarkSlot.TEAL, "Daily"),
+                    ImportReadingBookmark.Ayah(2, 255, at(200), ReadingBookmarkSlot.ORANGE, "Study")
                 )
             )
         )
@@ -71,12 +71,12 @@ class ReadingBookmarksImportTest {
     fun `merge replaces supplied slots and names while preserving identities and other slots`() = runTest {
         persistRemoteSlot(1, "Green")
         persistRemoteSlot(2, "Purple")
-        readingBookmarks.setPageReadingBookmark(ReadingBookmarkSlot.BLUE, 88, at(100))
+        readingBookmarks.setPageReadingBookmark(ReadingBookmarkSlot.RED, 88, at(100))
         val before = database.reading_bookmarksQueries.getReadingBookmarks().executeAsList()
         val data = PersistenceImportData(
             readingBookmarks = listOf(
-                ImportReadingBookmark.Ayah(18, 10, at(200), ReadingBookmarkSlot.GREEN, "Imported"),
-                ImportReadingBookmark.Page(1, at(300), ReadingBookmarkSlot.PURPLE)
+                ImportReadingBookmark.Ayah(18, 10, at(200), ReadingBookmarkSlot.TEAL, "Imported"),
+                ImportReadingBookmark.Page(1, at(300), ReadingBookmarkSlot.ORANGE)
             )
         )
 
@@ -104,13 +104,13 @@ class ReadingBookmarksImportTest {
     fun `replacement restores supplied slots and syncs clearing of omitted slots`() = runTest {
         persistRemoteSlot(1, "Green")
         persistRemoteSlot(2, "Purple")
-        readingBookmarks.setAyahReadingBookmark(ReadingBookmarkSlot.BLUE, 2, 255, at(100))
+        readingBookmarks.setAyahReadingBookmark(ReadingBookmarkSlot.RED, 2, 255, at(100))
         val before = database.reading_bookmarksQueries.getReadingBookmarks().executeAsList()
 
         val result = repository.importData(
             PersistenceImportData(
                 readingBookmarks = listOf(
-                    ImportReadingBookmark.Page(42, at(200), ReadingBookmarkSlot.GREEN, "Restored")
+                    ImportReadingBookmark.Page(42, at(200), ReadingBookmarkSlot.TEAL, "Restored")
                 )
             ),
             deleteExisting = true
@@ -138,9 +138,9 @@ class ReadingBookmarksImportTest {
         val result = repository.importData(
             PersistenceImportData(
                 readingBookmarks = listOf(
-                    ImportReadingBookmark.Ayah(2, 255, at(200), ReadingBookmarkSlot.GREEN),
-                    ImportReadingBookmark.Page(0, at(300), ReadingBookmarkSlot.GREEN),
-                    ImportReadingBookmark.Page(605, at(400), ReadingBookmarkSlot.PURPLE)
+                    ImportReadingBookmark.Ayah(2, 255, at(200), ReadingBookmarkSlot.TEAL),
+                    ImportReadingBookmark.Page(0, at(300), ReadingBookmarkSlot.TEAL),
+                    ImportReadingBookmark.Page(605, at(400), ReadingBookmarkSlot.ORANGE)
                 )
             )
         )
@@ -166,12 +166,12 @@ class ReadingBookmarksImportTest {
 
     @Test
     fun `stale create acknowledgment preserves imported slot changes`() = runTest {
-        readingBookmarks.setPageReadingBookmark(ReadingBookmarkSlot.GREEN, 1, at(100))
+        readingBookmarks.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 1, at(100))
         val staleCreate = readingBookmarks.fetchMutatedReadingBookmarks().single()
         repository.importData(
             PersistenceImportData(
                 readingBookmarks = listOf(
-                    ImportReadingBookmark.Ayah(18, 10, at(200), ReadingBookmarkSlot.GREEN, "Imported")
+                    ImportReadingBookmark.Ayah(18, 10, at(200), ReadingBookmarkSlot.TEAL, "Imported")
                 )
             )
         )
