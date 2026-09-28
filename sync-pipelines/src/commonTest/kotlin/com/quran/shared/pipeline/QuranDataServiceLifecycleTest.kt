@@ -748,21 +748,21 @@ class QuranDataServiceLifecycleTest {
     }
 
     @Test
-    fun `removeHighlight triggers local sync only when a highlight was removed`() = runTest(dispatcher) {
+    fun `deleteHighlight triggers local sync only when a highlight was deleted`() = runTest(dispatcher) {
         val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
         advanceUntilIdle()
 
-        fixture.collectionBookmarksRepository.removeHighlightResult = false
-        assertFalse(fixture.service.removeHighlight(2, 255))
+        fixture.collectionBookmarksRepository.deleteHighlightResult = false
+        assertFalse(fixture.service.deleteHighlight(2, 255))
         assertEquals(0, fixture.syncClient.localDataUpdatedCount)
 
-        fixture.collectionBookmarksRepository.removeHighlightResult = true
-        assertTrue(fixture.service.removeHighlight(2, 255))
+        fixture.collectionBookmarksRepository.deleteHighlightResult = true
+        assertTrue(fixture.service.deleteHighlight(2, 255))
         assertEquals(1, fixture.syncClient.localDataUpdatedCount)
         assertEquals(
-            listOf(HighlightRemoveCall(2, 255), HighlightRemoveCall(2, 255)),
-            fixture.collectionBookmarksRepository.removeHighlightCalls.map {
-                HighlightRemoveCall(it.sura, it.ayah)
+            listOf(HighlightDeleteCall(2, 255), HighlightDeleteCall(2, 255)),
+            fixture.collectionBookmarksRepository.deleteHighlightCalls.map {
+                HighlightDeleteCall(it.sura, it.ayah)
             }
         )
         fixture.clearAndJoin()
@@ -1412,7 +1412,7 @@ private data class CollectionBookmarkRemoveCall(
     val bookmarkId: String
 )
 
-private data class HighlightRemoveCall(
+private data class HighlightDeleteCall(
     val sura: Int,
     val ayah: Int,
     val timestamp: PlatformDateTime? = null
@@ -1469,8 +1469,8 @@ private class ServiceCollectionBookmarksRepository :
     CollectionBookmarksSynchronizationRepository {
     val flowRequests = mutableListOf<String>()
     val setHighlightCalls = mutableListOf<HighlightSetCall>()
-    val removeHighlightCalls = mutableListOf<HighlightRemoveCall>()
-    var removeHighlightResult = true
+    val deleteHighlightCalls = mutableListOf<HighlightDeleteCall>()
+    var deleteHighlightResult = true
     val removeFromCollectionCalls = mutableListOf<CollectionBookmarkRemoveCall>()
     var removeFromCollectionResult = true
     val highlights = MutableStateFlow<List<AyahHighlight>>(emptyList())
@@ -1488,16 +1488,16 @@ private class ServiceCollectionBookmarksRepository :
         return AyahHighlight(sura, ayah, color, timestamp)
     }
 
-    override suspend fun removeHighlight(sura: Int, ayah: Int): Boolean =
-        removeHighlight(sura, ayah, testTimestamp())
+    override suspend fun deleteHighlight(sura: Int, ayah: Int): Boolean =
+        deleteHighlight(sura, ayah, testTimestamp())
 
-    override suspend fun removeHighlight(
+    override suspend fun deleteHighlight(
         sura: Int,
         ayah: Int,
         timestamp: PlatformDateTime
     ): Boolean {
-        removeHighlightCalls += HighlightRemoveCall(sura, ayah, timestamp)
-        return removeHighlightResult
+        deleteHighlightCalls += HighlightDeleteCall(sura, ayah, timestamp)
+        return deleteHighlightResult
     }
 
     fun setBookmarksForCollection(collectionId: String, bookmarks: List<CollectionAyahBookmark>) {

@@ -24,26 +24,28 @@ interface CollectionBookmarksRepository {
     ): AyahHighlight
 
     /**
-     * Removes all highlight memberships from one ayah using the current platform time.
+     * Deletes the highlight from one ayah by removing all its highlight memberships, using the
+     * current platform time.
      * Default and user collection memberships are preserved.
      *
      * @param sura the sura number containing the ayah.
-     * @param ayah the ayah number whose highlight should be removed.
+     * @param ayah the ayah number whose highlight should be deleted.
      * @return `true` when at least one highlight membership was removed; otherwise `false`.
      */
-    suspend fun removeHighlight(sura: Int, ayah: Int): Boolean
+    suspend fun deleteHighlight(sura: Int, ayah: Int): Boolean
 
     /**
-     * Removes all highlight memberships from one ayah at an explicit mutation time.
+     * Deletes the highlight from one ayah by removing all its highlight memberships at an
+     * explicit mutation time.
      * The timestamp is stored on any deletion mutation so it can be synchronized. Default and
      * user collection memberships are preserved.
      *
      * @param sura the sura number containing the ayah.
-     * @param ayah the ayah number whose highlight should be removed.
+     * @param ayah the ayah number whose highlight should be deleted.
      * @param timestamp the time to record for the deletion mutation.
      * @return `true` when at least one highlight membership was removed; otherwise `false`.
      */
-    suspend fun removeHighlight(sura: Int, ayah: Int, timestamp: PlatformDateTime): Boolean
+    suspend fun deleteHighlight(sura: Int, ayah: Int, timestamp: PlatformDateTime): Boolean
 
     /**
      * Returns all bookmarks linked to a collection.

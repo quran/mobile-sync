@@ -458,17 +458,17 @@ class QuranDataService internal constructor(
     }
 
     /**
-     * Removes the highlight from one ayah while preserving default and user collection memberships.
+     * Deletes the highlight from one ayah while preserving default and user collection memberships.
      *
      * @return `true` when at least one highlight membership was removed.
      */
     @NativeCoroutines
-    suspend fun removeHighlight(sura: Int, ayah: Int): Boolean {
+    suspend fun deleteHighlight(sura: Int, ayah: Int): Boolean {
         return mutatingCall(
-            errorMessage = "Failed to remove ayah highlight",
+            errorMessage = "Failed to delete ayah highlight",
             shouldTriggerSync = { removed -> removed }
         ) {
-            collectionBookmarksRepository.removeHighlight(sura, ayah)
+            collectionBookmarksRepository.deleteHighlight(sura, ayah)
         }
     }
 
