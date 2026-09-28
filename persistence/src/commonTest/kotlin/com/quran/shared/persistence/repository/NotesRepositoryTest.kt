@@ -14,6 +14,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -165,6 +166,42 @@ class NotesRepositoryTest {
         assertEquals(Mutation.DELETED, mutation.mutation)
         assertTrue(mutation.model.lastUpdated.fromPlatform().toEpochMilliseconds() > 1_700_000_001_000L)
         assertTrue(record.modified_at > 1_700_000_001_000L)
+    }
+
+    @Test
+    fun `deleteNote returns true when an active note is deleted`() = runTest {
+        val note = repository.addNote(body = "note", startSura = 2, startAyah = 13, endSura = 2, endAyah = 13)
+
+        val deleted = repository.deleteNote(note.id)
+
+        val record = database.notesQueries.getNoteByLocalId(note.id.toLong()).executeAsOne()
+        assertTrue(deleted)
+        assertEquals(1L, record.deleted)
+        assertTrue(repository.getAllNotes().isEmpty())
+    }
+
+    @Test
+    fun `deleteNote returns false for a missing note without writing`() = runTest {
+        val note = repository.addNote(body = "note", startSura = 2, startAyah = 13, endSura = 2, endAyah = 13)
+        val before = database.notesQueries.getNoteByLocalId(note.id.toLong()).executeAsOne()
+
+        val deleted = repository.deleteNote("999")
+
+        assertFalse(deleted)
+        assertNull(database.notesQueries.getNoteByLocalId(999L).executeAsOneOrNull())
+        assertEquals(before, database.notesQueries.getNoteByLocalId(note.id.toLong()).executeAsOne())
+    }
+
+    @Test
+    fun `deleteNote returns false when the note is already deleted`() = runTest {
+        val note = repository.addNote(body = "note", startSura = 2, startAyah = 13, endSura = 2, endAyah = 13)
+        assertTrue(repository.deleteNote(note.id))
+        val afterFirstDelete = database.notesQueries.getNoteByLocalId(note.id.toLong()).executeAsOne()
+
+        val deletedAgain = repository.deleteNote(note.id)
+
+        assertFalse(deletedAgain)
+        assertEquals(afterFirstDelete, database.notesQueries.getNoteByLocalId(note.id.toLong()).executeAsOne())
     }
 
     @Test

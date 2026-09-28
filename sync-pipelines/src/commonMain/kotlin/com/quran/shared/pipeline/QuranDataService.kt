@@ -750,9 +750,13 @@ class QuranDataService internal constructor(
         }
     }
 
+    /** Deletes a note and schedules sync when a row was removed. */
     @NativeCoroutines
-    suspend fun deleteNote(id: String) {
-        mutatingCall("Failed to delete note") {
+    suspend fun deleteNote(id: String): Boolean {
+        return mutatingCall(
+            errorMessage = "Failed to delete note",
+            shouldTriggerSync = { deleted -> deleted }
+        ) {
             notesRepository.deleteNote(id)
         }
     }

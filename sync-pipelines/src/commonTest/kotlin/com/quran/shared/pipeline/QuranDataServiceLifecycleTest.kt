@@ -832,6 +832,34 @@ class QuranDataServiceLifecycleTest {
         fixture.clearAndJoin()
     }
 
+    @Test
+    fun `deleteNote returns false without triggering sync when nothing is deleted`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+        fixture.notesRepository.deleteResult = false
+        advanceUntilIdle()
+
+        val result = fixture.service.deleteNote("note-local-id")
+
+        assertFalse(result)
+        assertEquals(listOf(NoteDeleteCall("note-local-id")), fixture.notesRepository.deleteCalls)
+        assertEquals(0, fixture.syncClient.localDataUpdatedCount)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `deleteNote returns true and triggers sync when deletion succeeds`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+        fixture.notesRepository.deleteResult = true
+        advanceUntilIdle()
+
+        val result = fixture.service.deleteNote("note-local-id")
+
+        assertTrue(result)
+        assertEquals(listOf(NoteDeleteCall("note-local-id")), fixture.notesRepository.deleteCalls)
+        assertEquals(1, fixture.syncClient.localDataUpdatedCount)
+        fixture.clearAndJoin()
+    }
+
 
     @Test
     fun `reset failure leaves marker active and blocks mutating writes`() = runTest(dispatcher) {
@@ -992,7 +1020,7 @@ private class QuranDataServiceFixture(
     private val readingBookmarksRepository = ServiceReadingBookmarksRepository()
     val collectionsRepository = ServiceCollectionsRepository()
     val collectionBookmarksRepository = ServiceCollectionBookmarksRepository()
-    private val notesRepository = ServiceNotesRepository()
+    val notesRepository = ServiceNotesRepository()
     val readingSessionsRepository = ServiceReadingSessionsRepository()
     private val importRepository = ServiceImportRepository()
     val syncClient = ServiceSynchronizationClient()
@@ -1515,7 +1543,14 @@ private class ServiceCollectionBookmarksRepository :
         bookmarksByCollectionId.getOrPut(collectionId) { MutableStateFlow(emptyList()) }
 }
 
+private data class NoteDeleteCall(
+    val id: String
+)
+
 private class ServiceNotesRepository : NotesRepository, NotesSynchronizationRepository {
+    val deleteCalls = mutableListOf<NoteDeleteCall>()
+    var deleteResult = true
+
     override suspend fun getAllNotes(): List<Note> = emptyList()
     override suspend fun addNote(body: String, startSura: Int, startAyah: Int, endSura: Int, endAyah: Int): Note =
         Note(body, startSura, startAyah, endSura, endAyah, testTimestamp(), "note")
@@ -1544,7 +1579,10 @@ private class ServiceNotesRepository : NotesRepository, NotesSynchronizationRepo
         endAyah: Int,
         timestamp: com.quran.shared.persistence.util.PlatformDateTime
     ): Note = addNote(body, startSura, startAyah, endSura, endAyah)
-    override suspend fun deleteNote(id: String): Boolean = true
+    override suspend fun deleteNote(id: String): Boolean {
+        deleteCalls += NoteDeleteCall(id)
+        return deleteResult
+    }
     override fun getNotesFlow(): Flow<List<Note>> = MutableStateFlow(emptyList())
     override suspend fun fetchMutatedNotes(lastModified: Long): List<LocalModelMutation<LocalSyncNote>> = emptyList()
     override suspend fun applyRemoteChanges(

@@ -168,13 +168,23 @@ class NotesRepositoryImpl(
 
     override suspend fun deleteNote(id: String): Boolean {
         logger.i { "Deleting note id=$id" }
-        withContext(Dispatchers.IO) {
-            notesQueries.value.deleteNote(
-                id = id.toLong(),
-                timestamp = currentEpochMilliseconds()
-            )
+        return withContext(Dispatchers.IO) {
+            val timestampMillis = currentEpochMilliseconds()
+            var deleted = false
+            database.transaction {
+                val localId = id.toLong()
+                val note = notesQueries.value.getNoteByLocalId(localId).executeAsOneOrNull()
+                if (note?.deleted != 0L) {
+                    return@transaction
+                }
+                notesQueries.value.deleteNote(
+                    id = localId,
+                    timestamp = timestampMillis
+                )
+                deleted = true
+            }
+            deleted
         }
-        return true
     }
 
     override suspend fun fetchMutatedNotes(lastModified: Long): List<LocalModelMutation<LocalSyncNote>> {
