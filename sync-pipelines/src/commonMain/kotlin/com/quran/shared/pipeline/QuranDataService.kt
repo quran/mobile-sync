@@ -683,10 +683,14 @@ class QuranDataService internal constructor(
         }
     }
 
+    /** Removes an ayah bookmark from a collection and schedules sync when a membership was removed. */
     @NativeCoroutines
-    suspend fun removeAyahBookmarkFromCollection(bookmark: CollectionAyahBookmark) {
-        mutatingCall("Failed to remove bookmark from collection") {
-            collectionBookmarksRepository.removeAyahBookmarkFromCollection(bookmark)
+    suspend fun removeAyahBookmarkFromCollection(collectionId: String, bookmarkId: String): Boolean {
+        return mutatingCall(
+            errorMessage = "Failed to remove bookmark from collection",
+            shouldTriggerSync = { removed -> removed }
+        ) {
+            collectionBookmarksRepository.removeAyahBookmarkFromCollection(collectionId, bookmarkId)
         }
     }
 

@@ -230,18 +230,28 @@ class CollectionBookmarksRepositoryImpl(
         }
     }
 
-    override suspend fun removeAyahBookmarkFromCollection(collectionAyahBookmark: CollectionAyahBookmark): Boolean {
+    override suspend fun removeAyahBookmarkFromCollection(collectionId: String, bookmarkId: String): Boolean {
         return withContext(Dispatchers.IO) {
             val timestampMillis = currentEpochMilliseconds()
+            var removed = false
             database.transaction {
+                val bookmarkLocalId = bookmarkId.toLong()
+                val collectionLocalId = collectionId.toLong()
+                val membership = bookmarkCollectionQueries.value
+                    .getCollectionBookmarkFor(bookmarkLocalId, collectionLocalId)
+                    .executeAsOneOrNull()
+                if (membership?.is_active != 1L) {
+                    return@transaction
+                }
                 bookmarkCollectionQueries.value.markBookmarkCollectionDeleted(
-                    bookmark_local_id = collectionAyahBookmark.bookmarkId.toLong(),
-                    collection_local_id = collectionAyahBookmark.collectionId.toLong(),
+                    bookmark_local_id = bookmarkLocalId,
+                    collection_local_id = collectionLocalId,
                     timestamp = timestampMillis
                 )
                 reconciler.reconcile(timestampMillis)
+                removed = true
             }
-            true
+            removed
         }
     }
 

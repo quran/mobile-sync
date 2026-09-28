@@ -72,7 +72,12 @@ interface CollectionBookmarksRepository {
         timestamp: PlatformDateTime
     ): CollectionAyahBookmark
 
-    suspend fun removeAyahBookmarkFromCollection(collectionAyahBookmark: CollectionAyahBookmark): Boolean
+    /**
+     * Removes the ayah bookmark [bookmarkId] from the collection [collectionId].
+     *
+     * @return whether an active membership was removed.
+     */
+    suspend fun removeAyahBookmarkFromCollection(collectionId: String, bookmarkId: String): Boolean
 
     /**
      * Observe the bookmarks for a collection as a Flow.

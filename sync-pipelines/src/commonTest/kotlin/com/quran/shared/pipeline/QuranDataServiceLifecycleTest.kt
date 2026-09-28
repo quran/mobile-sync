@@ -769,6 +769,42 @@ class QuranDataServiceLifecycleTest {
     }
 
     @Test
+    fun `removeAyahBookmarkFromCollection returns false without triggering sync when nothing is removed`() =
+        runTest(dispatcher) {
+            val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+            fixture.collectionBookmarksRepository.removeFromCollectionResult = false
+            advanceUntilIdle()
+
+            val result = fixture.service.removeAyahBookmarkFromCollection("collection-id", "bookmark-id")
+
+            assertFalse(result)
+            assertEquals(
+                listOf(CollectionBookmarkRemoveCall("collection-id", "bookmark-id")),
+                fixture.collectionBookmarksRepository.removeFromCollectionCalls
+            )
+            assertEquals(0, fixture.syncClient.localDataUpdatedCount)
+            fixture.clearAndJoin()
+        }
+
+    @Test
+    fun `removeAyahBookmarkFromCollection returns true and triggers sync when a membership is removed`() =
+        runTest(dispatcher) {
+            val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+            fixture.collectionBookmarksRepository.removeFromCollectionResult = true
+            advanceUntilIdle()
+
+            val result = fixture.service.removeAyahBookmarkFromCollection("collection-id", "bookmark-id")
+
+            assertTrue(result)
+            assertEquals(
+                listOf(CollectionBookmarkRemoveCall("collection-id", "bookmark-id")),
+                fixture.collectionBookmarksRepository.removeFromCollectionCalls
+            )
+            assertEquals(1, fixture.syncClient.localDataUpdatedCount)
+            fixture.clearAndJoin()
+        }
+
+    @Test
     fun `deleteCollection returns false without triggering sync when nothing is deleted`() = runTest(dispatcher) {
         val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
         fixture.collectionsRepository.deleteResult = false
@@ -1343,6 +1379,11 @@ private data class HighlightSetCall(
     val timestamp: PlatformDateTime
 )
 
+private data class CollectionBookmarkRemoveCall(
+    val collectionId: String,
+    val bookmarkId: String
+)
+
 private data class HighlightRemoveCall(
     val sura: Int,
     val ayah: Int,
@@ -1402,6 +1443,8 @@ private class ServiceCollectionBookmarksRepository :
     val setHighlightCalls = mutableListOf<HighlightSetCall>()
     val removeHighlightCalls = mutableListOf<HighlightRemoveCall>()
     var removeHighlightResult = true
+    val removeFromCollectionCalls = mutableListOf<CollectionBookmarkRemoveCall>()
+    var removeFromCollectionResult = true
     val highlights = MutableStateFlow<List<AyahHighlight>>(emptyList())
     private val bookmarksByCollectionId = mutableMapOf<String, MutableStateFlow<List<CollectionAyahBookmark>>>()
 
@@ -1446,7 +1489,10 @@ private class ServiceCollectionBookmarksRepository :
         ayah: Int,
         timestamp: com.quran.shared.persistence.util.PlatformDateTime
     ): CollectionAyahBookmark = bookmarkLink(collectionId)
-    override suspend fun removeAyahBookmarkFromCollection(collectionAyahBookmark: CollectionAyahBookmark): Boolean = true
+    override suspend fun removeAyahBookmarkFromCollection(collectionId: String, bookmarkId: String): Boolean {
+        removeFromCollectionCalls += CollectionBookmarkRemoveCall(collectionId, bookmarkId)
+        return removeFromCollectionResult
+    }
     override fun getBookmarksForCollectionFlow(collectionId: String): Flow<List<CollectionAyahBookmark>> {
         flowRequests += collectionId
         return bookmarksFlow(collectionId)

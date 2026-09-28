@@ -826,6 +826,40 @@ class BookmarkSyncArchitectureTest {
     }
 
     @Test
+    fun `removing a collection bookmark by ids removes the membership`() = runTest {
+        val collectionId = createCollection("RemoveById", "remote-remove-by-id")
+        val bookmark = collectionBookmarksRepository.addAyahBookmarkToCollection(collectionId, 2, 20, at(100))
+
+        val removed = collectionBookmarksRepository.removeAyahBookmarkFromCollection(collectionId, bookmark.bookmarkId)
+
+        assertTrue(removed)
+        assertTrue(collectionBookmarksRepository.getBookmarksForCollection(collectionId).isEmpty())
+    }
+
+    @Test
+    fun `removing a collection bookmark that is not a member reports nothing removed`() = runTest {
+        val collectionId = createCollection("RemoveMissingMember", "remote-remove-missing-member")
+        val otherCollectionId = createCollection("KeepOtherMember", "remote-keep-other-member")
+        val bookmark = collectionBookmarksRepository.addAyahBookmarkToCollection(otherCollectionId, 2, 21, at(100))
+
+        val removed = collectionBookmarksRepository.removeAyahBookmarkFromCollection(collectionId, bookmark.bookmarkId)
+
+        assertFalse(removed)
+        assertEquals(1, collectionBookmarksRepository.getBookmarksForCollection(otherCollectionId).size)
+    }
+
+    @Test
+    fun `removing a collection bookmark twice reports nothing removed the second time`() = runTest {
+        val collectionId = createCollection("RemoveTwice", "remote-remove-twice")
+        val bookmark = collectionBookmarksRepository.addAyahBookmarkToCollection(collectionId, 2, 22, at(100))
+        collectionBookmarksRepository.removeAyahBookmarkFromCollection(collectionId, bookmark.bookmarkId)
+
+        val removedAgain = collectionBookmarksRepository.removeAyahBookmarkFromCollection(collectionId, bookmark.bookmarkId)
+
+        assertFalse(removedAgain)
+    }
+
+    @Test
     fun `empty collection replacement removes an existing saved bookmark`() = runTest {
         val collectionId = createCollection("RemoveWithEmptyReplacement", "remote-remove-with-empty-replacement")
         collectionBookmarksRepository.addAyahBookmarkToCollection(collectionId, 2, 15, at(100))
@@ -2405,10 +2439,7 @@ class BookmarkSyncArchitectureTest {
         collectionId: String,
         bookmark: CollectionAyahBookmark
     ): Boolean {
-        val membership = collectionBookmarksRepository
-            .getBookmarksForCollection(collectionId)
-            .single { it.bookmarkId == bookmark.bookmarkId }
-        return collectionBookmarksRepository.removeAyahBookmarkFromCollection(membership)
+        return collectionBookmarksRepository.removeAyahBookmarkFromCollection(collectionId, bookmark.bookmarkId)
     }
 
     private fun persistDefaultCollection() {
