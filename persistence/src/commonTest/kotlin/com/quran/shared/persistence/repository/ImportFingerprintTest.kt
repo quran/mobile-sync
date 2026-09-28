@@ -23,7 +23,7 @@ class ImportFingerprintTest {
         )
         assertEquals(
             "v1:f010c9a0ec8746a2a22457447154a79b07ea7d0dcf25d318a8d67bd739e09ad6",
-            ImportFingerprint.collection(ImportCollection("collection", "Old Page Bookmarks", at(0)))
+            ImportFingerprint.collection(ImportCollection("Old Page Bookmarks", at(0)))
         )
         assertEquals(
             "v1:e4eb390d2dcdca1ba6ff9da8c23c4fd7c64e5aea5c6ced9be63657cf3d71eab1",
@@ -32,8 +32,8 @@ class ImportFingerprintTest {
         assertEquals(
             "v1:5d6b9fba36ed9de80420ab1464c0361a5ca15cca96c95e2dc0b9049c3d85f5ff",
             ImportFingerprint.collectionMembership(
-                ImportCollectionAyahBookmark("favorites", 2, 255, at(0)),
-                ImportCollection("favorites", "Favorites", at(0))
+                ImportCollectionAyahBookmark("Favorites", 2, 255, at(0)),
+                ImportCollection("Favorites", at(0))
             )
         )
         assertEquals(

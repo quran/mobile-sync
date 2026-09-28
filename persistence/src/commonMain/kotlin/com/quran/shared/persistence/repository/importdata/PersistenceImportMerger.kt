@@ -47,38 +47,39 @@ internal class PersistenceImportMerger(
     private var didChange = false
 
     fun merge(): PersistenceImportResult {
-        val collectionsByImportId = data.collections.associateBy(ImportCollection::importId)
         data.collections.forEach { collection ->
             val name = canonicalCollectionName(collection.name)
             require(!isSystemCollectionName(name) || name == DEFAULT_COLLECTION_NAME) {
                 "Collection destination name is reserved."
             }
         }
+        // Entries sharing a canonical name are one destination; its fingerprint is that name.
+        val collectionsByName = data.collections.deduplicateImportCandidates(
+            fingerprint = ImportFingerprint::collection,
+            modifiedAt = { it.lastUpdated.toEpochMillisecondsFromPlatform() },
+            createdAt = { effectiveCreatedAtMillis(it.createdAt, it.lastUpdated) }
+        ).associateBy { canonicalCollectionName(it.name) }
         data.collectionBookmarks.forEach { membership ->
-            require(membership.collectionImportId in collectionsByImportId) {
+            require(canonicalCollectionName(membership.collectionName) in collectionsByName) {
                 "Collection membership references an unknown collection."
             }
         }
+        fun destinationOf(membership: ImportCollectionAyahBookmark): ImportCollection =
+            collectionsByName.getValue(canonicalCollectionName(membership.collectionName))
 
-        val referencedCollectionIds = data.collectionBookmarks.mapTo(mutableSetOf()) { it.collectionImportId }
-        val emptyCollectionCandidates = data.collections.filterNot { it.importId in referencedCollectionIds }
-            .deduplicateImportCandidates(
-                fingerprint = ImportFingerprint::collection,
-                modifiedAt = { it.lastUpdated.toEpochMillisecondsFromPlatform() },
-                createdAt = { effectiveCreatedAtMillis(it.createdAt, it.lastUpdated) }
-            )
+        val referencedCollectionNames = data.collectionBookmarks.mapTo(mutableSetOf()) {
+            canonicalCollectionName(it.collectionName)
+        }
+        val emptyCollectionCandidates = collectionsByName
+            .filterKeys { it !in referencedCollectionNames }
+            .values.toList()
         val readingBookmarkCandidates = data.readingBookmarks.deduplicateImportCandidates(
             fingerprint = ImportFingerprint::readingBookmark,
             modifiedAt = { it.lastUpdated.toEpochMillisecondsFromPlatform() },
             createdAt = { it.lastUpdated.toEpochMillisecondsFromPlatform() }
         )
         val membershipCandidates = data.collectionBookmarks.deduplicateImportCandidates(
-            fingerprint = {
-                ImportFingerprint.collectionMembership(
-                    it,
-                    collectionsByImportId.getValue(it.collectionImportId)
-                )
-            },
+            fingerprint = { ImportFingerprint.collectionMembership(it, destinationOf(it)) },
             modifiedAt = { it.lastUpdated.toEpochMillisecondsFromPlatform() },
             createdAt = { effectiveCreatedAtMillis(it.createdAt, it.lastUpdated) }
         )
@@ -104,12 +105,7 @@ internal class PersistenceImportMerger(
                 database = database,
                 fingerprints = buildList {
                     emptyCollectionCandidates.mapTo(this, ImportFingerprint::collection)
-                    membershipCandidates.mapTo(this) {
-                        ImportFingerprint.collectionMembership(
-                            it,
-                            collectionsByImportId.getValue(it.collectionImportId)
-                        )
-                    }
+                    membershipCandidates.mapTo(this) { ImportFingerprint.collectionMembership(it, destinationOf(it)) }
                     sessionCandidates.mapTo(this, ImportFingerprint::readingSession)
                     noteCandidates.mapTo(this, ImportFingerprint::note)
                     readingBookmarkCandidates.mapTo(this, ImportFingerprint::readingBookmark)
@@ -122,10 +118,7 @@ internal class PersistenceImportMerger(
         val emptyCollections = history?.unseen(emptyCollectionCandidates, ImportFingerprint::collection)
             ?: emptyCollectionCandidates
         val memberships = history?.unseen(membershipCandidates) {
-            ImportFingerprint.collectionMembership(
-                it,
-                collectionsByImportId.getValue(it.collectionImportId)
-            )
+            ImportFingerprint.collectionMembership(it, destinationOf(it))
         } ?: membershipCandidates
         val sessions = history?.unseen(sessionCandidates, ImportFingerprint::readingSession) ?: sessionCandidates
         val notes = history?.unseen(noteCandidates, ImportFingerprint::note) ?: noteCandidates
@@ -189,7 +182,7 @@ internal class PersistenceImportMerger(
 
         memberships.forEach { membership ->
             context.ensureActive()
-            val destination = requireNotNull(collectionsByImportId[membership.collectionImportId])
+            val destination = destinationOf(membership)
             val modifiedAt = membership.lastUpdated.toEpochMillisecondsFromPlatform()
             val collection = resolveCollection(
                 canonicalCollectionName(destination.name),

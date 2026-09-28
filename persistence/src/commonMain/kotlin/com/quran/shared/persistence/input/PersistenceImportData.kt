@@ -14,14 +14,13 @@ data class PersistenceImportData(
 )
 
 data class ImportCollection(
-    val importId: String,
     val name: String,
     val lastUpdated: PlatformDateTime,
     val createdAt: PlatformDateTime? = null
 )
 
 data class ImportCollectionAyahBookmark(
-    val collectionImportId: String,
+    val collectionName: String,
     val sura: Int,
     val ayah: Int,
     val lastUpdated: PlatformDateTime,
