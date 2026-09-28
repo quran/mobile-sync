@@ -41,6 +41,8 @@ interface NotesRepository {
 
     /**
      * Delete a note by its mobile-sync ID.
+     *
+     * @return `true` when an active note was deleted, or `false` when no matching active note existed.
      */
     suspend fun deleteNote(id: String): Boolean
 
