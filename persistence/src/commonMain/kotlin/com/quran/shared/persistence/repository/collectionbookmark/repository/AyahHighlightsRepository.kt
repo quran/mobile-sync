@@ -112,7 +112,7 @@ internal class AyahHighlightsRepository(
         }
     }
 
-    suspend fun removeHighlight(
+    suspend fun deleteHighlight(
         sura: Int,
         ayah: Int,
         timestamp: PlatformDateTime

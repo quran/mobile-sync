@@ -107,13 +107,13 @@ class AyahHighlightsRepositoryTest {
     }
 
     @Test
-    fun `removeHighlight preserves default and user collections`() = runTest {
+    fun `deleteHighlight preserves default and user collections`() = runTest {
         collectionBookmarksRepository.addAyahBookmarkToCollection(defaultCollectionId(), 2, 255, timestamp(100))
         val userCollection = collectionsRepository.addCollection("Study", timestamp(200))
         collectionBookmarksRepository.addAyahBookmarkToCollection(userCollection.id, 2, 255, timestamp(300))
         collectionBookmarksRepository.setHighlight(2, 255, AyahHighlightColor.YELLOW, timestamp(400))
 
-        val removed = collectionBookmarksRepository.removeHighlight(2, 255, timestamp(500))
+        val removed = collectionBookmarksRepository.deleteHighlight(2, 255, timestamp(500))
 
         val highlightCollection = collectionsRepository.getAllCollections()
             .single { it.name == "system:highlights:yellow" }
@@ -121,24 +121,24 @@ class AyahHighlightsRepositoryTest {
         assertEquals(emptyList(), collectionBookmarksRepository.getBookmarksForCollection(highlightCollection.id))
         assertEquals(1, collectionBookmarksRepository.getBookmarksForCollection(userCollection.id).size)
         assertEquals(1, collectionBookmarksRepository.getBookmarksForCollection(defaultCollectionId()).size)
-        assertFalse(collectionBookmarksRepository.removeHighlight(2, 255, timestamp(600)))
+        assertFalse(collectionBookmarksRepository.deleteHighlight(2, 255, timestamp(600)))
     }
 
     @Test
-    fun `removeHighlight prunes a local highlight-only bookmark`() = runTest {
+    fun `deleteHighlight prunes a local highlight-only bookmark`() = runTest {
         collectionBookmarksRepository.setHighlight(2, 255, AyahHighlightColor.RED, timestamp(100))
         collectionBookmarksRepository.setHighlight(2, 255, AyahHighlightColor.RED, timestamp(150))
 
-        assertTrue(collectionBookmarksRepository.removeHighlight(2, 255, timestamp(200)))
+        assertTrue(collectionBookmarksRepository.deleteHighlight(2, 255, timestamp(200)))
 
         assertNull(database.bookmarksQueries.getBookmarkForAyah(2L, 255L).executeAsOneOrNull())
     }
 
     @Test
-    fun `removeHighlight convenience overload supplies the mutation timestamp`() = runTest {
+    fun `deleteHighlight convenience overload supplies the mutation timestamp`() = runTest {
         collectionBookmarksRepository.setHighlight(2, 255, AyahHighlightColor.BLUE, timestamp(100))
 
-        assertTrue(collectionBookmarksRepository.removeHighlight(2, 255))
+        assertTrue(collectionBookmarksRepository.deleteHighlight(2, 255))
         assertEquals(emptyList(), collectionBookmarksRepository.getHighlightsFlow().first())
     }
 
