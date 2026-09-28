@@ -33,7 +33,7 @@ VALUES ('Favorites', 1, 1);
 INSERT OR IGNORE INTO collection (name, is_default, is_system)
 VALUES ('system:highlights:blue', 0, 1);
 INSERT OR IGNORE INTO collection (name, is_default, is_system)
-VALUES ('system:highlights:red', 0, 1);
+VALUES ('system:highlights:pink', 0, 1);
 INSERT OR IGNORE INTO collection (name, is_default, is_system)
 VALUES ('system:highlights:green', 0, 1);
 INSERT OR IGNORE INTO collection (name, is_default, is_system)
@@ -82,7 +82,7 @@ seedSystemCollections {
   INSERT OR IGNORE INTO collection (name, is_default, is_system)
   VALUES ('system:highlights:blue', 0, 1);
   INSERT OR IGNORE INTO collection (name, is_default, is_system)
-  VALUES ('system:highlights:red', 0, 1);
+  VALUES ('system:highlights:pink', 0, 1);
   INSERT OR IGNORE INTO collection (name, is_default, is_system)
   VALUES ('system:highlights:green', 0, 1);
   INSERT OR IGNORE INTO collection (name, is_default, is_system)

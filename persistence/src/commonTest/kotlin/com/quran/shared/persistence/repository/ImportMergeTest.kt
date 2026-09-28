@@ -141,7 +141,7 @@ class ImportMergeTest {
             PersistenceImportData(
                 highlights = listOf(
                     ImportAyahHighlight(2, 255, AyahHighlightColor.BLUE, at(200)),
-                    ImportAyahHighlight(2, 255, AyahHighlightColor.RED, at(300))
+                    ImportAyahHighlight(2, 255, AyahHighlightColor.PINK, at(300))
                 )
             )
         )

@@ -36,7 +36,7 @@ class AyahHighlightsRepositoryTest {
         assertEquals(
             listOf(
                 "system:highlights:blue",
-                "system:highlights:red",
+                "system:highlights:pink",
                 "system:highlights:green",
                 "system:highlights:yellow",
                 "system:highlights:purple"
@@ -77,11 +77,11 @@ class AyahHighlightsRepositoryTest {
     fun `highlights flow reports one latest color per ayah`() = runTest {
         collectionBookmarksRepository.setHighlight(1, 1, AyahHighlightColor.BLUE, timestamp(100))
         collectionBookmarksRepository.setHighlight(2, 255, AyahHighlightColor.GREEN, timestamp(200))
-        collectionBookmarksRepository.setHighlight(1, 1, AyahHighlightColor.RED, timestamp(300))
+        collectionBookmarksRepository.setHighlight(1, 1, AyahHighlightColor.PINK, timestamp(300))
 
         assertEquals(
             listOf(
-                AyahHighlight(1, 1, AyahHighlightColor.RED, timestamp(300)),
+                AyahHighlight(1, 1, AyahHighlightColor.PINK, timestamp(300)),
                 AyahHighlight(2, 255, AyahHighlightColor.GREEN, timestamp(200))
             ),
             collectionBookmarksRepository.getHighlightsFlow().first()
@@ -126,8 +126,8 @@ class AyahHighlightsRepositoryTest {
 
     @Test
     fun `deleteHighlight prunes a local highlight-only bookmark`() = runTest {
-        collectionBookmarksRepository.setHighlight(2, 255, AyahHighlightColor.RED, timestamp(100))
-        collectionBookmarksRepository.setHighlight(2, 255, AyahHighlightColor.RED, timestamp(150))
+        collectionBookmarksRepository.setHighlight(2, 255, AyahHighlightColor.PINK, timestamp(100))
+        collectionBookmarksRepository.setHighlight(2, 255, AyahHighlightColor.PINK, timestamp(150))
 
         assertTrue(collectionBookmarksRepository.deleteHighlight(2, 255, timestamp(200)))
 

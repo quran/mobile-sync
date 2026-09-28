@@ -4,7 +4,7 @@ import Shared
 struct BookmarksTabView: View {
     @ObservedObject var viewModel: SyncViewModel
     let readingBookmarks: [Shared.ReadingBookmark]
-    private let slots: [Shared.ReadingBookmarkSlot] = [.green, .purple, .blue]
+    private let slots: [Shared.ReadingBookmarkSlot] = [.teal, .orange, .red]
     
     var body: some View {
         List {

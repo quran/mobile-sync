@@ -47,7 +47,7 @@ class ImportFingerprintTest {
                     sura = 2,
                     ayah = 255,
                     lastUpdated = at(0),
-                    slot = ReadingBookmarkSlot.GREEN,
+                    slot = ReadingBookmarkSlot.TEAL,
                     name = null
                 )
             )
@@ -59,7 +59,7 @@ class ImportFingerprintTest {
                     sura = 2,
                     ayah = 255,
                     lastUpdated = at(0),
-                    slot = ReadingBookmarkSlot.GREEN,
+                    slot = ReadingBookmarkSlot.TEAL,
                     name = ""
                 )
             )
