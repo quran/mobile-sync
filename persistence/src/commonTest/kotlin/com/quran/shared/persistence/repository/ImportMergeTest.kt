@@ -22,7 +22,9 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
@@ -47,11 +49,7 @@ class ImportMergeTest {
     fun `import accepts the same raw values as repository writes`() = runTest {
         val result = repository.importData(
             PersistenceImportData(
-                collections = listOf(
-                    ImportCollection("blank-name", "", at(100)),
-                    ImportCollection("", "Ignored duplicate ID", at(100)),
-                    ImportCollection("", "Selected duplicate ID", at(200))
-                ),
+                collections = listOf(ImportCollection("", at(200))),
                 collectionBookmarks = listOf(
                     ImportCollectionAyahBookmark("", 0, 0, at(200))
                 ),
@@ -64,18 +62,13 @@ class ImportMergeTest {
         )
 
         assertTrue(result.changed)
-        assertEquals(2, result.collectionsImported)
+        assertEquals(1, result.collectionsImported)
         assertEquals(2, result.bookmarksImported)
         assertEquals(1, result.collectionBookmarksImported)
         assertEquals(1, result.readingSessionsImported)
         assertEquals(1, result.notesImported)
         assertEquals(1, result.highlightsImported)
         assertEquals("", database.collectionsQueries.getCollectionByName("").executeAsOne().name)
-        assertEquals(
-            "Selected duplicate ID",
-            database.collectionsQueries.getCollectionByName("Selected duplicate ID").executeAsOne().name
-        )
-        assertEquals(null, database.collectionsQueries.getCollectionByName("Ignored duplicate ID").executeAsOneOrNull())
         assertEquals("", database.notesQueries.getNotes().executeAsOne().note)
         assertEquals(
             115L to 0L,
@@ -90,9 +83,9 @@ class ImportMergeTest {
     @Test
     fun `reactivating a retained membership is a mutation but not an insertion`() = runTest {
         val data = PersistenceImportData(
-            collections = listOf(ImportCollection("study", "Study", at(100))),
+            collections = listOf(ImportCollection("Study", at(100))),
             collectionBookmarks = listOf(
-                ImportCollectionAyahBookmark("study", 2, 255, at(100))
+                ImportCollectionAyahBookmark("Study", 2, 255, at(100))
             )
         )
         repository.importData(data)
@@ -218,12 +211,12 @@ class ImportMergeTest {
         repository.importData(
             PersistenceImportData(
                 collections = listOf(
-                    ImportCollection("study", "Study", at(250)),
-                    ImportCollection("review", "Review", at(300))
+                    ImportCollection("Study", at(250)),
+                    ImportCollection("Review", at(300))
                 ),
                 collectionBookmarks = listOf(
-                    ImportCollectionAyahBookmark("study", 2, 255, at(250)),
-                    ImportCollectionAyahBookmark("review", 2, 255, at(300))
+                    ImportCollectionAyahBookmark("Study", 2, 255, at(250)),
+                    ImportCollectionAyahBookmark("Review", 2, 255, at(300))
                 )
             )
         )
@@ -237,20 +230,59 @@ class ImportMergeTest {
     @Test
     fun `later saved memberships leave an already saved bookmark unchanged`() = runTest {
         val study = PersistenceImportData(
-            collections = listOf(ImportCollection("study", "Study", at(100))),
-            collectionBookmarks = listOf(ImportCollectionAyahBookmark("study", 2, 255, at(100)))
+            collections = listOf(ImportCollection("Study", at(100))),
+            collectionBookmarks = listOf(ImportCollectionAyahBookmark("Study", 2, 255, at(100)))
         )
         repository.importData(study)
         val saved = database.bookmarksQueries.getBookmarkForAyah(2, 255).executeAsOne()
 
         repository.importData(
             PersistenceImportData(
-                collections = listOf(ImportCollection("review", "Review", at(400))),
-                collectionBookmarks = listOf(ImportCollectionAyahBookmark("review", 2, 255, at(400)))
+                collections = listOf(ImportCollection("Review", at(400))),
+                collectionBookmarks = listOf(ImportCollectionAyahBookmark("Review", 2, 255, at(400)))
             )
         )
 
         assertEquals(saved, database.bookmarksQueries.getBookmarkForAyah(2, 255).executeAsOne())
+    }
+
+    @Test
+    fun `membership naming a collection missing from the batch is rejected`() = runTest {
+        listOf("Review", " Study").forEach { missingName ->
+            assertFailsWith<IllegalArgumentException> {
+                repository.importData(
+                    PersistenceImportData(
+                        collections = listOf(ImportCollection("Study", at(100))),
+                        collectionBookmarks = listOf(ImportCollectionAyahBookmark(missingName, 2, 255, at(100)))
+                    )
+                )
+            }
+        }
+
+        assertNull(database.collectionsQueries.getCollectionByName("Study").executeAsOneOrNull())
+        assertNull(database.bookmarksQueries.getBookmarkForAyah(2, 255).executeAsOneOrNull())
+    }
+
+    @Test
+    fun `collections sharing a canonical name form one destination`() = runTest {
+        val result = repository.importData(
+            PersistenceImportData(
+                collections = listOf(
+                    ImportCollection(" favorites ", at(100)),
+                    ImportCollection("FAVORITES", at(200)),
+                    ImportCollection("Study", at(100), at(40)),
+                    ImportCollection("Study", at(200), at(30))
+                ),
+                collectionBookmarks = listOf(ImportCollectionAyahBookmark("Study", 2, 255, at(300)))
+            )
+        )
+
+        val study = database.collectionsQueries.getCollectionByName("Study").executeAsOne()
+        assertEquals(1, result.collectionsImported)
+        assertEquals(1, result.collectionBookmarksImported)
+        assertEquals(1, result.matched)
+        assertEquals(30L, study.created_at)
+        assertEquals(200L, study.modified_at)
     }
 
     private fun at(millis: Long) = Instant.fromEpochMilliseconds(millis).toPlatform()

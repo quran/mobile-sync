@@ -242,6 +242,9 @@ Core API examples:
 - Auth: use `SyncAuthService.login()`, `loginWithReauthentication()`, `logout()`, and `clearError()`
 
 Import local data through `QuranDataService.importData(PersistenceImportData(...))`.
+Each `ImportCollectionAyahBookmark.collectionName` must name an `ImportCollection` in the same
+batch. Names match exactly, except that any case or surrounding-whitespace variant of Favorites
+resolves to the default collection; entries sharing a name describe one destination.
 Use `readingBookmarks` with `ImportReadingBookmark.Ayah` or `.Page`, each specifying a
 `ReadingBookmarkSlot` (`GREEN`, `PURPLE`, or `BLUE`), `lastUpdated`, and an optional `name`.
 Each slot may appear once; page numbers must be in `1..604`. An imported slot replaces its

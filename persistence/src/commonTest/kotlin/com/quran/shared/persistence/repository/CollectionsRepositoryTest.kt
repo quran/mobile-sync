@@ -79,7 +79,6 @@ class CollectionsRepositoryTest {
             data = PersistenceImportData(
                 collections = listOf(
                     ImportCollection(
-                        importId = "custom-favorites",
                         name = " favorites ",
                         lastUpdated = timestamp(1_000L)
                     )
@@ -597,7 +596,6 @@ class CollectionsRepositoryTest {
             data = PersistenceImportData(
                 collections = listOf(
                     ImportCollection(
-                        importId = "imported-favorites",
                         name = CUSTOM_COLLECTION_NAME,
                         lastUpdated = timestamp(2000L)
                     )
@@ -650,7 +648,6 @@ class CollectionsRepositoryTest {
             data = PersistenceImportData(
                 collections = listOf(
                     ImportCollection(
-                        importId = "replacement-favorites",
                         name = CUSTOM_COLLECTION_NAME,
                         lastUpdated = timestamp(2000L)
                     )
@@ -804,7 +801,6 @@ class CollectionsRepositoryTest {
             data = PersistenceImportData(
                 collections = listOf(
                     ImportCollection(
-                        importId = "replacement-favorites",
                         name = CUSTOM_COLLECTION_NAME,
                         lastUpdated = timestamp(2000L)
                     )
@@ -842,7 +838,6 @@ class CollectionsRepositoryTest {
             data = PersistenceImportData(
                 collections = listOf(
                     ImportCollection(
-                        importId = "replacement-favorites",
                         name = CUSTOM_COLLECTION_NAME,
                         lastUpdated = timestamp(2000L)
                     )

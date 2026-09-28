@@ -50,9 +50,9 @@ class TrackedImportTest {
     @Test
     fun `duplicate empty collections choose dates deterministically and count one fingerprint`() = runTest {
         val data = PersistenceImportData(collections = listOf(
-            ImportCollection("older", "Study", at(100), at(40)),
-            ImportCollection("newer", "Study", at(200), at(50)),
-            ImportCollection("earliest", "Study", at(200), at(30))
+            ImportCollection("Study", at(100), at(40)),
+            ImportCollection("Study", at(200), at(50)),
+            ImportCollection("Study", at(200), at(30))
         ))
 
         val first = repository.importData(data, false, true)
@@ -112,9 +112,9 @@ class TrackedImportTest {
     }
 
     @Test
-    fun `direct memberships share parents resolve Favorites and ignore reference id changes`() = runTest {
+    fun `direct memberships share parents and resolve Favorites by canonical name`() = runTest {
         val first = repository.importData(
-            membershipData(favoritesId = "favorite-a", customId = "custom-a"),
+            membershipData(collectionName = " favorites ", membershipName = "FAVORITES"),
             false,
             true
         )
@@ -124,9 +124,11 @@ class TrackedImportTest {
         assertEquals(2, first.collectionBookmarksImported)
         assertEquals(1L, database.bookmarksQueries.countAll().executeAsOne())
         assertEquals(2L, database.bookmark_collectionsQueries.countAll().executeAsOne())
+        val favorites = database.collectionsQueries.getDefaultCollection().executeAsOne()
+        assertEquals(listOf(2L to 255L), membersOf(favorites.local_id))
 
         val replay = repository.importData(
-            membershipData(favoritesId = "favorite-b", customId = "custom-b"),
+            membershipData(collectionName = "Favorites", membershipName = "favorites\t"),
             false,
             true
         )
@@ -216,10 +218,10 @@ class TrackedImportTest {
         driver.execute(null, "UPDATE collection SET is_default = 0 WHERE is_default = 1", 0)
         val data = PersistenceImportData(
             collections = listOf(
-                ImportCollection("study", "Study", at(100)),
-                ImportCollection("favorites", "Favorites", at(100))
+                ImportCollection("Study", at(100)),
+                ImportCollection("Favorites", at(100))
             ),
-            collectionBookmarks = listOf(ImportCollectionAyahBookmark("favorites", 2, 255, at(100)))
+            collectionBookmarks = listOf(ImportCollectionAyahBookmark("Favorites", 2, 255, at(100)))
         )
 
         assertFailsWith<IllegalArgumentException> {
@@ -284,9 +286,9 @@ class TrackedImportTest {
     }
 
     private fun oldPageBookmarks(vararg ayahs: Pair<Int, Int>) = PersistenceImportData(
-        collections = listOf(ImportCollection("old-pages", OLD_PAGE_BOOKMARKS, at(100))),
+        collections = listOf(ImportCollection(OLD_PAGE_BOOKMARKS, at(100))),
         collectionBookmarks = ayahs.map { (sura, ayah) ->
-            ImportCollectionAyahBookmark("old-pages", sura, ayah, at(100))
+            ImportCollectionAyahBookmark(OLD_PAGE_BOOKMARKS, sura, ayah, at(100))
         }
     )
 
@@ -299,14 +301,14 @@ class TrackedImportTest {
         notes = listOf(ImportNote(body, 2, 1, 2, 3, at(100), at(50)))
     )
 
-    private fun membershipData(favoritesId: String, customId: String) = PersistenceImportData(
+    private fun membershipData(collectionName: String, membershipName: String) = PersistenceImportData(
         collections = listOf(
-            ImportCollection(favoritesId, " favorites ", at(200), at(50)),
-            ImportCollection(customId, "Study", at(300), at(75))
+            ImportCollection(collectionName, at(200), at(50)),
+            ImportCollection("Study", at(300), at(75))
         ),
         collectionBookmarks = listOf(
-            ImportCollectionAyahBookmark(favoritesId, 2, 255, at(200), at(50)),
-            ImportCollectionAyahBookmark(customId, 2, 255, at(300), at(75))
+            ImportCollectionAyahBookmark(membershipName, 2, 255, at(200), at(50)),
+            ImportCollectionAyahBookmark("Study", 2, 255, at(300), at(75))
         )
     )
 
