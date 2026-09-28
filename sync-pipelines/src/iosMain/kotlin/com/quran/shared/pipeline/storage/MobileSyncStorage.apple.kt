@@ -25,7 +25,7 @@ private var cachedStorage: MobileSyncStorage? = null
  * Creates the Apple storage configuration for [com.quran.shared.pipeline.di.SharedDependencyGraph].
  *
  * The returned instance is process-singleton so app setup cannot accidentally create more than one
- * DataStore for the sync metadata file.
+ * DataStore for the auth metadata file.
  */
 @OptIn(InternalCoroutinesApi::class)
 fun createMobileSyncStorage(): MobileSyncStorage {
@@ -43,12 +43,12 @@ object AppleMobileSyncStorageFactory {
 
 private fun buildMobileSyncStorage(): MobileSyncStorage {
     val dataStore = PreferenceDataStoreFactory.createWithPath {
-        "${applicationSupportDirectory().path}/${MobileSyncStorageNames.SYNC_SETTINGS_DATASTORE_FILE_NAME}".toPath()
+        "${applicationSupportDirectory().path}/${MobileSyncStorageNames.AUTH_SETTINGS_DATASTORE_FILE_NAME}".toPath()
     }
 
     return MobileSyncStorage(
         tokenStore = IosKeychainTokenStore(),
-        settings = DataStoreSettings(dataStore)
+        authSettings = DataStoreSettings(dataStore)
     )
 }
 

@@ -22,7 +22,7 @@ private val cachedStorageByDirectory = mutableMapOf<String, MobileSyncStorage>()
  * create competing active stores for the same file. Different directories receive independent
  * storage instances.
  *
- * @param directory directory where the sync metadata DataStore file should live.
+ * @param directory directory where the auth metadata DataStore file should live.
  */
 @OptIn(InternalCoroutinesApi::class)
 fun createMobileSyncStorage(
@@ -43,13 +43,13 @@ private fun buildMobileSyncStorage(directory: File): MobileSyncStorage {
         directory.mkdirs()
         File(
             directory,
-            MobileSyncStorageNames.SYNC_SETTINGS_DATASTORE_FILE_NAME
+            MobileSyncStorageNames.AUTH_SETTINGS_DATASTORE_FILE_NAME
         ).absolutePath.toPath()
     }
 
     return MobileSyncStorage(
         tokenStore = SettingsTokenStore(InMemorySettingsStore()),
-        settings = DataStoreSettings(dataStore)
+        authSettings = DataStoreSettings(dataStore)
     )
 }
 

@@ -44,7 +44,7 @@ private fun buildMobileSyncStorage(context: Context): MobileSyncStorage {
     val dataStore = PreferenceDataStoreFactory.createWithPath {
         val file = File(
             context.filesDir,
-            MobileSyncStorageNames.ANDROID_SYNC_SETTINGS_BACKUP_PATH
+            MobileSyncStorageNames.ANDROID_AUTH_SETTINGS_BACKUP_PATH
         )
         file.parentFile?.mkdirs()
         file.absolutePath.toPath()
@@ -52,6 +52,6 @@ private fun buildMobileSyncStorage(context: Context): MobileSyncStorage {
 
     return MobileSyncStorage(
         tokenStore = AndroidSettingsTokenStore(context),
-        settings = DataStoreSettings(dataStore)
+        authSettings = DataStoreSettings(dataStore)
     )
 }

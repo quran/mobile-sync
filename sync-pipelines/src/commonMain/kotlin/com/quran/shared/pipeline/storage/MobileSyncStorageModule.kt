@@ -4,6 +4,7 @@ import com.quran.shared.auth.repository.AuthRepository
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.auth.service.AuthSessionPublicationGuard
 import com.quran.shared.di.AppScope
+import com.quran.shared.persistence.repository.keyvalue.KeyValueRepository
 import com.quran.shared.pipeline.SyncLocalModificationDateStore
 import com.quran.shared.pipeline.SyncSettingsLocalModificationDateStore
 import com.quran.shared.pipeline.SessionLifecycleStateStore
@@ -41,8 +42,15 @@ abstract class MobileSyncStorageModule {
 
         @Provides
         @SingleIn(AppScope::class)
-        fun provideSettings(storage: MobileSyncStorage): SuspendSettings {
-            return storage.settings
+        fun provideAuthSettings(storage: MobileSyncStorage): SuspendSettings {
+            return storage.authSettings
+        }
+
+        @Provides
+        @SingleIn(AppScope::class)
+        @SyncMetadataSettings
+        fun provideSyncMetadataSettings(repository: KeyValueRepository): SuspendSettings {
+            return DatabaseSettings(repository)
         }
 
         @Provides

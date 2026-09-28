@@ -222,11 +222,13 @@ val graph = SharedDependencyGraph.init(
 
 ### Android backup exclusions
 
-The shared Android storage uses stable DataStore file names so apps can exclude derived sync state
-and token-store data from backup or device transfer:
+Sync and session lifecycle metadata is stored in the shared `quran.db` database next to the data it
+describes. Auth metadata and OAuth tokens stay outside the database, so a lost or recreated database
+does not sign the user out. Both use stable DataStore file names so apps can exclude them from backup
+or device transfer:
 
 ```xml
-<exclude domain="file" path="datastore/quran_mobile_sync_settings.preferences_pb"/>
+<exclude domain="file" path="datastore/quran_mobile_sync_auth.preferences_pb"/>
 <exclude domain="file" path="datastore/org.publicvalue.multiplatform.oidc.tokenstore.preferences_pb"/>
 ```
 

@@ -2,6 +2,7 @@ package com.quran.shared.pipeline
 
 import com.quran.shared.di.AppScope
 import com.quran.shared.syncengine.LocalModificationDateFetcher
+import com.quran.shared.pipeline.storage.SyncMetadataSettings
 import com.russhwolf.settings.coroutines.SuspendSettings
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -29,13 +30,13 @@ interface SyncLocalModificationDateStore : LocalModificationDateFetcher {
 }
 
 /**
- * [SyncLocalModificationDateStore] backed by the graph-provided DataStore settings instance.
+ * [SyncLocalModificationDateStore] backed by the graph-provided database settings instance.
  */
 @HiddenFromObjC
 @SingleIn(AppScope::class)
 @Inject
 class SyncSettingsLocalModificationDateStore(
-    private val settings: SuspendSettings
+    @SyncMetadataSettings private val settings: SuspendSettings
 ) : SyncLocalModificationDateStore {
 
     override suspend fun localLastModificationDate(): Long {
