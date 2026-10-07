@@ -8,6 +8,8 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import platform.Foundation.NSString
 import platform.Foundation.NSUTF8StringEncoding
@@ -39,6 +41,15 @@ class DriverFactoryCorruptionTest {
         } finally {
             driver.close()
         }
+    }
+
+    @Test
+    fun `recreating a corrupt database on a full disk throws storage full exception`() {
+        writeNonDatabaseFile()
+
+        assertFailsWith<DatabaseStorageFullException> { storageFullDriverFactory(name).makeDriver() }
+
+        assertNotEquals(NON_DATABASE_CONTENTS, NSString.stringWithContentsOfFile(path, NSUTF8StringEncoding, null))
     }
 
     @Test

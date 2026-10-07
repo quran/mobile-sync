@@ -4,14 +4,34 @@ import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import co.touchlab.kermit.Logger
+import co.touchlab.sqliter.DatabaseConfiguration
 import co.touchlab.sqliter.DatabaseFileContext
 import co.touchlab.sqliter.interop.SQLiteExceptionErrorCode
 import co.touchlab.sqliter.interop.SqliteErrorType
+import kotlin.native.HiddenFromObjC
 
 actual class DriverFactory internal constructor(
-    private val name: String
+    private val name: String,
+    private val onConfiguration: (DatabaseConfiguration) -> DatabaseConfiguration = { it }
 ) {
     constructor() : this(DATABASE_NAME)
+
+    /**
+     * Opens the database. Hidden from Swift, which opens it through `SharedDependencyGraph.openDatabase`.
+     *
+     * @throws DatabaseStorageFullException when SQLite reports SQLITE_FULL. A full disk never deletes
+     * the database. It can also surface as another error; see [DatabaseStorageFullException].
+     */
+    @HiddenFromObjC
+    actual fun makeDriver(): SqlDriver {
+        return try {
+            openRecreatingCorruptDatabase()
+        } catch (e: Exception) {
+            if (!e.isStorageFull()) throw e
+            logger.w(e) { "Not enough storage to open database $name" }
+            throw DatabaseStorageFullException(e)
+        }
+    }
 
     /**
      * Opens the database, replacing it with an empty one when SQLite reports it corrupt.
@@ -22,13 +42,14 @@ actual class DriverFactory internal constructor(
      *
      * Only SQLITE_CORRUPT and SQLITE_NOTADB trigger deletion. SQLite reports them only after a read
      * succeeded and returned bad bytes. A file locked by data protection, for example before first
-     * unlock, fails to open or read instead (SQLITE_CANTOPEN or SQLITE_IOERR), so it is kept.
+     * unlock, fails to open or read instead (SQLITE_CANTOPEN or SQLITE_IOERR), so it is kept. A full
+     * disk (SQLITE_FULL) is never treated as corruption.
      */
-    actual fun makeDriver(): SqlDriver {
+    private fun openRecreatingCorruptDatabase(): SqlDriver {
         return try {
             openCheckedDriver()
         } catch (e: Exception) {
-            if (!e.isCorruption()) throw e
+            if (e.isStorageFull() || !e.isCorruption()) throw e
             logger.e(e) { "Database $name is corrupt; deleting and recreating it" }
             DatabaseFileContext.deleteDatabase(name)
             openCheckedDriver()
@@ -36,7 +57,7 @@ actual class DriverFactory internal constructor(
     }
 
     private fun openCheckedDriver(): SqlDriver {
-        val driver = NativeSqliteDriver(QuranDatabase.Schema, name)
+        val driver = NativeSqliteDriver(QuranDatabase.Schema, name, onConfiguration = onConfiguration)
         try {
             // Opening is lazy; the first statement opens the file and runs schema creation.
             val problems = driver.executeQuery(
@@ -77,3 +98,8 @@ private fun Throwable.isCorruption(): Boolean =
     }
 
 private val corruptionErrorTypes = setOf(SqliteErrorType.SQLITE_CORRUPT, SqliteErrorType.SQLITE_NOTADB)
+
+private fun Throwable.isStorageFull(): Boolean =
+    generateSequence(this) { it.cause }.any { error ->
+        (error as? SQLiteExceptionErrorCode)?.errorType == SqliteErrorType.SQLITE_FULL
+    }
