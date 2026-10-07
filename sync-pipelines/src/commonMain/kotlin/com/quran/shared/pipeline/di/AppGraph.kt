@@ -6,6 +6,7 @@ import com.quran.shared.auth.model.AuthRuntimeConfig
 import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.DriverFactory
 import com.quran.shared.persistence.di.PersistenceModule
+import com.quran.shared.persistence.openSharedDatabase
 import com.quran.shared.pipeline.AppEnvironment
 import com.quran.shared.pipeline.SyncAuthService
 import com.quran.shared.pipeline.QuranDataService
@@ -70,6 +71,24 @@ object SharedDependencyGraph {
         return createGraphFactory<AppGraph.Factory>()
             .create(driverFactory, storage, environment, authRuntimeConfig)
             .also { instance = it }
+    }
+
+    /**
+     * Opens the shared database the graph uses, or reuses it when already open.
+     *
+     * Opening happens when [AppGraph.quranDataService] or [AppGraph.authService] is first resolved,
+     * where failures cannot be caught from Swift. Call this first, before or after [init], to handle
+     * them instead. A failed open caches nothing, so calling again retries.
+     *
+     * The iOS driver opens the file here. Android's driver opens lazily, so its failures surface on
+     * first use.
+     *
+     * @throws com.quran.shared.persistence.DatabaseStorageFullException when SQLite reports SQLITE_FULL.
+     * A full disk can also surface as another error, so check free space on any failure if needed.
+     */
+    @Throws(Exception::class)
+    fun openDatabase(driverFactory: DriverFactory) {
+        openSharedDatabase(driverFactory)
     }
 
     @OptIn(InternalCoroutinesApi::class)
