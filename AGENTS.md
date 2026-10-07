@@ -79,6 +79,7 @@ The sync engine uses `SyncResourceAdapter` implementations and dependency-aware 
 
 - `GET /v1/sync` is offset-paginated (`page`, `limit` up to 1000, `hasMore`). `GetMutationsRequest` collects every page before the sync applies anything, so a failed sync never saves a partial page set.
 - The returned `lastMutationAt` is the account's sync head, not the last item's timestamp. Pages are combined only when they all report the same head; a changed head restarts from the first page. Transient failures (IO, 5xx, 429) on later pages retry that page.
+- `POST /v1/sync` accepts at most 100 mutations. `PostMutationsRequest` sends larger pushes in sequential batches, passing each response's `lastMutationAt` to the next batch.
 
 ## Scheduler Notes
 

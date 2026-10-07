@@ -8,6 +8,7 @@ import com.quran.shared.syncengine.validatePushedMutationResponse
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.engine.mock.toByteArray
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -17,6 +18,9 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -222,6 +226,56 @@ class PostMutationsRequestTest {
         }
     }
 
+    @Test
+    fun `postMutations splits large pushes into sequential batches chaining lastMutationAt`() = runTest {
+        val backend = EchoingSyncBackend()
+        val mutations = List(250) { index -> bookmarkCreateRequest(index) }
+
+        val response = backend.request().postMutations(mutations, 1000L, emptyMap())
+
+        assertEquals(listOf(100, 100, 50), backend.batchSizes)
+        assertEquals(listOf(1000L, 1001L, 1002L), backend.lastMutationAtParameters)
+        assertEquals(1003L, response.lastModificationDate)
+        assertEquals(List(250) { index -> "remote-$index" }, response.mutations.map { it.resourceId })
+        validatePushedMutationResponse(mutations, response.mutations)
+    }
+
+    @Test
+    fun `postMutations stops at the first failed batch`() = runTest {
+        val backend = EchoingSyncBackend(failingRequestIndex = 1)
+        val mutations = List(250) { index -> bookmarkCreateRequest(index) }
+
+        val exception = assertFailsWith<SyncNetworkException> {
+            backend.request().postMutations(mutations, 1000L, emptyMap())
+        }
+
+        assertEquals(HttpStatusCode.Conflict, exception.status)
+        assertEquals(listOf(100, 100), backend.batchSizes)
+    }
+
+    @Test
+    fun `postMutations rejects a batch acknowledged with a different mutation count`() = runTest {
+        val backend = EchoingSyncBackend(droppedAckRequestIndex = 1)
+        val mutations = List(150) { index -> bookmarkCreateRequest(index) }
+
+        assertFailsWith<IllegalStateException> {
+            backend.request().postMutations(mutations, 1000L, emptyMap())
+        }
+    }
+
+    private fun bookmarkCreateRequest(index: Int): SyncMutation =
+        SyncMutation(
+            resource = "BOOKMARK",
+            resourceId = null,
+            mutation = Mutation.CREATED,
+            data = buildJsonObject {
+                put("type", "ayah")
+                put("key", index)
+                put("verseNumber", 1)
+            },
+            timestamp = null
+        )
+
     private fun collectionBookmarkCreateRequest(): SyncMutation =
         SyncMutation(
             resource = "COLLECTION_BOOKMARK",
@@ -265,5 +319,56 @@ class PostMutationsRequestTest {
         val errorResponseJson = Json {
             ignoreUnknownKeys = true
         }
+    }
+}
+
+/** Acknowledges each pushed BOOKMARK create with `remote-<key>` and advances the head by one per request. */
+private class EchoingSyncBackend(
+    private val failingRequestIndex: Int? = null,
+    private val droppedAckRequestIndex: Int? = null
+) {
+    val batchSizes = mutableListOf<Int>()
+    val lastMutationAtParameters = mutableListOf<Long>()
+
+    fun request(): PostMutationsRequest {
+        val client = HttpClient(
+            MockEngine { request ->
+                val requestIndex = batchSizes.size
+                val lastMutationAt = request.url.parameters["lastMutationAt"]!!.toLong()
+                val mutations = Json.parseToJsonElement(request.body.toByteArray().decodeToString())
+                    .jsonObject.getValue("mutations").jsonArray
+                batchSizes += mutations.size
+                lastMutationAtParameters += lastMutationAt
+                if (requestIndex == failingRequestIndex) {
+                    return@MockEngine respond(
+                        content = """{"success":false,"error":{"code":"OutOfSyncError","message":"stale"}}""",
+                        status = HttpStatusCode.Conflict,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                    )
+                }
+                val acks = mutations
+                    .drop(if (requestIndex == droppedAckRequestIndex) 1 else 0)
+                    .joinToString(",") { mutation ->
+                        val data = mutation.jsonObject.getValue("data")
+                        val key = data.jsonObject.getValue("key").jsonPrimitive.content
+                        """{"type":"CREATE","resource":"BOOKMARK","resourceId":"remote-$key","data":$data}"""
+                    }
+                respond(
+                    content = """{"success":true,"data":{"lastMutationAt":${lastMutationAt + 1},"mutations":[$acks]}}""",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                )
+            }
+        ) {
+            install(ContentNegotiation) {
+                json(
+                    Json {
+                        explicitNulls = false
+                        ignoreUnknownKeys = true
+                    }
+                )
+            }
+        }
+        return PostMutationsRequest(client, "https://example.test")
     }
 }
