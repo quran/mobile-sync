@@ -1444,6 +1444,13 @@ class BookmarkSyncArchitectureTest {
     }
 
     @Test
+    fun `remote collection link existence checks more ids than half the bind limit`() = runTest {
+        val remoteIds = List(500) { "remote-collection-$it-remote-bookmark-$it" }
+
+        assertEquals(remoteIds.associateWith { false }, collectionBookmarksRepository.remoteResourcesExist(remoteIds))
+    }
+
+    @Test
     fun `remote collection link ignores bookmark id for a different ayah`() = runTest {
         createCollection("MismatchedBookmarkId", "remote-mismatched-bookmark-id")
         bookmarksRepository.applyRemoteChanges(

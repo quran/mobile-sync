@@ -125,11 +125,8 @@ internal class SynchronizationClientImpl(
                 initialLastModificationDate = lastModificationDate,
                 remoteResponse = remoteResponse,
                 pushMutations = { mutations, mutationToken, admitPost ->
-                    syncLifecycleGate.checkSyncEpoch(syncEpoch)
-                    if (mutations.isNotEmpty()) {
-                        syncLifecycleGate.admitSyncPost(syncEpoch)
-                        admitPost()
-                    }
+                    syncLifecycleGate.admitSyncPost(syncEpoch)
+                    admitPost()
                     val response = pushMutations(mutations, mutationToken, authHeaders, attempt)
                     syncLifecycleGate.checkSyncEpoch(syncEpoch)
                     response
@@ -156,11 +153,6 @@ internal class SynchronizationClientImpl(
         authHeaders: Map<String, String>,
         attempt: Int
     ): MutationsResponse {
-        if (mutations.isEmpty()) {
-            logger.d { "No local mutations to push, skipping network request" }
-            return MutationsResponse(lastModificationDate, listOf())
-        }
-        
         logger.i { "Pushing ${mutations.size} local mutations" }
         val url = environment.endPointURL
         val request = PostMutationsRequest(httpClient, url)
@@ -194,6 +186,7 @@ internal class SynchronizationClientImpl(
 
 private val PRIMARY_SYNC_RESOURCES = setOf("BOOKMARK", "COLLECTION")
 private const val COLLECTION_BOOKMARK_SYNC_RESOURCE = "COLLECTION_BOOKMARK"
+private const val MAX_MUTATIONS_PER_POST = 100
 
 internal fun List<SyncResourceAdapter>.dependencyAwareSyncPhases(): List<List<SyncResourceAdapter>> {
     val remainingAdapters = toMutableList()
@@ -269,21 +262,21 @@ internal suspend fun executeDependencyAwareSync(
             // Keep durable create markers once a POST could have reached the backend so replay can bind
             // accepted remote IDs to local tombstones. Rollback below is only local preflight cleanup.
             preparePush(mutationsToPush)
-            var postAdmitted = false
             val pushResponse = try {
-                pushMutations(mutationsToPush, mutationToken) {
-                    postAdmitted = true
-                    postMayHaveBeenAttempted = mutationsToPush.isNotEmpty()
-                }
+                mutationsToPush.chunked(MAX_MUTATIONS_PER_POST)
+                    .fold(MutationsResponse(mutationToken, emptyList())) { pushed, batch ->
+                        val response = pushMutations(batch, pushed.lastModificationDate) {
+                            postMayHaveBeenAttempted = true
+                        }
+                        MutationsResponse(response.lastModificationDate, pushed.mutations + response.mutations)
+                    }
             } catch (exception: Throwable) {
-                if (!postAdmitted && exception !is SyncOperationInvalidatedException) {
+                if (exception !is SyncOperationInvalidatedException) {
                     postMayHaveBeenAttempted = mutationsToPush.isNotEmpty()
                 }
                 throw exception
             }
-            if (!postAdmitted) {
-                postMayHaveBeenAttempted = mutationsToPush.isNotEmpty()
-            }
+            postMayHaveBeenAttempted = mutationsToPush.isNotEmpty()
             checkSyncStillValid()
             validatePushedMutationResponse(mutationsToPush, pushResponse.mutations)
             mutationToken = pushResponse.lastModificationDate

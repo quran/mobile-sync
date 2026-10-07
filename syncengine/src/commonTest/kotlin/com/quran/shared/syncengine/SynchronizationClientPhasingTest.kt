@@ -729,6 +729,63 @@ class SynchronizationClientPhasingTest {
     }
 
     @Test
+    fun `pushes in ordered batches that chain the mutation token`() = runTest {
+        val pushes = mutableListOf<String>()
+        val mutations = List(250) { index ->
+            SyncMutation("BOOKMARK", "bookmark-$index", Mutation.MODIFIED, null, null)
+        }
+
+        executeDependencyAwareSync(
+            resourceAdapters = listOf(
+                RecordingAdapter(resourceName = "BOOKMARK", events = mutableListOf(), mutations = mutations)
+            ),
+            initialLastModificationDate = 1L,
+            remoteResponse = MutationsResponse(lastModificationDate = 10L, mutations = emptyList()),
+            pushMutations = { batch, mutationToken, _ ->
+                pushes += "${batch.size}-$mutationToken"
+                MutationsResponse(lastModificationDate = mutationToken + 1, mutations = batch)
+            }
+        )
+
+        assertEquals(listOf("100-10", "100-11", "50-12"), pushes)
+    }
+
+    @Test
+    fun `stale sync epoch after an admitted push batch stops later batches and keeps in-flight markers`() = runTest {
+        val events = mutableListOf<String>()
+
+        assertFailsWith<SyncOperationInvalidatedException> {
+            executeDependencyAwareSync(
+                resourceAdapters = listOf(
+                    RecordingAdapter(
+                        resourceName = "BOOKMARK",
+                        events = events,
+                        recordPlanLifecycleEvents = true,
+                        mutations = List(150) { defaultRecordingMutation("BOOKMARK") }
+                    )
+                ),
+                initialLastModificationDate = 1L,
+                remoteResponse = MutationsResponse(lastModificationDate = 10L, mutations = emptyList()),
+                pushMutations = { mutations, mutationToken, admitPost ->
+                    if ("push-100" in events) throw SyncOperationInvalidatedException("stale epoch before POST")
+                    admitPost()
+                    events += "push-${mutations.size}"
+                    MutationsResponse(
+                        lastModificationDate = mutationToken + 1,
+                        mutations = mutations.mapIndexed { index, mutation -> mutation.recordingAck(index) }
+                    )
+                },
+                completeSync = { token -> events += "sync-complete-$token" }
+            )
+        }
+
+        assertEquals(
+            listOf("build-BOOKMARK", "mark-in-flight-BOOKMARK", "mutations-BOOKMARK", "push-100"),
+            events
+        )
+    }
+
+    @Test
     fun `cancellation during in-flight marking rolls back before job drains`() = runTest {
         val events = mutableListOf<String>()
         val markStarted = CompletableDeferred<Unit>()
@@ -1430,7 +1487,8 @@ private class RecordingAdapter(
     private val onMarkStarted: () -> Unit = {},
     private val onMarkCanFinish: suspend () -> Unit = {},
     private val onCompleteStarted: () -> Unit = {},
-    private val onCompleteCanFinish: suspend () -> Unit = {}
+    private val onCompleteCanFinish: suspend () -> Unit = {},
+    private val mutations: List<SyncMutation> = listOf(defaultRecordingMutation(resourceName))
 ) : SyncResourceAdapter, PreDependencyDeletionSyncResourceAdapter {
     override val localModificationDateFetcher: LocalModificationDateFetcher =
         object : LocalModificationDateFetcher {
@@ -1473,7 +1531,8 @@ private class RecordingAdapter(
             onMarkStarted = onMarkStarted,
             onMarkCanFinish = onMarkCanFinish,
             onCompleteStarted = onCompleteStarted,
-            onCompleteCanFinish = onCompleteCanFinish
+            onCompleteCanFinish = onCompleteCanFinish,
+            mutations = mutations
         )
     }
 
@@ -1491,13 +1550,14 @@ private class RecordingPlan(
     private val onMarkStarted: () -> Unit = {},
     private val onMarkCanFinish: suspend () -> Unit = {},
     private val onCompleteStarted: () -> Unit = {},
-    private val onCompleteCanFinish: suspend () -> Unit = {}
+    private val onCompleteCanFinish: suspend () -> Unit = {},
+    private val mutations: List<SyncMutation> = listOf(mutation)
 ) : ResourceSyncPlan {
     override suspend fun mutationsToPush(): List<SyncMutation> {
         if (recordLifecycleEvents) {
             events += "mutations-$eventName"
         }
-        return listOf(mutation)
+        return mutations
     }
 
     override suspend fun markMutationsInFlight() {
