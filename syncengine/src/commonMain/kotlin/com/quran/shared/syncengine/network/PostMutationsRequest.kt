@@ -4,7 +4,6 @@ package com.quran.shared.syncengine.network
 import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.syncengine.SyncMutation
-import com.quran.shared.syncengine.validatePushedMutationCount
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.headers
@@ -76,34 +75,7 @@ class PostMutationsRequest(
     ): MutationsResponse =
         postMutations(mutations, lastModificationDate, authHeaders, attempt = 0)
 
-    /**
-     * Pushes [mutations] in sequential batches of at most [MAX_MUTATIONS_PER_REQUEST], the backend's limit.
-     *
-     * Each batch sends the `lastMutationAt` returned by the previous one, and the acknowledgements are
-     * returned in request order under the last batch's `lastMutationAt`.
-     */
     internal suspend fun postMutations(
-        mutations: List<SyncMutation>,
-        lastModificationDate: Long,
-        authHeaders: Map<String, String>,
-        attempt: Int
-    ): MutationsResponse {
-        val batches = mutations.chunked(MAX_MUTATIONS_PER_REQUEST).ifEmpty { listOf(emptyList()) }
-        var mutationToken = lastModificationDate
-        val acknowledgedMutations = mutableListOf<SyncMutation>()
-        batches.forEachIndexed { index, batch ->
-            if (batches.size > 1) {
-                logger.i { "Pushing batch ${index + 1}/${batches.size} with ${batch.size} mutations" }
-            }
-            val response = postBatch(batch, mutationToken, authHeaders, attempt)
-            validatePushedMutationCount("sync batch ${index + 1}", batch.size, response.mutations.size)
-            mutationToken = response.lastModificationDate
-            acknowledgedMutations += response.mutations
-        }
-        return MutationsResponse(lastModificationDate = mutationToken, mutations = acknowledgedMutations)
-    }
-
-    private suspend fun postBatch(
         mutations: List<SyncMutation>,
         lastModificationDate: Long,
         authHeaders: Map<String, String>,
@@ -196,11 +168,6 @@ class PostMutationsRequest(
         )
 
         return result
-    }
-
-    internal companion object {
-        /** The backend rejects larger POST bodies with 422. */
-        const val MAX_MUTATIONS_PER_REQUEST = 100
     }
 }
 

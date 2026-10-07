@@ -247,10 +247,7 @@ class CollectionBookmarksSyncAdapterTest {
         assertEquals(false, linkActive)
         assertNull(pendingDelete)
         assertEquals(
-            listOf(
-                listOf(Mutation.DELETED),
-                emptyList()
-            ),
+            listOf(listOf(Mutation.DELETED)),
             pushedMutations.map { mutations -> mutations.map { it.mutation } }
         )
     }
@@ -364,10 +361,7 @@ class CollectionBookmarksSyncAdapterTest {
         assertEquals(listOf(unrelatedRemoteId), persistedRemoteIds)
         assertNull(pendingDelete)
         assertEquals(
-            listOf(
-                listOf(Mutation.DELETED),
-                emptyList()
-            ),
+            listOf(listOf(Mutation.DELETED)),
             pushedMutations.map { mutations -> mutations.map { it.mutation } }
         )
     }

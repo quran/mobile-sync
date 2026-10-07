@@ -517,18 +517,17 @@ markRemoteBookmarkCollectionsDeleted:
     OR last_synced_collection_remote_id IS NOT NULL;
 
 checkRemoteIDsExistence:
-  SELECT last_synced_collection_remote_id || '-' || last_synced_bookmark_remote_id AS remote_id
-  FROM bookmark_collection
-  WHERE last_synced_collection_remote_id || '-' || last_synced_bookmark_remote_id IN :queried_ids
-  UNION
-  SELECT c.remote_id || '-' || b.remote_id AS remote_id
-  FROM bookmark_collection bc
-  JOIN collection c ON c.local_id = bc.collection_local_id
-  JOIN bookmark b ON b.local_id = bc.bookmark_local_id
-  WHERE bc.is_active = 1
-    AND c.remote_id IS NOT NULL
-    AND b.remote_id IS NOT NULL
-    AND c.remote_id || '-' || b.remote_id IN :queried_ids;
+  SELECT remote_id FROM (
+    SELECT last_synced_collection_remote_id || '-' || last_synced_bookmark_remote_id AS remote_id
+    FROM bookmark_collection
+    UNION
+    SELECT c.remote_id || '-' || b.remote_id AS remote_id
+    FROM bookmark_collection bc
+    JOIN collection c ON c.local_id = bc.collection_local_id
+    JOIN bookmark b ON b.local_id = bc.bookmark_local_id
+    WHERE bc.is_active = 1
+  )
+  WHERE remote_id IN :queried_ids;
 
 deleteAll:
   DELETE FROM bookmark_collection;
