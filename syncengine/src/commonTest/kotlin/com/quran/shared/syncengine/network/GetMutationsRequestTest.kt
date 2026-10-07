@@ -22,9 +22,10 @@ class GetMutationsRequestTest {
     fun `fetches every page in order`() = runTest {
         val backend = FakeSyncBackend(mutationCount = 2 * GetMutationsRequest.PAGE_LIMIT + 1)
 
-        val response = backend.request().getMutations(0L, emptyMap())
+        val response = backend.request().getMutations(42L, emptyMap(), listOf("BOOKMARK", "NOTE"))
 
         assertEquals(listOf(1, 2, 3), backend.requestedPages)
+        assertEquals(List(3) { "42 BOOKMARK,NOTE" }, backend.requestedFilters)
         assertEquals(backend.resourceIds, response.mutations.map { it.resourceId })
         assertEquals(backend.head, response.lastModificationDate)
     }
@@ -76,6 +77,16 @@ class GetMutationsRequestTest {
 
         assertEquals(listOf(1, 2), backend.requestedPages)
     }
+
+    @Test
+    fun `does not retry the first page`() = runTest {
+        val backend = FakeSyncBackend(mutationCount = 1)
+        backend.onRequest = { HttpStatusCode.ServiceUnavailable }
+
+        assertFailsWith<SyncNetworkException> { backend.request().getMutations(0L, emptyMap()) }
+
+        assertEquals(listOf(1), backend.requestedPages)
+    }
 }
 
 private class FakeSyncBackend(mutationCount: Int) {
@@ -83,6 +94,7 @@ private class FakeSyncBackend(mutationCount: Int) {
     var head = 10_000L
     var onRequest: (index: Int) -> HttpStatusCode = { HttpStatusCode.OK }
     val requestedPages = mutableListOf<Int>()
+    val requestedFilters = mutableListOf<String>()
 
     fun request() = GetMutationsRequest(
         HttpClient(
@@ -90,6 +102,7 @@ private class FakeSyncBackend(mutationCount: Int) {
                 val page = request.url.parameters["page"]?.toInt() ?: 1
                 val limit = request.url.parameters["limit"]?.toInt() ?: 100
                 requestedPages += page
+                requestedFilters += "${request.url.parameters["mutationsSince"]} ${request.url.parameters["resources"]}"
                 val status = onRequest(requestedPages.lastIndex)
                 val mutations = resourceIds.drop((page - 1) * limit).take(limit).joinToString(",") {
                     """{"resource":"BOOKMARK","resourceId":"$it","type":"CREATE","timestamp":1}"""

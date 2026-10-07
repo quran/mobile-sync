@@ -729,21 +729,21 @@ class SynchronizationClientPhasingTest {
     }
 
     @Test
-    fun `pushes in batches that chain the mutation token`() = runTest {
+    fun `pushes in ordered batches that chain the mutation token`() = runTest {
         val pushes = mutableListOf<String>()
+        val mutations = List(250) { index ->
+            SyncMutation("BOOKMARK", "bookmark-$index", Mutation.MODIFIED, null, null)
+        }
 
         executeDependencyAwareSync(
             resourceAdapters = listOf(
-                RecordingAdapter(resourceName = "BOOKMARK", events = mutableListOf(), mutationCount = 250)
+                RecordingAdapter(resourceName = "BOOKMARK", events = mutableListOf(), mutations = mutations)
             ),
             initialLastModificationDate = 1L,
             remoteResponse = MutationsResponse(lastModificationDate = 10L, mutations = emptyList()),
-            pushMutations = { mutations, mutationToken, _ ->
-                pushes += "${mutations.size}-$mutationToken"
-                MutationsResponse(
-                    lastModificationDate = mutationToken + 1,
-                    mutations = mutations.mapIndexed { index, mutation -> mutation.recordingAck(index) }
-                )
+            pushMutations = { batch, mutationToken, _ ->
+                pushes += "${batch.size}-$mutationToken"
+                MutationsResponse(lastModificationDate = mutationToken + 1, mutations = batch)
             }
         )
 
@@ -761,7 +761,7 @@ class SynchronizationClientPhasingTest {
                         resourceName = "BOOKMARK",
                         events = events,
                         recordPlanLifecycleEvents = true,
-                        mutationCount = 150
+                        mutations = List(150) { defaultRecordingMutation("BOOKMARK") }
                     )
                 ),
                 initialLastModificationDate = 1L,
@@ -1488,7 +1488,7 @@ private class RecordingAdapter(
     private val onMarkCanFinish: suspend () -> Unit = {},
     private val onCompleteStarted: () -> Unit = {},
     private val onCompleteCanFinish: suspend () -> Unit = {},
-    private val mutationCount: Int = 1
+    private val mutations: List<SyncMutation> = listOf(defaultRecordingMutation(resourceName))
 ) : SyncResourceAdapter, PreDependencyDeletionSyncResourceAdapter {
     override val localModificationDateFetcher: LocalModificationDateFetcher =
         object : LocalModificationDateFetcher {
@@ -1532,7 +1532,7 @@ private class RecordingAdapter(
             onMarkCanFinish = onMarkCanFinish,
             onCompleteStarted = onCompleteStarted,
             onCompleteCanFinish = onCompleteCanFinish,
-            mutationCount = mutationCount
+            mutations = mutations
         )
     }
 
@@ -1551,13 +1551,13 @@ private class RecordingPlan(
     private val onMarkCanFinish: suspend () -> Unit = {},
     private val onCompleteStarted: () -> Unit = {},
     private val onCompleteCanFinish: suspend () -> Unit = {},
-    private val mutationCount: Int = 1
+    private val mutations: List<SyncMutation> = listOf(mutation)
 ) : ResourceSyncPlan {
     override suspend fun mutationsToPush(): List<SyncMutation> {
         if (recordLifecycleEvents) {
             events += "mutations-$eventName"
         }
-        return List(mutationCount) { mutation }
+        return mutations
     }
 
     override suspend fun markMutationsInFlight() {
