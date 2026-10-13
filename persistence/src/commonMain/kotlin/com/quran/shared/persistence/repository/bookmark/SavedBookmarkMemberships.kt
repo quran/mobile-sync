@@ -24,7 +24,7 @@ internal fun QuranDatabase.activeSavedCollectionIdsForBookmark(bookmarkLocalId: 
                 .getCollectionByLocalId(collectionLocalId)
                 .executeAsOne()
             collectionLocalId.takeIf {
-                collection.deleted == 0L && highlightColorForCollectionName(collection.name) == null
+                collection.deleted == 0L && highlightColorForCollectionName(collection.name.value) == null
             }
         }
         .toSet()

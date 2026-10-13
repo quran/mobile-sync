@@ -4,6 +4,7 @@ package com.quran.shared.persistence.repository
 
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.TestDatabaseDriver
+import com.quran.shared.persistence.createQuranDatabase
 import com.quran.shared.persistence.model.AyahHighlight
 import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepositoryImpl
@@ -26,7 +27,7 @@ class AyahHighlightsRepositoryTest {
 
     @BeforeTest
     fun setup() {
-        database = QuranDatabase(TestDatabaseDriver().createDriver())
+        database = createQuranDatabase(TestDatabaseDriver().createDriver())
         collectionsRepository = CollectionsRepositoryImpl(database)
         collectionBookmarksRepository = CollectionBookmarksRepositoryImpl(database)
     }

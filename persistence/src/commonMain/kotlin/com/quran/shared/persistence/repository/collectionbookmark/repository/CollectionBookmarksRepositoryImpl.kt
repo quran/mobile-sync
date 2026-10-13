@@ -165,7 +165,7 @@ class CollectionBookmarksRepositoryImpl(
                     .executeAsOneOrNull()
                 requireNotNull(collection) { "Collection not found for id=$collectionId." }
                 require(collection.deleted == 0L) { "Collection is deleted for id=$collectionId." }
-                require(highlightColorForCollectionName(collection.name) == null) {
+                require(highlightColorForCollectionName(collection.name.value) == null) {
                     "Highlight collections must be changed through setHighlight."
                 }
 
@@ -761,7 +761,7 @@ class CollectionBookmarksRepositoryImpl(
             return null
         }
         val isSavedCollection = collection.deleted == 0L &&
-            highlightColorForCollectionName(collection.name) == null
+            highlightColorForCollectionName(collection.name.value) == null
         val createdAt = remote.model.createdAt?.fromPlatform()?.toEpochMilliseconds() ?: updatedAt
         val bookmarkRemoteId = remote.model.bookmarkId
             ?: bookmarkQueries.value.getBookmarkByLocalId(bookmarkLocalId).executeAsOneOrNull()?.remote_id
@@ -951,7 +951,7 @@ class CollectionBookmarksRepositoryImpl(
                     .getCollectionByRemoteId(replacement.collectionId)
                     .executeAsOneOrNull()
                     ?.let { collection ->
-                        collection.deleted == 0L && highlightColorForCollectionName(collection.name) == null
+                        collection.deleted == 0L && highlightColorForCollectionName(collection.name.value) == null
                     } == true
                 replacementRemoteId.takeIf { hasActiveSavedCollection }
             }
@@ -985,7 +985,7 @@ class CollectionBookmarksRepositoryImpl(
         val hasOnlyLocalHighlights = activeRelations.isNotEmpty() &&
             activeRelations.size.toLong() == retainedRelationCount &&
             activeRelations.all { relation ->
-                highlightColorForCollectionName(relation.collection_name) != null &&
+                highlightColorForCollectionName(relation.collection_name.value) != null &&
                     relation.collection_remote_id == null &&
                     relation.last_synced_bookmark_remote_id == null &&
                     relation.last_synced_collection_remote_id == null &&

@@ -1,5 +1,7 @@
 package com.quran.shared.persistence.model
 
+import com.quran.shared.mutations.collectionNameKey
+
 enum class AyahHighlightColor(internal val collectionName: String) {
     BLUE("system:highlights:blue"),
     PINK("system:highlights:pink"),
@@ -9,6 +11,6 @@ enum class AyahHighlightColor(internal val collectionName: String) {
 }
 
 internal fun highlightColorForCollectionName(name: String): AyahHighlightColor? {
-    val normalizedName = name.trim().lowercase()
+    val normalizedName = collectionNameKey(name)
     return AyahHighlightColor.entries.firstOrNull { it.collectionName == normalizedName }
 }

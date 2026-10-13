@@ -3,6 +3,7 @@
 package com.quran.shared.persistence
 
 import co.touchlab.sqliter.DatabaseFileContext
+import com.quran.shared.persistence.model.CollectionName
 import kotlin.random.Random
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -36,7 +37,7 @@ class DriverFactoryCorruptionTest {
 
         val driver = DriverFactory(name).makeDriver()
         try {
-            val collections = QuranDatabase(driver).collectionsQueries.getCollections().executeAsList()
+            val collections = createQuranDatabase(driver).collectionsQueries.getCollections().executeAsList()
             assertEquals(6, collections.size)
         } finally {
             driver.close()
@@ -66,8 +67,9 @@ class DriverFactoryCorruptionTest {
     @Test
     fun `healthy database keeps its data`() {
         val firstDriver = DriverFactory(name).makeDriver()
-        QuranDatabase(firstDriver).collectionsQueries.addNewCollection(
-            name = "Study",
+        createQuranDatabase(firstDriver).collectionsQueries.addNewCollection(
+            name = CollectionName.of("Study"),
+            name_key = CollectionName.of("Study").key,
             timestamp = 100L,
             is_system = 0L
         )
@@ -75,7 +77,7 @@ class DriverFactoryCorruptionTest {
 
         val driver = DriverFactory(name).makeDriver()
         try {
-            val names = QuranDatabase(driver).collectionsQueries.getCollections().executeAsList().map { it.name }
+            val names = createQuranDatabase(driver).collectionsQueries.getCollections().executeAsList().map { it.name.value }
             assertTrue("Study" in names)
         } finally {
             driver.close()

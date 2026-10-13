@@ -5,6 +5,7 @@ import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.TestDatabaseDriver
+import com.quran.shared.persistence.createQuranDatabase
 import com.quran.shared.persistence.input.ImportAyahHighlight
 import com.quran.shared.persistence.input.ImportCollection
 import com.quran.shared.persistence.input.ImportCollectionAyahBookmark
@@ -13,6 +14,7 @@ import com.quran.shared.persistence.input.ImportReadingSession
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.RemoteNote
 import com.quran.shared.persistence.model.AyahHighlightColor
+import com.quran.shared.persistence.model.CollectionName
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepositoryImpl
 import com.quran.shared.persistence.repository.importdata.PersistenceImportRepositoryImpl
 import com.quran.shared.persistence.repository.note.repository.NotesRepositoryImpl
@@ -36,7 +38,7 @@ class ImportMergeTest {
     @BeforeTest
     fun setup() {
         driver = TestDatabaseDriver().createDriver()
-        database = QuranDatabase(driver)
+        database = createQuranDatabase(driver)
         repository = PersistenceImportRepositoryImpl(database)
     }
 
@@ -68,7 +70,7 @@ class ImportMergeTest {
         assertEquals(1, result.readingSessionsImported)
         assertEquals(1, result.notesImported)
         assertEquals(1, result.highlightsImported)
-        assertEquals("", database.collectionsQueries.getCollectionByName("").executeAsOne().name)
+        assertEquals("", database.collectionsQueries.getCollectionByName(CollectionName.of("").key).executeAsOne().name.value)
         assertEquals("", database.notesQueries.getNotes().executeAsOne().note)
         assertEquals(
             115L to 0L,
@@ -90,7 +92,7 @@ class ImportMergeTest {
         )
         repository.importData(data)
         val bookmark = database.bookmarksQueries.getBookmarkForAyah(2, 255).executeAsOne()
-        val collection = database.collectionsQueries.getCollectionByName("Study").executeAsOne()
+        val collection = database.collectionsQueries.getCollectionByName(CollectionName.of("Study").key).executeAsOne()
         var link = database.bookmark_collectionsQueries
             .getCollectionBookmarkFor(bookmark.local_id, collection.local_id)
             .executeAsOne()
@@ -153,7 +155,7 @@ class ImportMergeTest {
         assertEquals(
             listOf("system:highlights:blue"),
             database.bookmark_collectionsQueries.getCollectionBookmarksWithDetails().executeAsList()
-                .map { it.collection_name }
+                .map { it.collection_name.value }
         )
     }
 
@@ -169,15 +171,17 @@ class ImportMergeTest {
             )
         )
 
-        val collection = database.collectionsQueries.getCollectionByName("system:highlights:pink").executeAsOne()
+        val collection = database.collectionsQueries.getCollectionByName(CollectionName.of("system:highlights:pink").key).executeAsOne()
         assertEquals(100L, collection.created_at)
     }
 
     @Test
     fun `an older highlight keeps a synced collection's creation date`() = runTest {
-        val seeded = database.collectionsQueries.getCollectionByName("system:highlights:pink").executeAsOne()
+        val seeded = database.collectionsQueries.getCollectionByName(CollectionName.of("system:highlights:pink").key).executeAsOne()
         database.collectionsQueries.attachRemoteCollectionIdForSemanticReplay(
             remote_id = "remote-pink",
+            name = seeded.name,
+            name_key = seeded.name_key,
             is_default = 0L,
             is_system = 1L,
             modified_at = seeded.modified_at,
@@ -191,12 +195,12 @@ class ImportMergeTest {
 
     @Test
     fun `a new highlight keeps its seeded collection's creation date`() = runTest {
-        val seededAt = database.collectionsQueries.getCollectionByName("system:highlights:pink").executeAsOne().created_at
+        val seededAt = database.collectionsQueries.getCollectionByName(CollectionName.of("system:highlights:pink").key).executeAsOne().created_at
         val later = Instant.fromEpochMilliseconds(seededAt + 60_000)
 
         CollectionBookmarksRepositoryImpl(database).setHighlight(2, 255, AyahHighlightColor.PINK, later.toPlatform())
 
-        val collection = database.collectionsQueries.getCollectionByName("system:highlights:pink").executeAsOne()
+        val collection = database.collectionsQueries.getCollectionByName(CollectionName.of("system:highlights:pink").key).executeAsOne()
         assertEquals(seededAt, collection.created_at)
         assertEquals(seededAt + 60_000, collection.modified_at)
     }
@@ -303,7 +307,7 @@ class ImportMergeTest {
             }
         }
 
-        assertNull(database.collectionsQueries.getCollectionByName("Study").executeAsOneOrNull())
+        assertNull(database.collectionsQueries.getCollectionByName(CollectionName.of("Study").key).executeAsOneOrNull())
         assertNull(database.bookmarksQueries.getBookmarkForAyah(2, 255).executeAsOneOrNull())
     }
 
@@ -321,7 +325,7 @@ class ImportMergeTest {
             )
         )
 
-        val study = database.collectionsQueries.getCollectionByName("Study").executeAsOne()
+        val study = database.collectionsQueries.getCollectionByName(CollectionName.of("Study").key).executeAsOne()
         assertEquals(1, result.collectionsImported)
         assertEquals(1, result.collectionBookmarksImported)
         assertEquals(1, result.matched)

@@ -10,6 +10,7 @@ import com.quran.shared.auth.repository.RemoteLogoutFailure
 import com.quran.shared.auth.repository.RemoteLogoutMode
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.persistence.QuranDatabase
+import com.quran.shared.persistence.createQuranDatabase
 import com.quran.shared.persistence.input.ImportNote
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.repository.PersistenceResetRepositoryImpl
@@ -60,7 +61,7 @@ class QuranDataServiceImportTest {
         Dispatchers.setMain(dispatcher)
         driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         QuranDatabase.Schema.create(driver)
-        database = QuranDatabase(driver)
+        database = createQuranDatabase(driver)
         authService = AuthService(LoggedOutAuthRepository())
         val readingBookmarks = ReadingBookmarksRepositoryImpl(database)
         lifecycleCoordinator = SessionLifecycleCoordinator(

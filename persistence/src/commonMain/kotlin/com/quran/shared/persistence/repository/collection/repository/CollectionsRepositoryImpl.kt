@@ -13,6 +13,7 @@ import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.input.LocalSyncCollection
 import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.model.Collection
+import com.quran.shared.persistence.model.CollectionName
 import com.quran.shared.persistence.model.DatabaseCollection
 import com.quran.shared.persistence.model.isSystemCollectionName
 import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
@@ -109,8 +110,10 @@ class CollectionsRepositoryImpl(
                     "System collection name is reserved: $name."
                 }
 
+                val collectionName = CollectionName.of(name)
                 collectionQueries.value.updateCollectionName(
-                    name = name,
+                    name = collectionName,
+                    name_key = collectionName.key,
                     id = localId,
                     timestamp = timestampMillis
                 )
@@ -189,11 +192,12 @@ class CollectionsRepositoryImpl(
     }
 
     private fun applyRemoteCollectionUpsert(remote: RemoteModelMutation<RemoteCollection>) {
-        val name = remote.model.name
-        if (name.isNullOrEmpty()) {
+        val remoteName = remote.model.name
+        if (remoteName.isNullOrEmpty()) {
             logger.w { "Skipping remote collection mutation without name: remoteId=${remote.remoteID}" }
             return
         }
+        val name = CollectionName.of(remoteName)
 
         val updatedAt = remote.model.lastUpdated.fromPlatform().toEpochMilliseconds()
         val createdAt = remote.model.createdAt?.fromPlatform()?.toEpochMilliseconds() ?: updatedAt
@@ -208,6 +212,7 @@ class CollectionsRepositoryImpl(
             collectionQueries.value.updateRemoteCollection(
                 remote_id = remote.remoteID,
                 name = name,
+                name_key = name.key,
                 modified_at = updatedAt,
                 is_default = remote.model.isDefault.toLong(),
                 is_system = remote.model.isSystem.toLong()
@@ -215,7 +220,7 @@ class CollectionsRepositoryImpl(
             return
         }
 
-        if (remote.model.isDefault && attachRemoteIdToSeededDefault(remote, updatedAt)) {
+        if (remote.model.isDefault && attachRemoteIdToSeededDefault(remote, name, updatedAt)) {
             return
         }
 
@@ -230,7 +235,7 @@ class CollectionsRepositoryImpl(
             return
         }
 
-        val existingByName = collectionQueries.value.getCollectionByName(name)
+        val existingByName = collectionQueries.value.getCollectionByName(name.key)
             .executeAsOneOrNull()
         if (existingByName != null) {
             logger.i {
@@ -241,6 +246,7 @@ class CollectionsRepositoryImpl(
             collectionQueries.value.persistRemoteCollection(
                 remote_id = remote.remoteID,
                 name = name,
+                name_key = name.key,
                 created_at = createdAt,
                 modified_at = updatedAt,
                 is_default = remote.model.isDefault.toLong(),
@@ -302,6 +308,7 @@ class CollectionsRepositoryImpl(
 
     private fun attachRemoteIdToSeededDefault(
         remote: RemoteModelMutation<RemoteCollection>,
+        name: CollectionName,
         updatedAt: Long
     ): Boolean {
         val row = collectionQueries.value.getDefaultCollection().executeAsOneOrNull()
@@ -311,6 +318,8 @@ class CollectionsRepositoryImpl(
         collectionQueries.value.attachRemoteCollectionIdForSemanticReplay(
             local_id = row.local_id,
             remote_id = remote.remoteID,
+            name = name,
+            name_key = name.key,
             modified_at = updatedAt,
             is_default = 1L,
             is_system = remote.model.isSystem.toLong()
@@ -322,12 +331,12 @@ class CollectionsRepositoryImpl(
 
     private fun attachRemoteIdForSemanticReplay(
         remote: RemoteModelMutation<RemoteCollection>,
-        name: String,
+        name: CollectionName,
         updatedAt: Long
     ): Boolean {
         // Only a create may bind a deleted row; binding an update would push a delete of the remote collection.
         if (remote.mutation == Mutation.CREATED) {
-            val deletedCandidates = collectionQueries.value.getPendingDeletedCreatedCollectionsByName(name)
+            val deletedCandidates = collectionQueries.value.getPendingDeletedCreatedCollectionsByName(name.key)
                 .executeAsList()
             if (deletedCandidates.size > 1) {
                 throw IllegalStateException(
@@ -335,20 +344,21 @@ class CollectionsRepositoryImpl(
                 )
             }
             if (deletedCandidates.size == 1) {
-                return attachRemoteIdForSemanticReplay(remote, deletedCandidates.single(), updatedAt)
+                return attachRemoteIdForSemanticReplay(remote, name, deletedCandidates.single(), updatedAt)
             }
         }
 
-        val activeCandidates = collectionQueries.value.getPendingActiveCreatedCollectionsByName(name)
+        val activeCandidates = collectionQueries.value.getPendingActiveCreatedCollectionsByName(name.key)
             .executeAsList()
         if (activeCandidates.size != 1) {
             return false
         }
-        return attachRemoteIdForSemanticReplay(remote, activeCandidates.single(), updatedAt)
+        return attachRemoteIdForSemanticReplay(remote, name, activeCandidates.single(), updatedAt)
     }
 
     private fun attachRemoteIdForSemanticReplay(
         remote: RemoteModelMutation<RemoteCollection>,
+        name: CollectionName,
         row: DatabaseCollection,
         updatedAt: Long
     ): Boolean {
@@ -358,6 +368,8 @@ class CollectionsRepositoryImpl(
         collectionQueries.value.attachRemoteCollectionIdForSemanticReplay(
             local_id = row.local_id,
             remote_id = remote.remoteID,
+            name = name,
+            name_key = name.key,
             modified_at = updatedAt,
             is_default = remote.model.isDefault.toLong(),
             is_system = remote.model.isSystem.toLong()

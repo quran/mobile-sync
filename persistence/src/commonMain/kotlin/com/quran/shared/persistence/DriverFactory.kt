@@ -1,6 +1,8 @@
 package com.quran.shared.persistence
 
 import app.cash.sqldelight.db.SqlDriver
+import com.quran.shared.persistence.model.CollectionName
+import com.quran.shared.persistence.model.CollectionNameKey
 import kotlinx.coroutines.InternalCoroutinesApi
 import kotlinx.coroutines.internal.SynchronizedObject
 import kotlinx.coroutines.internal.synchronized
@@ -29,9 +31,19 @@ private val lock = SynchronizedObject()
 @OptIn(InternalCoroutinesApi::class)
 private fun getDatabase(driverFactory: DriverFactory): QuranDatabase {
     return database ?: synchronized(lock) {
-        database ?: QuranDatabase(driverFactory.makeDriver()).also { database = it }
+        database ?: createQuranDatabase(driverFactory.makeDriver()).also { database = it }
     }
 }
+
+/** Creates a [QuranDatabase] on [driver] with the column adapters for its typed columns. */
+@HiddenFromObjC
+fun createQuranDatabase(driver: SqlDriver): QuranDatabase = QuranDatabase(
+    driver = driver,
+    collectionAdapter = Collection.Adapter(
+        nameAdapter = CollectionName.Adapter,
+        name_keyAdapter = CollectionNameKey.Adapter
+    )
+)
 
 /**
  * Opens the shared [QuranDatabase], or reuses it when already open.

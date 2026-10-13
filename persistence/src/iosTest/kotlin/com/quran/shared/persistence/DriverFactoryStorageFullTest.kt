@@ -64,7 +64,7 @@ class DriverFactoryStorageFullTest {
 
         val driver = DriverFactory(name).makeDriver()
         try {
-            val collections = QuranDatabase(driver).collectionsQueries.getCollections().executeAsList()
+            val collections = createQuranDatabase(driver).collectionsQueries.getCollections().executeAsList()
             assertEquals(6, collections.size)
         } finally {
             driver.close()

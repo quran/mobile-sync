@@ -2,6 +2,7 @@ package com.quran.shared.pipeline.storage
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.quran.shared.persistence.QuranDatabase
+import com.quran.shared.persistence.createQuranDatabase
 import com.quran.shared.persistence.repository.keyvalue.KeyValueRepositoryImpl
 import com.quran.shared.pipeline.SettingsSessionLifecycleStateStore
 import com.quran.shared.pipeline.SyncSettingsLocalModificationDateStore
@@ -22,7 +23,7 @@ class DatabaseSettingsTest {
     fun setup() {
         driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         QuranDatabase.Schema.create(driver)
-        database = QuranDatabase(driver)
+        database = createQuranDatabase(driver)
     }
 
     @AfterTest

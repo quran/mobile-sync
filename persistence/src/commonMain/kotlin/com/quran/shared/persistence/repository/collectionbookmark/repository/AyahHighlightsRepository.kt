@@ -34,7 +34,7 @@ internal class AyahHighlightsRepository(
             .mapToList(Dispatchers.IO)
             .map { records ->
                 records.mapNotNull { record ->
-                    val color = highlightColorForCollectionName(record.collection_name)
+                    val color = highlightColorForCollectionName(record.collection_name.value)
                         ?: return@mapNotNull null
                     HighlightRecord(
                         highlight = AyahHighlight(

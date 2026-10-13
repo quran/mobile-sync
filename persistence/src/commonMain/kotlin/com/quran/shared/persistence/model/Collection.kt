@@ -1,5 +1,6 @@
 package com.quran.shared.persistence.model
 
+import com.quran.shared.mutations.trimLikeServer
 import com.quran.shared.persistence.util.PlatformDateTime
 
 internal const val DEFAULT_COLLECTION_NAME = "Favorites"
@@ -28,6 +29,6 @@ data class Collection(
 }
 
 internal fun isSystemCollectionName(name: String): Boolean {
-    return name.trim().equals(DEFAULT_COLLECTION_NAME, ignoreCase = true) ||
+    return name.trimLikeServer().equals(DEFAULT_COLLECTION_NAME, ignoreCase = true) ||
         highlightColorForCollectionName(name) != null
 }
