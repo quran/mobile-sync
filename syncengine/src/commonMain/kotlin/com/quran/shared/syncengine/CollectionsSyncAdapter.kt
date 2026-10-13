@@ -173,11 +173,10 @@ private fun SyncMutation.toSyncCollection(logger: Logger): SyncCollection? {
     }
 }
 
+/** The server rejects any field but the name and client timestamps; it derives `isSystem` from the name. */
 private fun SyncCollection.toResourceData(): JsonObject {
     val collectionName = requireNotNull(name) { "Collection name is required for resource data." }
     return buildJsonObject {
         put("name", collectionName)
-        put("isDefault", isDefault)
-        put("isSystem", isSystem)
     }
 }
