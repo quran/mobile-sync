@@ -1,11 +1,13 @@
 package com.quran.shared.persistence.repository.collection
 
 import com.quran.shared.persistence.QuranDatabase
+import com.quran.shared.persistence.TextLengthField
 import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.model.CollectionName
 import com.quran.shared.persistence.model.DatabaseCollection
 import com.quran.shared.persistence.model.highlightColorForCollectionName
 import com.quran.shared.persistence.model.isSystemCollectionName
+import com.quran.shared.persistence.requireServerTextLength
 
 /** Transaction-scoped access to persisted collections. */
 internal class CollectionStore(
@@ -29,6 +31,7 @@ internal class CollectionStore(
         require(!isSystemCollectionName(name)) {
             "System collection name is reserved: $name."
         }
+        requireServerTextLength(TextLengthField.COLLECTION_NAME, name)
         val collectionName = CollectionName.of(name)
         queries.addNewCollection(
             name = collectionName,

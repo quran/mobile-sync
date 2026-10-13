@@ -10,6 +10,7 @@ import com.quran.shared.mutations.LocalMutationResource
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
+import com.quran.shared.persistence.TextLengthField
 import com.quran.shared.persistence.input.LocalSyncCollection
 import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.model.Collection
@@ -22,6 +23,7 @@ import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconc
 import com.quran.shared.persistence.repository.collection.CollectionStore
 import com.quran.shared.persistence.repository.collection.extension.toCollection
 import com.quran.shared.persistence.repository.collection.extension.toCollectionMutation
+import com.quran.shared.persistence.requireServerTextLength
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.currentEpochMilliseconds
 import com.quran.shared.persistence.util.currentPlatformDateTime
@@ -109,6 +111,7 @@ class CollectionsRepositoryImpl(
                 require(!isSystemCollectionName(name)) {
                     "System collection name is reserved: $name."
                 }
+                requireServerTextLength(TextLengthField.COLLECTION_NAME, name)
 
                 val collectionName = CollectionName.of(name)
                 collectionQueries.value.updateCollectionName(

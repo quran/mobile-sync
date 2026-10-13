@@ -451,7 +451,7 @@ class SyncMutationTimestampTest {
         val localMutation = LocalModelMutation(
             model = SyncNote(
                 id = "local-note",
-                body = "Note",
+                body = "My note",
                 ranges = listOf(
                     NoteRange(
                         start = NoteAyah(sura = 2, ayah = 255),
@@ -483,7 +483,7 @@ class SyncMutationTimestampTest {
         val localMutation = LocalModelMutation(
             model = SyncNote(
                 id = "local-note",
-                body = "Note",
+                body = "My note",
                 ranges = listOf(
                     NoteRange(
                         start = NoteAyah(sura = 2, ayah = 255),

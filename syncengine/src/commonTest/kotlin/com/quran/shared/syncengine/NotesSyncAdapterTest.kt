@@ -50,6 +50,40 @@ class NotesSyncAdapterTest {
         assertEquals(emptyList(), plan.mutationsToPush())
     }
 
+    @Test
+    fun `a pending note the server would reject is left out of the push and stays pending`() = runTest {
+        val tooShort = localNote("Good", localId = "local-short")
+        val tooLong = localNote("a".repeat(9_996) + "&", localId = "local-long", remoteId = "remote-long")
+        val valid = localNote("Reflect on this verse", localId = "local-valid")
+        var cleared: List<LocalModelMutation<SyncNote>> = emptyList()
+        val adapter = adapter(
+            localMutations = listOf(tooShort, tooLong, valid),
+            onDidSucceed = {},
+            onCleared = { cleared = it }
+        )
+
+        val plan = adapter.buildPlan(0L, emptyList())
+        val pushed = plan.mutationsToPush()
+        plan.complete(newToken = 10L, pushedMutations = pushed.map { it.copy(resourceId = "remote-valid") })
+
+        assertEquals(listOf("Reflect on this verse"), pushed.map { (it.data?.get("body") as JsonPrimitive).content })
+        assertEquals(listOf("local-valid"), cleared.map { it.localID })
+    }
+
+    @Test
+    fun `a pending note delete is pushed whatever its body`() = runTest {
+        val delete = LocalModelMutation(
+            model = SyncNote("local-1", body = null, ranges = emptyList(), lastModified = Instant.fromEpochMilliseconds(1_000)),
+            remoteID = "remote-1",
+            localID = "local-1",
+            mutation = Mutation.DELETED
+        )
+
+        val pushed = adapter(localMutations = listOf(delete)).buildPlan(0L, emptyList()).mutationsToPush()
+
+        assertEquals(listOf(Mutation.DELETED), pushed.map { it.mutation })
+    }
+
     private fun localNote(body: String, localId: String = "local-1", remoteId: String? = null) = LocalModelMutation(
         model = SyncNote(
             id = localId,
@@ -78,7 +112,8 @@ class NotesSyncAdapterTest {
 
     private fun adapter(
         localMutations: List<LocalModelMutation<SyncNote>>,
-        onDidSucceed: (List<RemoteModelMutation<SyncNote>>) -> Unit = {}
+        onDidSucceed: (List<RemoteModelMutation<SyncNote>>) -> Unit = {},
+        onCleared: (List<LocalModelMutation<SyncNote>>) -> Unit = {}
     ) = NotesSyncAdapter(
         NotesSynchronizationConfigurations(
             localDataFetcher = object : LocalDataFetcher<SyncNote> {
@@ -96,6 +131,7 @@ class NotesSyncAdapterTest {
                     processedLocalMutations: List<LocalModelMutation<SyncNote>>
                 ) {
                     onDidSucceed(newRemoteMutations)
+                    onCleared(processedLocalMutations)
                 }
 
                 override suspend fun didFail(message: String) = Unit

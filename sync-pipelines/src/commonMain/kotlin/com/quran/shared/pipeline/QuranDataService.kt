@@ -9,6 +9,7 @@ import com.quran.shared.auth.repository.RemoteLogoutMode
 import com.quran.shared.auth.repository.RemoteLogoutOperation
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.di.AppScope
+import com.quran.shared.persistence.TextLengthLimitException
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.PersistenceImportResult
 import com.quran.shared.persistence.model.AyahHighlight
@@ -610,11 +611,13 @@ class QuranDataService internal constructor(
         }
     }
 
+    /** @throws TextLengthLimitException when [name] is outside the server's length limits. */
     @NativeCoroutines
     suspend fun addCollection(name: String): Collection {
         return addCollection(name, currentPlatformDateTime())
     }
 
+    /** @throws TextLengthLimitException when [name] is outside the server's length limits. */
     @NativeCoroutines
     suspend fun addCollection(name: String, timestamp: PlatformDateTime): Collection {
         return mutatingCall("Failed to add collection") {
@@ -629,6 +632,7 @@ class QuranDataService internal constructor(
      * @param name the new collection name.
      * @return the updated collection.
      * @throws IllegalArgumentException when [id] does not identify an active collection.
+     * @throws TextLengthLimitException when [name] is outside the server's length limits.
      */
     @NativeCoroutines
     suspend fun updateCollection(id: String, name: String): Collection {
@@ -643,6 +647,7 @@ class QuranDataService internal constructor(
      * @param timestamp the timestamp to persist for the mutation.
      * @return the updated collection.
      * @throws IllegalArgumentException when [id] does not identify an active collection.
+     * @throws TextLengthLimitException when [name] is outside the server's length limits.
      */
     @NativeCoroutines
     suspend fun updateCollection(id: String, name: String, timestamp: PlatformDateTime): Collection {
@@ -694,11 +699,13 @@ class QuranDataService internal constructor(
         }
     }
 
+    /** @throws TextLengthLimitException when [body] is outside the server's length limits. */
     @NativeCoroutines
     suspend fun addNote(body: String, startSura: Int, startAyah: Int, endSura: Int, endAyah: Int) {
         addNote(body, startSura, startAyah, endSura, endAyah, currentPlatformDateTime())
     }
 
+    /** @throws TextLengthLimitException when [body] is outside the server's length limits. */
     @NativeCoroutines
     suspend fun addNote(
         body: String,
@@ -722,6 +729,7 @@ class QuranDataService internal constructor(
      * @param startAyah the first ayah covered by the note.
      * @param endSura the last sura covered by the note.
      * @param endAyah the last ayah covered by the note.
+     * @throws TextLengthLimitException when a changed [body] is outside the server's length limits.
      */
     @NativeCoroutines
     suspend fun updateNote(
@@ -735,6 +743,7 @@ class QuranDataService internal constructor(
         updateNote(id, body, startSura, startAyah, endSura, endAyah, currentPlatformDateTime())
     }
 
+    /** @throws TextLengthLimitException when a changed [body] is outside the server's length limits. */
     @NativeCoroutines
     suspend fun updateNote(
         id: String,
