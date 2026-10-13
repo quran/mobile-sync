@@ -9,12 +9,14 @@ import kotlin.native.HiddenFromObjC
 import io.ktor.client.plugins.logging.Logger as KtorLogger
 
 private const val FAILED_CALL_PREFIX = "<-- HTTP FAILED"
+private const val CANCELLATION = "CancellationException"
 
 private val sensitiveHeaders = listOf("Authorization", "Cookie", "Set-Cookie", "x-auth-token")
 
 /**
- * Logs this client's calls under [tag]: a summary line at info (warn for a failed call) and, when
- * [MobileSyncLogging] allows debug, the whole entry at debug. [redact] runs on everything logged.
+ * Logs this client's calls under [tag]: a summary line at info (warn when a call fails, unless it
+ * was cancelled) and, when [MobileSyncLogging] allows debug, the whole entry at debug. [redact]
+ * runs on everything logged.
  */
 @HiddenFromObjC
 fun HttpClientConfig<*>.installHttpLogging(tag: String, redact: (String) -> String = { it }) {
@@ -26,6 +28,7 @@ fun HttpClientConfig<*>.installHttpLogging(tag: String, redact: (String) -> Stri
     }
 }
 
+// Ktor's OkHttp format logs each request and response as one message whose first line is the summary.
 internal class HttpCallLogger(
     private val logger: Logger,
     private val redact: (String) -> String
@@ -33,7 +36,7 @@ internal class HttpCallLogger(
     override fun log(message: String) {
         val text = redact(message)
         val summary = text.substringBefore('\n')
-        if (summary.startsWith(FAILED_CALL_PREFIX)) {
+        if (summary.startsWith(FAILED_CALL_PREFIX) && CANCELLATION !in summary) {
             logger.w { summary }
         } else {
             logger.i { summary }

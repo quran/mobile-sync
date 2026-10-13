@@ -7,9 +7,8 @@ import com.quran.shared.auth.repository.AuthRepository
 import com.quran.shared.auth.repository.AuthNetworkDataSource
 import com.quran.shared.auth.repository.OidcAuthRepository
 import com.quran.shared.auth.repository.UnconfiguredAuthRepository
-import com.quran.shared.auth.utils.redactSensitiveAuthData
+import com.quran.shared.auth.utils.installAuthHttpLogging
 import com.quran.shared.di.AppScope
-import com.quran.shared.logging.installHttpLogging
 import dev.zacsweers.metro.BindingContainer
 import dev.zacsweers.metro.ContributesTo
 import dev.zacsweers.metro.Provides
@@ -67,7 +66,7 @@ abstract class AuthModule {
 
         private fun createHttpClient(json: Json): HttpClient {
             return HttpClient {
-                installHttpLogging(tag = "AuthHttp", redact = ::redactSensitiveAuthData)
+                installAuthHttpLogging()
                 install(ContentNegotiation) {
                     json(json)
                 }

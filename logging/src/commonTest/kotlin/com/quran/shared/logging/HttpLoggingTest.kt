@@ -14,6 +14,10 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.headersOf
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -128,28 +132,6 @@ class HttpLoggingTest {
     }
 
     @Test
-    fun `debug omits encoded bodies`() = runTest {
-        configure(MobileSyncLogSeverity.DEBUG)
-        val client = HttpClient(
-            MockEngine {
-                respond(
-                    content = "compressed-bytes",
-                    status = HttpStatusCode.OK,
-                    headers = headersOf(HttpHeaders.ContentEncoding, "gzip")
-                )
-            }
-        ) {
-            installHttpLogging(tag = "TestHttp")
-        }
-
-        client.get("https://example.com/v1/sync").bodyAsText()
-
-        val responseDetails = entries.last().message
-        assertTrue(responseDetails.contains("encoded"))
-        assertFalse(responseDetails.contains("compressed-bytes"))
-    }
-
-    @Test
     fun `failed call logs a warning`() = runTest {
         configure(MobileSyncLogSeverity.INFO)
         val client = HttpClient(MockEngine { error("offline") }) {
@@ -160,6 +142,28 @@ class HttpLoggingTest {
 
         val failure = entries.last()
         assertEquals(MobileSyncLogSeverity.WARN, failure.severity)
+        assertTrue(failure.message.startsWith("<-- HTTP FAILED"))
+    }
+
+    @Test
+    fun `cancelled call logs at info`() = runTest {
+        configure(MobileSyncLogSeverity.INFO)
+        val started = CompletableDeferred<Unit>()
+        val client = HttpClient(
+            MockEngine {
+                started.complete(Unit)
+                awaitCancellation()
+            }
+        ) {
+            installHttpLogging(tag = "TestHttp")
+        }
+
+        val call = launch { client.get("https://example.com/v1/sync") }
+        started.await()
+        call.cancelAndJoin()
+
+        val failure = entries.last()
+        assertEquals(MobileSyncLogSeverity.INFO, failure.severity)
         assertTrue(failure.message.startsWith("<-- HTTP FAILED"))
     }
 

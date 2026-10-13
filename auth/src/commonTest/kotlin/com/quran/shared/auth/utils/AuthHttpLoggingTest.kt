@@ -2,7 +2,6 @@ package com.quran.shared.auth.utils
 
 import com.quran.shared.logging.MobileSyncLogSeverity
 import com.quran.shared.logging.MobileSyncLogging
-import com.quran.shared.logging.installHttpLogging
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -45,7 +44,7 @@ class AuthHttpLoggingTest {
                 )
             }
         ) {
-            installHttpLogging(tag = "AuthHttp", redact = ::redactSensitiveAuthData)
+            installAuthHttpLogging()
         }
 
         client.submitForm(

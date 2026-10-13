@@ -31,9 +31,10 @@ object MobileSyncLogging {
     /**
      * Sends Mobile Sync logs at [minSeverity] or above to [sink].
      *
-     * At [MobileSyncLogSeverity.DEBUG] or below, HTTP calls also log headers and bodies. HTTP clients
-     * read this when they are created, so call it before `SharedDependencyGraph.init`. This replaces
-     * Kermit's process-wide logger configuration, so other Kermit users log there too.
+     * At [MobileSyncLogSeverity.DEBUG] or below, HTTP calls also log headers and bodies, which hold
+     * user content such as note text. HTTP clients read this when they are created, so call it
+     * before `SharedDependencyGraph.init`. This replaces Kermit's process-wide logger configuration,
+     * so other Kermit users log there too.
      */
     fun configure(sink: MobileSyncLogSink, minSeverity: MobileSyncLogSeverity) {
         detailedHttpLogs = minSeverity <= MobileSyncLogSeverity.DEBUG
