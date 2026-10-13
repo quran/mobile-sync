@@ -134,7 +134,8 @@ the corresponding manifest placeholders aligned with those URIs.
 
 Graph construction does not require an Android `Activity`. Build the graph from application
 context and runtime configuration. Optionally route Mobile Sync's logs to the app's logger with
-`MobileSyncLogging.configure(sink, minSeverity)`.
+`MobileSyncLogging.configure(sink, minSeverity)`. It replaces Kermit's process-wide logger
+configuration, so if the app or another library also logs with Kermit, those logs reach the sink too.
 
 ```kotlin
 import com.quran.shared.logging.MobileSyncLogSeverity

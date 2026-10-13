@@ -13,14 +13,21 @@ enum class MobileSyncLogSeverity {
     ASSERT
 }
 
-/** Receives Mobile Sync logs; a logged error's stack trace follows the message on its own lines. */
+/**
+ * Receives Mobile Sync logs, possibly from several threads at once. A logged error's stack trace
+ * follows the message on its own lines.
+ */
 fun interface MobileSyncLogSink {
     fun log(severity: MobileSyncLogSeverity, tag: String, message: String)
 }
 
 /** Chooses where Mobile Sync logs go; until [configure] is called, they go to the platform log. */
 object MobileSyncLogging {
-    /** Sends Mobile Sync logs at [minSeverity] or above to [sink]. */
+    /**
+     * Sends Mobile Sync logs at [minSeverity] or above to [sink].
+     *
+     * This replaces Kermit's process-wide logger configuration, so other Kermit users log there too.
+     */
     fun configure(sink: MobileSyncLogSink, minSeverity: MobileSyncLogSeverity) {
         Logger.setMinSeverity(minSeverity.toKermitSeverity())
         Logger.setLogWriters(SinkLogWriter(sink))
