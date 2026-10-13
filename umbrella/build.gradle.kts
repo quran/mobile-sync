@@ -21,6 +21,7 @@ kotlin {
             export(projects.persistence)
             export(projects.syncPipelines)
             export(projects.auth)
+            export(projects.logging)
             export(projects.demo.common)
 
             binaryOption("bundleId", "com.quran.sync.$xcfName")
@@ -34,6 +35,7 @@ kotlin {
             api(projects.persistence)
             api(projects.syncPipelines)
             api(projects.auth)
+            api(projects.logging)
             api(projects.demo.common)
         }
     }

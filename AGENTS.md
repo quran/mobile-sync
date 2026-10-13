@@ -22,6 +22,7 @@ Core modules:
 - `:demo:android`: Android Compose demo.
 - `:demo:common`: shared demo helpers/models.
 - `:mutations-definitions`: shared mutation types.
+- `:logging`: `MobileSyncLogging` sink that routes logs to the host app.
 
 ## Common Commands
 
