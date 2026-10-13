@@ -5,6 +5,7 @@ import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.TestDatabaseDriver
+import com.quran.shared.persistence.createQuranDatabase
 import com.quran.shared.persistence.input.ImportReadingSession
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.RemoteReadingSession
@@ -29,7 +30,7 @@ class ReadingSessionImportTest {
     @BeforeTest
     fun setup() {
         driver = TestDatabaseDriver().createDriver()
-        database = QuranDatabase(driver)
+        database = createQuranDatabase(driver)
         repository = PersistenceImportRepositoryImpl(database)
         readingSessions = ReadingSessionsRepositoryImpl(database)
     }

@@ -2,6 +2,7 @@ package com.quran.shared.persistence.repository
 
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.TestDatabaseDriver
+import com.quran.shared.persistence.createQuranDatabase
 import com.quran.shared.persistence.repository.keyvalue.KeyValueRepositoryImpl
 import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
@@ -15,7 +16,7 @@ class KeyValueRepositoryTest {
 
     @BeforeTest
     fun setup() {
-        database = QuranDatabase(TestDatabaseDriver().createDriver())
+        database = createQuranDatabase(TestDatabaseDriver().createDriver())
         repository = KeyValueRepositoryImpl(database)
     }
 

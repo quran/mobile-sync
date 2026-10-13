@@ -1,5 +1,6 @@
 package com.quran.shared.syncengine.model
 
+import com.quran.shared.mutations.collectionNameKey
 import kotlin.time.Instant
 
 data class SyncCollection(
@@ -22,5 +23,5 @@ internal sealed class SyncCollectionKey {
 }
 
 internal fun SyncCollection.conflictKeyOrNull(): SyncCollectionKey? {
-    return name?.let { SyncCollectionKey.Name(it) }
+    return name?.let { SyncCollectionKey.Name(collectionNameKey(it)) }
 }

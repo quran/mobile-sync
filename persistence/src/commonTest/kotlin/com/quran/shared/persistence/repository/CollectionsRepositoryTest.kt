@@ -6,10 +6,12 @@ import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.TestDatabaseDriver
+import com.quran.shared.persistence.createQuranDatabase
 import com.quran.shared.persistence.input.ImportCollection
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.model.Collection
+import com.quran.shared.persistence.model.CollectionName
 import com.quran.shared.persistence.model.DEFAULT_COLLECTION_NAME
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepositoryImpl
 import com.quran.shared.persistence.repository.importdata.PersistenceImportRepositoryImpl
@@ -31,14 +33,14 @@ class CollectionsRepositoryTest {
 
     @BeforeTest
     fun setup() {
-        database = QuranDatabase(TestDatabaseDriver().createDriver())
+        database = createQuranDatabase(TestDatabaseDriver().createDriver())
         database.collectionsQueries.deleteAll()
         repository = CollectionsRepositoryImpl(database)
     }
 
     @Test
     fun `database seeds default and highlight system collections without mutations`() = runTest {
-        val seededDatabase = QuranDatabase(TestDatabaseDriver().createDriver())
+        val seededDatabase = createQuranDatabase(TestDatabaseDriver().createDriver())
         val seededRepository = CollectionsRepositoryImpl(seededDatabase)
 
         val collections = seededRepository.getAllCollections()
@@ -55,7 +57,7 @@ class CollectionsRepositoryTest {
 
     @Test
     fun `addCollection rejects active system collection name without mutating seed`() = runTest {
-        val seededDatabase = QuranDatabase(TestDatabaseDriver().createDriver())
+        val seededDatabase = createQuranDatabase(TestDatabaseDriver().createDriver())
         val seededRepository = CollectionsRepositoryImpl(seededDatabase)
         val original = seededDatabase.collectionsQueries.getDefaultCollection().executeAsOne()
 
@@ -73,7 +75,7 @@ class CollectionsRepositoryTest {
 
     @Test
     fun `import recognizes Favorites and reuses the seeded default collection`() = runTest {
-        val seededDatabase = QuranDatabase(TestDatabaseDriver().createDriver())
+        val seededDatabase = createQuranDatabase(TestDatabaseDriver().createDriver())
 
         val result = PersistenceImportRepositoryImpl(seededDatabase).importData(
             data = PersistenceImportData(
@@ -90,7 +92,7 @@ class CollectionsRepositoryTest {
         val retained = seededDatabase.collectionsQueries.getDefaultCollection().executeAsOne()
         assertEquals(1, result.matched)
         assertEquals(0, result.collectionsImported)
-        assertEquals(DEFAULT_COLLECTION_NAME, retained.name)
+        assertEquals(DEFAULT_COLLECTION_NAME, retained.name.value)
         assertEquals(1L, retained.is_default)
         assertEquals(1L, retained.is_system)
         assertEquals(0L, retained.pending_version)
@@ -124,14 +126,15 @@ class CollectionsRepositoryTest {
         }
         database.collectionsQueries.persistRemoteCollection(
             remote_id = "managed",
-            name = "Managed",
+            name = CollectionName.of("Managed"),
+            name_key = CollectionName.of("Managed").key,
             created_at = 100L,
             modified_at = 100L,
             is_default = 0L,
             is_system = 1L
         )
         val systemCollection = database.collectionsQueries
-            .getCollectionByName("Managed")
+            .getCollectionByName(CollectionName.of("Managed").key)
             .executeAsOne()
 
         assertFailsWith<IllegalArgumentException> {
@@ -144,13 +147,13 @@ class CollectionsRepositoryTest {
         val retained = database.collectionsQueries
             .getCollectionByLocalId(systemCollection.local_id)
             .executeAsOne()
-        assertEquals("Managed", retained.name)
+        assertEquals("Managed", retained.name.value)
         assertEquals(0L, retained.deleted)
     }
 
     @Test
     fun `remote default create binds seeded default by property`() = runTest {
-        val seededDatabase = QuranDatabase(TestDatabaseDriver().createDriver())
+        val seededDatabase = createQuranDatabase(TestDatabaseDriver().createDriver())
         val seededRepository = CollectionsRepositoryImpl(seededDatabase)
         val localDefault = seededDatabase.collectionsQueries.getDefaultCollection().executeAsOne()
 
@@ -175,7 +178,7 @@ class CollectionsRepositoryTest {
             .getCollectionByRemoteId("backend-default-id")
             .executeAsOne()
         assertEquals(localDefault.local_id, remoteDefault.local_id)
-        assertEquals("Favorites", remoteDefault.name)
+        assertEquals("Favorites", remoteDefault.name.value)
         assertEquals(1L, remoteDefault.is_default)
         assertEquals(1L, remoteDefault.is_system)
         assertEquals(6L, seededDatabase.collectionsQueries.countAll().executeAsOne())
@@ -185,7 +188,8 @@ class CollectionsRepositoryTest {
     fun `remote delete preserves default and non-default system collections`() = runTest {
         database.collectionsQueries.persistRemoteCollection(
             remote_id = "remote-default",
-            name = "Favorites",
+            name = CollectionName.of("Favorites"),
+            name_key = CollectionName.of("Favorites").key,
             created_at = 1_000L,
             modified_at = 1_000L,
             is_default = 1L,
@@ -193,7 +197,8 @@ class CollectionsRepositoryTest {
         )
         database.collectionsQueries.persistRemoteCollection(
             remote_id = "remote-managed",
-            name = "Managed",
+            name = CollectionName.of("Managed"),
+            name_key = CollectionName.of("Managed").key,
             created_at = 1_000L,
             modified_at = 1_000L,
             is_default = 0L,
@@ -226,7 +231,8 @@ class CollectionsRepositoryTest {
     fun `remote update cannot rename or demote existing system collection`() = runTest {
         database.collectionsQueries.persistRemoteCollection(
             remote_id = "remote-managed",
-            name = "Managed",
+            name = CollectionName.of("Managed"),
+            name_key = CollectionName.of("Managed").key,
             created_at = 1_000L,
             modified_at = 1_000L,
             is_default = 0L,
@@ -250,7 +256,7 @@ class CollectionsRepositoryTest {
         )
 
         val retained = database.collectionsQueries.getCollectionByRemoteId("remote-managed").executeAsOne()
-        assertEquals("Managed", retained.name)
+        assertEquals("Managed", retained.name.value)
         assertEquals(0L, retained.is_default)
         assertEquals(1L, retained.is_system)
         assertEquals(2_000L, retained.modified_at)
@@ -353,7 +359,7 @@ class CollectionsRepositoryTest {
         }
 
         val tombstone = database.collectionsQueries.getCollectionByLocalId(collection.id.toLong()).executeAsOne()
-        assertEquals(CUSTOM_COLLECTION_NAME, tombstone.name)
+        assertEquals(CUSTOM_COLLECTION_NAME, tombstone.name.value)
         assertEquals(1L, tombstone.deleted)
         assertEquals(emptyList(), repository.getAllCollections())
         assertEquals(emptyList(), repository.fetchMutatedCollections())
@@ -363,7 +369,8 @@ class CollectionsRepositoryTest {
     fun `updateCollection rejects pending remote delete without advancing mutation`() = runTest {
         database.collectionsQueries.persistRemoteCollection(
             remote_id = "remote-collection-id",
-            name = CUSTOM_COLLECTION_NAME,
+            name = CollectionName.of(CUSTOM_COLLECTION_NAME),
+            name_key = CollectionName.of(CUSTOM_COLLECTION_NAME).key,
             created_at = 1000L,
             modified_at = 1000L,
             is_default = 0L,
@@ -379,7 +386,7 @@ class CollectionsRepositoryTest {
 
         val secondTombstone = database.collectionsQueries.getCollectionByRemoteId("remote-collection-id").executeAsOne()
         val mutation = repository.fetchMutatedCollections().single()
-        assertEquals(CUSTOM_COLLECTION_NAME, secondTombstone.name)
+        assertEquals(CUSTOM_COLLECTION_NAME, secondTombstone.name.value)
         assertEquals(1L, secondTombstone.deleted)
         assertEquals(firstTombstone.pending_version, secondTombstone.pending_version)
         assertEquals(firstTombstone.modified_at, secondTombstone.modified_at)
@@ -390,7 +397,8 @@ class CollectionsRepositoryTest {
     fun `deleteCollection updates timestamp for remote rows`() = runTest {
         database.collectionsQueries.persistRemoteCollection(
             remote_id = "remote-collection-id",
-            name = CUSTOM_COLLECTION_NAME,
+            name = CollectionName.of(CUSTOM_COLLECTION_NAME),
+            name_key = CollectionName.of(CUSTOM_COLLECTION_NAME).key,
             created_at = 1000L,
             modified_at = 1000L,
             is_default = 0L,
@@ -419,7 +427,8 @@ class CollectionsRepositoryTest {
     fun `deleteCollection returns false for retained deleted collection without advancing mutation`() = runTest {
         database.collectionsQueries.persistRemoteCollection(
             remote_id = "remote-collection-id",
-            name = CUSTOM_COLLECTION_NAME,
+            name = CollectionName.of(CUSTOM_COLLECTION_NAME),
+            name_key = CollectionName.of(CUSTOM_COLLECTION_NAME).key,
             created_at = 1000L,
             modified_at = 1000L,
             is_default = 0L,
@@ -448,7 +457,8 @@ class CollectionsRepositoryTest {
     fun `applyRemoteChanges clears collection ACK when pending version still matches`() = runTest {
         database.collectionsQueries.persistRemoteCollection(
             remote_id = "remote-collection-id",
-            name = CUSTOM_COLLECTION_NAME,
+            name = CollectionName.of(CUSTOM_COLLECTION_NAME),
+            name_key = CollectionName.of(CUSTOM_COLLECTION_NAME).key,
             created_at = 1000L,
             modified_at = 1000L,
             is_default = 0L,
@@ -470,7 +480,7 @@ class CollectionsRepositoryTest {
         )
 
         val record = database.collectionsQueries.getCollectionByRemoteId("remote-collection-id").executeAsOne()
-        assertEquals("Synced", record.name)
+        assertEquals("Synced", record.name.value)
         assertEquals(0L, record.is_edited)
         assertEquals(2000L, record.modified_at)
         assertEquals(emptyList(), repository.fetchMutatedCollections())
@@ -501,7 +511,8 @@ class CollectionsRepositoryTest {
     fun `applyRemoteChanges does not clear stale collection ACK after newer local write`() = runTest {
         database.collectionsQueries.persistRemoteCollection(
             remote_id = "remote-collection-id",
-            name = CUSTOM_COLLECTION_NAME,
+            name = CollectionName.of(CUSTOM_COLLECTION_NAME),
+            name_key = CollectionName.of(CUSTOM_COLLECTION_NAME).key,
             created_at = 1000L,
             modified_at = 1000L,
             is_default = 0L,
@@ -525,7 +536,7 @@ class CollectionsRepositoryTest {
 
         val record = database.collectionsQueries.getCollectionByRemoteId("remote-collection-id").executeAsOne()
         val remaining = repository.fetchMutatedCollections().single()
-        assertEquals("Newer", record.name)
+        assertEquals("Newer", record.name.value)
         assertEquals(1L, record.is_edited)
         assertEquals(Mutation.MODIFIED, remaining.mutation)
     }
@@ -551,7 +562,7 @@ class CollectionsRepositoryTest {
         val record = database.collectionsQueries.getCollectionByLocalId(collection.id.toLong()).executeAsOne()
         val remaining = repository.fetchMutatedCollections().single()
         assertEquals("remote-created-collection-id", record.remote_id)
-        assertEquals("Renamed", record.name)
+        assertEquals("Renamed", record.name.value)
         assertEquals(1L, record.is_edited)
         assertEquals(collection.id, remaining.localID)
         assertEquals("remote-created-collection-id", remaining.remoteID)
@@ -605,13 +616,13 @@ class CollectionsRepositoryTest {
         )
 
         val tombstone = database.collectionsQueries.getCollectionByLocalId(collection.id.toLong()).executeAsOne()
-        val imported = database.collectionsQueries.getCollectionByName(CUSTOM_COLLECTION_NAME).executeAsOne()
+        val imported = database.collectionsQueries.getCollectionByName(CollectionName.of(CUSTOM_COLLECTION_NAME).key).executeAsOne()
         assertEquals(null, tombstone.remote_id)
         assertEquals(1L, tombstone.deleted)
         assertEquals(collection.id.toLong(), tombstone.local_id)
         assertEquals(1, repository.getAllCollections().size)
         assertEquals(1, repository.fetchMutatedCollections().size)
-        assertEquals(CUSTOM_COLLECTION_NAME, imported.name)
+        assertEquals(CUSTOM_COLLECTION_NAME, imported.name.value)
         assertEquals(0L, imported.deleted)
         assertEquals(null, imported.remote_id)
         assertEquals(2000L, imported.modified_at)
@@ -692,7 +703,8 @@ class CollectionsRepositoryTest {
     fun `remote created collection without ACK does not move existing remote id by name`() = runTest {
         database.collectionsQueries.persistRemoteCollection(
             remote_id = "remote-collection-1",
-            name = CUSTOM_COLLECTION_NAME,
+            name = CollectionName.of(CUSTOM_COLLECTION_NAME),
+            name_key = CollectionName.of(CUSTOM_COLLECTION_NAME).key,
             created_at = 1000L,
             modified_at = 1000L,
             is_default = 0L,
@@ -711,7 +723,7 @@ class CollectionsRepositoryTest {
         )
 
         val original = database.collectionsQueries.getCollectionByRemoteId("remote-collection-1").executeAsOne()
-        assertEquals(CUSTOM_COLLECTION_NAME, original.name)
+        assertEquals(CUSTOM_COLLECTION_NAME, original.name.value)
         assertNull(database.collectionsQueries.getCollectionByRemoteId("remote-collection-2").executeAsOneOrNull())
     }
 
@@ -737,8 +749,8 @@ class CollectionsRepositoryTest {
             .executeAsOne()
         val remaining = repository.fetchMutatedCollections().single()
         assertEquals(null, localRecord.remote_id)
-        assertEquals("Renamed", localRecord.name)
-        assertEquals(CUSTOM_COLLECTION_NAME, remoteRecord.name)
+        assertEquals("Renamed", localRecord.name.value)
+        assertEquals(CUSTOM_COLLECTION_NAME, remoteRecord.name.value)
         assertEquals(collection.id, remaining.localID)
         assertEquals(Mutation.CREATED, remaining.mutation)
     }
@@ -849,7 +861,7 @@ class CollectionsRepositoryTest {
         repository.deleteCollection(second.id)
         assertEquals(
             2,
-            database.collectionsQueries.getPendingCreatedCollectionsByName(CUSTOM_COLLECTION_NAME).executeAsList().size
+            database.collectionsQueries.getPendingCreatedCollectionsByName(CollectionName.of(CUSTOM_COLLECTION_NAME).key).executeAsList().size
         )
         assertEquals(1L, database.collectionsQueries.getCollectionByLocalId(first.id.toLong()).executeAsOne().deleted)
 
@@ -873,7 +885,8 @@ class CollectionsRepositoryTest {
     fun `re-added remote collection survives stale delete ACK as pending`() = runTest {
         database.collectionsQueries.persistRemoteCollection(
             remote_id = "remote-collection-id",
-            name = CUSTOM_COLLECTION_NAME,
+            name = CollectionName.of(CUSTOM_COLLECTION_NAME),
+            name_key = CollectionName.of(CUSTOM_COLLECTION_NAME).key,
             created_at = 1000L,
             modified_at = 1000L,
             is_default = 0L,

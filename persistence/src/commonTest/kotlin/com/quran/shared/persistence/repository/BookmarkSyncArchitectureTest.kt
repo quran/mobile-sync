@@ -7,11 +7,13 @@ import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.TestDatabaseDriver
+import com.quran.shared.persistence.createQuranDatabase
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.RemoteBookmark
 import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.input.RemoteCollectionBookmark
 import com.quran.shared.persistence.model.AyahHighlightColor
+import com.quran.shared.persistence.model.CollectionName
 import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
@@ -44,7 +46,7 @@ class BookmarkSyncArchitectureTest {
 
     @BeforeTest
     fun setup() {
-        database = QuranDatabase(TestDatabaseDriver().createDriver())
+        database = createQuranDatabase(TestDatabaseDriver().createDriver())
         database.collectionsQueries.deleteAll()
         bookmarksRepository = BookmarksRepositoryImpl(database)
         readingRepository = ReadingBookmarksRepositoryImpl(database)
@@ -54,7 +56,7 @@ class BookmarkSyncArchitectureTest {
 
     @Test
     fun `offline bookmark joins seeded default collection without collection mutation`() = runTest {
-        val seededDatabase = QuranDatabase(TestDatabaseDriver().createDriver())
+        val seededDatabase = createQuranDatabase(TestDatabaseDriver().createDriver())
         val seededCollections = CollectionsRepositoryImpl(seededDatabase)
         val seededCollectionBookmarks = CollectionBookmarksRepositoryImpl(seededDatabase)
 
@@ -106,7 +108,8 @@ class BookmarkSyncArchitectureTest {
         val bookmark = seedBookmark(2, 255, at(100))
         database.collectionsQueries.persistRemoteCollection(
             remote_id = "remote-custom-created-at-collection",
-            name = "Favorites",
+            name = CollectionName.of("Favorites"),
+            name_key = CollectionName.of("Favorites").key,
             created_at = 500,
             modified_at = 500,
             is_default = 0L,
@@ -157,7 +160,8 @@ class BookmarkSyncArchitectureTest {
     fun `remote created custom collection bookmark persists created_at separately from modified_at`() = runTest {
         database.collectionsQueries.persistRemoteCollection(
             remote_id = "remote-custom-created-at",
-            name = "Favorites",
+            name = CollectionName.of("Favorites"),
+            name_key = CollectionName.of("Favorites").key,
             created_at = 500,
             modified_at = 500,
             is_default = 0L,
@@ -254,11 +258,12 @@ class BookmarkSyncArchitectureTest {
         val bookmarkRemoteId = "remote-highlight-backfill-bookmark"
         collectionBookmarksRepository.setHighlight(2, 252, AyahHighlightColor.BLUE, at(100))
         val highlightCollection = database.collectionsQueries
-            .getCollectionByName("system:highlights:blue")
+            .getCollectionByName(CollectionName.of("system:highlights:blue").key)
             .executeAsOne()
         database.collectionsQueries.updateRemoteCollectionByLocalId(
             remote_id = collectionRemoteId,
             name = highlightCollection.name,
+            name_key = highlightCollection.name_key,
             modified_at = 100L,
             local_id = highlightCollection.local_id,
             is_default = highlightCollection.is_default,
@@ -909,7 +914,7 @@ class BookmarkSyncArchitectureTest {
 
         val bookmark = database.bookmarksQueries.getBookmarkForAyah(2L, 18L).executeAsOne()
         val highlightCollection = database.collectionsQueries
-            .getCollectionByName(AyahHighlightColor.GREEN.collectionName)
+            .getCollectionByName(CollectionName.of(AyahHighlightColor.GREEN.collectionName).key)
             .executeAsOne()
         assertTrue(result.changed)
         assertNotNull(result.bookmark)
@@ -941,7 +946,7 @@ class BookmarkSyncArchitectureTest {
 
         val bookmark = database.bookmarksQueries.getBookmarkForAyah(2L, 19L).executeAsOne()
         val highlightCollection = database.collectionsQueries
-            .getCollectionByName(AyahHighlightColor.PURPLE.collectionName)
+            .getCollectionByName(CollectionName.of(AyahHighlightColor.PURPLE.collectionName).key)
             .executeAsOne()
         assertTrue(result.changed)
         assertNull(result.bookmark)
@@ -1214,7 +1219,8 @@ class BookmarkSyncArchitectureTest {
         )
         database.collectionsQueries.updateRemoteCollectionByLocalId(
             remote_id = "remote-new-recreate",
-            name = "RecreatePreserve",
+            name = CollectionName.of("RecreatePreserve"),
+            name_key = CollectionName.of("RecreatePreserve").key,
             modified_at = 200L,
             local_id = collectionId.toLong(),
             is_default = 0L,
@@ -1265,7 +1271,8 @@ class BookmarkSyncArchitectureTest {
         )
         database.collectionsQueries.updateRemoteCollectionByLocalId(
             remote_id = "remote-snapshot-new",
-            name = "SnapshotTimestamp",
+            name = CollectionName.of("SnapshotTimestamp"),
+            name_key = CollectionName.of("SnapshotTimestamp").key,
             modified_at = 200L,
             local_id = collectionId.toLong(),
             is_default = 0L,
@@ -1391,7 +1398,8 @@ class BookmarkSyncArchitectureTest {
         )
         database.collectionsQueries.updateRemoteCollectionByLocalId(
             remote_id = "remote-new-null-delete",
-            name = "NullDataStaleDelete",
+            name = CollectionName.of("NullDataStaleDelete"),
+            name_key = CollectionName.of("NullDataStaleDelete").key,
             modified_at = 200L,
             local_id = collectionId.toLong(),
             is_default = 0L,
@@ -1790,7 +1798,8 @@ class BookmarkSyncArchitectureTest {
 
         database.collectionsQueries.updateRemoteCollectionByLocalId(
             remote_id = "remote-new-collection",
-            name = "Replacement",
+            name = CollectionName.of("Replacement"),
+            name_key = CollectionName.of("Replacement").key,
             modified_at = 200L,
             local_id = collectionId.toLong(),
             is_default = 0L,
@@ -2360,11 +2369,13 @@ class BookmarkSyncArchitectureTest {
     }
 
     private fun createCollection(name: String, remoteId: String): String {
-        database.collectionsQueries.addNewCollection(name = name, timestamp = 1L, is_system = 0L)
-        val collection = database.collectionsQueries.getCollectionByName(name).executeAsOne()
+        val collectionName = CollectionName.of(name)
+        database.collectionsQueries.addNewCollection(name = collectionName, name_key = collectionName.key, timestamp = 1L, is_system = 0L)
+        val collection = database.collectionsQueries.getCollectionByName(collectionName.key).executeAsOne()
         database.collectionsQueries.updateRemoteCollectionByLocalId(
             remote_id = remoteId,
-            name = name,
+            name = collectionName,
+            name_key = collectionName.key,
             modified_at = 1L,
             local_id = collection.local_id,
             is_default = 0L,
@@ -2452,7 +2463,8 @@ class BookmarkSyncArchitectureTest {
     private fun persistDefaultCollection() {
         database.collectionsQueries.persistRemoteCollection(
             remote_id = "__default__",
-            name = "Default",
+            name = CollectionName.of("Default"),
+            name_key = CollectionName.of("Default").key,
             created_at = 1L,
             modified_at = 1L,
             is_default = 1L,

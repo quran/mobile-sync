@@ -5,6 +5,7 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlPreparedStatement
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.TestDatabaseDriver
+import com.quran.shared.persistence.createQuranDatabase
 import com.quran.shared.persistence.input.ImportAyahHighlight
 import com.quran.shared.persistence.input.ImportCollection
 import com.quran.shared.persistence.input.ImportCollectionAyahBookmark
@@ -13,6 +14,7 @@ import com.quran.shared.persistence.input.ImportReadingBookmark
 import com.quran.shared.persistence.input.ImportReadingSession
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.model.AyahHighlightColor
+import com.quran.shared.persistence.model.CollectionName
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.persistence.repository.importdata.PersistenceImportRepositoryImpl
 import com.quran.shared.persistence.util.toPlatform
@@ -38,7 +40,7 @@ class TrackedImportTest {
     @BeforeTest
     fun setup() {
         driver = TestDatabaseDriver().createDriver()
-        database = QuranDatabase(driver)
+        database = createQuranDatabase(driver)
         repository = PersistenceImportRepositoryImpl(database)
     }
 
@@ -56,7 +58,7 @@ class TrackedImportTest {
         ))
 
         val first = repository.importData(data, false, true)
-        val collection = database.collectionsQueries.getCollectionByName("Study").executeAsOne()
+        val collection = database.collectionsQueries.getCollectionByName(CollectionName.of("Study").key).executeAsOne()
         assertEquals(1, first.collectionsImported)
         assertEquals(0, first.matched)
         assertEquals(30L, collection.created_at)
@@ -152,7 +154,7 @@ class TrackedImportTest {
         val highlightLink = database.bookmark_collectionsQueries.getCollectionBookmarksWithDetails()
             .executeAsList()
             .single()
-        assertEquals("system:highlights:yellow", highlightLink.collection_name)
+        assertEquals("system:highlights:yellow", highlightLink.collection_name.value)
 
         val replay = repository.importData(data, false, true)
         assertEquals(2, replay.alreadyProcessed)
@@ -228,7 +230,7 @@ class TrackedImportTest {
             repository.importData(data, deleteExisting = false, trackHistory = true)
         }
 
-        assertNull(database.collectionsQueries.getCollectionByName("Study").executeAsOneOrNull())
+        assertNull(database.collectionsQueries.getCollectionByName(CollectionName.of("Study").key).executeAsOneOrNull())
         driver.execute(null, "UPDATE collection SET is_default = 1 WHERE name = 'Favorites'", 0)
         val retry = repository.importData(data, deleteExisting = false, trackHistory = true)
         assertEquals(0, retry.alreadyProcessed)
@@ -239,7 +241,7 @@ class TrackedImportTest {
     fun `cancellation after recording history rolls back targets and history`() = runTest {
         val importJob = Job()
         val cancellingRepository = PersistenceImportRepositoryImpl(
-            QuranDatabase(CancelOnHistoryWriteDriver(driver) { importJob.cancel() })
+            createQuranDatabase(CancelOnHistoryWriteDriver(driver) { importJob.cancel() })
         )
         val data = PersistenceImportData(
             notes = listOf(
@@ -264,20 +266,21 @@ class TrackedImportTest {
     fun `renamed destination keeps handled memberships while new content recreates its name`() = runTest {
         val handled = oldPageBookmarks(2 to 255)
         repository.importData(handled, deleteExisting = false, trackHistory = true)
-        val original = database.collectionsQueries.getCollectionByName(OLD_PAGE_BOOKMARKS).executeAsOne()
-        database.collectionsQueries.updateCollectionName(name = "Renamed", timestamp = 500, id = original.local_id)
+        val original = database.collectionsQueries.getCollectionByName(CollectionName.of(OLD_PAGE_BOOKMARKS).key).executeAsOne()
+        val renamed = CollectionName.of("Renamed")
+        database.collectionsQueries.updateCollectionName(name = renamed, name_key = renamed.key, timestamp = 500, id = original.local_id)
 
         val replay = repository.importData(handled, deleteExisting = false, trackHistory = true)
         assertEquals(1, replay.alreadyProcessed)
         assertFalse(replay.changed)
-        assertNull(database.collectionsQueries.getCollectionByName(OLD_PAGE_BOOKMARKS).executeAsOneOrNull())
+        assertNull(database.collectionsQueries.getCollectionByName(CollectionName.of(OLD_PAGE_BOOKMARKS).key).executeAsOneOrNull())
 
         val withNewContent = repository.importData(
             oldPageBookmarks(2 to 255, 3 to 1),
             deleteExisting = false,
             trackHistory = true
         )
-        val recreated = database.collectionsQueries.getCollectionByName(OLD_PAGE_BOOKMARKS).executeAsOne()
+        val recreated = database.collectionsQueries.getCollectionByName(CollectionName.of(OLD_PAGE_BOOKMARKS).key).executeAsOne()
         assertEquals(1, withNewContent.alreadyProcessed)
         assertEquals(1, withNewContent.collectionsImported)
         assertEquals(1, withNewContent.collectionBookmarksImported)

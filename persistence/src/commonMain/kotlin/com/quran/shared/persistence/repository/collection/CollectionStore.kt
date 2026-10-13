@@ -2,6 +2,7 @@ package com.quran.shared.persistence.repository.collection
 
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.model.AyahHighlightColor
+import com.quran.shared.persistence.model.CollectionName
 import com.quran.shared.persistence.model.DatabaseCollection
 import com.quran.shared.persistence.model.highlightColorForCollectionName
 import com.quran.shared.persistence.model.isSystemCollectionName
@@ -16,7 +17,7 @@ internal class CollectionStore(
 
     fun activeHighlightCollections(): List<Pair<AyahHighlightColor, DatabaseCollection>> =
         activeCollections().mapNotNull { collection ->
-            highlightColorForCollectionName(collection.name)?.let { it to collection }
+            highlightColorForCollectionName(collection.name.value)?.let { it to collection }
         }
 
     fun requireDefault(): DatabaseCollection =
@@ -28,12 +29,14 @@ internal class CollectionStore(
         require(!isSystemCollectionName(name)) {
             "System collection name is reserved: $name."
         }
+        val collectionName = CollectionName.of(name)
         queries.addNewCollection(
-            name = name,
+            name = collectionName,
+            name_key = collectionName.key,
             timestamp = timestampMillis,
             is_system = 0L
         )
-        return requireUserCollection(name, "after insert")
+        return requireUserCollection(collectionName, "after insert")
     }
 
     fun insertImported(
@@ -41,8 +44,14 @@ internal class CollectionStore(
         createdAt: Long,
         modifiedAt: Long
     ): DatabaseCollection {
-        queries.insertImportedCollection(name, createdAt, modifiedAt)
-        return requireUserCollection(name, "after import")
+        val collectionName = CollectionName.of(name)
+        queries.insertImportedCollection(
+            name = collectionName,
+            name_key = collectionName.key,
+            created_at = createdAt,
+            modified_at = modifiedAt
+        )
+        return requireUserCollection(collectionName, "after import")
     }
 
     fun getOrCreateActiveHighlight(
@@ -59,12 +68,14 @@ internal class CollectionStore(
         color: AyahHighlightColor,
         timestampMillis: Long
     ): DatabaseCollection {
+        val collectionName = CollectionName.of(color.collectionName)
         queries.addNewCollection(
-            name = color.collectionName,
+            name = collectionName,
+            name_key = collectionName.key,
             timestamp = timestampMillis,
             is_system = 1L
         )
-        return requireNotNull(queries.getCollectionByName(color.collectionName).executeAsOneOrNull()) {
+        return requireNotNull(queries.getCollectionByName(collectionName.key).executeAsOneOrNull()) {
             "Expected highlight collection ${color.collectionName} after insert."
         }
     }
@@ -77,22 +88,23 @@ internal class CollectionStore(
         if (changed) {
             queries.addNewCollection(
                 name = collection.name,
+                name_key = collection.name_key,
                 timestamp = timestampMillis,
                 is_system = 1L
             )
         }
         queries.keepEarliestUnsyncedCreatedAt(timestamp = timestampMillis, local_id = collection.local_id)
         val active = requireNotNull(queries.getCollectionByLocalId(collection.local_id).executeAsOneOrNull()) {
-            "Expected active highlight collection ${collection.name}."
+            "Expected active highlight collection ${collection.name.value}."
         }
         return HighlightCollectionResolution(active, changed)
     }
 
-    private fun requireUserCollection(name: String, operation: String): DatabaseCollection {
-        val collection = requireNotNull(queries.getCollectionByName(name).executeAsOneOrNull()) {
-            "Expected collection for name=$name $operation."
+    private fun requireUserCollection(name: CollectionName, operation: String): DatabaseCollection {
+        val collection = requireNotNull(queries.getCollectionByName(name.key).executeAsOneOrNull()) {
+            "Expected collection for name=${name.value} $operation."
         }
-        require(collection.is_system == 0L) { "System collection name is reserved: $name." }
+        require(collection.is_system == 0L) { "System collection name is reserved: ${name.value}." }
         return collection
     }
 }

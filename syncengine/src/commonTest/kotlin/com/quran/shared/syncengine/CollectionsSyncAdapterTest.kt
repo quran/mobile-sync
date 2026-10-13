@@ -6,6 +6,8 @@ import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.syncengine.model.SyncCollection
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.time.Instant
@@ -32,6 +34,31 @@ class CollectionsSyncAdapterTest {
         )
     }
 
+    @Test
+    fun `remote lowercase name matches a pending local collection with mixed case`() = runTest {
+        val local = collectionMutation("local-1", "\uFEFF Study\u3000", isSystem = false, mutation = Mutation.CREATED)
+        val persisted = mutableListOf<RemoteModelMutation<SyncCollection>>()
+        val adapter = adapter(listOf(local), onDidSucceed = { persisted += it })
+
+        val plan = adapter.buildPlan(0L, listOf(remoteCollection("remote-study", "study")))
+
+        assertEquals(emptyList(), plan.mutationsToPush())
+        plan.complete(newToken = 10L, pushedMutations = emptyList())
+        assertEquals(listOf("remote-study"), persisted.map { it.remoteID })
+    }
+
+    private fun remoteCollection(remoteId: String, name: String) = SyncMutation(
+        resource = "COLLECTION",
+        resourceId = remoteId,
+        mutation = Mutation.MODIFIED,
+        data = buildJsonObject {
+            put("name", name)
+            put("clientCreatedAt", "1970-01-01T00:00:01Z")
+            put("clientUpdatedAt", "1970-01-01T00:00:03Z")
+        },
+        timestamp = 3_000L
+    )
+
     private fun collectionMutation(
         id: String,
         name: String,
@@ -55,7 +82,8 @@ class CollectionsSyncAdapterTest {
     private fun adapterPushing(vararg mutations: LocalModelMutation<SyncCollection>) = adapter(mutations.toList())
 
     private fun adapter(
-        localMutations: List<LocalModelMutation<SyncCollection>>
+        localMutations: List<LocalModelMutation<SyncCollection>>,
+        onDidSucceed: (List<RemoteModelMutation<SyncCollection>>) -> Unit = {}
     ) = CollectionsSyncAdapter(
         CollectionsSynchronizationConfigurations(
             localDataFetcher = object : LocalDataFetcher<SyncCollection> {
@@ -71,7 +99,9 @@ class CollectionsSyncAdapterTest {
                     newToken: Long,
                     newRemoteMutations: List<RemoteModelMutation<SyncCollection>>,
                     processedLocalMutations: List<LocalModelMutation<SyncCollection>>
-                ) = Unit
+                ) {
+                    onDidSucceed(newRemoteMutations)
+                }
 
                 override suspend fun didFail(message: String) = Unit
             },

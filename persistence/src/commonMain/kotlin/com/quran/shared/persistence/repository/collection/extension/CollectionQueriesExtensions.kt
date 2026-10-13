@@ -16,7 +16,7 @@ import kotlin.time.Instant
 
 internal fun DatabaseCollection.toCollection(): PersistenceCollection {
     return PersistenceCollection(
-        name = name,
+        name = name.value,
         lastUpdated = Instant.fromEpochMilliseconds(modified_at).toPlatform(),
         id = local_id.toString(),
         isDefault = is_default == 1L,
@@ -31,7 +31,7 @@ internal fun DatabaseCollection.toCollectionMutation(): LocalModelMutation<Local
         else -> Mutation.MODIFIED
     }
     val collection = LocalSyncCollection(
-        name = name,
+        name = name.value,
         lastUpdated = Instant.fromEpochMilliseconds(modified_at).toPlatform(),
         localId = local_id.toString(),
         createdAt = Instant.fromEpochMilliseconds(created_at).toPlatform(),

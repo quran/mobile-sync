@@ -153,7 +153,7 @@ class BookmarksRepositoryImpl(
                 .getCollectionByLocalId(collectionLocalId.toLong())
                 .executeAsOneOrNull()
             require(collection?.deleted == 0L) { "Collection not found for localId=$collectionLocalId." }
-            collection.local_id.takeUnless { highlightColorForCollectionName(collection.name) != null }
+            collection.local_id.takeUnless { highlightColorForCollectionName(collection.name.value) != null }
         }.toSet()
     }
 

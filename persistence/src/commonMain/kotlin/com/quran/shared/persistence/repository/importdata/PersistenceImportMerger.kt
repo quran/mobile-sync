@@ -1,5 +1,6 @@
 package com.quran.shared.persistence.repository.importdata
 
+import com.quran.shared.mutations.collectionNameKey
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.input.ImportAyahHighlight
 import com.quran.shared.persistence.input.ImportCollection
@@ -148,7 +149,7 @@ internal class PersistenceImportMerger(
         val highlightColors = mutableMapOf<Pair<Int, Int>, MutableSet<AyahHighlightColor>>()
         if (highlights.isNotEmpty()) {
             database.bookmark_collectionsQueries.getCollectionBookmarksWithDetails().executeAsList().forEach { row ->
-                val color = highlightColorForCollectionName(row.collection_name) ?: return@forEach
+                val color = highlightColorForCollectionName(row.collection_name.value) ?: return@forEach
                 highlightColors.getOrPut(row.sura.toInt() to row.ayah.toInt(), ::mutableSetOf).add(color)
             }
         }
@@ -397,7 +398,7 @@ internal class PersistenceImportMerger(
         }
         index.find(name)?.let { return CollectionResolution(it, false) }
         val inserted = collectionStore.insertImported(name, createdAt, modifiedAt)
-        index.add(inserted.name, inserted.local_id)
+        index.add(inserted.name.value, inserted.local_id)
         return CollectionResolution(inserted.local_id, true)
     }
 
@@ -471,19 +472,17 @@ private class CollectionIndex(collections: List<DatabaseCollection>) {
         collections
             .filter { it.is_system == 0L }
             .sortedBy { it.local_id }
-            .forEach { collection -> add(collection.name, collection.local_id) }
+            .forEach { collection -> add(collection.name.value, collection.local_id) }
     }
 
-    fun find(name: String): Long? = exactNames[name] ?: caseInsensitiveNames[name.collectionNameKey()]
+    fun find(name: String): Long? = exactNames[name] ?: caseInsensitiveNames[collectionNameKey(name)]
 
     fun add(name: String, localId: Long) {
         if (name !in exactNames) exactNames[name] = localId
-        val normalizedName = name.collectionNameKey()
+        val normalizedName = collectionNameKey(name)
         if (normalizedName !in caseInsensitiveNames) caseInsensitiveNames[normalizedName] = localId
     }
 }
-
-private fun String.collectionNameKey(): String = trim().lowercase()
 
 private fun effectiveCreatedAtMillis(createdAt: PlatformDateTime?, lastUpdated: PlatformDateTime): Long =
     (createdAt ?: lastUpdated).toEpochMillisecondsFromPlatform()
