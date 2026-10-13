@@ -7,7 +7,7 @@ import com.quran.shared.auth.repository.AuthRepository
 import com.quran.shared.auth.repository.AuthNetworkDataSource
 import com.quran.shared.auth.repository.OidcAuthRepository
 import com.quran.shared.auth.repository.UnconfiguredAuthRepository
-import com.quran.shared.auth.utils.redactSensitiveAuthData
+import com.quran.shared.auth.utils.installAuthHttpLogging
 import com.quran.shared.di.AppScope
 import dev.zacsweers.metro.BindingContainer
 import dev.zacsweers.metro.ContributesTo
@@ -15,10 +15,6 @@ import dev.zacsweers.metro.Provides
 import dev.zacsweers.metro.SingleIn
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.plugins.logging.LogLevel
-import io.ktor.client.plugins.logging.Logger
-import io.ktor.client.plugins.logging.Logging
-import io.ktor.http.HttpHeaders
 import io.ktor.serialization.kotlinx.json.json
 import kotlin.native.HiddenFromObjC
 import kotlinx.serialization.json.Json
@@ -52,7 +48,7 @@ abstract class AuthModule {
         ): AuthRepository {
             return when (runtimeConfig) {
                 is AuthRuntimeConfig.Configured -> {
-                    val httpClient = createHttpClient(json, runtimeConfig.config)
+                    val httpClient = createHttpClient(json)
                     val oidcClient = createOpenIdConnectClient(runtimeConfig.config, httpClient)
                     OidcAuthRepository(
                         authConfig = runtimeConfig.config,
@@ -68,22 +64,9 @@ abstract class AuthModule {
             }
         }
 
-        private fun createHttpClient(json: Json, config: AuthConfig): HttpClient {
+        private fun createHttpClient(json: Json): HttpClient {
             return HttpClient {
-                install(Logging) {
-                    logger = object : Logger {
-                        override fun log(message: String) {
-                            println("HTTP Client: ${redactSensitiveAuthData(message)}")
-                        }
-                    }
-                    level = if (config.environment.enableVerboseLogging) LogLevel.ALL else LogLevel.NONE
-                    sanitizeHeader { header ->
-                        header.equals(HttpHeaders.Authorization, ignoreCase = true) ||
-                            header.equals(HttpHeaders.Cookie, ignoreCase = true) ||
-                            header.equals(HttpHeaders.SetCookie, ignoreCase = true) ||
-                            header.equals("x-auth-token", ignoreCase = true)
-                    }
-                }
+                installAuthHttpLogging()
                 install(ContentNegotiation) {
                     json(json)
                 }

@@ -12,11 +12,19 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(libs.kermit)
+            implementation(libs.ktor.client.core)
+            implementation(libs.ktor.client.logging)
         }
 
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.ktor.client.mock)
         }
+    }
+
+    sourceSets.all {
+        languageSettings.optIn("kotlin.experimental.ExperimentalObjCRefinement")
     }
 }
 
@@ -27,7 +35,7 @@ mavenPublishing {
 
     pom {
         name = "Quran.com Mobile Sync Logging"
-        description = "Routes Mobile Sync logs to a host app's logger."
+        description = "Routes Mobile Sync logs, including HTTP calls, to a host app's logger."
         inceptionYear = libs.versions.project.inception.year.get()
         url = libs.versions.project.url.get()
 

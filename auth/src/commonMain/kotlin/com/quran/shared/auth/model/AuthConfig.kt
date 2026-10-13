@@ -2,18 +2,9 @@ package com.quran.shared.auth.model
 
 import com.quran.shared.auth.BuildKonfig
 
-enum class AuthEnvironment(
-    val baseUrl: String,
-    val enableVerboseLogging: Boolean
-) {
-    PRELIVE(
-        baseUrl = "https://prelive-oauth2.quran.foundation",
-        enableVerboseLogging = true
-    ),
-    PRODUCTION(
-        baseUrl = "https://oauth2.quran.foundation",
-        enableVerboseLogging = false
-    )
+enum class AuthEnvironment(val baseUrl: String) {
+    PRELIVE(baseUrl = "https://prelive-oauth2.quran.foundation"),
+    PRODUCTION(baseUrl = "https://oauth2.quran.foundation")
 }
 
 data class AuthConfig(
