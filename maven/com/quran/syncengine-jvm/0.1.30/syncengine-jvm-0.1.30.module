@@ -1,0 +1,179 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "url": "../../syncengine/0.1.30/syncengine-0.1.30.module",
+    "group": "com.quran",
+    "module": "syncengine",
+    "version": "0.1.30",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.8.1"
+    }
+  },
+  "variants": [
+    {
+      "name": "jvmApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "com.quran",
+          "module": "mutations-definitions",
+          "version": {
+            "requires": "0.1.30"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "syncengine-jvm-0.1.30.jar",
+          "url": "syncengine-jvm-0.1.30.jar",
+          "size": 556918,
+          "sha512": "f5e71ac2a589788befed9bbb567c3f3f602ce7e16b0e681332c35f47d7204f1c6212ca357d402a175afe9f7ef93a625785ec08bdc8bcf4db0eb7ed3d4669d634",
+          "sha256": "d2b18b534bc5e34d1e5a5f00417551bde31575cd8949f67cc2782514b20b930f",
+          "sha1": "265dcd62891a1771624b471fe5d9fade9f98c5ad",
+          "md5": "306c09ec1e76e2cfbac9f7bf2e562292"
+        }
+      ]
+    },
+    {
+      "name": "jvmRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "com.quran",
+          "module": "mutations-definitions",
+          "version": {
+            "requires": "0.1.30"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        },
+        {
+          "group": "io.ktor",
+          "module": "ktor-client-okhttp",
+          "version": {
+            "requires": "3.6.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-core",
+          "version": {
+            "requires": "1.11.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-serialization-json",
+          "version": {
+            "requires": "1.11.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-datetime",
+          "version": {
+            "requires": "0.8.0-0.6.x-compat"
+          }
+        },
+        {
+          "group": "io.ktor",
+          "module": "ktor-client-core",
+          "version": {
+            "requires": "3.6.0"
+          }
+        },
+        {
+          "group": "io.ktor",
+          "module": "ktor-client-content-negotiation",
+          "version": {
+            "requires": "3.6.0"
+          }
+        },
+        {
+          "group": "io.ktor",
+          "module": "ktor-serialization-kotlinx-json",
+          "version": {
+            "requires": "3.6.0"
+          }
+        },
+        {
+          "group": "co.touchlab",
+          "module": "kermit",
+          "version": {
+            "requires": "2.2.0"
+          }
+        },
+        {
+          "group": "com.quran",
+          "module": "logging",
+          "version": {
+            "requires": "0.1.30"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "syncengine-jvm-0.1.30.jar",
+          "url": "syncengine-jvm-0.1.30.jar",
+          "size": 556918,
+          "sha512": "f5e71ac2a589788befed9bbb567c3f3f602ce7e16b0e681332c35f47d7204f1c6212ca357d402a175afe9f7ef93a625785ec08bdc8bcf4db0eb7ed3d4669d634",
+          "sha256": "d2b18b534bc5e34d1e5a5f00417551bde31575cd8949f67cc2782514b20b930f",
+          "sha1": "265dcd62891a1771624b471fe5d9fade9f98c5ad",
+          "md5": "306c09ec1e76e2cfbac9f7bf2e562292"
+        }
+      ]
+    },
+    {
+      "name": "jvmSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "files": [
+        {
+          "name": "syncengine-jvm-0.1.30-sources.jar",
+          "url": "syncengine-jvm-0.1.30-sources.jar",
+          "size": 62865,
+          "sha512": "10a0ecc4c6d1c8c7786e47f75224314275332659856592ca7a453d77fe3b6ac99c647613e110b4867365f1f59ab154786bbe30e16c094892b6b5d3964bd26142",
+          "sha256": "6636ca432d2bd435c3daf304a6025aba214cd47aeb195b7687c94f8f753f021e",
+          "sha1": "2f80eca2d2d97ee42cd39a3c8310f22b3a26759c",
+          "md5": "9d38d57f374d6bc153ffa1dab53dddc7"
+        }
+      ]
+    }
+  ]
+}

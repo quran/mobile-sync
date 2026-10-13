@@ -1,0 +1,109 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "url": "../../mutations-definitions/0.1.30/mutations-definitions-0.1.30.module",
+    "group": "com.quran",
+    "module": "mutations-definitions",
+    "version": "0.1.30",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.8.1"
+    }
+  },
+  "variants": [
+    {
+      "name": "jvmApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mutations-definitions-jvm-0.1.30.jar",
+          "url": "mutations-definitions-jvm-0.1.30.jar",
+          "size": 14850,
+          "sha512": "c60c2cbde85085667a69b15c681104b940c82d3e3c2fa39eff0d01af5189ccc961bb4cccfcd2bae07fe9361942ad74b87465a36f061556b011de30a787bc3fa7",
+          "sha256": "3f7955ce521fde612b5865f7dcba4957f97da7ca5eeca8a39c43c4daea58e3eb",
+          "sha1": "bc0dea3091e3ea6ee63ac9c3bbd32a0665598330",
+          "md5": "2377fee9b7805160b61a808595abce4d"
+        }
+      ]
+    },
+    {
+      "name": "jvmRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-core",
+          "version": {
+            "requires": "1.11.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mutations-definitions-jvm-0.1.30.jar",
+          "url": "mutations-definitions-jvm-0.1.30.jar",
+          "size": 14850,
+          "sha512": "c60c2cbde85085667a69b15c681104b940c82d3e3c2fa39eff0d01af5189ccc961bb4cccfcd2bae07fe9361942ad74b87465a36f061556b011de30a787bc3fa7",
+          "sha256": "3f7955ce521fde612b5865f7dcba4957f97da7ca5eeca8a39c43c4daea58e3eb",
+          "sha1": "bc0dea3091e3ea6ee63ac9c3bbd32a0665598330",
+          "md5": "2377fee9b7805160b61a808595abce4d"
+        }
+      ]
+    },
+    {
+      "name": "jvmSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "files": [
+        {
+          "name": "mutations-definitions-jvm-0.1.30-sources.jar",
+          "url": "mutations-definitions-jvm-0.1.30-sources.jar",
+          "size": 3379,
+          "sha512": "9d40d15593f663efce17ad921051495e6df7a37cd9800b3fd61c58f6c52c545956cc52d6e441525b97a6d128d08b755544592d9167426860754cce802cc76c85",
+          "sha256": "afab578e30109d1bb4d2058685ab39b1fc11589e53645ad9d8cc4890a4de7421",
+          "sha1": "1acab652cd832a0152d8048d736915728604703a",
+          "md5": "3a78b072fd4346fce791ec34f8e75668"
+        }
+      ]
+    }
+  ]
+}
