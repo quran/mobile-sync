@@ -7,6 +7,7 @@ import com.quran.shared.mutations.RemoteModelMutation
 internal fun <Model> detectRemoteIdConflicts(
     remoteMutations: List<RemoteModelMutation<Model>>,
     localMutations: List<LocalModelMutation<Model>>,
+    semanticMatchMutations: Set<Mutation> = setOf(Mutation.CREATED),
     matchesSemanticReplay: (LocalModelMutation<Model>, RemoteModelMutation<Model>) -> Boolean
 ): ConflictDetectionResult<Model> {
     val remoteMutationsByRemoteId = remoteMutations.groupBy { it.remoteID }
@@ -39,7 +40,7 @@ internal fun <Model> detectRemoteIdConflicts(
         .toMutableSet()
 
     remoteMutations
-        .filter { it.mutation == Mutation.CREATED && it.remoteID !in conflictingRemoteIds }
+        .filter { it.mutation in semanticMatchMutations && it.remoteID !in conflictingRemoteIds }
         .forEach { remote ->
             val matchingLocals = localMutations.filter { local ->
                 local.localID !in conflictingLocalIds &&
