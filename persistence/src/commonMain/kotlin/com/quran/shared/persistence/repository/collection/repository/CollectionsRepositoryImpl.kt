@@ -226,10 +226,8 @@ class CollectionsRepositoryImpl(
             }
         }
 
-        if (remote.mutation == Mutation.CREATED) {
-            if (attachRemoteIdForSemanticReplay(remote, name, updatedAt)) {
-                return
-            }
+        if (attachRemoteIdForSemanticReplay(remote, name, updatedAt)) {
+            return
         }
 
         val existingByName = collectionQueries.value.getCollectionByName(name)
@@ -327,15 +325,18 @@ class CollectionsRepositoryImpl(
         name: String,
         updatedAt: Long
     ): Boolean {
-        val deletedCandidates = collectionQueries.value.getPendingDeletedCreatedCollectionsByName(name)
-            .executeAsList()
-        if (deletedCandidates.size > 1) {
-            throw IllegalStateException(
-                "Ambiguous deleted collection semantic replay candidates for remoteId=${remote.remoteID}"
-            )
-        }
-        if (deletedCandidates.size == 1) {
-            return attachRemoteIdForSemanticReplay(remote, deletedCandidates.single(), updatedAt)
+        // Only a create may bind a deleted row; binding an update would push a delete of the remote collection.
+        if (remote.mutation == Mutation.CREATED) {
+            val deletedCandidates = collectionQueries.value.getPendingDeletedCreatedCollectionsByName(name)
+                .executeAsList()
+            if (deletedCandidates.size > 1) {
+                throw IllegalStateException(
+                    "Ambiguous deleted collection semantic replay candidates for remoteId=${remote.remoteID}"
+                )
+            }
+            if (deletedCandidates.size == 1) {
+                return attachRemoteIdForSemanticReplay(remote, deletedCandidates.single(), updatedAt)
+            }
         }
 
         val activeCandidates = collectionQueries.value.getPendingActiveCreatedCollectionsByName(name)
