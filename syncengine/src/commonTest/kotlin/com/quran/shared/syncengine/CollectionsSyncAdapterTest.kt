@@ -69,6 +69,28 @@ class CollectionsSyncAdapterTest {
         assertEquals(listOf("remote-study"), persisted.map { it.remoteID })
     }
 
+    @Test
+    fun `a collection name the server would reject is left out of the push and stays pending`() = runTest {
+        val tooLong = collectionMutation("local-long", "a".repeat(251) + "&", isSystem = false, mutation = Mutation.CREATED)
+        val rename = collectionMutation(
+            "local-rename",
+            "b".repeat(256),
+            isSystem = false,
+            mutation = Mutation.MODIFIED,
+            remoteId = "remote-rename"
+        )
+        val valid = collectionMutation("local-valid", "Study", isSystem = false, mutation = Mutation.CREATED)
+        var cleared: List<LocalModelMutation<SyncCollection>> = emptyList()
+        val adapter = adapter(listOf(tooLong, rename, valid), onCleared = { cleared = it })
+
+        val plan = adapter.buildPlan(0L, emptyList())
+        val pushed = plan.mutationsToPush()
+        plan.complete(newToken = 10L, pushedMutations = pushed.map { it.copy(resourceId = "remote-valid") })
+
+        assertEquals(listOf("Study"), pushed.map { (it.data?.get("name") as JsonPrimitive).content })
+        assertEquals(listOf("local-valid"), cleared.map { it.localID })
+    }
+
     private fun remoteCollection(remoteId: String, name: String) = SyncMutation(
         resource = "COLLECTION",
         resourceId = remoteId,
@@ -105,7 +127,8 @@ class CollectionsSyncAdapterTest {
 
     private fun adapter(
         localMutations: List<LocalModelMutation<SyncCollection>>,
-        onDidSucceed: (List<RemoteModelMutation<SyncCollection>>) -> Unit = {}
+        onDidSucceed: (List<RemoteModelMutation<SyncCollection>>) -> Unit = {},
+        onCleared: (List<LocalModelMutation<SyncCollection>>) -> Unit = {}
     ) = CollectionsSyncAdapter(
         CollectionsSynchronizationConfigurations(
             localDataFetcher = object : LocalDataFetcher<SyncCollection> {
@@ -123,6 +146,7 @@ class CollectionsSyncAdapterTest {
                     processedLocalMutations: List<LocalModelMutation<SyncCollection>>
                 ) {
                     onDidSucceed(newRemoteMutations)
+                    onCleared(processedLocalMutations)
                 }
 
                 override suspend fun didFail(message: String) = Unit

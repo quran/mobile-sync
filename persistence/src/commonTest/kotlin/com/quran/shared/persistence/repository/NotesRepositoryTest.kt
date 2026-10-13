@@ -171,7 +171,7 @@ class NotesRepositoryTest {
 
     @Test
     fun `deleteNote returns true when an active note is deleted`() = runTest {
-        val note = repository.addNote(body = "note", startSura = 2, startAyah = 13, endSura = 2, endAyah = 13)
+        val note = repository.addNote(body = "a note", startSura = 2, startAyah = 13, endSura = 2, endAyah = 13)
 
         val deleted = repository.deleteNote(note.id)
 
@@ -183,7 +183,7 @@ class NotesRepositoryTest {
 
     @Test
     fun `deleteNote returns false for a missing note without writing`() = runTest {
-        val note = repository.addNote(body = "note", startSura = 2, startAyah = 13, endSura = 2, endAyah = 13)
+        val note = repository.addNote(body = "a note", startSura = 2, startAyah = 13, endSura = 2, endAyah = 13)
         val before = database.notesQueries.getNoteByLocalId(note.id.toLong()).executeAsOne()
 
         val deleted = repository.deleteNote("999")
@@ -195,7 +195,7 @@ class NotesRepositoryTest {
 
     @Test
     fun `deleteNote returns false when the note is already deleted`() = runTest {
-        val note = repository.addNote(body = "note", startSura = 2, startAyah = 13, endSura = 2, endAyah = 13)
+        val note = repository.addNote(body = "a note", startSura = 2, startAyah = 13, endSura = 2, endAyah = 13)
         assertTrue(repository.deleteNote(note.id))
         val afterFirstDelete = database.notesQueries.getNoteByLocalId(note.id.toLong()).executeAsOne()
 

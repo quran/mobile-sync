@@ -10,6 +10,8 @@ import com.quran.shared.mutations.LocalMutationResource
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.mutations.trimLikeServer
+import com.quran.shared.persistence.TextLengthField
+import com.quran.shared.persistence.requireServerTextLength
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.input.LocalSyncNote
 import com.quran.shared.persistence.input.RemoteNote
@@ -89,6 +91,7 @@ class NotesRepositoryImpl(
         timestampMillis: Long
     ): Note {
         logger.i { "Adding note for range=$startSura:$startAyah-$endSura:$endAyah" }
+        requireServerTextLength(TextLengthField.NOTE_BODY, body)
         return withContext(Dispatchers.IO) {
             var inserted: Note? = null
             database.transaction {
@@ -151,8 +154,13 @@ class NotesRepositoryImpl(
         logger.i { "Updating note id=$id" }
         return withContext(Dispatchers.IO) {
             val localId = id.toLong()
+            val trimmedBody = body.trimLikeServer()
+            // Only a changed body is checked, so a legacy note outside the limits can still have its range edited.
+            if (notesQueries.value.getNoteByLocalId(localId).executeAsOneOrNull()?.note != trimmedBody) {
+                requireServerTextLength(TextLengthField.NOTE_BODY, body)
+            }
             notesQueries.value.updateNote(
-                note = body.trimLikeServer(),
+                note = trimmedBody,
                 start_sura = startSura.toLong(),
                 start_ayah = startAyah.toLong(),
                 end_sura = endSura.toLong(),

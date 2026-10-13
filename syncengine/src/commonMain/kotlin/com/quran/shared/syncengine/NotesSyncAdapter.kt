@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
+import com.quran.shared.mutations.ServerTextLimit
 import com.quran.shared.mutations.escapeServerText
 import com.quran.shared.mutations.unescapeServerText
 import com.quran.shared.syncengine.conflict.ConflictDetectionResult
@@ -69,13 +70,19 @@ internal class NotesSyncAdapter(
                 "push=${conflictResolution.mutationsToPush.size}"
         }
 
-        val mutationsToPush = conflictDetection.nonConflictingLocalMutations + conflictResolution.mutationsToPush
+        val mutationsToPush = ServerTextLimitPush(
+            mutationsToPush = conflictDetection.nonConflictingLocalMutations + conflictResolution.mutationsToPush,
+            limit = ServerTextLimit.NOTE_BODY,
+            resourceName = resourceName,
+            logger = logger,
+            text = SyncNote::body
+        )
         val mutationsToPersist = conflictDetection.nonConflictingRemoteMutations + conflictResolution.mutationsToPersist
 
         return NotesResourceSyncPlan(
-            localMutationsToClear = preprocessedLocal,
+            localMutationsToClear = mutationsToPush.withoutHeld(preprocessedLocal),
             remoteMutationsToPersist = mutationsToPersist,
-            localMutationsToPush = mutationsToPush
+            localMutationsToPush = mutationsToPush.pushable
         )
     }
 
