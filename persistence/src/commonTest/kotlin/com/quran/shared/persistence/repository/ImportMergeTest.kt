@@ -158,6 +158,50 @@ class ImportMergeTest {
     }
 
     @Test
+    fun `importing highlights dates their seeded collection from the earliest one in any order`() = runTest {
+        repository.importData(
+            PersistenceImportData(
+                highlights = listOf(
+                    ImportAyahHighlight(3, 1, AyahHighlightColor.PINK, at(300)),
+                    ImportAyahHighlight(2, 255, AyahHighlightColor.PINK, at(100)),
+                    ImportAyahHighlight(4, 1, AyahHighlightColor.PINK, at(200))
+                )
+            )
+        )
+
+        val collection = database.collectionsQueries.getCollectionByName("system:highlights:pink").executeAsOne()
+        assertEquals(100L, collection.created_at)
+    }
+
+    @Test
+    fun `an older highlight keeps a synced collection's creation date`() = runTest {
+        val seeded = database.collectionsQueries.getCollectionByName("system:highlights:pink").executeAsOne()
+        database.collectionsQueries.attachRemoteCollectionIdForSemanticReplay(
+            remote_id = "remote-pink",
+            is_default = 0L,
+            is_system = 1L,
+            modified_at = seeded.modified_at,
+            local_id = seeded.local_id
+        )
+
+        CollectionBookmarksRepositoryImpl(database).setHighlight(2, 255, AyahHighlightColor.PINK, at(100))
+
+        assertEquals(seeded.created_at, database.collectionsQueries.getCollectionByRemoteId("remote-pink").executeAsOne().created_at)
+    }
+
+    @Test
+    fun `a new highlight keeps its seeded collection's creation date`() = runTest {
+        val seededAt = database.collectionsQueries.getCollectionByName("system:highlights:pink").executeAsOne().created_at
+        val later = Instant.fromEpochMilliseconds(seededAt + 60_000)
+
+        CollectionBookmarksRepositoryImpl(database).setHighlight(2, 255, AyahHighlightColor.PINK, later.toPlatform())
+
+        val collection = database.collectionsQueries.getCollectionByName("system:highlights:pink").executeAsOne()
+        assertEquals(seededAt, collection.created_at)
+        assertEquals(seededAt + 60_000, collection.modified_at)
+    }
+
+    @Test
     fun `note matches the stored first range of a remote note`() = runTest {
         val notes = NotesRepositoryImpl(database)
         // The sync pipeline stores the first range of a multi-range remote note locally.

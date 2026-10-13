@@ -150,6 +150,13 @@ addNewCollection {
   );
 }
 
+keepEarliestUnsyncedCreatedAt:
+  UPDATE collection
+  SET created_at = :timestamp
+  WHERE local_id = :local_id
+    AND remote_id IS NULL
+    AND created_at > :timestamp;
+
 insertImportedCollection {
   INSERT OR IGNORE INTO collection (
     remote_id,
