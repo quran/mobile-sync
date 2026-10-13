@@ -14,10 +14,16 @@ on:
 permissions:
   contents: write
 
+# Releases push to the target branch and gh-pages, so never run two at once.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 env:
   XCF_NAME: Shared
   XCF_GRADLE_TASK: umbrella:assembleSharedXCFramework
   XCF_OUTPUT_DIR: umbrella/build/XCFrameworks/release
+  PAGES_BRANCH: gh-pages
 
 jobs:
   build-and-release:
@@ -117,6 +123,25 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag-name=$tag_name" >> "$GITHUB_OUTPUT"
 
+      # Android consumes the GitHub Pages Maven repository; Maven Central releases stay manual.
+      - name: Build GitHub Pages Maven Repository
+        shell: bash
+        env:
+          PAGES_DIR: ${{ runner.temp }}/gh-pages
+        run: |
+          set -euo pipefail
+
+          if git ls-remote --exit-code --heads origin "$PAGES_BRANCH" >/dev/null; then
+            git fetch origin "$PAGES_BRANCH"
+            git worktree add -B "$PAGES_BRANCH" "$PAGES_DIR" "origin/$PAGES_BRANCH"
+          else
+            git worktree add --orphan -b "$PAGES_BRANCH" "$PAGES_DIR"
+          fi
+
+          # Serve the files as-is instead of building them with Jekyll.
+          touch "$PAGES_DIR/.nojekyll"
+          ./gradlew publishToGitHubPages --stacktrace -PgithubPagesMavenDir="$PAGES_DIR/maven" -Dorg.gradle.jvmargs="-Xmx6144m -Dfile.encoding=UTF-8 -Dkotlin.daemon.jvm.options=-Xmx6144m"
+
       - name: Commit and Tag Release
         shell: bash
         run: |
@@ -133,6 +158,19 @@ jobs:
           git tag -a "$tag_name" -m "$tag_name"
           git push origin "HEAD:${target_branch}"
           git push origin "$tag_name"
+
+      - name: Push GitHub Pages Maven Repository
+        shell: bash
+        env:
+          PAGES_DIR: ${{ runner.temp }}/gh-pages
+        run: |
+          set -euo pipefail
+
+          version="${{ steps.release.outputs.version }}"
+          cd "$PAGES_DIR"
+          git add -A
+          git commit -m "chore: publish ${version} to the GitHub Pages Maven repository"
+          git push origin "$PAGES_BRANCH"
 
       - name: Publish Release
         uses: softprops/action-gh-release@v3
