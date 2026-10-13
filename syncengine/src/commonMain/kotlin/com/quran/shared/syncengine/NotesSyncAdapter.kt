@@ -4,6 +4,8 @@ import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
+import com.quran.shared.mutations.escapeServerText
+import com.quran.shared.mutations.unescapeServerText
 import com.quran.shared.syncengine.conflict.ConflictDetectionResult
 import com.quran.shared.syncengine.conflict.ConflictResolutionResult
 import com.quran.shared.syncengine.conflict.NotesConflictDetector
@@ -193,7 +195,7 @@ private fun SyncMutation.toSyncNote(logger: Logger): SyncNote? {
 
     return SyncNote(
         id = id,
-        body = body,
+        body = body.unescapeServerText(),
         ranges = parsedRanges,
         lastModified = lastModified,
         createdAt = clientCreatedAtInstant()
@@ -204,7 +206,7 @@ private fun SyncNote.toResourceData(): JsonObject {
     val noteBody = requireNotNull(body) { "Note body is required for resource data." }
     require(ranges.isNotEmpty()) { "Note ranges are required for resource data." }
     return buildJsonObject {
-        put("body", noteBody)
+        put("body", noteBody.escapeServerText())
         put("ranges", buildJsonArray {
             ranges.forEach { range ->
                 add(range.toRangeString())

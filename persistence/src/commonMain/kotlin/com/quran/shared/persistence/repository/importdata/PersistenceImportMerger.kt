@@ -1,6 +1,7 @@
 package com.quran.shared.persistence.repository.importdata
 
 import com.quran.shared.mutations.collectionNameKey
+import com.quran.shared.mutations.trimLikeServer
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.input.ImportAyahHighlight
 import com.quran.shared.persistence.input.ImportCollection
@@ -238,7 +239,7 @@ internal class PersistenceImportMerger(
                 matched++
             } else {
                 database.notesQueries.insertImportedNote(
-                    note = note.body,
+                    note = note.body.trimLikeServer(),
                     start_sura = note.startSura.toLong(),
                     start_ayah = note.startAyah.toLong(),
                     end_sura = note.endSura.toLong(),
