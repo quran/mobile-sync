@@ -81,6 +81,7 @@ internal class CollectionStore(
                 is_system = 1L
             )
         }
+        queries.keepEarliestUnsyncedCreatedAt(timestamp = timestampMillis, local_id = collection.local_id)
         val active = requireNotNull(queries.getCollectionByLocalId(collection.local_id).executeAsOneOrNull()) {
             "Expected active highlight collection ${collection.name}."
         }
