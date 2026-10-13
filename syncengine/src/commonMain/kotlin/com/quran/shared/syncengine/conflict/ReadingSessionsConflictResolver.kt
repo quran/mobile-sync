@@ -1,13 +1,12 @@
 package com.quran.shared.syncengine.conflict
 
-import com.quran.shared.mutations.Mutation
 import com.quran.shared.syncengine.model.SyncReadingSession
 
 /**
  * Resolves reading-session conflicts using last-write-wins semantics.
  *
  * The newest mutation by [SyncReadingSession.lastModified] wins. Ties prefer the remote side so
- * that already-synced data remains authoritative when timestamps match.
+ * that already-synced data remains authoritative when timestamps match, including a replayed create's echo.
  */
 class ReadingSessionsConflictResolver(
     private val conflicts: List<ResourceConflict<SyncReadingSession>>
@@ -21,7 +20,6 @@ class ReadingSessionsConflictResolver(
 
     private fun processConflict(resourceConflict: ResourceConflict<SyncReadingSession>): ConflictResolutionResult<SyncReadingSession> {
         resourceConflict.resolveLocalDeleteOverRemoteCreateEcho()?.let { return it }
-        resolveReplayedCreate(resourceConflict)?.let { return it }
 
         val newestRemote = resourceConflict.remoteMutations.maxByOrNull { it.model.lastModified }!!
         val newestLocal = resourceConflict.localMutations.maxByOrNull { it.model.lastModified }!!
@@ -31,20 +29,5 @@ class ReadingSessionsConflictResolver(
         } else {
             persistRemoteMutation(newestRemote)
         }
-    }
-
-    private fun resolveReplayedCreate(
-        resourceConflict: ResourceConflict<SyncReadingSession>
-    ): ConflictResolutionResult<SyncReadingSession>? {
-        val localMutation = resourceConflict.localMutations.singleOrNull()
-        val remoteMutation = resourceConflict.remoteMutations.singleOrNull()
-        if (localMutation?.mutation != Mutation.CREATED ||
-            remoteMutation?.mutation != Mutation.CREATED ||
-            localMutation.remoteID != null ||
-            localMutation.model.chapterNumber != remoteMutation.model.chapterNumber ||
-            localMutation.model.verseNumber != remoteMutation.model.verseNumber) {
-            return null
-        }
-        return persistRemoteMutation(remoteMutation)
     }
 }

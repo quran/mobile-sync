@@ -88,7 +88,7 @@ class ReadingSessionsConflictDetectorTest {
                 id = "local-1",
                 chapterNumber = 2,
                 verseNumber = 255,
-                lastModified = Instant.fromEpochMilliseconds(1001)
+                lastModified = Instant.fromEpochMilliseconds(1000)
             ),
             remoteID = null,
             localID = "local-1",

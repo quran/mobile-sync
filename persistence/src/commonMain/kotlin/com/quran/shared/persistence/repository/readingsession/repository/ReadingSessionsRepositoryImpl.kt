@@ -309,17 +309,12 @@ class ReadingSessionsRepositoryImpl(
                 in 2..Int.MAX_VALUE -> throw IllegalStateException(
                     "Ambiguous deleted reading session semantic replay candidates for remoteId=${remote.remoteID}"
                 )
-                0 -> {
-                    val semanticCandidates = readingSessionsQueries.value
-                        .getPendingCreatedReadingSessionsForChapterVerse(chapterNumber, verseNumber)
-                        .executeAsList()
-                    if (semanticCandidates.size == 1 &&
-                        attachRemoteIdForSemanticReplay(remote, semanticCandidates.single().local_id)
-                    ) {
-                        return
-                    }
+                0 -> if (attachRemoteToPendingCreate(remote, chapterNumber, verseNumber)) {
+                    return
                 }
             }
+        } else if (existingByRemote == null && attachRemoteToPendingCreate(remote, chapterNumber, verseNumber)) {
+            return
         }
         if (existingByPosition?.remote_id == null &&
             existingByPosition != null) {
@@ -393,6 +388,23 @@ class ReadingSessionsRepositoryImpl(
         val attached = readingSessionsQueries.value.getReadingSessionByLocalId(localId)
             .executeAsOneOrNull()
         return attached?.remote_id == remote.remoteID
+    }
+
+    /** Only a create echo may bind a deleted row, in the caller; binding an update would delete the remote session. */
+    private fun attachRemoteToPendingCreate(
+        remote: RemoteModelMutation<RemoteReadingSession>,
+        chapterNumber: Long,
+        verseNumber: Long
+    ): Boolean {
+        val candidate = readingSessionsQueries.value
+            .getPendingCreatedReadingSessionsForChapterVerse(chapterNumber, verseNumber)
+            .executeAsList()
+            .singleOrNull()
+            ?: return false
+        if (candidate.modified_at > remote.model.lastUpdated.fromPlatform().toEpochMilliseconds()) {
+            return false
+        }
+        return attachRemoteIdForSemanticReplay(remote, candidate.local_id)
     }
 
     private fun clearLocalMutation(local: LocalModelMutation<LocalSyncReadingSession>) {
