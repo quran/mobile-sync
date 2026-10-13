@@ -138,7 +138,8 @@ context and runtime configuration. Optionally route Mobile Sync's logs to the ap
 because HTTP clients read the severity when they are created. At `DEBUG`, HTTP calls also log their
 headers and bodies, which hold user content such as note text. `configure` replaces Kermit's
 process-wide logger configuration, so if the app or another library also logs with Kermit, those
-logs reach the sink too.
+logs reach the sink too. Without `configure`, logs go to the platform log, including a summary
+line for each HTTP request and response.
 
 ```kotlin
 import com.quran.shared.logging.MobileSyncLogSeverity
