@@ -1,10 +1,9 @@
 package com.quran.shared.syncengine.network
 
+import com.quran.shared.logging.installHttpLogging
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.plugins.logging.LogLevel
-import io.ktor.client.plugins.logging.Logging
 import kotlinx.serialization.json.Json
 import io.ktor.serialization.kotlinx.json.json
 
@@ -19,9 +18,7 @@ actual object HttpClientFactory {
                     }
                 )
             }
-            install(Logging) {
-                level = LogLevel.INFO
-            }
+            installHttpLogging(tag = "SyncHttp")
         }
     }
 } 

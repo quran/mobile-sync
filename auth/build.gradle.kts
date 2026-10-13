@@ -56,7 +56,6 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core)
             api(libs.oidc.appsupport)
             implementation(libs.ktor.client.core)
-            implementation(libs.ktor.client.logging)
             implementation(libs.ktor.client.content.negotiation)
             implementation(libs.ktor.serialization.json)
             implementation(libs.sha2)
@@ -67,6 +66,7 @@ kotlin {
             implementation(libs.kotlinx.serialization.json)
             api(libs.androidx.lifecycle.viewmodel) // using `api` for better access from swift code
             api(projects.mutationsDefinitions)
+            implementation(projects.logging)
 
         }
 

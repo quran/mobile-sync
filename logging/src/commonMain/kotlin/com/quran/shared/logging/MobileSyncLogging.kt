@@ -3,6 +3,7 @@ package com.quran.shared.logging
 import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
+import kotlin.concurrent.Volatile
 
 enum class MobileSyncLogSeverity {
     VERBOSE,
@@ -23,12 +24,19 @@ fun interface MobileSyncLogSink {
 
 /** Chooses where Mobile Sync logs go; until [configure] is called, they go to the platform log. */
 object MobileSyncLogging {
+    @Volatile
+    internal var detailedHttpLogs: Boolean = false
+        private set
+
     /**
      * Sends Mobile Sync logs at [minSeverity] or above to [sink].
      *
-     * This replaces Kermit's process-wide logger configuration, so other Kermit users log there too.
+     * At [MobileSyncLogSeverity.DEBUG] or below, HTTP calls also log headers and bodies. HTTP clients
+     * read this when they are created, so call it before `SharedDependencyGraph.init`. This replaces
+     * Kermit's process-wide logger configuration, so other Kermit users log there too.
      */
     fun configure(sink: MobileSyncLogSink, minSeverity: MobileSyncLogSeverity) {
+        detailedHttpLogs = minSeverity <= MobileSyncLogSeverity.DEBUG
         Logger.setMinSeverity(minSeverity.toKermitSeverity())
         Logger.setLogWriters(SinkLogWriter(sink))
     }

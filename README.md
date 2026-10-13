@@ -46,7 +46,7 @@ flowchart LR
 | `:demo:android` | Android sample app (Compose) |
 | `:demo:common` | Shared demo helpers/models |
 | `:mutations-definitions` | Shared mutation/domain definitions |
-| `:logging` | Routes logs to a host app's logger (`MobileSyncLogging`) |
+| `:logging` | Routes logs, including HTTP calls, to a host app's logger (`MobileSyncLogging`) |
 
 ## Requirements
 
@@ -134,7 +134,8 @@ the corresponding manifest placeholders aligned with those URIs.
 
 Graph construction does not require an Android `Activity`. Build the graph from application
 context and runtime configuration. Optionally route Mobile Sync's logs to the app's logger with
-`MobileSyncLogging.configure(sink, minSeverity)`. It replaces Kermit's process-wide logger
+`MobileSyncLogging.configure(sink, minSeverity)`; it must come before `SharedDependencyGraph.init`,
+because HTTP clients read the severity when they are created. It replaces Kermit's process-wide logger
 configuration, so if the app or another library also logs with Kermit, those logs reach the sink too.
 
 ```kotlin
@@ -145,7 +146,7 @@ import com.quran.shared.pipeline.AppEnvironment
 import com.quran.shared.pipeline.di.SharedDependencyGraph
 import com.quran.shared.pipeline.storage.createMobileSyncStorage
 
-// Optional.
+// Optional; must come before SharedDependencyGraph.init.
 MobileSyncLogging.configure(
     sink = { severity, tag, message -> appLog(severity, tag, message) },
     minSeverity = MobileSyncLogSeverity.INFO
@@ -186,6 +187,9 @@ graph.authService.login()
 ```
 
 ### 2. Initialize managed app graph (iOS/Swift)
+
+As on Android, the optional `MobileSyncLogging.configure(sink:minSeverity:)` call must come before
+`SharedDependencyGraph.doInit`, because HTTP clients read the severity when they are created.
 
 ```swift
 import Shared
