@@ -46,6 +46,7 @@ flowchart LR
 | `:demo:android` | Android sample app (Compose) |
 | `:demo:common` | Shared demo helpers/models |
 | `:mutations-definitions` | Shared mutation/domain definitions |
+| `:logging` | Routes logs to a host app's logger (`MobileSyncLogging`) |
 
 ## Requirements
 
@@ -132,13 +133,23 @@ If you override `AuthConfig.redirectUri` or `AuthConfig.postLogoutRedirectUri` o
 the corresponding manifest placeholders aligned with those URIs.
 
 Graph construction does not require an Android `Activity`. Build the graph from application
-context and runtime configuration:
+context and runtime configuration. Optionally route Mobile Sync's logs to the app's logger with
+`MobileSyncLogging.configure(sink, minSeverity)`. It replaces Kermit's process-wide logger
+configuration, so if the app or another library also logs with Kermit, those logs reach the sink too.
 
 ```kotlin
+import com.quran.shared.logging.MobileSyncLogSeverity
+import com.quran.shared.logging.MobileSyncLogging
 import com.quran.shared.persistence.DriverFactory
 import com.quran.shared.pipeline.AppEnvironment
 import com.quran.shared.pipeline.di.SharedDependencyGraph
 import com.quran.shared.pipeline.storage.createMobileSyncStorage
+
+// Optional.
+MobileSyncLogging.configure(
+    sink = { severity, tag, message -> appLog(severity, tag, message) },
+    minSeverity = MobileSyncLogSeverity.INFO
+)
 
 val graph = SharedDependencyGraph.init(
     driverFactory = DriverFactory(context = applicationContext),
@@ -186,6 +197,8 @@ final class AppContainer {
     let graph: AppGraph
 
     private init() {
+        // Optional; `AppLogSink` conforms to `MobileSyncLogSink`.
+        MobileSyncLogging.shared.configure(sink: AppLogSink(), minSeverity: .info)
         Shared.AuthFlowFactoryProvider.shared.doInitialize()
         let driverFactory = DriverFactory()
         let storage = AppleMobileSyncStorageFactory.shared.create()
