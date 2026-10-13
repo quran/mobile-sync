@@ -365,6 +365,22 @@ Build iOS KMP target:
 ./gradlew :sync-pipelines:compileKotlinIosSimulatorArm64
 ```
 
+### Releases
+
+The manual `Release` workflow bumps the version and tags it, attaches the iOS XCFramework to a GitHub Release, and publishes the Android/JVM artifacts to the GitHub Pages Maven repository on the `gh-pages` branch. Android apps resolve it with:
+```kotlin
+maven("https://quran.github.io/mobile-sync/maven") {
+    content { includeGroup("com.quran") }
+}
+```
+
+Maven Central releases stay manual and infrequent. Publish them from a release tag so both repositories serve the same build for a version.
+
+Publish the GitHub Pages artifacts to a local folder to inspect them:
+```bash
+./gradlew publishToGitHubPages -PgithubPagesMavenDir=/tmp/mobile-sync-maven
+```
+
 ## Related Repositories
 
 - [mobile-sync-spm](https://github.com/quran/mobile-sync-spm)
