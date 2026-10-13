@@ -4,6 +4,8 @@ import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
+import com.quran.shared.mutations.escapeServerText
+import com.quran.shared.mutations.unescapeServerText
 import com.quran.shared.syncengine.conflict.CollectionsConflictDetector
 import com.quran.shared.syncengine.conflict.CollectionsConflictResolver
 import com.quran.shared.syncengine.conflict.ConflictDetectionResult
@@ -162,7 +164,7 @@ private fun SyncMutation.toSyncCollection(logger: Logger): SyncCollection? {
             } else {
                 SyncCollection(
                     id = id,
-                    name = name,
+                    name = name.unescapeServerText(),
                     lastModified = lastModified,
                     createdAt = clientCreatedAtInstant(),
                     isDefault = data.booleanOrNull("isDefault") ?: false,
@@ -177,6 +179,6 @@ private fun SyncMutation.toSyncCollection(logger: Logger): SyncCollection? {
 private fun SyncCollection.toResourceData(): JsonObject {
     val collectionName = requireNotNull(name) { "Collection name is required for resource data." }
     return buildJsonObject {
-        put("name", collectionName)
+        put("name", collectionName.escapeServerText())
     }
 }

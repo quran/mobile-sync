@@ -35,6 +35,28 @@ class CollectionsSyncAdapterTest {
     }
 
     @Test
+    fun `pushed collection name is HTML-escaped for the server's sanitizer`() = runTest {
+        val adapter = adapterPushing(
+            collectionMutation("local-1", "Tom & Jerry <3", isSystem = false, mutation = Mutation.CREATED)
+        )
+
+        val pushed = adapter.buildPlan(0L, emptyList()).mutationsToPush().single()
+
+        assertEquals("Tom &amp; Jerry &lt;3", (pushed.data?.get("name") as JsonPrimitive).content)
+    }
+
+    @Test
+    fun `remote collection name is unescaped once`() = runTest {
+        val persisted = mutableListOf<RemoteModelMutation<SyncCollection>>()
+        val adapter = adapter(emptyList(), onDidSucceed = { persisted += it })
+
+        adapter.buildPlan(0L, listOf(remoteCollection("remote-1", "tom &amp; jerry &amp;lt;3")))
+            .complete(newToken = 10L, pushedMutations = emptyList())
+
+        assertEquals("tom & jerry &lt;3", persisted.single().model.name)
+    }
+
+    @Test
     fun `remote lowercase name matches a pending local collection with mixed case`() = runTest {
         val local = collectionMutation("local-1", "\uFEFF Study\u3000", isSystem = false, mutation = Mutation.CREATED)
         val persisted = mutableListOf<RemoteModelMutation<SyncCollection>>()

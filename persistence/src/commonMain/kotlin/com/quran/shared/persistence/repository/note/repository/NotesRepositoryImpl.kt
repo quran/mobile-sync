@@ -9,6 +9,7 @@ import com.quran.shared.mutations.LocalModelMutation
 import com.quran.shared.mutations.LocalMutationResource
 import com.quran.shared.mutations.Mutation
 import com.quran.shared.mutations.RemoteModelMutation
+import com.quran.shared.mutations.trimLikeServer
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.input.LocalSyncNote
 import com.quran.shared.persistence.input.RemoteNote
@@ -92,7 +93,7 @@ class NotesRepositoryImpl(
             var inserted: Note? = null
             database.transaction {
                 notesQueries.value.addNewNote(
-                    note = body,
+                    note = body.trimLikeServer(),
                     start_sura = startSura.toLong(),
                     start_ayah = startAyah.toLong(),
                     end_sura = endSura.toLong(),
@@ -151,7 +152,7 @@ class NotesRepositoryImpl(
         return withContext(Dispatchers.IO) {
             val localId = id.toLong()
             notesQueries.value.updateNote(
-                note = body,
+                note = body.trimLikeServer(),
                 start_sura = startSura.toLong(),
                 start_ayah = startAyah.toLong(),
                 end_sura = endSura.toLong(),
@@ -256,7 +257,7 @@ class NotesRepositoryImpl(
         }
         notesQueries.value.persistRemoteNote(
             remote_id = remote.remoteID,
-            note = body,
+            note = body.trimLikeServer(),
             start_sura = startSura.toLong(),
             start_ayah = startAyah.toLong(),
             end_sura = endSura.toLong(),
@@ -313,7 +314,7 @@ class NotesRepositoryImpl(
         if (!model.semanticReplayEligible) {
             return false
         }
-        val body = model.body ?: return false
+        val body = model.body?.trimLikeServer() ?: return false
         val startSura = model.startSura ?: return false
         val startAyah = model.startAyah ?: return false
         val endSura = model.endSura ?: return false
