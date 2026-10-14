@@ -100,22 +100,23 @@ class CollectionScenariosTest {
     }
 
     @Test
-    fun `COL-07 repeated create and delete of one name doesn't wedge sync`() = syncScenario {
+    fun `COL-07 repeated create and delete of one name doesn't lose a remote collection`() = syncScenario {
         val (phone) = signedIn("phone")
         repeat(2) { phone.data.deleteCollection(phone.data.addCollection("Study").id) }
         web(ALICE).createCollection("study")
 
-        // The catalog predicted the "ambiguous tombstones" throw. Today the remote create binds one
-        // tombstone instead: it never shows, and the next sync deletes it on the server.
+        // The catalog predicted the "ambiguous tombstones" throw. For collections the sync doesn't
+        // throw: the web's create binds a tombstone, never shows, and the second sync deletes it
+        // on the server.
         knownIssue(
             "S1",
             "Never-sent collection tombstones bind a remote create with the same name and delete it",
-            expect = failureMentions("the web's study on the phone", "expected:<[study]> but was:<[]>")
+            expect = failureMentions("the web's study on the server", "expected:<[study]> but was:<[]>")
         ) {
             assertSucceeded(phone.syncNow())
-            assertEquals(listOf("study"), phone.collectionNames(), "the web's study on the phone")
             assertSucceeded(phone.syncNow())
             assertEquals(listOf("study"), server.state(ALICE).collections.map { it.name }, "the web's study on the server")
+            assertEquals(listOf("study"), phone.collectionNames(), "the web's study on the phone")
         }
     }
 
