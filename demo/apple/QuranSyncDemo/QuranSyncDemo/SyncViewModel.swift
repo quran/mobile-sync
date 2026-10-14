@@ -16,7 +16,7 @@ class SyncViewModel: ObservableObject {
     @Published var authState: AuthState = AuthState.Idle()
     @Published var readingBookmarks: [Shared.ReadingBookmark] = []
     @Published var collectionsWithBookmarks: [Shared.CollectionWithAyahBookmarks] = []
-    @Published var notes: [Shared.Note_] = []
+    @Published var notes: [Shared.Note] = []
     @Published var readingSessions: [Shared.ReadingSession] = []
 
     init(authService: SyncAuthService, quranDataService: QuranDataService) {
@@ -80,7 +80,7 @@ class SyncViewModel: ObservableObject {
                         guard let self = self else {
                             break
                         }
-                        self.notes = list as [Shared.Note_]
+                        self.notes = list as [Shared.Note]
                     }
                 } catch {
                     print("SyncViewModel: Error observing notes: \(error)")
