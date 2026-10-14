@@ -89,7 +89,8 @@ class CollectionAyahsType(private val database: SyncV2Database, collections: Col
             rememberBookmark(entry.resourceId!!, sura, ayah)
         }
         val memberships = entries.filter { it.resource == RESOURCE }
-        return (memberships + unloggedFavorites(entries, memberships)).mapNotNull { fromRemote(it, refs) }
+        val unlogged = unloggedFavorites(entries, memberships).mapNotNull { fromRemote(it, refs) }
+        return memberships.mapNotNull { fromRemote(it, refs) } + keepAddedAt(unlogged, refs)
     }
 
     /**
@@ -97,9 +98,13 @@ class CollectionAyahsType(private val database: SyncV2Database, collections: Col
      * written since quran.com-users-backend#1491; an older bookmark in Favorites that has not changed since (and that
      * the default-collection backfill has not reached) appears only as a BOOKMARK whose data has
      * `isInDefaultCollection`. So an ayah BOOKMARK with no `__default__` entry in the same GET stands for its
-     * Favorites membership, under the remote id and client times a logged one has: in Favorites while the flag is
-     * true, out when it is false or the bookmark is deleted. A logged entry always wins: it is the server's own record.
-     * Favorites is still pushed by key, as a COLLECTION_BOOKMARK `__default__`.
+     * Favorites membership, under the remote id a logged one has: in Favorites while the flag is true, out when it is
+     * false or the bookmark is deleted. A logged entry always wins: it is the server's own record. Favorites is still
+     * pushed by key, as a COLLECTION_BOOKMARK `__default__`.
+     * A new one is added at the bookmark's client time, as a logged one is ([keepAddedAt] covers the others).
+     * Every flag-false or deleted BOOKMARK becomes a DELETE, though most were never in Favorites here: a deleted entry
+     * has no data to tell an ayah bookmark from another, and a DELETE of an item this device never had is dropped by
+     * the merge, so telling them apart would save nothing.
      */
     private fun unloggedFavorites(entries: List<RemoteEntry>, memberships: List<RemoteEntry>): List<RemoteEntry> {
         val logged = memberships.filter { it.data.string("collectionId") == FAVORITES_ID }
@@ -113,6 +118,21 @@ class CollectionAyahsType(private val database: SyncV2Database, collections: Col
                 if (inFavorites) CLIENT_TIMES.forEach { key -> entry.data[key]?.let { put(key, it) } }
             }
             RemoteEntry(RESOURCE, null, if (inFavorites) "CREATE" else "DELETE", data, entry.timestamp)
+        }
+    }
+
+    /**
+     * Unlike a logged membership, an unlogged one comes with every change to its bookmark (slot 1 moving onto it, a
+     * re-bookmark that moves `clientUpdatedAt`), even when the verse was already in Favorites by a logged entry. An
+     * unchanged item takes the server's added date, so a verse this device has keeps its own: the date it was added
+     * doesn't move, and Favorites isn't reordered.
+     */
+    private fun keepAddedAt(items: List<RemoteItem>, refs: Refs): List<RemoteItem> {
+        if (items.none { it is RemoteItem.Upsert }) return items
+        val working = readAll()
+        return items.map { item ->
+            val kept = (item as? RemoteItem.Upsert)?.let { refs.localId(this, it.remoteId) }?.let(working::get) ?: return@map item
+            item.copy(state = item.state.with(ADDED_AT(kept[ADDED_AT])))
         }
     }
 

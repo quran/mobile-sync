@@ -59,7 +59,7 @@ class FakeSyncServer : AutoCloseable {
      */
     @Volatile var dropFromNextResponse: ((JsonObject) -> Boolean)? = null
     /**
-     * The backend before quran.com-users-backend#1491: writes log no `__default__` membership, so a bookmark in Favorites
+     * The backend before quran.com-users-backend#1491: logs no `__default__` membership, so a bookmark in Favorites
      * appears in GET only as a BOOKMARK with `isInDefaultCollection`. Turned on while writing, it seeds the legacy
      * Favorites an account has from before then (the backfill never reached them).
      */

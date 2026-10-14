@@ -466,6 +466,32 @@ class BookmarkScenariosTest {
         assertConverged(ALICE, phone, tablet)
     }
 
+    @Test
+    fun `BMK-22 a bookmark-only update leaves logged memberships alone`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+        val web = web(ALICE)
+        web.addBookmark(2, 255, times = ClientTimes(T0 + 1_000, T0 + 2_000))
+        web.addToCollection(web.createCollection("Study"), 4, 1)
+        web.addToFavorites(4, 1)
+        web.removeFromFavorites(4, 1)
+        syncUntilQuiescent(phone, tablet)
+        val dates = phone.bookmarkDates("Favorites", 2, 255)
+
+        // Slot 1 moves onto the favorite, then off it onto 4:1, which left Favorites earlier.
+        val runs = listOf(2 to 255, 4 to 1).flatMap { (sura, ayah) -> web.setAyahReadingBookmark(1, sura, ayah); syncAll(phone, tablet) }
+
+        runs.forEach(::assertSucceeded)
+        assertTrue(runs.flatMap { it.received }.of("BOOKMARK").isNotEmpty())
+        assertEquals(emptyList(), runs.flatMap { it.received }.of("COLLECTION_BOOKMARK"), "bookmark-only updates")
+        assertEquals(0, runs.sumOf { it.posts })
+        listOf(phone, tablet).forEach {
+            assertEquals(listOf("2:255"), it.favoriteVerses(), "${it.name} Favorites")
+            assertEquals(listOf("4:1"), it.versesIn("Study"), "${it.name} Study")
+        }
+        assertEquals(dates, phone.bookmarkDates("Favorites", 2, 255))
+        assertConverged(ALICE, phone, tablet)
+    }
+
     /** The last entry of the run's first GET page and the first entry of its second. */
     private fun SyncRun.firstPageBoundary(): List<String> {
         val (first, second) = requests.filter { it.method == "GET" && it.status == 200 }.take(2).map { page ->
