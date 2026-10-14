@@ -23,7 +23,7 @@ class PersistenceResetRepositoryTest {
     @BeforeTest
     fun setup() {
         database = createTestDatabase()
-        reset = PersistenceResetRepositoryImpl(database.quran, database.synced)
+        reset = PersistenceResetRepositoryImpl(database.synced)
     }
 
     @Test
@@ -73,12 +73,12 @@ class PersistenceResetRepositoryTest {
     }
 
     @Test
-    fun `reset clears the import history`() {
+    fun `reset keeps the import history`() {
         database.quran.import_trackingQueries.recordImportHistory("v1:handled")
 
         reset.deleteAllData()
 
-        assertEquals(emptyList(), database.quran.import_trackingQueries.getRecordedImportHistory(listOf("v1:handled")).executeAsList())
+        assertEquals(listOf("v1:handled"), database.quran.import_trackingQueries.getRecordedImportHistory(listOf("v1:handled")).executeAsList())
     }
 
     @Test
