@@ -129,11 +129,9 @@ class CollectionAyahsType(private val database: SyncV2Database, collections: Col
             logger.d { "Skipping membership $remoteId: bookmark $bookmarkId is not a known ayah bookmark" }
             return null
         }
-        // A collection this device has never seen: it is not in this GET's collections, so it is skipped.
-        val collection = refs.localId(parent.type, collectionId) ?: run {
-            logger.w { "Skipping membership $remoteId: collection $collectionId is unknown" }
-            return null
-        }
+        // Unknown before the collections of this GET are written; unknown after, it is not in this GET's collections.
+        val collection = refs.localId(parent.type, collectionId)
+            ?: return RemoteItem.Unresolved(remoteId, "collection $collectionId is unknown", entry.timestamp)
         val addedAt = entry.data.epochMillis("clientUpdatedAt") ?: entry.data.epochMillis("clientCreatedAt") ?: entry.timestamp
         return RemoteItem.Upsert(
             remoteId,

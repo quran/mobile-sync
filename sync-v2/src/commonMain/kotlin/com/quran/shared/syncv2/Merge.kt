@@ -58,6 +58,9 @@ class Merger(private val type: SyncType) {
                 }
             }
 
+            // Left out of the merge by the Reconciler.
+            is RemoteItem.Unresolved -> Unit
+
             is RemoteItem.Upsert -> {
                 val remoteState = remote.state
                 val remoteChanged = !same(remoteState, base)
