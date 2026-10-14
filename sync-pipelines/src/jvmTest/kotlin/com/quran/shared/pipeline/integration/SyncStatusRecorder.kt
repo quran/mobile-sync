@@ -1,5 +1,6 @@
 package com.quran.shared.pipeline.integration
 
+import com.quran.shared.auth.model.AuthState
 import com.quran.shared.pipeline.SyncStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -44,24 +46,47 @@ internal class SyncStatusRecorder(flow: StateFlow<SyncStatus>) {
      * Waits for a run that starts after [mark] and returns the status it ended with, or null when
      * [skipped] reports first that the run found no session.
      *
+     * When [retrigger] is set, it runs again every [RETRIGGER_INTERVAL] until a run starts. A
+     * scheduler may drop an immediate trigger that arrives while it is still finishing the previous
+     * run, after that run already published its end, and then nothing runs. A scheduler that
+     * remembers such a trigger starts the run on the first one, so it is not repeated.
+     *
      * A run must start within [START_TIMEOUT] and end within [RUN_TIMEOUT]; otherwise this throws
      * [HarnessTimeoutException]. A run the sync lifecycle gate skips (a logout or reset in
      * progress) never reports [SyncStatus.Syncing] and never asks for headers, so it surfaces as a
      * start timeout.
      */
-    suspend fun awaitRunAfter(mark: Int, device: String, skipped: Flow<Boolean>): SyncStatus? {
+    suspend fun awaitRunAfter(
+        mark: Int,
+        device: String,
+        skipped: Flow<Boolean>,
+        retrigger: (suspend () -> Unit)? = null
+    ): SyncStatus? {
+        val startedOrSkipped = merge(history.filter { start(it, mark) != null }.map { true }, skipped.filter { it }.map { false })
         val started = within(
             START_TIMEOUT,
             "$device: no sync run started within $START_TIMEOUT. The device may have no session, or a " +
                 "logout or reset may hold the sync lifecycle gate; such runs are skipped silently"
         ) {
-            merge(history.filter { start(it, mark) != null }.map { true }, skipped.filter { it }.map { false }).first()
+            if (retrigger == null) return@within startedOrSkipped.first()
+            var result: Boolean? = null
+            while (result == null) {
+                result = withTimeoutOrNull(RETRIGGER_INTERVAL) { startedOrSkipped.first() }
+                if (result == null) retrigger()
+            }
+            result
         }
         if (!started) return null
         return within(RUN_TIMEOUT, "$device: a sync run did not end within $RUN_TIMEOUT") {
             history.mapNotNull { runEnd(it, mark) }.first()
         }
     }
+
+    /** Waits until [authState] no longer shows a session, as after a run skipped because the session ended. */
+    suspend fun awaitSignedOut(device: String, authState: StateFlow<AuthState>) =
+        within(RUN_TIMEOUT, "$device: a run was skipped for no session, but the app still showed one after $RUN_TIMEOUT") {
+            authState.first { it !is AuthState.Success }
+        }
 
     /** Only this wait's own timeout becomes [HarnessTimeoutException]; an outer cancellation passes through. */
     private suspend fun <T : Any> within(timeout: Duration, message: String, block: suspend () -> T): T =
@@ -80,5 +105,6 @@ internal class SyncStatusRecorder(flow: StateFlow<SyncStatus>) {
     companion object {
         val START_TIMEOUT = 3.seconds
         val RUN_TIMEOUT = 15.seconds
+        val RETRIGGER_INTERVAL = 500.milliseconds
     }
 }

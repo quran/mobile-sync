@@ -130,11 +130,16 @@ class SyncDevice internal constructor(
      * Runs one sync now, with its retries, and returns it. Waits first for a run already in flight,
      * so the returned run started after this call. A run that finds no session is returned with no
      * status ([SyncRun.skipped]); [assertSucceeded] fails on it.
+     *
+     * A run publishes its end before the scheduler has finished it, and the old scheduler drops an
+     * immediate trigger that arrives in between. So the trigger is repeated until a run starts
+     * ([SyncStatusRecorder.awaitRunAfter]).
      */
     suspend fun syncNow(): SyncRun {
         checkNotNull(auth.accessToken()) { "$name is signed out; sign in before syncNow()" }
         status.awaitNotSyncing(name)
-        return recordRun { data.triggerSync(immediately = true) }
+        val trigger: suspend () -> Unit = { data.triggerSync(immediately = true) }
+        return recordRun(retrigger = trigger, start = trigger)
     }
 
     /** Waits for the next run that starts after this call, started by something other than the test. */
@@ -170,10 +175,14 @@ class SyncDevice internal constructor(
         mark: Int = status.mark(),
         requestsBefore: Int = server.requests(name).size,
         denialsBefore: Int = auth.headerDenials.value,
+        retrigger: (suspend () -> Unit)? = null,
         start: suspend () -> Unit
     ): SyncRun {
         start()
-        val ended = status.awaitRunAfter(mark, name, skipped = auth.headerDenials.map { it > denialsBefore })
+        val ended = status.awaitRunAfter(mark, name, skipped = auth.headerDenials.map { it > denialsBefore }, retrigger)
+        // FakeAuthRepository counts the denial before the app sees the empty headers and ends the
+        // session, so a skipped run is over only once the app shows that.
+        if (ended == null) status.awaitSignedOut(name, authService.authState)
         return SyncRun(ended, server.requests(name).drop(requestsBefore)).also { lastRun = it }
     }
 
