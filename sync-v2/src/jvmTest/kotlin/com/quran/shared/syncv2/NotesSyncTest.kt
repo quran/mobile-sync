@@ -195,6 +195,29 @@ class NotesSyncTest {
      * NOTE-18: two identical notes written in the same millisecond, then a lost response. The 1 ms nudge keeps their
      * `clientCreatedAt` apart, so each echo binds its own note and nothing is pushed twice.
      */
+    /**
+     * Two devices that create the same note, with the same creation time, ranges and body (both imported the same
+     * legacy data), end with one note: the second device links its new note to the first one's instead of pushing it.
+     */
+    @Test
+    fun `the same note created on two devices is linked, not duplicated`() = FakeSyncServer().use { server ->
+        Device(server).use { phone ->
+            Device(server).use { tablet ->
+                phone.addNote("Imported on both devices", "2:255", t(0))
+                tablet.addNote("Imported on both devices", "2:255", t(0))
+                tablet.addNote("Imported on both devices", "3:18", t(0))
+
+                phone.settle()
+                tablet.settle()
+                phone.settle()
+
+                assertEquals(2, Remote(server).noteIds().size, "${Remote(server).noteRanges()}")
+                assertEquals(listOf("Imported on both devices", "Imported on both devices"), tablet.noteBodies())
+                assertEquals(2, phone.noteBodies().size)
+            }
+        }
+    }
+
     @Test
     fun `two identical notes plus a lost response stay two notes`() = FakeSyncServer().use { server ->
         Device(server).use { device ->

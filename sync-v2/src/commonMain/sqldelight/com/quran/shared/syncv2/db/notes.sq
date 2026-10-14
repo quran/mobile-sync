@@ -29,6 +29,13 @@ CREATE INDEX note_range_start_idx ON note_range(start_sura, start_ayah);
 all:
 SELECT * FROM note ORDER BY local_id;
 
+get:
+SELECT * FROM note WHERE local_id = ?;
+
+-- App-facing: the notes not archived on QuranReflect, newest first.
+active:
+SELECT * FROM note WHERE archived_at IS NULL ORDER BY created_at DESC, local_id DESC;
+
 allRanges:
 SELECT * FROM note_range ORDER BY note_local_id, position;
 
@@ -54,6 +61,9 @@ INSERT INTO note_range(note_local_id, position, start_sura, start_ayah, end_sura
 
 update:
 UPDATE note SET body = ?, created_at = ?, updated_at = ?, archived_at = ? WHERE local_id = ?;
+
+updateBody:
+UPDATE note SET body = ?, updated_at = ? WHERE local_id = ?;
 
 deleteRanges:
 DELETE FROM note_range WHERE note_local_id = ?;

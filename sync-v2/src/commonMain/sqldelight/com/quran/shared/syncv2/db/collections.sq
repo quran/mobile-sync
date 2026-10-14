@@ -65,6 +65,10 @@ SELECT * FROM collection_ayah WHERE local_id = ?;
 collectionAyahsIn:
 SELECT * FROM collection_ayah WHERE collection_local_id = ? ORDER BY sura, ayah;
 
+-- Every collection a verse is in.
+collectionAyahsAt:
+SELECT * FROM collection_ayah WHERE sura = ? AND ayah = ? ORDER BY local_id;
+
 collectionAyahFind:
 SELECT * FROM collection_ayah WHERE collection_local_id = ? AND sura = ? AND ayah = ?;
 

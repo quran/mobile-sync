@@ -328,11 +328,15 @@ class CollectionsSyncTest {
         }
     }
 
-    /** S10/S8 for collections: a local rename against a remote delete recreates the collection (edit wins). */
+    /**
+     * S10/S8 for collections: a local rename against a remote delete recreates the collection (edit wins). The rename
+     * is an edit of the collection itself, so it comes back as this device has it, verses included.
+     */
     @Test
-    fun `a collection renamed locally and deleted remotely is recreated`() = FakeSyncServer().use { server ->
+    fun `a collection renamed locally and deleted remotely is recreated with its verses`() = FakeSyncServer().use { server ->
         Device(server).use { device ->
             val study = device.collections.addCollection("Study", t(0)).localId
+            device.collections.addAyah(study, 2, 255, t(1))
             device.settle()
             val remote = Remote(server)
             remote.deleteCollection(remote.collectionIdOf("Study"))
@@ -342,6 +346,8 @@ class CollectionsSyncTest {
 
             assertEquals(setOf("Memorize"), device.collectionNames())
             assertEquals(setOf("Memorize"), remote.collectionNames())
+            assertEquals(setOf("2:255"), device.versesIn("Memorize"))
+            assertEquals(setOf("2:255"), remote.versesIn("Memorize"))
             assertFalse(404 in server.postStatuses)
         }
     }
