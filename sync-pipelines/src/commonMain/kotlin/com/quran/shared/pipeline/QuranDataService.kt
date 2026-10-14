@@ -654,6 +654,8 @@ class QuranDataService internal constructor(
      * @param timestamp the timestamp to persist for the mutation.
      * @return the updated collection.
      * @throws IllegalArgumentException when [id] does not identify an active collection.
+     * @throws com.quran.shared.persistence.ReadOnlyCollectionException when the collection can't be renamed.
+     * @throws com.quran.shared.persistence.DuplicateCollectionNameException when another collection has [name].
      * @throws com.quran.shared.persistence.ReservedCollectionNameException when [name] is reserved.
      * @throws TextLengthLimitException when [name] is outside the server's length limits.
      */

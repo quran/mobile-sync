@@ -2,11 +2,15 @@ package com.quran.shared.persistence.model
 
 import com.quran.shared.mutations.trimLikeServer
 import com.quran.shared.persistence.util.PlatformDateTime
+import kotlin.native.ObjCName
 
 internal const val DEFAULT_COLLECTION_NAME = "Favorites"
 
 /**
  * App-facing collection model.
+ *
+ * Swift sees it as `BookmarkCollection`: a type named `Collection` would shadow Swift's `Collection` protocol in
+ * every file that imports this framework.
  *
  * @param name the name of the collection
  * @param lastUpdated when the collection was last updated
@@ -16,6 +20,7 @@ internal const val DEFAULT_COLLECTION_NAME = "Favorites"
  * @param isReadOnly whether users can't rename or delete it: system collections, and the color collections older
  *   Quran.com apps created, which the server protects
  */
+@ObjCName(swiftName = "BookmarkCollection")
 data class Collection(
     val name: String,
     val lastUpdated: PlatformDateTime,
