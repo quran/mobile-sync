@@ -35,27 +35,31 @@ data class ServerState(
     }
 
     /**
-     * Fails when the server holds duplicates the backend's unique indexes or the client's natural
+     * The duplicates the server holds that the backend's unique indexes or the client's natural
      * keys forbid: one collection per name key, one bookmark per location, one membership per pair,
      * one session per verse, one reading bookmark per slot, and no two notes with the same
      * `(clientCreatedAt, ranges)`.
      */
+    fun duplicates(): List<ServerDuplicate> = buildList {
+        fun add(kind: ServerDuplicate.Kind, key: String, ids: List<String>) = add(ServerDuplicate(account, kind, key, ids))
+        collections.groupBy { CollectionRules.nameKey(it.name) }.filterValues { it.size > 1 }
+            .forEach { (key, rows) -> add(ServerDuplicate.Kind.COLLECTION, "named '$key'", rows.map { it.id }) }
+        bookmarks.groupBy { listOf(it.type, it.group, it.key, it.verse) }.filterValues { it.size > 1 }
+            .forEach { (key, rows) -> add(ServerDuplicate.Kind.BOOKMARK, "at $key", rows.map { it.id }) }
+        memberships.groupBy { it.id }.filterValues { it.size > 1 }
+            .forEach { (key, rows) -> add(ServerDuplicate.Kind.MEMBERSHIP, key, rows.map { it.id }) }
+        sessions.groupBy { it.chapter to it.verse }.filterValues { it.size > 1 }
+            .forEach { (key, rows) -> add(ServerDuplicate.Kind.SESSION, "at ${key.first}:${key.second}", rows.map { it.id }) }
+        readingBookmarks.groupBy { it.slot }.filterValues { it.size > 1 }
+            .forEach { (slot, rows) -> add(ServerDuplicate.Kind.READING_BOOKMARK, "in slot $slot", rows.map { it.id }) }
+        notes.groupBy { it.clientCreatedAt to it.ranges }.filterValues { it.size > 1 }
+            .forEach { (key, rows) -> add(ServerDuplicate.Kind.NOTE, "created at ${key.first} on ${key.second}", rows.map { it.id }) }
+    }
+
+    /** Fails when the server holds any of [duplicates]. */
     fun assertNoDuplicates() {
-        val problems = buildList {
-            collections.groupBy { CollectionRules.nameKey(it.name) }.filterValues { it.size > 1 }
-                .forEach { (key, rows) -> add("collections named '$key': ${rows.map { it.id }}") }
-            bookmarks.groupBy { listOf(it.type, it.group, it.key, it.verse) }.filterValues { it.size > 1 }
-                .forEach { (key, rows) -> add("bookmarks at $key: ${rows.map { it.id }}") }
-            memberships.groupBy { it.id }.filterValues { it.size > 1 }
-                .forEach { (key, _) -> add("membership $key twice") }
-            sessions.groupBy { it.chapter to it.verse }.filterValues { it.size > 1 }
-                .forEach { (key, rows) -> add("sessions at ${key.first}:${key.second}: ${rows.map { it.id }}") }
-            readingBookmarks.groupBy { it.slot }.filterValues { it.size > 1 }
-                .forEach { (slot, rows) -> add("reading bookmarks in slot $slot: ${rows.map { it.id }}") }
-            notes.groupBy { it.clientCreatedAt to it.ranges }.filterValues { it.size > 1 }
-                .forEach { (key, rows) -> add("notes created at ${key.first} on ${key.second}: ${rows.map { it.id }}") }
-        }
-        if (problems.isNotEmpty()) throw AssertionError("Server account '$account' has duplicates:\n" + problems.joinToString("\n"))
+        val found = duplicates()
+        if (found.isNotEmpty()) throw AssertionError(duplicatesMessage(found))
     }
 
     companion object {
@@ -72,3 +76,14 @@ data class ServerState(
         )
     }
 }
+
+/** Rows of one [kind] on [account] that share the natural [key], by their [ids]. */
+data class ServerDuplicate(val account: String, val kind: Kind, val key: String, val ids: List<String>) {
+    enum class Kind { COLLECTION, BOOKMARK, MEMBERSHIP, SESSION, READING_BOOKMARK, NOTE }
+
+    override fun toString() = "'$account' ${kind.name.lowercase().replace('_', ' ')}s $key: $ids"
+}
+
+/** The failure message for [duplicates]; it always contains "has duplicates". */
+internal fun duplicatesMessage(duplicates: List<ServerDuplicate>): String =
+    "The server has duplicates:\n" + duplicates.joinToString("\n")

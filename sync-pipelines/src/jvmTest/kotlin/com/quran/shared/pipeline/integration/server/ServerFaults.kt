@@ -138,7 +138,11 @@ class ServerFaults internal constructor() {
     fun malformedResponse(times: Int = 1, kind: Malformed = Malformed.INVALID_JSON, match: (FakeRequest) -> Boolean = { true }) =
         add(times, match, Action.Malform(kind))
 
-    /** The next GET that reports [resource] [resourceId] sends it as CREATE with `{}`: a log row whose entity is gone. */
+    /**
+     * The next GET that reports [resource] [resourceId] sends it as if its entity were gone while
+     * its log row is alive: with `{}`, or for a COLLECTION_BOOKMARK with only its split
+     * `{collectionId, bookmarkId}` key and no timestamps, as the backend does.
+     */
     fun vanishOnce(resource: String, resourceId: String) = synchronized(vanished) { vanished += "$resource:$resourceId" }
 
     fun clear() {

@@ -6,6 +6,7 @@ import com.quran.shared.pipeline.integration.mutation
 import com.quran.shared.pipeline.integration.syncFailedLocally
 import com.quran.shared.pipeline.integration.syncRejectedWith
 import com.quran.shared.pipeline.integration.syncScenario
+import kotlinx.coroutines.flow.first
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
@@ -311,6 +312,64 @@ class CollectionScenariosTest {
     }
 
     @Test
+    fun `COL-15 a remote rename beats a local delete`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.data.addAyahBookmarkToCollection(phone.data.addCollection("Study").id, 2, 255)
+        syncUntilQuiescent(phone)
+        val web = web(ALICE)
+        val study = web.collectionId("Study")!!
+
+        web.renameCollection(study, "Memorize")
+        phone.data.deleteCollection(phone.collectionId("Study"))
+        assertSucceeded(phone.syncNow())
+        syncUntilQuiescent(phone)
+
+        assertEquals(listOf("Memorize"), phone.collectionNames(), "the remote rename brings the collection back")
+        // The catalog left this unknown. The rename wins over the delete, but the delete's removal of
+        // 2:255 from the collection is still pushed, so both sides end with an empty Memorize.
+        knownIssue(
+            "S26",
+            "A remote rename restores a locally deleted collection, but its memberships' removals are still pushed",
+            expect = failureMentions("the phone's Memorize", "expected:<[2:255]> but was:<[]>")
+        ) {
+            assertEquals(listOf("2:255"), phone.versesIn("Memorize"), "the phone's Memorize")
+            assertEquals(setOf("2:255"), server.state(ALICE).versesIn(study), "the server keeps the membership")
+            assertConverged(ALICE, phone)
+        }
+    }
+
+    @Test
+    fun `COL-16 a web user collection named Favorites`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.addToFavorites(1, 1)
+        syncUntilQuiescent(phone)
+        val web = web(ALICE)
+
+        val userFavorites = web.createCollection("Favorites")
+        web.addToCollection(userFavorites, 4, 1)
+        val run = phone.syncNow()
+
+        assertSucceeded(run)
+        assertEquals(0, run.posts, "nothing pushed")
+        assertEquals(setOf("4:1"), server.state(ALICE).versesIn(userFavorites), "the server keeps the web's Favorites")
+        assertEquals(setOf("1:1"), server.state(ALICE).favorites)
+
+        // Nothing is silently dropped: the default Favorites keeps 1:1, and the web's "Favorites"
+        // shows as some user collection holding 4:1, under its name or a documented rename.
+        knownIssue(
+            "S9",
+            "A web user collection named Favorites is skipped as colliding with the default",
+            // The catalog predicted S9. The sync succeeds, and the web's Favorites never shows.
+            expect = failureMentions("user collections holding 4:1", "expected:<1> but was:<0>")
+        ) {
+            assertEquals(listOf("1:1"), phone.favoriteVerses(), "the default Favorites")
+            val holding = phone.data.collectionsWithBookmarks.first()
+                .filter { c -> !c.collection.isDefault && c.bookmarks.any { it.sura == 4 && it.ayah == 1 } }
+            assertEquals(1, holding.size, "user collections holding 4:1")
+        }
+    }
+
+    @Test
     fun `COL-17 an older app's protected color collection`() = syncScenario {
         val web = web(ALICE)
         val blue = web.createLegacyColorCollection("blue")
@@ -348,5 +407,25 @@ class CollectionScenariosTest {
         assertSucceeded(run)
         assertEquals(0, run.posts)
         assertEquals(emptyList(), server.state(ALICE).collections)
+    }
+
+    @Test
+    fun `COL-19 the default collection can't be deleted or renamed`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.addToFavorites(2, 255)
+        syncUntilQuiescent(phone)
+        val favorites = phone.favoritesId()
+
+        // The public API never hands out a highlight collection's id: collectionsWithBookmarks
+        // hides them, and highlights carry no id.
+        assertFailsWith<IllegalArgumentException> { phone.data.deleteCollection(favorites) }
+        assertFailsWith<IllegalArgumentException> { phone.data.updateCollection(favorites, "Renamed") }
+
+        assertEquals(listOf("2:255"), phone.favoriteVerses())
+        val run = phone.syncNow()
+        assertSucceeded(run)
+        assertEquals(0, run.posts, "no mutation")
+        assertEquals(setOf("2:255"), server.state(ALICE).favorites)
+        assertConverged(ALICE, phone)
     }
 }

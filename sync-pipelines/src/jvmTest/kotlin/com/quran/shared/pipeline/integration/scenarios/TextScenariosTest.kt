@@ -3,11 +3,17 @@ package com.quran.shared.pipeline.integration.scenarios
 import com.quran.shared.persistence.TextLengthBound
 import com.quran.shared.persistence.TextLengthField
 import com.quran.shared.persistence.TextLengthLimitException
+import com.quran.shared.persistence.model.ReadingBookmarkSlot
+import com.quran.shared.pipeline.integration.SyncDevice
+import com.quran.shared.pipeline.integration.SyncScenario
 import com.quran.shared.pipeline.integration.assertSucceeded
+import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.syncScenario
+import kotlinx.coroutines.flow.first
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 /**
  * Text handling. The fake's `htmlStrip` is a model of sanitize-html that has
@@ -146,6 +152,68 @@ class TextScenariosTest {
         assertEquals(0, run.posts, "nothing extra pushed")
         assertEquals(listOf("Study"), server.state(ALICE).collections.map { it.name })
     }
+
+    @Test
+    fun `TXT-09 non-ASCII case folding matches the server`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+        val web = web(ALICE)
+        web.createCollection("ÉTUDE")
+        web.createCollection("Straße")
+
+        phone.data.addCollection("étude")
+        phone.data.addCollection("STRASSE")
+        syncUntilQuiescent(phone, tablet)
+
+        // unverified vs Postgres: this assumes production Postgres uses a UTF-8 lc_ctype. The fake
+        // models lower() with the root locale, which folds É to é, as a UTF-8 lc_ctype does (a C
+        // lc_ctype folds only ASCII), and leaves ß alone, as every lc_ctype does. So étude links to
+        // ÉTUDE and STRASSE stays its own collection.
+        val names = server.state(ALICE).collections.map { it.name }.sorted()
+        assertEquals(listOf("STRASSE", "Straße", "ÉTUDE"), names)
+        assertTrue(server.requests.count { it.status == 409 } <= 1, "409 statuses: ${server.requests.count { it.status == 409 }}")
+        listOf(phone, tablet).forEach { assertEquals(names, it.collectionNames(), it.name) }
+        assertConverged(ALICE, phone, tablet)
+    }
+
+    @Test
+    fun `TXT-10 Unicode whitespace at the ends of names`() = syncScenario {
+        val (phone) = signedIn("phone")
+        web(ALICE).createCollection("Study")
+
+        val ideographicSpace = phone.data.addCollection(" Study\u3000")
+        val byteOrderMark = phone.data.addCollection("\uFEFFStudy")
+        syncUntilQuiescent(phone)
+
+        assertEquals(ideographicSpace.id, byteOrderMark.id, "both names are one collection")
+        assertEquals(listOf("Study"), server.state(ALICE).collections.map { it.name })
+        assertEquals(listOf("Study"), phone.collectionNames())
+        assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `TXT-11 reading bookmark names are trimmed like the server`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+
+        knownIssue(
+            "S13",
+            "The client keeps reading bookmark names the server trims or turns into null",
+            // The server and the tablet show the trimmed name; the phone keeps what it typed.
+            expect = failureMentions("server, phone and tablet", "but was:<[Juz 30,   Juz 30  , Juz 30]>")
+        ) {
+            phone.data.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "  Juz 30  ")
+            syncAll(phone, tablet).forEach(::assertSucceeded)
+            assertEquals(listOf("Juz 30", "Juz 30", "Juz 30"), slotOneNames(phone, tablet), "server, phone and tablet")
+
+            phone.data.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "   ")
+            syncAll(phone, tablet).forEach(::assertSucceeded)
+            assertEquals(listOf(null, null, null), slotOneNames(phone, tablet), "server, phone and tablet")
+        }
+    }
+
+    /** Slot 1's name on the server, then on each device. */
+    private suspend fun SyncScenario.slotOneNames(vararg devices: SyncDevice): List<String?> =
+        listOf(server.state(ALICE).readingBookmarks.singleOrNull { it.slot == 1 }?.name) +
+            devices.map { device -> device.data.readingBookmarks.first().singleOrNull { it.slot == ReadingBookmarkSlot.TEAL }?.name }
 
     private fun TextLengthLimitException.parts(): List<Any> = listOf(field, bound, limit, length)
 }

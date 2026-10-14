@@ -6,6 +6,7 @@ import com.quran.shared.pipeline.integration.mutation
 import com.quran.shared.pipeline.integration.syncFailedLocally
 import com.quran.shared.pipeline.integration.syncRejectedWith
 import com.quran.shared.pipeline.integration.syncScenario
+import kotlinx.coroutines.flow.first
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -279,5 +280,24 @@ class ReadingSessionScenariosTest {
             assertEquals(listOf("3:7"), server.state(ALICE).sessionVerses)
             assertConverged(ALICE, phone)
         }
+    }
+
+    @Test
+    fun `RS-14 an older revisit doesn't move a session backwards`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+        tablet.data.addReadingSession(2, 255, at(1_000))
+        phone.data.addReadingSession(2, 255, at(2_000))
+        assertSucceeded(phone.syncNow())
+
+        assertSucceeded(tablet.syncNow())
+        assertSucceeded(phone.syncNow())
+
+        // The server's CREATE upsert may take the tablet's older time (a backend follow-up), so
+        // only the devices are checked.
+        listOf(phone, tablet).forEach { device ->
+            val session = device.data.readingSessions.first().single()
+            assertEquals("2:255" to at(2_000), "${session.sura}:${session.ayah}" to session.lastUpdated, device.name)
+        }
+        assertEquals(listOf("2:255"), server.state(ALICE).sessionVerses)
     }
 }

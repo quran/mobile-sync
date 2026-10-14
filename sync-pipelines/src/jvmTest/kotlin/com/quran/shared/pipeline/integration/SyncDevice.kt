@@ -165,8 +165,8 @@ class SyncDevice internal constructor(
     suspend fun awaitSync(): SyncRun = recordRun { }
 
     /**
-     * Relaunches the app: a new graph over the same database and token store. When signed in,
-     * waits for the sync the stored session starts.
+     * Relaunches the app: a new graph over the same database and token store. Waits for launch
+     * recovery, then, when still signed in, for the sync the stored session starts.
      */
     suspend fun restart(): SyncRun? {
         data.clearAndJoin()
@@ -180,10 +180,10 @@ class SyncDevice internal constructor(
             graph = newGraph()
             status = SyncStatusRecorder(graph.quranDataService.syncStatus)
         }
-        if (auth.accessToken() == null) {
-            data.awaitInitialization()
-            return null
-        }
+        // A logout that the previous launch left unfinished completes during launch recovery and
+        // signs the device out, so the session is read only after it.
+        data.awaitInitialization()
+        if (auth.accessToken() == null) return null
         return recordRun(mark = 0, requestsBefore, denialsBefore) { }
     }
 

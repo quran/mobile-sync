@@ -4,6 +4,7 @@ import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.pipeline.LogoutWarning
 import com.quran.shared.pipeline.LogoutWarningType
+import com.quran.shared.pipeline.SessionResetInProgressException
 import com.quran.shared.pipeline.integration.DeviceTimings
 import com.quran.shared.pipeline.integration.SyncDevice
 import com.quran.shared.pipeline.integration.SyncScenario
@@ -15,14 +16,20 @@ import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.server.CollectionRules
 import com.quran.shared.pipeline.integration.syncRejectedWith
 import com.quran.shared.pipeline.integration.syncScenario
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.fail
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
@@ -295,6 +302,43 @@ class LifecycleScenariosTest {
     }
 
     @Test
+    fun `LIFE-13 a logout interrupted by a crash completes on the next launch`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.writeOneOfEach()
+        syncUntilQuiescent(phone)
+        val synced = UserDataSnapshot.of(server.state(ALICE))
+        phone.data.addNote("Pending when the app died", 3, 7, 3, 7)
+        val hold = phone.auth.holdNextLogout()
+
+        // The app dies after the reset began, with its flag persisted, and before any data was
+        // deleted. Token capture runs non-cancellable, so the held logout is left suspended for
+        // good, outside the test's scope, as a killed process never runs again.
+        val dyingLogout = CoroutineScope(Dispatchers.Default).async { phone.logout() }
+        withTimeout(10.seconds) {
+            // A logout that fails, or finishes, before the hold surfaces here instead of timing out.
+            select {
+                hold.reached.onAwait { }
+                dyingLogout.onAwait { fail("the logout finished before the hold: $it") }
+            }
+        }
+        assertEquals(2, phone.data.notes.first().size, "nothing deleted before the crash")
+        val requestsBefore = server.requests("phone").size
+        val relaunch = phone.restart()
+
+        assertNull(relaunch, "the relaunch finished the logout, which signs out")
+        assertTrue(dyingLogout.isActive, "the dead launch's logout never resumed")
+        assertEquals(EMPTY_SNAPSHOT, phone.snapshot(), "cleared at launch")
+        phone.data.addNote("Written after the relaunch", 1, 1, 1, 7)
+        assertEquals(listOf("Written after the relaunch"), phone.noteBodies(), "the first write after the relaunch lands on cleared data")
+        assertSucceeded(phone.login(ALICE))
+        syncUntilQuiescent(phone)
+        val pushed = server.requests("phone").drop(requestsBefore).filter { it.isPost }.flatMap { it.mutations }
+        assertEquals(listOf("NOTE CREATE Written after the relaunch"), pushed.map { "${it.resource} ${it.type} ${it.data("body")}" }, "no POST carries old data")
+        assertEquals((synced.notes + "Written after the relaunch | 1:1-1:7").sorted(), UserDataSnapshot.of(server.state(ALICE)).notes)
+        assertConverged(ALICE, phone)
+    }
+
+    @Test
     fun `LIFE-14 retries re-read the token store after a 401`() = syncScenario {
         // The client has no refresh triggered by a 401, so this proves only that each retry reads
         // the token store again. The variants below leave recovery to the client's own refresh path.
@@ -368,6 +412,28 @@ class LifecycleScenariosTest {
         assertEquals(listOf(LogoutWarningType.REVOKE_TOKEN_FAILED), result.warnings.map { it.type })
         assertEquals(EMPTY_SNAPSHOT, phone.snapshot())
         assertEquals(before, UserDataSnapshot.of(server.state(ALICE)))
+    }
+
+    @Test
+    fun `LIFE-16 writes during a reset are rejected with a typed error`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.data.addNote("Synced before the logout", 1, 1, 1, 7)
+        syncUntilQuiescent(phone)
+        val hold = phone.auth.holdNextLogout()
+
+        coroutineScope {
+            val logout = async { phone.logout() }
+            hold.reached.await()
+            assertFailsWith<SessionResetInProgressException> { phone.data.addNote("Written during the reset", 2, 255, 2, 255) }
+            assertEquals(listOf("Synced before the logout"), phone.noteBodies(), "nothing written")
+            hold.release.complete(Unit)
+            withTimeout(10.seconds) { logout.await() }
+        }
+
+        assertEquals(EMPTY_SNAPSHOT, phone.snapshot())
+        assertSucceeded(phone.login(ALICE))
+        assertEquals(listOf("Synced before the logout"), server.state(ALICE).notes.map { it.body })
+        assertConverged(ALICE, phone)
     }
 
     private class ServerBefore(val data: UserDataSnapshot, val head: Long, val logoutWarnings: List<LogoutWarning>)

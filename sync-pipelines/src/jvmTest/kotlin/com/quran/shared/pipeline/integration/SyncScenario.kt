@@ -3,7 +3,9 @@
 package com.quran.shared.pipeline.integration
 
 import com.quran.shared.pipeline.integration.server.FakeSyncServer
+import com.quran.shared.pipeline.integration.server.ServerDuplicate
 import com.quran.shared.pipeline.integration.server.WebActor
+import com.quran.shared.pipeline.integration.server.duplicatesMessage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.runBlocking
@@ -58,24 +60,20 @@ import kotlin.test.fail
  *   the server's clock with `server.clock`.
  *
  * After the block, every account on the server is checked for duplicates
- * ([com.quran.shared.pipeline.integration.server.ServerState.assertNoDuplicates]). When an open
- * issue leaves duplicates, pass it as [knownDuplicates], and the check runs inside [knownIssue].
+ * ([com.quran.shared.pipeline.integration.server.ServerState.duplicates]):
+ * - Duplicates a scenario expects by design are excluded with [SyncScenario.allowDuplicates].
+ * - Duplicates an open issue leaves are pinned with [knownDuplicates]: the ones its matcher accepts
+ *   are checked inside [knownIssue], so the scenario fails once they are gone.
+ * - Any other duplicate fails the scenario.
+ *
  * The scenario also fails when the fake server hit an error that models no backend behavior.
  */
-fun syncScenario(knownDuplicates: KnownIssue? = null, block: suspend SyncScenario.() -> Unit): Unit = runBlocking {
+fun syncScenario(knownDuplicates: KnownDuplicates? = null, block: suspend SyncScenario.() -> Unit): Unit = runBlocking {
     val scenario = SyncScenario()
     var failure: Throwable? = null
     try {
         scenario.block()
-        if (knownDuplicates == null) {
-            scenario.assertNoServerDuplicates()
-        } else {
-            knownIssue(
-                knownDuplicates.id,
-                knownDuplicates.description,
-                expect = { DUPLICATES_FAILURE in it.message.orEmpty() }
-            ) { scenario.assertNoServerDuplicates() }
-        }
+        scenario.checkServerDuplicates(knownDuplicates)
     } catch (error: Throwable) {
         failure = error
     }
@@ -87,7 +85,17 @@ fun syncScenario(knownDuplicates: KnownIssue? = null, block: suspend SyncScenari
     if (failure != null) throw failure
 }
 
-/** The start of [com.quran.shared.pipeline.integration.server.ServerState.assertNoDuplicates]'s failure message. */
+/**
+ * Duplicates an open issue leaves on the server: [match] accepts each duplicate the issue causes.
+ * Any duplicate it rejects still fails the scenario.
+ */
+class KnownDuplicates(val id: String, val description: String, val match: (ServerDuplicate) -> Boolean) {
+    init {
+        KnownIssue(id, description)
+    }
+}
+
+/** Part of [duplicatesMessage]'s failure message. */
 private const val DUPLICATES_FAILURE = "has duplicates"
 
 class SyncScenario internal constructor() {
@@ -150,9 +158,39 @@ class SyncScenario internal constructor() {
         }
     }
 
-    /** Fails when any account on the server holds duplicates. */
+    private class Allowance(val reason: String, val match: (ServerDuplicate) -> Boolean)
+
+    private val allowances = mutableListOf<Allowance>()
+
+    /**
+     * Declares duplicates that are expected by design, not by a bug: the final duplicate check
+     * skips each one [match] accepts. It is not strict: nothing fails when no such duplicate shows
+     * up. [match] runs after the scenario's block, so it can read the server's final state. For
+     * duplicates an open issue causes, use `syncScenario(knownDuplicates = …)` instead.
+     */
+    fun allowDuplicates(reason: String, match: (ServerDuplicate) -> Boolean) {
+        require(reason.isNotBlank()) { "Say why the duplicates are expected" }
+        allowances += Allowance(reason, match)
+    }
+
+    /** The server's duplicates on every account, without the allowed ones. */
+    fun serverDuplicates(): List<ServerDuplicate> =
+        server.accountNames.flatMap { server.state(it).duplicates() }.filterNot { duplicate -> allowances.any { it.match(duplicate) } }
+
+    /** Fails when any account on the server holds duplicates that are not allowed. */
     fun assertNoServerDuplicates() {
-        server.accountNames.forEach { server.state(it).assertNoDuplicates() }
+        val found = serverDuplicates()
+        if (found.isNotEmpty()) throw AssertionError(duplicatesMessage(found))
+    }
+
+    /** Fails on unexpected duplicates, and pins the ones [known] accepts. */
+    internal suspend fun checkServerDuplicates(known: KnownDuplicates?) {
+        val (expected, unexpected) = serverDuplicates().partition { known?.match?.invoke(it) == true }
+        if (unexpected.isNotEmpty()) throw AssertionError(duplicatesMessage(unexpected))
+        if (known == null) return
+        knownIssue(known.id, known.description, expect = { DUPLICATES_FAILURE in it.message.orEmpty() }) {
+            if (expected.isNotEmpty()) throw AssertionError(duplicatesMessage(expected))
+        }
     }
 
     /**

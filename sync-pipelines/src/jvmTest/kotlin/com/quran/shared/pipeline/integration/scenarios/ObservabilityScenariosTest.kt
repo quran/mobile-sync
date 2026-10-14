@@ -16,8 +16,13 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
+import kotlin.time.Clock
 
-/** Catalog section 2.12: what the public API reports. */
+/**
+ * What the public API reports. Held items are not covered: no public API exposes them yet (IMP-06
+ * and IMP-07 hold notes only locally).
+ */
 class ObservabilityScenariosTest {
 
     @Test
@@ -79,5 +84,22 @@ class ObservabilityScenariosTest {
         assertEquals(listOf(SyncStatus.Syncing, run.status), statuses.drop(1), "one run, then exactly one failure")
         val error = assertIs<SyncStatus.Failed>(run.status).error
         assertEquals(422 to "ValidationError", error.httpStatus to error.serverCode)
+    }
+
+    @Test
+    fun `OBS-03 a successful sync status is observable`() = syncScenario {
+        val (phone) = signedIn("phone")
+        val afterLogin = assertIs<SyncStatus.Succeeded>(phone.data.syncStatus.value, "the login's sync").at
+        phone.data.addNote("Synced and reported", 2, 255, 2, 255)
+        val started = Clock.System.now()
+
+        val run = phone.syncNow()
+
+        assertSucceeded(run)
+        val status = assertIs<SyncStatus.Succeeded>(phone.data.syncStatus.value)
+        assertEquals(run.status, status, "the public status is the run's result")
+        assertTrue(status.at >= started && status.at > afterLogin, "last synced moved from $afterLogin to ${status.at}")
+        assertEquals(listOf("Synced and reported"), server.state(ALICE).notes.map { it.body })
+        assertConverged(ALICE, phone)
     }
 }

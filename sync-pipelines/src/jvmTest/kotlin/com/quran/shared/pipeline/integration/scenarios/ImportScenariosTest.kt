@@ -11,6 +11,7 @@ import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.mutation
 import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.server.CollectionRules
+import com.quran.shared.pipeline.integration.server.ServerDuplicate
 import com.quran.shared.pipeline.integration.syncRejectedWith
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlin.test.Test
@@ -175,6 +176,87 @@ class ImportScenariosTest {
             val later = phone.syncNow()
             assertSucceeded(later)
             assertEquals(0, later.posts, "the held note is not retried")
+        }
+    }
+
+    @Test
+    fun `IMP-08 an edited legacy note is imported as a second note`() = syncScenario {
+        val both = listOf("A legacy reflection on patience", "A legacy reflection on patience, edited later")
+        // The edit keeps the legacy note's creation date, as the iOS legacy reader passes it, so the
+        // server holds two notes created at the same time on the same range, the duplicate check's
+        // key. That pair, and only it, is the documented design.
+        allowDuplicates("An edited legacy note imports as a second note with the original's creation date") { duplicate ->
+            duplicate.kind == ServerDuplicate.Kind.NOTE &&
+                server.state(duplicate.account).notes.filter { it.id in duplicate.ids }.map { it.body }.sorted() == both
+        }
+        val (phone) = signedIn("phone")
+        val original = ImportNote("A legacy reflection on patience", 2, 153, 2, 153, at(0), at(0))
+        phone.data.importData(PersistenceImportData(notes = listOf(original)), deleteExisting = false, trackHistory = true)
+        syncUntilQuiescent(phone)
+
+        val edited = original.copy(body = "A legacy reflection on patience, edited later", lastUpdated = at(1_000))
+        val second = phone.data.importData(PersistenceImportData(notes = listOf(edited)), deleteExisting = false, trackHistory = true)
+        syncUntilQuiescent(phone)
+
+        // The documented design: import history fingerprints notes by content, so the edit is a new note.
+        assertTrue(second.changed)
+        assertEquals(both, phone.noteBodies())
+        assertEquals(both, server.state(ALICE).notes.map { it.body }.sorted())
+        assertEquals(listOf(T0, T0), server.state(ALICE).notes.map { it.clientCreatedAt }, "both keep the legacy creation date")
+        assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `IMP-09 importing more than 20 sessions`() = syncScenario {
+        val (phone) = signedIn("phone")
+
+        phone.data.importData(PersistenceImportData(readingSessions = (1..25).map { ImportReadingSession(2, it, at(it * 1_000L), at(it * 1_000L)) }))
+        syncUntilQuiescent(phone)
+
+        val newest = (6..25).map { "2:$it" }.sorted()
+        assertEquals(newest, server.state(ALICE).sessionVerses, "the server ends with the newest 20")
+        assertEquals(newest, phone.sessionVerses())
+        assertConverged(ALICE, phone)
+        knownIssue(
+            "S20",
+            "Importing more than 20 sessions pushes every one, then prunes the oldest with DELETEs",
+            expect = failureMentions("sessions pushed", "but was:<[CREATE 2:1, CREATE 2:10,", "DELETE")
+        ) {
+            val pushed = server.accepted("phone").of("READING_SESSION")
+            assertEquals(newest.map { "CREATE $it" }, pushed.map { "${it.type} ${it.data("chapterNumber")}:${it.data("verseNumber")}" }.sorted(), "sessions pushed")
+        }
+    }
+
+    @Test
+    fun `IMP-10 items deleted while signed in don't come back after logout and re-import`() = syncScenario {
+        val (phone) = signedIn("phone")
+        val legacy = PersistenceImportData(
+            notes = listOf(
+                ImportNote("A legacy note the user deletes", 1, 1, 1, 7, at(0), at(0)),
+                ImportNote("A legacy note the user keeps", 2, 255, 2, 255, at(10), at(10))
+            )
+        )
+        phone.data.importData(legacy, deleteExisting = false, trackHistory = true)
+        syncUntilQuiescent(phone)
+        phone.data.deleteNote(phone.note("A legacy note the user deletes").id)
+        syncUntilQuiescent(phone)
+        assertEquals(listOf("A legacy note the user keeps"), server.state(ALICE).notes.map { it.body })
+        phone.logout()
+
+        phone.data.importData(legacy, deleteExisting = false, trackHistory = true)
+        assertSucceeded(phone.login(ALICE))
+        syncUntilQuiescent(phone)
+
+        knownIssue(
+            "S14",
+            "Logout clears import history, so a re-run legacy import resurrects items deleted while signed in",
+            expect = failureMentions(
+                "the deleted note on the server",
+                "but was:<[A legacy note the user keeps, A legacy note the user deletes]>"
+            )
+        ) {
+            assertEquals(listOf("A legacy note the user keeps"), server.state(ALICE).notes.map { it.body }, "the deleted note on the server")
+            assertConverged(ALICE, phone)
         }
     }
 }
