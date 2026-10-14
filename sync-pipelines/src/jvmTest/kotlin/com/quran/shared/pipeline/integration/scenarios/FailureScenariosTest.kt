@@ -294,7 +294,8 @@ class FailureScenariosTest {
 
     /**
      * A 403 that may be the token's scope stops pushes for hours, but not pulls: the periodic sync keeps fetching what
-     * other devices write, and pushes nothing. A "sync now" tries to push again.
+     * other devices write, and pushes nothing. syncStatus keeps the 403 until a run that pushes succeeds. A "sync now"
+     * tries to push again.
      */
     @Test
     fun `ERR-18 variant, pulls go on while pushes back off after a 403`() = syncScenario {
@@ -302,16 +303,18 @@ class FailureScenariosTest {
         assertSucceeded(phone.login(ALICE))
         server.account(ALICE).scopes = FakeAccount.ALL_SCOPES - "note"
         phone.data.addNote("Written without the note scope", 2, 255, 2, 255)
-        assertIs<SyncStatus.Failed>(phone.syncNow().status)
+        val failed = assertIs<SyncStatus.Failed>(phone.syncNow().status)
         web(ALICE).createCollection("Written on the web")
 
         val periodic = phone.awaitSync()
 
-        assertSucceeded(periodic)
+        assertEquals(failed, periodic.status, "the pull keeps the 403 in syncStatus")
+        assertEquals(failed, phone.data.syncStatus.value)
         assertEquals(0, periodic.posts, "no push during the backoff")
         assertEquals(listOf("Written on the web"), phone.collectionNames(), "the pull went on")
         server.account(ALICE).scopes = FakeAccount.ALL_SCOPES
         assertSucceeded(phone.syncNow())
+        assertIs<SyncStatus.Succeeded>(phone.data.syncStatus.value)
         assertEquals(listOf("Written without the note scope"), server.state(ALICE).notes.map { it.body })
     }
 

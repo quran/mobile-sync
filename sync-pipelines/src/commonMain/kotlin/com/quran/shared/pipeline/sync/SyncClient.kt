@@ -94,8 +94,14 @@ internal class SyncClient(
         if (!epochIsCurrent(epoch)) return skipped("a logout or reset began during the run")
         return when (result) {
             is SyncResult.Success -> {
-                if (push) pushBackoffUntil = 0L
-                observer.syncSucceeded()
+                if (push) {
+                    pushBackoffUntil = 0L
+                    observer.syncSucceeded()
+                } else {
+                    // A pull during a push backoff doesn't clear the failure that started it: syncStatus keeps
+                    // Failed until a run that pushes succeeds.
+                    observer.syncSkipped()
+                }
                 AttemptOutcome.Done
             }
             is SyncResult.Failed -> failed(result, willRetry)
