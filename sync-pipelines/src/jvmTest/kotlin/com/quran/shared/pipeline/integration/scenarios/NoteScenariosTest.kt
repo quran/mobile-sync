@@ -4,9 +4,14 @@ import com.quran.shared.pipeline.integration.DeviceTimings
 import com.quran.shared.pipeline.integration.KnownIssue
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.knownIssue
+import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.syncScenario
+import kotlinx.coroutines.flow.first
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /** Notes. */
@@ -111,6 +116,77 @@ class NoteScenariosTest {
         assertSucceeded(run)
         assertEquals(0, run.posts)
         assertEquals(listOf("Edited on the web"), phone.noteBodies())
+        assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `NOTE-13 a range edit never leaves device and server disagreeing`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.data.addNote("A note to move elsewhere", 2, 255, 2, 255)
+        syncUntilQuiescent(phone)
+
+        phone.data.updateNote(phone.note("A note to move elsewhere").id, "A note to move elsewhere", 3, 18, 3, 18)
+
+        knownIssue(
+            "The range edit's UPDATE gets 422 (S7); once accepted without ranges, the server keeps the old range (S4)",
+            "S7" to NOTE_UPDATE_REJECTED,
+            "S4" to failureMentions(
+                "expected:<UserDataSnapshot(notes=[A note to move elsewhere | 2:255-2:255]",
+                "but was:<UserDataSnapshot(notes=[A note to move elsewhere | 3:18-3:18]"
+            )
+        ) {
+            repeat(2) { assertSucceeded(phone.syncNow()) }
+            assertConverged(ALICE, phone)
+        }
+    }
+
+    @Test
+    fun `NOTE-14 a note archived on QuranReflect is not shown as active`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.data.addNote("Archived on QuranReflect", 2, 255, 2, 255)
+        syncUntilQuiescent(phone)
+        val web = web(ALICE)
+
+        web.archiveNote(web.noteId("Archived on QuranReflect")!!)
+        val run = phone.syncNow()
+
+        assertSucceeded(run)
+        assertEquals(0, run.posts)
+        assertNotNull(server.state(ALICE).notes.single().archivedAt, "archived, not deleted, on the server")
+        // The public Note has no archived state, so of the two product decisions only "hidden" is expressible.
+        knownIssue(
+            "S13",
+            "A note archived on QuranReflect shows as active",
+            expect = failureMentions("archived note on the phone", "but was:<[Archived on QuranReflect]>")
+        ) {
+            assertEquals(emptyList(), phone.noteBodies(), "archived note on the phone")
+        }
+    }
+
+    @Test
+    fun `NOTE-15 a vanished-resource entry is ignored`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.data.addNote("Written on the phone", 2, 255, 2, 255)
+        syncUntilQuiescent(phone)
+        val web = web(ALICE)
+        val id = web.noteId("Written on the phone")!!
+        web.updateNote(id, "Edited on the web")
+        server.faults.vanishOnce("NOTE", id)
+
+        val first = phone.syncNow()
+
+        assertSucceeded(first)
+        assertEquals(listOf<JsonElement?>(JsonObject(emptyMap())), first.received.of("NOTE").map { it["data"] }, "the GET sent the note as {}")
+        assertEquals(0, first.posts)
+        assertEquals(listOf("Written on the phone"), phone.noteBodies(), "unchanged by the {} entry")
+
+        // The fault clears when the server logs the note again; nothing resends a row the client has passed.
+        web.updateNote(id, "Edited on the web", ClientTimes(updatedAt = server.state(ALICE).notes.single().clientUpdatedAt + 1))
+        val second = phone.syncNow()
+
+        assertSucceeded(second)
+        assertEquals(0, second.posts)
+        assertEquals(listOf("Edited on the web"), phone.noteBodies(), "the real data")
         assertConverged(ALICE, phone)
     }
 
@@ -271,6 +347,29 @@ class NoteScenariosTest {
             syncUntilQuiescent(phone)
             assertEquals(listOf("Edited after the loss"), phone.noteBodies(), "notes on the phone")
             assertEquals(listOf("Edited after the loss"), server.state(ALICE).notes.map { it.body }, "notes on the server")
+        }
+    }
+
+    @Test
+    fun `NOTE-18 two identical pending notes plus a lost response`() = syncScenario(
+        knownDuplicates = KnownIssue("S12", "Two identical pending notes plus a lost response duplicate on the server")
+    ) {
+        val (phone) = signedIn("phone")
+        // The catalog makes them with two imports, but an import matches a note with the same body
+        // and range and skips it. Writing the note twice makes the same pair.
+        phone.data.addNote("Written twice, word for word", 2, 255, 2, 255, at(0))
+        phone.data.addNote("Written twice, word for word", 2, 255, 2, 255, at(60_000))
+        assertEquals(2, phone.data.notes.first().size, "two identical pending notes")
+        server.faults.loseResponse { it.carries("NOTE") }
+
+        knownIssue(
+            "S12",
+            "Two identical pending notes plus a lost response duplicate on the server",
+            expect = failureMentions("server notes", "expected:<2> but was:<")
+        ) {
+            syncUntilQuiescent(phone)
+            assertEquals(2, server.state(ALICE).notes.size, "server notes")
+            assertConverged(ALICE, phone)
         }
     }
 }
