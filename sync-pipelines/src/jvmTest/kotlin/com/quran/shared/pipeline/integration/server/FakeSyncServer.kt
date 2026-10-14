@@ -88,7 +88,7 @@ class FakeSyncServer : AutoCloseable {
     /** Expires every token of [account]: the next request with one gets 401 `TokenExpiredError`. */
     fun expireTokens(account: String) = synchronized(lock) { tokens.values.filter { it.account == account }.forEach { it.expired = true } }
 
-    internal fun rulesFor(account: FakeAccount) = AccountRules(account) { id -> ownerOf(id) }
+    internal fun rulesFor(account: FakeAccount) = AccountRules(account, { id -> ownerOf(id) }, faults.legacyFavorites)
 
     private fun ownerOf(id: String): String? = accounts.values.firstOrNull { account ->
         id in account.collections || id in account.bookmarks || id in account.notes ||

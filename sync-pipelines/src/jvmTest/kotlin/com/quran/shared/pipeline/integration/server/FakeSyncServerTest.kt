@@ -164,6 +164,17 @@ class FakeSyncServerTest {
         assertEquals(listOf("BOOKMARK", "COLLECTION_BOOKMARK"), deletes)
     }
 
+    @Test
+    fun `a legacy Favorites bookmark is logged only as a BOOKMARK carrying the flag`() {
+        server.faults.legacyFavorites = true
+        server.web(ALICE).addBookmark(2, 255)
+
+        val entries = get(since = 0).filter { it.str("resourceId") != "__default__" }
+
+        assertEquals(listOf("BOOKMARK"), entries.map { it.str("resource") })
+        assertEquals("true", entries.single()["data"]!!.jsonObject.str("isInDefaultCollection"))
+    }
+
     private fun mutation(resource: String, type: String, resourceId: String? = null, data: String? = null) = buildString {
         append("""{"resource":"$resource","type":"$type"""")
         resourceId?.let { append(""","resourceId":"$it"""") }

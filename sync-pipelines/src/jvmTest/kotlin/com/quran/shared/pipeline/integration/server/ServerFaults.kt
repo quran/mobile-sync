@@ -64,6 +64,13 @@ class ServerFaults internal constructor() {
     @Volatile var omitMembershipTimes: Set<String> = emptySet()
 
     /**
+     * The backend before quran.com-users-backend#1491: writes log no `__default__` membership, so a bookmark in Favorites
+     * appears in GET only as a BOOKMARK with `isInDefaultCollection`. Turned on for web writes, it seeds the legacy
+     * Favorites an account has from before then (the backfill never reached them).
+     */
+    @Volatile var legacyFavorites: Boolean = false
+
+    /**
      * Serves at most this many entries per GET page, whatever `limit` the client asked for. The
      * real server honours the client's limit up to 1000.
      */
@@ -160,6 +167,7 @@ class ServerFaults internal constructor() {
         synchronized(rules) { rules.clear(); networkDownRule = null }
         synchronized(vanished) { vanished.clear() }
         mutationIndex = false
+        legacyFavorites = false
         pageSizeCap = null
     }
 
