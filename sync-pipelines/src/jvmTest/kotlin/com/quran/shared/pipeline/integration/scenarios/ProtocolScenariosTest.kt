@@ -3,6 +3,9 @@ package com.quran.shared.pipeline.integration.scenarios
 import com.quran.shared.persistence.input.ImportNote
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
+import com.quran.shared.pipeline.SyncStatus
+import com.quran.shared.pipeline.integration.DeviceTimings
+import com.quran.shared.pipeline.integration.SyncRun
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.server.ClientTimes
@@ -16,6 +19,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
@@ -26,19 +30,40 @@ class ProtocolScenariosTest {
 
     @Test
     fun `ERR-13 a malformed response`() = syncScenario {
-        val (phone) = signedIn("phone")
-        web(ALICE).createNote("Written on the web", "3:18-3:18")
-        phone.data.addNote("Written on the phone", 2, 255, 2, 255)
-        server.faults.malformedResponse(kind = ServerFaults.Malformed.INVALID_JSON) { !it.isPost }
+        // No retries, so each malformed answer ends its run, and the test can see what it left behind.
+        val phone = device("phone", DeviceTimings(maximumRetries = 0))
+        assertSucceeded(phone.login(ALICE))
+        // The harness note for ERR-15: more than 1000 rows, not a page cap, so the GET has a page 2
+        // that can break after page 1 arrived.
+        val web = web(ALICE)
+        repeat(1_050) {
+            val verse = "2:${it % 286 + 1}"
+            web.createNote("Seeded note number $it", "$verse-$verse", times = ClientTimes(createdAt = T0 + it))
+        }
+        phone.data.addNote("Written on the phone", 3, 18, 3, 18)
+        server.faults.malformedResponse(kind = ServerFaults.Malformed.INVALID_JSON) { !it.isPost && it.query["page"] == "2" }
+
+        val brokenPage = phone.syncNow()
+
+        assertIs<SyncStatus.Failed>(brokenPage.status)
+        assertEquals(listOf("1", "2"), brokenPage.requests.filter { it.method == "GET" }.map { it.query["page"] })
+        assertEquals(listOf(INVALID_JSON), brokenPage.malformed(), "page 2 was invalid JSON")
+        assertEquals(0, brokenPage.posts)
+        assertEquals(listOf("Written on the phone"), phone.noteBodies(), "nothing from page 1 was applied")
+
         server.faults.malformedResponse(kind = ServerFaults.Malformed.SUCCESS_FALSE_200) { it.isPost }
+        val brokenPost = phone.syncNow()
 
-        val run = phone.syncNow()
+        assertIs<SyncStatus.Failed>(brokenPost.status)
+        assertEquals(listOf(SUCCESS_FALSE), brokenPost.malformed(), "the POST got success:false with 200")
+        assertEquals(1_050, server.state(ALICE).notes.size, "the server applied nothing")
+        assertEquals(listOf("Written on the phone"), phone.noteBodies(), "nothing was applied")
 
-        assertSucceeded(run)
-        assertEquals(listOf(INVALID_JSON, SUCCESS_FALSE), run.requests.mapNotNull { it.response?.takeIf { body -> body in MALFORMED } }, "both faults fired")
-        // Neither malformed answer applied anything, and the retry pushed the note once.
-        assertEquals(listOf("Written on the phone", "Written on the web"), server.state(ALICE).notes.map { it.body }.sorted())
-        assertEquals(listOf("Written on the phone", "Written on the web"), phone.noteBodies())
+        val healed = phone.syncNow()
+
+        assertSucceeded(healed)
+        assertEquals(1, server.state(ALICE).notes.count { it.body == "Written on the phone" }, "the phone's note, once")
+        assertEquals(1_051, phone.data.notes.first().size)
         assertConverged(ALICE, phone)
     }
 
@@ -218,6 +243,8 @@ class ProtocolScenariosTest {
         assertEquals("page" to 300, slot.type to slot.key)
         assertConverged(ALICE, phone)
     }
+
+    private fun SyncRun.malformed(): List<String> = requests.mapNotNull { it.response?.takeIf { body -> body in MALFORMED } }
 
     private companion object {
         /** The bodies [ServerFaults.malformedResponse] answers with. */
