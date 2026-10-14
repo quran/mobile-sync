@@ -10,10 +10,20 @@ import com.quran.shared.persistence.repository.collectionbookmark.repository.Col
 import com.quran.shared.persistence.repository.note.repository.NotesRepositoryImpl
 import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksRepositoryImpl
 import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepositoryImpl
+import com.quran.shared.persistence.repository.note.NoteStore
+import com.quran.shared.syncv2.Generation
+import com.quran.shared.syncv2.ItemFailure
+import com.quran.shared.syncv2.Outbox
+import com.quran.shared.syncv2.SyncRow
+import com.quran.shared.syncv2.SyncStore
+import com.quran.shared.syncv2.SyncSupersededException
+import com.quran.shared.syncv2.types.NoteRange
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonObject
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 class PersistenceResetRepositoryTest {
@@ -61,15 +71,38 @@ class PersistenceResetRepositoryTest {
 
     @Test
     fun `reset wipes the sync state`() {
-        database.synced.sync_itemQueries.upsert("NOTE", 1, "remote-note", "{}", null, null, null)
-        database.synced.sync_itemQueries.metaSet("token", "sync-token")
-        database.synced.sync_itemQueries.metaSet("account", "account-id")
+        val store = SyncStore(database.synced)
+        store.put("NOTE", SyncRow(1, "remote-note", JsonObject(emptyMap())))
+        store.token = 42
+        store.account = "account-id"
+        store.outboxes = listOf(Outbox("account-id", 42, emptyList()))
+        store.failures = mapOf("NOTE:1" to ItemFailure(500, 1))
 
         reset.deleteAllData()
 
         assertEquals(emptyList(), database.synced.sync_itemQueries.all("NOTE").executeAsList())
-        assertNull(database.synced.sync_itemQueries.metaGet("token").executeAsOneOrNull())
-        assertNull(database.synced.sync_itemQueries.metaGet("account").executeAsOneOrNull())
+        assertEquals(0, store.token)
+        assertNull(store.account)
+        assertEquals(emptyList(), store.outboxes)
+        assertEquals(emptyMap(), store.failures)
+    }
+
+    @Test
+    fun `a sync that started before the reset can't write after it`() {
+        val store = SyncStore(database.synced)
+        store.account = "account-id"
+        val inFlight = Generation(database.synced, store, store.epoch)
+
+        reset.deleteAllData()
+
+        assertFailsWith<SyncSupersededException> {
+            inFlight.transaction {
+                NoteStore(database.synced).insert("Downloaded by the sync", listOf(NoteRange(1, 1, 1, 7)), 100)
+                store.token = 42
+            }
+        }
+        assertEquals(emptyList(), database.synced.notesQueries.all().executeAsList())
+        assertEquals(0, store.token)
     }
 
     @Test
