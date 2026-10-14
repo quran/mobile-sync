@@ -2,6 +2,7 @@ package com.quran.shared.pipeline.integration.scenarios
 
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.knownIssue
+import com.quran.shared.pipeline.integration.mutation
 import com.quran.shared.pipeline.integration.syncFailedLocally
 import com.quran.shared.pipeline.integration.syncRejectedWith
 import com.quran.shared.pipeline.integration.syncScenario
@@ -132,7 +133,7 @@ class ReadingSessionScenariosTest {
         knownIssue(
             "S8",
             "Revisiting a session another device deleted pushes an UPDATE that gets 404 forever",
-            expect = syncRejectedWith(404)
+            expect = syncRejectedWith(404, carrying = mutation("READING_SESSION", "UPDATE"))
         ) {
             assertSucceeded(phone.syncNow())
             assertEquals(listOf("2:255"), phone.sessionVerses())

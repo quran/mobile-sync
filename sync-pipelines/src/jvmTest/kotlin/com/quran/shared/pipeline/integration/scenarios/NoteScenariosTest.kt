@@ -2,10 +2,14 @@ package com.quran.shared.pipeline.integration.scenarios
 
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.knownIssue
+import com.quran.shared.pipeline.integration.mutation
 import com.quran.shared.pipeline.integration.syncRejectedWith
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlin.test.Test
 import kotlin.test.assertEquals
+
+/** S7's signature: a note UPDATE carrying `ranges` gets 422. */
+private val NOTE_UPDATE_REJECTED = syncRejectedWith(422, carrying = mutation("NOTE", "UPDATE", "ranges"))
 
 /** Catalog section 2.2: notes. */
 class NoteScenariosTest {
@@ -33,7 +37,7 @@ class NoteScenariosTest {
 
         phone.data.updateNote(phone.note("First version of it").id, "Second version of it", 2, 255, 2, 255)
 
-        knownIssue("S7", "Editing a synced note sends ranges in the UPDATE and gets 422 forever", expect = syncRejectedWith(422)) {
+        knownIssue("S7", "Editing a synced note sends ranges in the UPDATE and gets 422 forever", expect = NOTE_UPDATE_REJECTED) {
             assertSucceeded(phone.syncNow())
             assertEquals(listOf("Second version of it"), server.state(ALICE).notes.map { it.body })
             assertSucceeded(tablet.syncNow())
@@ -52,7 +56,8 @@ class NoteScenariosTest {
         knownIssue(
             "S2",
             "This device's own echo overwrites a newer local edit",
-            expect = failureMentions("local body", "First body of it")
+            // Once S2 is fixed the edit is pushed, and S7's 422 takes over until S7 is fixed too.
+            expect = { failureMentions("local body", "First body of it")(it) || NOTE_UPDATE_REJECTED(it) }
         ) {
             assertSucceeded(phone.syncNow())
             assertEquals(listOf("Edited body of it"), phone.noteBodies(), "local body")

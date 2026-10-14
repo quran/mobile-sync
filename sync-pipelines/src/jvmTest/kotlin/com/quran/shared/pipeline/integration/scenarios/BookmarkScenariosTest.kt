@@ -3,6 +3,7 @@ package com.quran.shared.pipeline.integration.scenarios
 import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.knownIssue
+import com.quran.shared.pipeline.integration.mutation
 import com.quran.shared.pipeline.integration.syncRejectedWith
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.serialization.json.Json
@@ -14,6 +15,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+
+/** S6's signature: the retried Favorites membership DELETE gets 404 "bookmark is not found". */
+private val FAVORITES_DELETE_REJECTED = syncRejectedWith(404, carrying = mutation("COLLECTION_BOOKMARK", "DELETE"))
 
 /** Catalog section 2.5: ayah bookmarks, Favorites and collection memberships. */
 class BookmarkScenariosTest {
@@ -48,7 +52,7 @@ class BookmarkScenariosTest {
 
         phone.removeFromFavorites(2, 255)
 
-        knownIssue("S6", "Removing a verse from Favorites wedges sync permanently", expect = syncRejectedWith(404)) {
+        knownIssue("S6", "Removing a verse from Favorites wedges sync permanently", expect = FAVORITES_DELETE_REJECTED) {
             assertSucceeded(phone.syncNow())
             assertSucceeded(tablet.syncNow())
             assertSucceeded(phone.syncNow())
@@ -118,7 +122,7 @@ class BookmarkScenariosTest {
 
         // Variant 2: no highlight, so the server deletes the bookmark with its Favorites membership.
         phone.data.replaceAyahBookmarkCollections(3, 18, emptyList())
-        knownIssue("S6", "Removing a verse from Favorites wedges sync permanently", expect = syncRejectedWith(404)) {
+        knownIssue("S6", "Removing a verse from Favorites wedges sync permanently", expect = FAVORITES_DELETE_REJECTED) {
             assertSucceeded(phone.syncNow())
             assertSucceeded(tablet.syncNow())
             assertNull(server.state(ALICE).bookmarkAt(3, 18))

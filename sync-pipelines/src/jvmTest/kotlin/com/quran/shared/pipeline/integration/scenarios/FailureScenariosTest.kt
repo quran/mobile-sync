@@ -5,6 +5,7 @@ import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.knownIssue
+import com.quran.shared.pipeline.integration.mutation
 import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.server.text
 import com.quran.shared.pipeline.integration.syncRejectedWith
@@ -88,7 +89,7 @@ class FailureScenariosTest {
         phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 36, 1)
         val run = phone.syncNow()
 
-        knownIssue("S11", "One rejected mutation blocks the whole batch forever", expect = syncRejectedWith(422)) {
+        knownIssue("S11", "One rejected mutation blocks the whole batch forever", expect = syncRejectedWith(422, carrying = mutation("NOTE", "CREATE"))) {
             assertSucceeded(run)
             val state = server.state(ALICE)
             assertNotNull(state.collectionNamed("Study"))
