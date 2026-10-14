@@ -149,4 +149,45 @@ class HighlightScenariosTest {
             assertConverged(ALICE, phone, tablet)
         }
     }
+
+    @Test
+    fun `HL-08 removing the last verse of a color never deletes its collection`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+        phone.data.setHighlight(2, 255, AyahHighlightColor.BLUE)
+        syncUntilQuiescent(phone, tablet)
+
+        assertTrue(phone.data.deleteHighlight(2, 255))
+        assertSucceeded(phone.syncNow())
+        assertSucceeded(tablet.syncNow())
+
+        assertEquals(emptyList(), server.posts("phone").flatMap { it.mutations }.of("COLLECTION", "DELETE"), "no COLLECTION DELETE")
+        val state = server.state(ALICE)
+        assertEquals(emptySet(), state.versesIn(state.collectionNamed(HIGHLIGHTS_BLUE)!!.id), "the empty blue collection stays")
+        listOf(phone, tablet).forEach { assertEquals(emptyList(), it.highlightList(), it.name) }
+        assertConverged(ALICE, phone, tablet)
+    }
+
+    @Test
+    fun `HL-09 a web legacy color collection is not mistaken for the highlight color`() = syncScenario {
+        val web = web(ALICE)
+        val legacy = web.createLegacyColorCollection("blue")
+        web.addToCollection(legacy, 2, 255)
+
+        val (phone) = signedIn("phone")
+
+        // Read-only is not visible in the public model; COL-17 covers renaming and deleting it.
+        assertEquals(listOf("blue"), phone.collectionNames(), "a normal collection")
+        assertEquals(listOf("2:255"), phone.versesIn("blue"))
+        assertEquals(emptyList(), phone.highlightList(), "not a blue highlight")
+        assertConverged(ALICE, phone)
+
+        // The phone's own blue highlight goes to the highlight collection, not the legacy one.
+        phone.data.setHighlight(3, 18, AyahHighlightColor.BLUE)
+        syncUntilQuiescent(phone)
+        val state = server.state(ALICE)
+        assertEquals(setOf("2:255"), state.versesIn(legacy))
+        assertEquals(setOf("3:18"), state.versesIn(state.collectionNamed(HIGHLIGHTS_BLUE)!!.id))
+        assertEquals(listOf("3:18 blue"), phone.highlightList())
+        assertConverged(ALICE, phone)
+    }
 }
