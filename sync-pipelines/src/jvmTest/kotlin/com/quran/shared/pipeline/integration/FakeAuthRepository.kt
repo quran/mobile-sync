@@ -31,6 +31,7 @@ class FakeAuthRepository(private val device: String, private val server: FakeSyn
     @Volatile private var remoteLogoutFails = false
     @Volatile private var logoutHold: LogoutHold? = null
     @Volatile private var expiredLocally = false
+    @Volatile private var refuseForcedRefresh = false
     private lateinit var tokenStore: TokenStore
 
     /** The account of the latest login; null after a logout or an expired session. */
@@ -48,6 +49,11 @@ class FakeAuthRepository(private val device: String, private val server: FakeSyn
     }
 
     /** The next token refresh fails and clears the session, without a `logout()`, like an expired refresh token. */
+    /** The next forced refresh (after a 401) is refused, like a revoked refresh token: it ends the session. */
+    fun refuseNextForcedRefresh() {
+        refuseForcedRefresh = true
+    }
+
     fun expireSession() {
         expireOnNextRefresh = true
     }
@@ -121,8 +127,9 @@ class FakeAuthRepository(private val device: String, private val server: FakeSyn
     override suspend fun forceRefreshTokens(): Boolean {
         val account = account
         if (accessToken() == null || account == null) return false
-        if (expireOnNextRefresh) {
+        if (expireOnNextRefresh || refuseForcedRefresh) {
             expireOnNextRefresh = false
+            refuseForcedRefresh = false
             clearLocalSession()
             return false
         }

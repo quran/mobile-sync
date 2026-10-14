@@ -2,6 +2,7 @@ package com.quran.shared.pipeline.integration.scenarios
 
 import kotlin.test.assertNotNull
 import kotlin.test.assertIs
+import com.quran.shared.auth.model.AuthState
 import com.quran.shared.pipeline.integration.server.ServerFaults
 import com.quran.shared.pipeline.SyncStatus
 import com.quran.shared.persistence.model.AyahHighlightColor
@@ -405,6 +406,22 @@ class LifecycleScenariosTest {
 
         phone.syncNow()
         assertEquals(2, phone.auth.refreshes.value, "one more refresh in the next run, not a storm")
+    }
+
+    @Test
+    fun `LIFE-14 variant, a refused refresh after a 401 ends the session and skips the run`() = syncScenario {
+        val phone = device("phone")
+        val login = phone.login(ALICE)
+        assertSucceeded(login)
+        server.expireTokens(ALICE)
+        phone.auth.refuseNextForcedRefresh()
+
+        val run = phone.syncNow()
+
+        assertEquals(login.status, run.status, "skipped: the status from before the run stays")
+        assertEquals(listOf(401), run.requests.map { it.status })
+        assertNull(phone.auth.accessToken(), "the session ended")
+        assertTrue(phone.authService.authState.value !is AuthState.Success)
     }
 
     @Test
