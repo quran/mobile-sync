@@ -7,7 +7,6 @@ import com.quran.shared.pipeline.integration.SyncDevice
 import com.quran.shared.pipeline.integration.SyncRun
 import com.quran.shared.pipeline.integration.SyncScenario
 import com.quran.shared.pipeline.integration.assertSucceeded
-import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
@@ -64,19 +63,12 @@ class ConvergenceScenariosTest {
         assertEquals(0, second.posts)
         assertConverged(ALICE, phone)
 
-        // The server trims reading bookmark names, and the client keeps the raw name it pushed
-        // (S13). Today the next sync's echo of this device's own push (S2) overwrites it, which
-        // hides S13 from any check made after a second sync.
+        // The server trims reading bookmark names; the client trims them the same way before pushing (S13).
         phone.data.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "  Juz 30  ")
         assertSucceeded(phone.syncNow())
         assertEquals(listOf("Juz 30"), server.state(ALICE).readingBookmarks.map { it.name })
-        knownIssue(
-            "S13",
-            "The client keeps a raw reading bookmark name that the server trims",
-            expect = failureMentions("name after the push", "expected:<[Juz 30]> but was:<[  Juz 30  ]>")
-        ) {
-            assertEquals(listOf("Juz 30"), phone.data.readingBookmarks.first().map { it.name }, "name after the push")
-        }
+        assertEquals(listOf("Juz 30"), phone.data.readingBookmarks.first().map { it.name }, "name after the push")
+
         val again = phone.syncNow()
         assertSucceeded(again)
         assertEquals(0, again.posts, "the trimmed name's echo was pushed back")
@@ -142,8 +134,7 @@ class ConvergenceScenariosTest {
         assertConverged(ALICE, d1, d2, d3)
 
         // Round 2: edits, a rename, an unbookmark, a color change, and a concurrent edit and delete.
-        // Only d1 changes a color: concurrent color changes leave two colors on the server (S24,
-        // pinned by HL-07), which would add a fourth issue to this pin.
+        // Only d1 changes a color; concurrent color changes are HL-07's (S24).
         d1.data.updateNote(d1.note("First device note").id, "First device note, edited")
         d1.data.setHighlight(5, 3, AyahHighlightColor.GREEN)
         d2.data.updateCollection(d2.collectionId("Study"), "Studies")
@@ -152,24 +143,16 @@ class ConvergenceScenariosTest {
         d3.removeFromFavorites(2, 3)
         d3.data.addCollection("Fresh")
 
-        // d3 syncs first, so S6 surfaces first. Behind it, S7 rejects the note edits, and S2
-        // reverts the rename d3 makes right after its push.
-        knownIssue(
-            "The unbookmark wedges sync (S6), note edits get 422 (S7), an echo reverts a rename (S2)",
-            "S6" to FAVORITES_DELETE_404,
-            "S7" to NOTE_UPDATE_REJECTED,
-            "S2" to failureMentions("the rename made after a push", "but was:<Fresh>")
-        ) {
-            assertSucceeded(d3.syncNow())
-            d3.data.updateCollection(d3.collectionId("Fresh"), "Renamed fresh")
-            syncRounds(d1, d2, d3)
-            syncUntilQuiescent(d1, d2, d3, maxRounds = 6)
-            val names = server.state(ALICE).collections.map { it.name }
-            assertEquals("Renamed fresh", names.firstOrNull { it.endsWith("resh") }, "the rename made after a push")
-            assertEquals(emptySet(), server.state(ALICE).favorites)
-            assertTrue("First device note, edited" in d3.noteBodies())
-            assertConverged(ALICE, d1, d2, d3)
-        }
+        // d3 syncs first, then renames right after its push: the echo must not revert it (S2).
+        assertSucceeded(d3.syncNow())
+        d3.data.updateCollection(d3.collectionId("Fresh"), "Renamed fresh")
+        syncRounds(d1, d2, d3)
+        syncUntilQuiescent(d1, d2, d3, maxRounds = 6)
+        val names = server.state(ALICE).collections.map { it.name }
+        assertEquals("Renamed fresh", names.firstOrNull { it.endsWith("resh") }, "the rename made after a push")
+        assertEquals(emptySet(), server.state(ALICE).favorites)
+        assertTrue("First device note, edited" in d3.noteBodies())
+        assertConverged(ALICE, d1, d2, d3)
     }
 
     @Test
@@ -267,18 +250,11 @@ class ConvergenceScenariosTest {
             phone.data.updateNote(phone.note("Sent before the edit").id, "Edited while the create was in flight")
         }
 
-        // The catalog predicted S7. The edit survives the ACK, but the next GET echoes the phone's
-        // own CREATE (S2) and reverts it before it is pushed. Once S2 is fixed, S7's 422 takes over.
-        knownIssue(
-            "The echo of the CREATE reverts the edit (S2); once it is pushed, its UPDATE gets 422 (S7)",
-            "S2" to failureMentions("the latest edit on the phone", "but was:<[Sent before the edit]>"),
-            "S7" to NOTE_UPDATE_REJECTED
-        ) {
-            assertSucceeded(phone.syncNow())
-            syncUntilQuiescent(phone)
-            assertEquals(listOf("Edited while the create was in flight"), phone.noteBodies(), "the latest edit on the phone")
-            assertEquals(listOf("Edited while the create was in flight"), server.state(ALICE).notes.map { it.body }, "the latest edit on the server")
-        }
+        // The echo of the phone's own CREATE must not revert the edit made while it was in flight (S2).
+        assertSucceeded(phone.syncNow())
+        syncUntilQuiescent(phone)
+        assertEquals(listOf("Edited while the create was in flight"), phone.noteBodies(), "the latest edit on the phone")
+        assertEquals(listOf("Edited while the create was in flight"), server.state(ALICE).notes.map { it.body }, "the latest edit on the server")
     }
 
     @Test

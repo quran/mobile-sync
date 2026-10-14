@@ -8,11 +8,9 @@ import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.pipeline.integration.UserDataSnapshot
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.knownIssue
-import com.quran.shared.pipeline.integration.mutation
 import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.server.CollectionRules
 import com.quran.shared.pipeline.integration.server.ServerDuplicate
-import com.quran.shared.pipeline.integration.syncRejectedWith
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -165,18 +163,12 @@ class ImportScenariosTest {
             )
         )
 
-        knownIssue(
-            "S11",
-            "A note range naming a missing verse gets 500 on every attempt and blocks the batch",
-            expect = syncRejectedWith(500, carrying = mutation("NOTE", "CREATE"))
-        ) {
-            assertSucceeded(phone.syncNow())
-            assertEquals(listOf("A valid imported note"), server.state(ALICE).notes.map { it.body })
-            assertEquals(listOf("A note on a verse that doesn't exist", "A valid imported note"), phone.noteBodies(), "held locally")
-            val later = phone.syncNow()
-            assertSucceeded(later)
-            assertEquals(0, later.posts, "the held note is not retried")
-        }
+        assertSucceeded(phone.syncNow())
+        assertEquals(listOf("A valid imported note"), server.state(ALICE).notes.map { it.body })
+        assertEquals(listOf("A note on a verse that doesn't exist", "A valid imported note"), phone.noteBodies(), "held locally")
+        val later = phone.syncNow()
+        assertSucceeded(later)
+        assertEquals(0, later.posts, "the held note is not retried")
     }
 
     @Test
@@ -202,7 +194,8 @@ class ImportScenariosTest {
         assertTrue(second.changed)
         assertEquals(both, phone.noteBodies())
         assertEquals(both, server.state(ALICE).notes.map { it.body }.sorted())
-        assertEquals(listOf(T0, T0), server.state(ALICE).notes.map { it.clientCreatedAt }, "both keep the legacy creation date")
+        // Every local note gets a creation time of its own (nudged by 1 ms), which identifies it to sync.
+        assertEquals(listOf(T0, T0 + 1), server.state(ALICE).notes.map { it.clientCreatedAt }.sorted(), "the legacy creation date, nudged once")
         assertConverged(ALICE, phone)
     }
 
@@ -217,14 +210,8 @@ class ImportScenariosTest {
         assertEquals(newest, server.state(ALICE).sessionVerses, "the server ends with the newest 20")
         assertEquals(newest, phone.sessionVerses())
         assertConverged(ALICE, phone)
-        knownIssue(
-            "S20",
-            "Importing more than 20 sessions pushes every one, then prunes the oldest with DELETEs",
-            expect = failureMentions("sessions pushed", "but was:<[CREATE 2:1, CREATE 2:10,", "DELETE")
-        ) {
-            val pushed = server.accepted("phone").of("READING_SESSION")
-            assertEquals(newest.map { "CREATE $it" }, pushed.map { "${it.type} ${it.data("chapterNumber")}:${it.data("verseNumber")}" }.sorted(), "sessions pushed")
-        }
+        val pushed = server.accepted("phone").of("READING_SESSION")
+        assertEquals(newest.map { "CREATE $it" }, pushed.map { "${it.type} ${it.data("chapterNumber")}:${it.data("verseNumber")}" }.sorted(), "sessions pushed")
     }
 
     @Test

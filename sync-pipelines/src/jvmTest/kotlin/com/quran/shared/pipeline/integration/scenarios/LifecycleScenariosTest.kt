@@ -11,10 +11,8 @@ import com.quran.shared.pipeline.integration.SyncScenario
 import com.quran.shared.pipeline.integration.UserDataSnapshot
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.awaitUntil
-import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.server.CollectionRules
-import com.quran.shared.pipeline.integration.syncRejectedWith
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -189,17 +187,11 @@ class LifecycleScenariosTest {
 
         val run = phone.login(BOB)
 
-        knownIssue(
-            "S3",
-            "An account switch after an expired session pushes A's data into B",
-            expect = failureMentions("A's data reached B")
-        ) {
-            assertSucceeded(run)
-            assertEquals(emptyList(), server.state(BOB).notes.map { it.body }.filter { "Alice" in it }, "A's data reached B")
-            assertEquals(emptyList(), server.state(BOB).sessionVerses, "A's data reached B")
-            assertEquals(listOf("Bob wrote this long ago"), phone.noteBodies(), "B's history on the device")
-            assertConverged(BOB, phone)
-        }
+        assertSucceeded(run)
+        assertEquals(emptyList(), server.state(BOB).notes.map { it.body }.filter { "Alice" in it }, "A's data reached B")
+        assertEquals(emptyList(), server.state(BOB).sessionVerses, "A's data reached B")
+        assertEquals(listOf("Bob wrote this long ago"), phone.noteBodies(), "B's history on the device")
+        assertConverged(BOB, phone)
     }
 
     @Test
@@ -387,15 +379,10 @@ class LifecycleScenariosTest {
         server.expireTokens(ALICE)
         phone.data.addNote("Written after the server revoked the token", 1, 1, 1, 7)
 
-        knownIssue(
-            "S25",
-            "A token the server rejects before its local expiry fails every sync with 401",
-            expect = syncRejectedWith(401)
-        ) {
-            assertSucceeded(phone.syncNow())
-            assertEquals(listOf("Written after the server revoked the token"), server.state(ALICE).notes.map { it.body })
-        }
-        assertEquals(0, phone.auth.refreshes.value, "the client never refreshed the token")
+        assertSucceeded(phone.syncNow())
+        assertEquals(listOf("Written after the server revoked the token"), server.state(ALICE).notes.map { it.body })
+
+        assertEquals(1, phone.auth.refreshes.value, "the client refreshed the token once")
     }
 
     @Test
