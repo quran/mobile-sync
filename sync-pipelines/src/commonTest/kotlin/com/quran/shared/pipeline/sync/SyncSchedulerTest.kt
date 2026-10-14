@@ -126,12 +126,12 @@ class SyncSchedulerTest {
     }
 
     @Test
-    fun `a local change during a run runs again after it while an immediate trigger during a run is dropped`() = schedulerTest { runs, scheduler ->
+    fun `a local change during a run runs again after it`() = schedulerTest { runs, scheduler ->
         runs.block = CompletableDeferred()
 
         scheduler.trigger(SyncTrigger.IMMEDIATE)
         runCurrent()
-        scheduler.trigger(SyncTrigger.IMMEDIATE)
+        scheduler.trigger(SyncTrigger.APP_START)
         scheduler.trigger(SyncTrigger.LOCAL_CHANGE)
         runCurrent()
         runs.block!!.complete(Unit)
@@ -140,6 +140,37 @@ class SyncSchedulerTest {
 
         assertEquals(listOf(SyncTrigger.IMMEDIATE, SyncTrigger.LOCAL_CHANGE), runs.attempts.map { it.second.trigger })
         assertEquals(5_000L, runs.attempts.last().first, "after the local change delay, counted from the run's end")
+    }
+
+    /** A user's "sync now" during a run is not swallowed: it runs right after, ahead of a local change's delay. */
+    @Test
+    fun `an immediate trigger during a run runs right after it`() = schedulerTest { runs, scheduler ->
+        runs.block = CompletableDeferred()
+
+        scheduler.trigger(SyncTrigger.LOCAL_CHANGE)
+        advanceTimeBy(5_001)
+        runCurrent()
+        scheduler.trigger(SyncTrigger.LOCAL_CHANGE)
+        scheduler.trigger(SyncTrigger.IMMEDIATE)
+        runCurrent()
+        runs.block!!.complete(Unit)
+        runCurrent()
+
+        assertEquals(listOf(5_000L to SyncTrigger.LOCAL_CHANGE, 5_001L to SyncTrigger.IMMEDIATE), runs.attempts.map { it.first to it.second.trigger }, "right after the run, not after the local change delay")
+    }
+
+    @Test
+    fun `an immediate trigger while a retry waits runs at once`() = schedulerTest { runs, scheduler ->
+        runs.outcomes += AttemptOutcome.Failed(retryable = true)
+        repeat(3) { runs.outcomes += AttemptOutcome.Failed(retryable = true) }
+
+        scheduler.trigger(SyncTrigger.LOCAL_CHANGE)
+        advanceTimeBy(5_001)
+        runCurrent()
+        scheduler.trigger(SyncTrigger.IMMEDIATE)
+        runCurrent()
+
+        assertEquals(listOf(5_000L to SyncAttempt(SyncTrigger.LOCAL_CHANGE, 0), 5_001L to SyncAttempt(SyncTrigger.IMMEDIATE, 0)), runs.attempts)
     }
 
     @Test

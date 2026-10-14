@@ -337,7 +337,7 @@ class QuranDataService internal constructor(
      *
      * @param immediately `false` waits a few seconds so a burst of local edits syncs once. `true`
      *   starts right away, such as for a user's "Sync now". An immediate request made while a sync
-     *   is running or waiting to retry is dropped; [syncStatus] reports that sync's outcome.
+     *   is running starts another right after it; one made while a sync waits to retry starts now.
      */
     fun triggerSync(immediately: Boolean = false) {
         if (!sessionLifecycleCoordinator.canStartSync()) {

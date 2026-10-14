@@ -45,8 +45,9 @@ internal sealed interface AttemptOutcome {
 
 /**
  * When syncs run. A trigger schedules a run after its delay ([SchedulerTimings]: an app start, a local change, or now),
- * unless one is already due sooner. Runs never overlap: a local change during a run runs again after it, other triggers
- * during a run, or while it waits to retry, are dropped. A failed attempt is retried with exponential backoff, up to
+ * unless one is already due sooner. Runs never overlap: a local change during a run runs again after it, and an
+ * immediate trigger (a user's "sync now") during a run runs right after it; one while a retry waits replaces the retry
+ * with an immediate run. An app start during a run or a pending retry is dropped. A failed attempt is retried with exponential backoff, up to
  * the configured number of retries, unless it is not retryable or asks for a longer backoff. After every run, whatever
  * its outcome, the next one is scheduled after the periodic interval, so sync never stops after its retries run out (S21).
  */
@@ -69,6 +70,7 @@ internal class SyncScheduler(
     private var timerAttempt: SyncAttempt? = null
     private var running: Job? = null
     private var localChangeDuringRun = false
+    private var immediateDuringRun = false
 
     init {
         scope.launch { for (command in commands) handle(command) }
@@ -112,6 +114,7 @@ internal class SyncScheduler(
                 running?.cancelAndJoin()
                 running = null
                 localChangeDuringRun = false
+                immediateDuringRun = false
                 command.done?.complete(Unit)
             }
         }
@@ -119,8 +122,17 @@ internal class SyncScheduler(
 
     private fun onTrigger(trigger: SyncTrigger) {
         when {
-            running != null -> if (trigger == SyncTrigger.LOCAL_CHANGE) localChangeDuringRun = true
-            (timerAttempt?.number ?: 0) > 0 -> logger.d { "Ignoring $trigger: a retry is scheduled" }
+            running != null -> when (trigger) {
+                SyncTrigger.LOCAL_CHANGE -> localChangeDuringRun = true
+                SyncTrigger.IMMEDIATE -> immediateDuringRun = true
+                else -> Unit
+            }
+            (timerAttempt?.number ?: 0) > 0 -> if (trigger == SyncTrigger.IMMEDIATE) {
+                logger.d { "Replacing the scheduled retry with an immediate run" }
+                schedule(Duration.ZERO, SyncAttempt(trigger, 0), onlyIfSooner = false)
+            } else {
+                logger.d { "Ignoring $trigger: a retry is scheduled" }
+            }
             else -> schedule(delayOf(trigger), SyncAttempt(trigger, 0), onlyIfSooner = true)
         }
     }
@@ -137,7 +149,12 @@ internal class SyncScheduler(
 
     private fun onFinished(attempt: SyncAttempt, outcome: AttemptOutcome) {
         running = null
-        if (outcome is AttemptOutcome.Failed && willRetry(attempt, outcome)) {
+        if (immediateDuringRun) {
+            // A user asked to sync while this run was going: run (and push) again right away.
+            immediateDuringRun = false
+            localChangeDuringRun = false
+            schedule(Duration.ZERO, SyncAttempt(SyncTrigger.IMMEDIATE, 0), onlyIfSooner = false)
+        } else if (outcome is AttemptOutcome.Failed && willRetry(attempt, outcome)) {
             localChangeDuringRun = false
             val backoff = timings.failureRetryingConfig.let { it.baseDelay * it.multiplier.pow(attempt.number) }
             logger.i { "Retrying sync in $backoff (attempt ${attempt.number + 1})" }
