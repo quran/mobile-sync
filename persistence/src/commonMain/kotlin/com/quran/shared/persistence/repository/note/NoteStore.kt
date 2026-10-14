@@ -28,7 +28,24 @@ internal class NoteStore(private val database: SyncV2Database) {
      */
     fun insert(body: String, ranges: List<NoteRange>, createdAt: Long, updatedAt: Long = createdAt): Long {
         require(ranges.isNotEmpty()) { "A note needs a verse range." }
-        val created = queries.freeCreatedAt(createdAt).executeAsOne().free ?: createdAt
+        return write(body, ranges, queries.freeCreatedAt(createdAt).executeAsOne().free ?: createdAt, updatedAt)
+    }
+
+    /**
+     * A writer for many new notes in one transaction (an import), with [insert]'s rules, that finds every creation time
+     * in memory (see [CreationTimes]). Notes may only be added through it while it is in use.
+     */
+    fun batch(): Batch = Batch(CreationTimes(queries.createdAts().executeAsList()))
+
+    inner class Batch internal constructor(private val times: CreationTimes) {
+        /** [NoteStore.insert]. */
+        fun insert(body: String, ranges: List<NoteRange>, createdAt: Long, updatedAt: Long = createdAt): Long {
+            require(ranges.isNotEmpty()) { "A note needs a verse range." }
+            return write(body, ranges, times.take(createdAt), updatedAt)
+        }
+    }
+
+    private fun write(body: String, ranges: List<NoteRange>, created: Long, updatedAt: Long): Long {
         queries.insert(body.trimLikeServer(), created, maxOf(updatedAt, created), null)
         val localId = queries.lastInsertId().executeAsOne()
         ranges.forEachIndexed { position, range ->

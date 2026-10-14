@@ -31,6 +31,8 @@ internal class PersistenceImportMerger(
 ) {
     private val collectionStore = CollectionStore(synced)
     private val noteStore = NoteStore(synced)
+    // The nudge for a whole import in one pass: an import can bring thousands of notes, often sharing times.
+    private val newNotes by lazy { noteStore.batch() }
     private val sessionStore = ReadingSessionStore(synced)
     private val readingBookmarkStore = ReadingBookmarkStore(synced)
     private val notesQueries = synced.notesQueries
@@ -188,7 +190,7 @@ internal class PersistenceImportMerger(
             if (key in noteKeys) {
                 matched++
             } else {
-                noteStore.insert(
+                newNotes.insert(
                     body = note.body,
                     ranges = listOf(NoteRange(note.startSura, note.startAyah, note.endSura, note.endAyah)),
                     createdAt = effectiveCreatedAtMillis(note.createdAt, note.lastUpdated),

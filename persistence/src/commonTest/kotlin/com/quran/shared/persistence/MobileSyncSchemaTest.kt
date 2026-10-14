@@ -52,6 +52,14 @@ class MobileSyncSchemaTest {
         assertEquals(emptyList(), database.quran.key_value_storeQueries.getKeys().executeAsList())
     }
 
+    @Test
+    fun `the collections a verse is in are found through an index`() {
+        val plan = queryPlan("SELECT * FROM collection_ayah WHERE sura = 2 AND ayah = 255 ORDER BY local_id")
+
+        // Without it, an import's lookup per verse scans every saved verse: quadratic in the import.
+        assertTrue(plan.any { "collection_ayah_verse_idx" in it }, "query plan: $plan")
+    }
+
     // The old sync engine's tables: domain rows with sync columns, and a link table referencing them.
     private fun createVersionOneTables() {
         driver.execute(
@@ -75,6 +83,17 @@ class MobileSyncSchemaTest {
             val names = mutableSetOf<String>()
             while (cursor.next().value) names += cursor.getString(0)!!
             QueryResult.Value(names)
+        },
+        parameters = 0
+    ).value
+
+    private fun queryPlan(sql: String): List<String> = driver.executeQuery(
+        identifier = null,
+        sql = "EXPLAIN QUERY PLAN $sql",
+        mapper = { cursor ->
+            val steps = mutableListOf<String>()
+            while (cursor.next().value) steps += cursor.getString(3).orEmpty()
+            QueryResult.Value(steps)
         },
         parameters = 0
     ).value
