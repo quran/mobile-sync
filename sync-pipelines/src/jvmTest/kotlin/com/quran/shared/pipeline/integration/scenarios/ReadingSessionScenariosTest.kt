@@ -241,9 +241,8 @@ class ReadingSessionScenariosTest {
         syncUntilQuiescent(phone)
         val web = web(ALICE)
 
-        // The catalog moves it on a second device, but a device merges a move onto a verse it holds
-        // into a DELETE plus an UPDATE. A real move, and the server's DELETE of the session it
-        // replaces, comes from the web.
+        // A device merges a move onto a verse it holds into a DELETE plus an UPDATE, so a real
+        // move, and the server's DELETE of the session it replaces, comes from the web.
         web.moveReadingSession(web.sessionId(2, 255)!!, 3, 7)
         val run = phone.syncNow()
 

@@ -280,8 +280,8 @@ class FailureScenariosTest {
 
     @Test
     fun `ERR-12 a long outage recovers without user action`() = syncScenario {
-        // The harness note for ERR-12: a short local-change delay and periodic interval stand in for
-        // production's 5 s and 30 min, so the outage outlasts the retries in well under a second.
+        // A short local-change delay and periodic interval stand in for production's 5 s and 30 min,
+        // so the outage outlasts the retries in well under a second.
         val phone = device("phone", DeviceTimings(localChangeDelay = 50.milliseconds, periodicInterval = PERIODIC))
         assertSucceeded(phone.login(ALICE))
         server.faults.networkDown()
@@ -426,7 +426,7 @@ class FailureScenariosTest {
         /** [com.quran.shared.pipeline.integration.server.RequestRecord.status] of a dropped connection. */
         const val DROPPED = -1
 
-        /** Sync phases today: collections and bookmarks, memberships, then everything else. */
+        /** Sync phases: collections and bookmarks, memberships, then everything else. */
         const val PHASES = 3
 
         val PERIODIC = 500.milliseconds

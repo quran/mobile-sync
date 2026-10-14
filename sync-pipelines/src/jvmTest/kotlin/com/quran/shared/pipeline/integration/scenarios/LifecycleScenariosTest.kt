@@ -296,9 +296,8 @@ class LifecycleScenariosTest {
 
     @Test
     fun `LIFE-14 retries re-read the token store after a 401`() = syncScenario {
-        // The catalog's LIFE-14 has the test rotate the token after the 401. The client has no
-        // refresh triggered by a 401, so this proves only that each retry reads the token store
-        // again. The variants below leave recovery to the client's own refresh path.
+        // The client has no refresh triggered by a 401, so this proves only that each retry reads
+        // the token store again. The variants below leave recovery to the client's own refresh path.
         // Slow retries leave time to rotate the token between the 401 and the next attempt.
         val phone = device("phone", DeviceTimings(retryBaseDelay = 100.milliseconds))
         assertSucceeded(phone.login(ALICE))

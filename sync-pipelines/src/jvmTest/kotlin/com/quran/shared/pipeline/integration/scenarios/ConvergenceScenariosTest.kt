@@ -205,7 +205,7 @@ class ConvergenceScenariosTest {
 
     @Test
     fun `CONV-06 a local write triggers a sync automatically, coalescing bursts`() = syncScenario {
-        // The harness note for CONV-06: a short local-change delay, then awaitSync().
+        // A short local-change delay, then awaitSync().
         val phone = device("phone", DeviceTimings(localChangeDelay = 300.milliseconds))
         assertSucceeded(phone.login(ALICE))
 

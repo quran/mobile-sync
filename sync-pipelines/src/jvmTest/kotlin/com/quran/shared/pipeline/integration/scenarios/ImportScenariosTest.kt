@@ -143,8 +143,8 @@ class ImportScenariosTest {
 
         val run = phone.login(ALICE)
 
-        // The catalog predicted S1. The second restore turns the first one's Study into a tombstone,
-        // but the restored Study is still active and links the web's study first.
+        // The second restore turns the first one's Study into a tombstone, but the restored Study
+        // is still active and links the web's study first.
         assertSucceeded(run)
         syncUntilQuiescent(phone)
         assertEquals(listOf("study"), server.state(ALICE).collections.map { CollectionRules.nameKey(it.name) }, "the web's study on the server")
