@@ -4,6 +4,7 @@ import com.quran.shared.persistence.input.ImportNote
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.pipeline.integration.assertSucceeded
+import com.quran.shared.pipeline.integration.awaitUntil
 import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.mutation
 import com.quran.shared.pipeline.integration.server.ClientTimes
@@ -12,9 +13,7 @@ import com.quran.shared.pipeline.integration.syncRejectedWith
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
@@ -23,7 +22,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.seconds
 
 /** Catalog section 2.10: failures and the sync protocol. */
 class FailureScenariosTest {
@@ -125,7 +123,7 @@ class FailureScenariosTest {
         server.faults.networkDown()
         val run = coroutineScope {
             val sync = async { phone.syncNow() }
-            withTimeout(10.seconds) { while (server.requests("phone").count { it.status == DROPPED } < 2) delay(1) }
+            awaitUntil("two requests were dropped") { server.requests("phone").count { it.status == DROPPED } >= 2 }
             server.faults.networkUp()
             sync.await()
         }

@@ -9,11 +9,9 @@ import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -134,12 +132,8 @@ class ConvergenceScenariosP1Test {
         val gate = server.faults.blockPost { it.carries("NOTE", "CREATE") }
         phone.data.addNote("Sent before the edit", 2, 255, 2, 255)
 
-        coroutineScope {
-            val sync = async { phone.syncNow() }
-            withContext(Dispatchers.IO) { gate.awaitArrived() }
+        phone.syncWhileHeld(gate) {
             phone.data.updateNote(phone.note("Sent before the edit").id, "Edited while the create was in flight", 2, 255, 2, 255)
-            gate.release()
-            sync.await()
         }
 
         // The catalog predicted S7. The edit survives the ACK, but the next GET echoes the phone's

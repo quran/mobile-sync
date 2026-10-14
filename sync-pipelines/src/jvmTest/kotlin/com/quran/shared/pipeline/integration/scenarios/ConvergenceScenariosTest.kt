@@ -3,15 +3,15 @@ package com.quran.shared.pipeline.integration.scenarios
 import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.pipeline.integration.DeviceTimings
+import com.quran.shared.pipeline.integration.SyncRun
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.milliseconds
@@ -131,13 +131,13 @@ class ConvergenceScenariosTest {
         phone.data.addNote("Pushed while blocked", 1, 1, 1, 7)
 
         val followUp = coroutineScope {
-            val first = async { phone.syncNow() }
-            withContext(Dispatchers.IO) { gate.awaitArrived() }
-            // Mark before the write, so the follow-up it schedules cannot start unobserved.
-            val followUp = async(start = CoroutineStart.UNDISPATCHED) { phone.awaitSync() }
-            phone.data.addReadingSession(2, 255)
-            gate.release()
-            assertSucceeded(first.await())
+            lateinit var followUp: Deferred<SyncRun>
+            val first = phone.syncWhileHeld(gate) {
+                // Mark before the write, so the follow-up it schedules cannot start unobserved.
+                followUp = async(start = CoroutineStart.UNDISPATCHED) { phone.awaitSync() }
+                phone.data.addReadingSession(2, 255)
+            }
+            assertSucceeded(first)
             followUp.await()
         }
 

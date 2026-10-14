@@ -8,11 +8,7 @@ import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.syncScenario
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -114,13 +110,7 @@ class ReadingBookmarkScenariosTest {
         phone.data.addNote("Pushed while the slot changes", 1, 1, 1, 7)
         val gate = server.faults.blockPost { it.carries("NOTE") }
 
-        coroutineScope {
-            val sync = async { phone.syncNow() }
-            withContext(Dispatchers.IO) { gate.awaitArrived() }
-            phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 67, 1, at(2_000))
-            gate.release()
-            assertSucceeded(sync.await())
-        }
+        assertSucceeded(phone.syncWhileHeld(gate) { phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 67, 1, at(2_000)) })
 
         knownIssue(
             "S18",

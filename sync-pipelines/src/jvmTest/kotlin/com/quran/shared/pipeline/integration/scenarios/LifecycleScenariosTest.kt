@@ -9,16 +9,15 @@ import com.quran.shared.pipeline.integration.SyncDevice
 import com.quran.shared.pipeline.integration.SyncScenario
 import com.quran.shared.pipeline.integration.UserDataSnapshot
 import com.quran.shared.pipeline.integration.assertSucceeded
+import com.quran.shared.pipeline.integration.awaitUntil
 import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.server.CollectionRules
 import com.quran.shared.pipeline.integration.syncScenario
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -251,24 +250,19 @@ class LifecycleScenariosTest {
         val gate = server.faults.blockPost()
         val hold = phone.auth.holdNextLogout()
 
-        coroutineScope {
-            val sync = async { phone.syncNow() }
-            withContext(Dispatchers.IO) { gate.awaitArrived() }
-            val logout = async { phone.logout() }
-            hold.reached.await()
-            // The reset has begun; only the held POST, sent before it, may still reach the server.
-            val requestsAtReset = server.requests("phone").size
-            hold.release.complete(Unit)
-            withTimeout(10.seconds) { logout.await() }
-            gate.release()
-            sync.await()
-            withTimeout(10.seconds) { while (server.requests("phone").size == requestsAtReset) delay(1) }
-            assertEquals(
-                listOf("POST"),
-                server.requests("phone").drop(requestsAtReset).map { it.method },
-                "requests after the reset began"
-            )
+        var requestsAtReset = 0
+        phone.syncWhileHeld(gate) {
+            coroutineScope {
+                val logout = async { phone.logout() }
+                hold.reached.await()
+                // The reset has begun; only the held POST, sent before it, may still reach the server.
+                requestsAtReset = server.requests("phone").size
+                hold.release.complete(Unit)
+                withTimeout(10.seconds) { logout.await() }
+            }
         }
+        awaitUntil("the held POST was answered") { server.requests("phone").size > requestsAtReset }
+        assertEquals(listOf("POST"), server.requests("phone").drop(requestsAtReset).map { it.method }, "requests after the reset began")
 
         assertEquals(EMPTY_SNAPSHOT, phone.snapshot())
         assertSucceeded(phone.login(ALICE))
@@ -309,7 +303,7 @@ class LifecycleScenariosTest {
 
         val run = coroutineScope {
             val sync = async { phone.syncNow() }
-            withTimeout(10.seconds) { while (server.requests("phone").none { it.status == 401 }) delay(1) }
+            awaitUntil("the expired token got 401") { server.requests("phone").any { it.status == 401 } }
             phone.auth.rotateToken()
             sync.await()
         }

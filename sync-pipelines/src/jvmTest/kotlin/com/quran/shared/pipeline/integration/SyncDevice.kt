@@ -14,6 +14,7 @@ import com.quran.shared.pipeline.SyncAuthService
 import com.quran.shared.pipeline.SyncStatus
 import com.quran.shared.pipeline.di.AppGraph
 import com.quran.shared.pipeline.integration.server.FakeSyncServer
+import com.quran.shared.pipeline.integration.server.RequestGate
 import com.quran.shared.pipeline.integration.server.RequestRecord
 import com.quran.shared.pipeline.storage.MobileSyncStorage
 import com.quran.shared.syncengine.SynchronizationEnvironment
@@ -25,6 +26,8 @@ import dev.zacsweers.metro.BindingContainer
 import dev.zacsweers.metro.Provides
 import dev.zacsweers.metro.createDynamicGraphFactory
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import org.publicvalue.multiplatform.oidc.tokenstore.SettingsStore
@@ -140,6 +143,22 @@ class SyncDevice internal constructor(
         status.awaitNotSyncing(name)
         val trigger: suspend () -> Unit = { data.triggerSync(immediately = true) }
         return recordRun(retrigger = trigger, start = trigger)
+    }
+
+    /**
+     * Syncs while [gate] holds this device's POST at the server: starts [syncNow], waits until the
+     * POST reaches the gate, runs [whileHeld], then releases the gate and returns the run. The gate
+     * is released even when [whileHeld] fails.
+     */
+    suspend fun syncWhileHeld(gate: RequestGate, whileHeld: suspend () -> Unit): SyncRun = coroutineScope {
+        val sync = async { syncNow() }
+        withContext(Dispatchers.IO) { gate.awaitArrived() }
+        try {
+            whileHeld()
+        } finally {
+            gate.release()
+        }
+        sync.await()
     }
 
     /** Waits for the next run that starts after this call, started by something other than the test. */

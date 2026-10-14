@@ -10,18 +10,16 @@ import com.quran.shared.pipeline.integration.SyncScenario
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.mutation
+import com.quran.shared.pipeline.integration.pollUntil
 import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.server.text
 import com.quran.shared.pipeline.integration.syncRejectedWith
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlin.test.Test
@@ -30,7 +28,6 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.seconds
 
 /** Catalog section 2.10, the P1 cases: failures and the sync protocol. */
 class FailureScenariosP1Test {
@@ -92,13 +89,11 @@ class FailureScenariosP1Test {
         phone.data.addReadingSession(18, 1)
         val gate = server.faults.blockPost { it.carries("READING_SESSION") }
 
-        coroutineScope {
-            val sync = async { phone.syncNow() }
-            withContext(Dispatchers.IO) { gate.awaitArrived() }
-            phone.data.updateNote(phone.note("Deleted on the web mid-sync").id, "Edited while the delete was applied", 2, 255, 2, 255)
-            gate.release()
-            assertSucceeded(sync.await())
-        }
+        assertSucceeded(
+            phone.syncWhileHeld(gate) {
+                phone.data.updateNote(phone.note("Deleted on the web mid-sync").id, "Edited while the delete was applied", 2, 255, 2, 255)
+            }
+        )
 
         knownIssue(
             "S10",
@@ -125,13 +120,7 @@ class FailureScenariosP1Test {
         phone.data.addCollection("Other")
         val gate = server.faults.blockPost { it.carries("COLLECTION") }
 
-        coroutineScope {
-            val sync = async { phone.syncNow() }
-            withContext(Dispatchers.IO) { gate.awaitArrived() }
-            phone.data.updateCollection(phone.collectionId("Study"), "Memorize")
-            gate.release()
-            assertSucceeded(sync.await())
-        }
+        assertSucceeded(phone.syncWhileHeld(gate) { phone.data.updateCollection(phone.collectionId("Study"), "Memorize") })
 
         knownIssue(
             "S10",
@@ -198,7 +187,7 @@ class FailureScenariosP1Test {
             "After the retries run out, sync stops until something triggers it",
             expect = failureMentions("the note reached the server after the outage")
         ) {
-            withTimeoutOrNull(PERIODIC * 3) { while (server.state(ALICE).notes.isEmpty()) delay(10) }
+            pollUntil(PERIODIC * 3) { server.state(ALICE).notes.isNotEmpty() }
             assertEquals(listOf("Written during the outage"), server.state(ALICE).notes.map { it.body }, "the note reached the server after the outage")
         }
     }
