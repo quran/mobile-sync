@@ -174,16 +174,17 @@ class TrackedImportTest {
     }
 
     @Test
-    fun `managed reset clears import history`() = runTest {
+    fun `a tracked import after a reset skips what an earlier import handled`() = runTest {
         repository.importData(noteData("Imported"), false, true)
 
-        PersistenceResetRepositoryImpl(database.quran, database.synced).deleteAllData()
+        PersistenceResetRepositoryImpl(database.synced).deleteAllData()
 
         assertEquals(emptyList(), noteBodies())
         assertEquals(1, database.synced.collectionsQueries.collectionsAll().executeAsList().size)
         val replay = repository.importData(noteData("Imported"), false, true)
-        assertEquals(0, replay.alreadyProcessed)
-        assertEquals(1, replay.notesImported)
+        assertEquals(1, replay.alreadyProcessed)
+        assertEquals(0, replay.notesImported)
+        assertEquals(emptyList(), noteBodies())
     }
 
     @Test

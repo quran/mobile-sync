@@ -291,6 +291,10 @@ number of supplied reading bookmarks in `PersistenceImportResult.readingBookmark
 An import writes through the repositories' rules: text is trimmed like the server, each note gets a
 creation time of its own (nudged by a millisecond on a clash), a verse keeps one highlight color, and
 only the newest 20 reading sessions are kept. The next sync pushes it like any other local change.
+With `trackHistory = true`, an import records a fingerprint of each item it handled, and later tracked
+imports skip those items, even after the user edits or deletes what they brought in. Logout keeps
+this history, so re-running a legacy import afterwards can't bring back deleted items or add the
+legacy data to another account.
 
 Lifecycle note:
 - `QuranDataService` is app-scoped. Initialize once via `SharedDependencyGraph.init(...)`.

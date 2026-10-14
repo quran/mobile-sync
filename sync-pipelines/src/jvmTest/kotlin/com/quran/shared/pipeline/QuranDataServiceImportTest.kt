@@ -75,7 +75,7 @@ class QuranDataServiceImportTest {
                 authService = authService,
                 pipeline = pipeline,
                 environment = SynchronizationEnvironment("https://example.invalid"),
-                persistenceResetRepository = PersistenceResetRepositoryImpl(database.quran, synced),
+                persistenceResetRepository = PersistenceResetRepositoryImpl(synced),
                 persistenceImportRepository = PersistenceImportRepositoryImpl(database.quran, synced),
                 sessionLifecycleCoordinator = lifecycleCoordinator,
                 database = synced

@@ -1021,7 +1021,7 @@ private class QuranDataServiceFixture(
 
     init {
         // The reset is real, over this fixture's database; the fake only adds failures and counts.
-        resetRepository.delegate = PersistenceResetRepositoryImpl(database.quran, database.synced)
+        resetRepository.delegate = PersistenceResetRepositoryImpl(database.synced)
     }
 
     /** Sync state as an earlier sync left it: a token and the account it belongs to. */

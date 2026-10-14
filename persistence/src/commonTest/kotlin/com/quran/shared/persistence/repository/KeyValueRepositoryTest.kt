@@ -53,7 +53,7 @@ class KeyValueRepositoryTest {
     fun `values survive user data reset`() = runTest {
         repository.put("com.quran.sync.reset_in_progress", "true")
 
-        PersistenceResetRepositoryImpl(database.quran, database.synced).deleteAllData()
+        PersistenceResetRepositoryImpl(database.synced).deleteAllData()
 
         assertEquals("true", repository.get("com.quran.sync.reset_in_progress"))
     }

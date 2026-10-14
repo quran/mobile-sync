@@ -42,6 +42,9 @@ SELECT * FROM note_range ORDER BY note_local_id, position;
 rangesOf:
 SELECT * FROM note_range WHERE note_local_id = ? ORDER BY position;
 
+createdAts:
+SELECT created_at FROM note;
+
 -- The smallest created_at at or after the given one that no note has: the given one, or one past a taken one.
 freeCreatedAt:
 SELECT min(candidate) AS free FROM (

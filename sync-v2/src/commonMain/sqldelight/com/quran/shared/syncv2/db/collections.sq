@@ -59,6 +59,8 @@ CREATE TABLE collection_ayah(
 );
 
 CREATE UNIQUE INDEX collection_ayah_idx ON collection_ayah(collection_local_id, sura, ayah);
+-- Every collection a verse is in (collectionAyahsAt): the app's verse lookups and an import's, one per verse.
+CREATE INDEX collection_ayah_verse_idx ON collection_ayah(sura, ayah);
 
 collectionAyahsAll:
 SELECT * FROM collection_ayah ORDER BY local_id;
