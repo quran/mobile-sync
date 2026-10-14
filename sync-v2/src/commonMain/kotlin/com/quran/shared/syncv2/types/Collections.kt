@@ -29,7 +29,11 @@ import kotlinx.serialization.json.put
 /** [isSystem]: the server's flag (Favorites, highlights). [isReadOnly]: no rename or delete (system or older-app colors). */
 data class Collection(val localId: Long, val name: String, val isDefault: Boolean, val isSystem: Boolean, val isReadOnly: Boolean)
 
-/** Plain CRUD over `collection` and `collection_ayah`. Favorites is a normal local row with `is_default = 1`. */
+/**
+ * Plain CRUD over `collection` and `collection_ayah` for this module's tests, standing in for the app's repositories
+ * (persistence). Favorites is a normal local row with `is_default = 1`. The companion's [ensureFavorites] is
+ * production API: the app's schema seeds Favorites with it, and [CollectionsType.wipe] seeds it again.
+ */
 class CollectionsRepository(private val database: SyncV2Database) {
     private val queries get() = database.collectionsQueries
 
@@ -79,6 +83,7 @@ class CollectionsRepository(private val database: SyncV2Database) {
         queries.collectionAyahsIn(collectionLocalId).executeAsList().map { it.sura.toInt() to it.ayah.toInt() }
 
     companion object {
+        /** Production API: seeds the Favorites row when it is missing (a new database, or after a wipe). */
         fun ensureFavorites(database: SyncV2Database) {
             if (database.collectionsQueries.collectionDefault().executeAsOneOrNull() == null) {
                 database.collectionsQueries.collectionInsert("Favorites", null, 1, 1, 1, 0, 0)
