@@ -1,9 +1,13 @@
 package com.quran.shared.pipeline.integration.scenarios
 
+import com.quran.shared.persistence.TextLengthBound
+import com.quran.shared.persistence.TextLengthField
+import com.quran.shared.persistence.TextLengthLimitException
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 /**
  * Text handling. The fake's `htmlStrip` is a model of sanitize-html that has
@@ -63,4 +67,85 @@ class TextScenariosTest {
         assertEquals(0, again.posts, "no re-push")
         assertConverged(ALICE, phone, tablet)
     }
+
+    @Test
+    fun `TXT-02 web input with HTML tags`() = syncScenario {
+        val (phone) = signedIn("phone")
+
+        web(ALICE).createNote("<b>bold</b> text", "2:255-2:255")
+        val runs = listOf(phone.syncNow(), phone.syncNow())
+
+        runs.forEach(::assertSucceeded)
+        assertEquals(listOf("bold text"), server.state(ALICE).notes.map { it.body }, "stored tag-stripped")
+        assertEquals(listOf("bold text"), phone.noteBodies())
+        assertEquals(0, runs.sumOf { it.posts }, "nothing pushed back")
+        assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `TXT-04 note length limits are enforced locally after escaping`() = syncScenario {
+        val (phone) = signedIn("phone")
+
+        val tooShort = assertFailsWith<TextLengthLimitException> { phone.data.addNote("12345", 1, 1, 1, 1) }
+        val tooLong = assertFailsWith<TextLengthLimitException> { phone.data.addNote("a".repeat(9_998) + "&", 1, 2, 1, 2) }
+        phone.data.addNote("b".repeat(10_000), 1, 3, 1, 3)
+
+        assertEquals(listOf(TextLengthField.NOTE_BODY, TextLengthBound.TOO_SHORT, 6, 5), tooShort.parts())
+        assertEquals(listOf(TextLengthField.NOTE_BODY, TextLengthBound.TOO_LONG, 10_000, 10_003), tooLong.parts())
+        assertSucceeded(phone.syncNow())
+        assertEquals(listOf(10_000), server.state(ALICE).notes.map { it.body.length })
+        assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `TXT-05 length is counted in UTF-16 units like JavaScript`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+        val emoji = "😀😀😀"
+        val arabic = "بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ"
+
+        phone.data.addNote(emoji, 1, 1, 1, 1)
+        phone.data.addNote(arabic, 1, 1, 1, 7)
+        assertSucceeded(phone.syncNow())
+        assertSucceeded(tablet.syncNow())
+
+        assertEquals(listOf(arabic, emoji).sorted(), server.state(ALICE).notes.map { it.body }.sorted())
+        assertEquals(listOf(arabic, emoji).sorted(), tablet.noteBodies())
+        assertConverged(ALICE, phone, tablet)
+    }
+
+    @Test
+    fun `TXT-07 collection name limits`() = syncScenario {
+        val (phone) = signedIn("phone")
+        val longest = "N".repeat(255)
+
+        val empty = assertFailsWith<TextLengthLimitException> { phone.data.addCollection("") }
+        val spaces = assertFailsWith<TextLengthLimitException> { phone.data.addCollection("   ") }
+        val escaped = assertFailsWith<TextLengthLimitException> { phone.data.addCollection("&".repeat(52)) }
+        phone.data.addCollection(longest)
+
+        assertEquals(listOf(TextLengthField.COLLECTION_NAME, TextLengthBound.TOO_SHORT, 1, 0), empty.parts())
+        assertEquals(listOf(TextLengthField.COLLECTION_NAME, TextLengthBound.TOO_SHORT, 1, 0), spaces.parts())
+        assertEquals(listOf(TextLengthField.COLLECTION_NAME, TextLengthBound.TOO_LONG, 255, 260), escaped.parts())
+        assertSucceeded(phone.syncNow())
+        assertEquals(listOf(longest), server.state(ALICE).collections.map { it.name })
+        assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `TXT-08 a name that differs only in case or whitespace returns the existing collection`() = syncScenario {
+        val (phone) = signedIn("phone")
+        val study = phone.data.addCollection("Study")
+        syncUntilQuiescent(phone)
+
+        val again = phone.data.addCollection("  STUDY ")
+
+        assertEquals(study.id, again.id)
+        assertEquals(listOf("Study"), phone.collectionNames())
+        val run = phone.syncNow()
+        assertSucceeded(run)
+        assertEquals(0, run.posts, "nothing extra pushed")
+        assertEquals(listOf("Study"), server.state(ALICE).collections.map { it.name })
+    }
+
+    private fun TextLengthLimitException.parts(): List<Any> = listOf(field, bound, limit, length)
 }
