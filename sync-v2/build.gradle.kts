@@ -5,9 +5,11 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.sqldelight)
+    alias(libs.plugins.vanniktech.maven.publish)
 }
 
-// The generic, git-like sync engine. Only `sync-pipelines` uses it, so `umbrella` doesn't export it.
+// The generic, git-like sync engine. Only `sync-pipelines` uses it, so `umbrella` doesn't export it. It is still
+// published, because the published `persistence` and `mobile-sync` artifacts depend on it.
 kotlin {
     applyDefaultHierarchyTemplate()
 
@@ -69,4 +71,35 @@ sqldelight {
         }
     }
     linkSqlite = true
+}
+
+mavenPublishing {
+    publishToMavenCentral()
+    signAllPublications()
+    coordinates(group.toString(), "sync-v2", version.toString())
+
+    pom {
+        name = "Quran.com Sync Engine"
+        description = "The sync engine for Quran.com user data: fetch, three-way merge and push, with its synced tables."
+        inceptionYear = libs.versions.project.inception.year.get()
+        url = libs.versions.project.url.get()
+
+        licenses {
+            license {
+                name.set(libs.versions.project.license.name.get())
+                url.set(libs.versions.project.license.url.get())
+            }
+        }
+        developers {
+            developer {
+                id.set(libs.versions.project.developer.id.get())
+                name.set(libs.versions.project.developer.name.get())
+            }
+        }
+        scm {
+            url.set(libs.versions.project.url.get())
+            connection.set(libs.versions.project.scm.connection.get())
+            developerConnection.set(libs.versions.project.scm.developer.connection.get())
+        }
+    }
 }
