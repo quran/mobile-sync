@@ -140,4 +140,112 @@ class ReadingSessionScenariosTest {
             assertEquals(listOf("2:255"), server.state(ALICE).sessionVerses)
         }
     }
+
+    @Test
+    fun `RS-03 moving a session`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+        val session = phone.data.addReadingSession(2, 255)
+        syncUntilQuiescent(phone, tablet)
+
+        phone.data.updateReadingSession(session.id, 3, 7)
+        assertSucceeded(phone.syncNow())
+        assertSucceeded(tablet.syncNow())
+
+        assertEquals(listOf("3:7"), server.state(ALICE).sessionVerses)
+        listOf(phone, tablet).forEach { assertEquals(listOf("3:7"), it.sessionVerses(), it.name) }
+        assertConverged(ALICE, phone, tablet)
+    }
+
+    @Test
+    fun `RS-04 moving onto an existing session merges them`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+        val moved = phone.data.addReadingSession(2, 255, at(0))
+        phone.data.addReadingSession(3, 7, at(1_000))
+        syncUntilQuiescent(phone, tablet)
+
+        phone.data.updateReadingSession(moved.id, 3, 7, at(2_000))
+        assertSucceeded(phone.syncNow())
+        assertSucceeded(tablet.syncNow())
+
+        assertEquals(listOf("3:7"), server.state(ALICE).sessionVerses)
+        listOf(phone, tablet).forEach { assertEquals(listOf("3:7"), it.sessionVerses(), it.name) }
+        assertConverged(ALICE, phone, tablet)
+    }
+
+    @Test
+    fun `RS-05 deleting a session`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+        phone.data.addReadingSession(2, 255)
+        phone.data.addReadingSession(18, 1)
+        syncUntilQuiescent(phone, tablet)
+
+        assertTrue(phone.data.deleteReadingSession(2, 255))
+        assertSucceeded(phone.syncNow())
+        assertSucceeded(tablet.syncNow())
+
+        assertEquals(listOf("18:1"), server.state(ALICE).sessionVerses)
+        listOf(phone, tablet).forEach { assertEquals(listOf("18:1"), it.sessionVerses(), it.name) }
+        assertConverged(ALICE, phone, tablet)
+    }
+
+    @Test
+    fun `RS-07 two devices' sessions converge on the same newest 20`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+        // Interleaved times: the phone's visits are even seconds, the tablet's odd ones.
+        (1..15).forEach { i ->
+            phone.data.addReadingSession(2, i, at(2_000L * i))
+            tablet.data.addReadingSession(3, i, at(2_000L * i + 1_000))
+        }
+
+        syncUntilQuiescent(phone, tablet, maxRounds = 6)
+
+        val newest = ((6..15).map { "2:$it" } + (6..15).map { "3:$it" }).sorted()
+        assertEquals(newest, server.state(ALICE).sessionVerses)
+        listOf(phone, tablet).forEach { assertEquals(newest, it.sessionVerses(), it.name) }
+        assertConverged(ALICE, phone, tablet)
+    }
+
+    @Test
+    fun `RS-12 both devices delete the same session`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+        phone.data.addReadingSession(2, 255)
+        phone.data.addReadingSession(18, 1)
+        syncUntilQuiescent(phone, tablet)
+
+        tablet.data.deleteReadingSession(2, 255)
+        assertSucceeded(tablet.syncNow())
+        // Deletes take no timestamp, so the phone's delete is the later one by the wall clock.
+        phone.data.deleteReadingSession(2, 255)
+
+        knownIssue(
+            "S8",
+            "A later local delete of a session another device deleted gets 404 forever",
+            expect = syncRejectedWith(404, carrying = mutation("READING_SESSION", "DELETE"))
+        ) {
+            assertSucceeded(phone.syncNow())
+            assertEquals(listOf("18:1"), server.state(ALICE).sessionVerses)
+            listOf(phone, tablet).forEach { assertEquals(listOf("18:1"), it.sessionVerses(), it.name) }
+            assertConverged(ALICE, phone, tablet)
+        }
+    }
+
+    @Test
+    fun `RS-13 a remote move onto a verse that has a local session`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.data.addReadingSession(3, 7, at(0))
+        phone.data.addReadingSession(2, 255, at(1_000))
+        syncUntilQuiescent(phone)
+        val web = web(ALICE)
+
+        // The catalog moves it on a second device, but a device merges a move onto a verse it holds
+        // into a DELETE plus an UPDATE. A real move, and the server's DELETE of the session it
+        // replaces, comes from the web.
+        web.moveReadingSession(web.sessionId(2, 255)!!, 3, 7)
+        val run = phone.syncNow()
+
+        assertSucceeded(run)
+        assertEquals(0, run.posts)
+        assertEquals(listOf("3:7"), phone.sessionVerses())
+        assertConverged(ALICE, phone)
+    }
 }
