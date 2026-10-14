@@ -3,6 +3,7 @@ package com.quran.shared.pipeline.integration.scenarios
 import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.pipeline.LogoutWarning
+import com.quran.shared.pipeline.LogoutWarningType
 import com.quran.shared.pipeline.integration.DeviceTimings
 import com.quran.shared.pipeline.integration.SyncDevice
 import com.quran.shared.pipeline.integration.SyncScenario
@@ -12,12 +13,18 @@ import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.server.CollectionRules
 import com.quran.shared.pipeline.integration.syncScenario
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /** Login, logout, account switches and relaunches. */
 class LifecycleScenariosTest {
@@ -234,6 +241,100 @@ class LifecycleScenariosTest {
         )
         assertTrue(pushed.all { it.type == "CREATE" }, "only CREATEs: $pushed")
         assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `LIFE-08 logout during an in-flight sync`() = syncScenario {
+        val phone = device("phone")
+        assertSucceeded(phone.login(ALICE))
+        phone.data.addNote("Pushed while logging out", 1, 1, 1, 7)
+        val gate = server.faults.blockPost()
+        val hold = phone.auth.holdNextLogout()
+
+        coroutineScope {
+            val sync = async { phone.syncNow() }
+            withContext(Dispatchers.IO) { gate.awaitArrived() }
+            val logout = async { phone.logout() }
+            hold.reached.await()
+            // The reset has begun; only the held POST, sent before it, may still reach the server.
+            val requestsAtReset = server.requests("phone").size
+            hold.release.complete(Unit)
+            withTimeout(10.seconds) { logout.await() }
+            gate.release()
+            sync.await()
+            withTimeout(10.seconds) { while (server.requests("phone").size == requestsAtReset) delay(1) }
+            assertEquals(
+                listOf("POST"),
+                server.requests("phone").drop(requestsAtReset).map { it.method },
+                "requests after the reset began"
+            )
+        }
+
+        assertEquals(EMPTY_SNAPSHOT, phone.snapshot())
+        assertSucceeded(phone.login(ALICE))
+        syncUntilQuiescent(phone)
+        assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `LIFE-10 an expired session then the same account keeps pending work`() = syncScenario {
+        val phone = device("phone")
+        assertSucceeded(phone.login(ALICE))
+        phone.data.addNote("Synced before the expiry", 1, 1, 1, 7)
+        syncUntilQuiescent(phone)
+        phone.data.addNote("Pending at the expiry", 3, 18, 3, 18)
+        phone.data.addAyahBookmarkToCollection(phone.data.addCollection("Study").id, 2, 255)
+        phone.data.addReadingSession(36, 1)
+        phone.auth.expireSession()
+        assertTrue(phone.syncNow().skipped, "the expired session skips the sync")
+
+        val run = phone.login(ALICE)
+
+        assertSucceeded(run)
+        syncUntilQuiescent(phone)
+        val state = server.state(ALICE)
+        assertEquals(listOf("Pending at the expiry", "Synced before the expiry"), state.notes.map { it.body }.sorted())
+        assertEquals(setOf("2:255"), state.versesIn(state.collectionNamed("Study")!!.id))
+        assertEquals(listOf("36:1"), state.sessionVerses)
+        assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `LIFE-14 an access token expiring mid-session is refreshed`() = syncScenario {
+        // Slow retries leave time to refresh the token between the 401 and the next attempt.
+        val phone = device("phone", DeviceTimings(retryBaseDelay = 100.milliseconds))
+        assertSucceeded(phone.login(ALICE))
+        server.expireTokens(ALICE)
+        phone.data.addNote("Written after the token expired", 1, 1, 1, 7)
+
+        val run = coroutineScope {
+            val sync = async { phone.syncNow() }
+            withTimeout(10.seconds) { while (server.requests("phone").none { it.status == 401 }) delay(1) }
+            phone.auth.rotateToken()
+            sync.await()
+        }
+
+        assertSucceeded(run)
+        assertEquals(401, run.requests.first().status, "the first attempt used the expired token")
+        assertEquals(listOf(200), run.postStatuses.filter { it != 401 }, "POST statuses ${run.postStatuses}")
+        assertEquals(listOf("Written after the token expired"), server.state(ALICE).notes.map { it.body })
+        assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `LIFE-15 a remote logout failure is reported, not fatal`() = syncScenario {
+        val phone = device("phone")
+        assertSucceeded(phone.login(ALICE))
+        phone.writeOneOfEach()
+        syncUntilQuiescent(phone)
+        val before = UserDataSnapshot.of(server.state(ALICE))
+        phone.auth.failRemoteLogout()
+
+        val result = phone.logout()
+
+        assertEquals(listOf(LogoutWarningType.REVOKE_TOKEN_FAILED), result.warnings.map { it.type })
+        assertEquals(EMPTY_SNAPSHOT, phone.snapshot())
+        assertEquals(before, UserDataSnapshot.of(server.state(ALICE)))
     }
 
     private class ServerBefore(val data: UserDataSnapshot, val head: Long, val logoutWarnings: List<LogoutWarning>)
