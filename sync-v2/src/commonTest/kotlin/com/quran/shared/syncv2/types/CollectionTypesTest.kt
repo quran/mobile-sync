@@ -5,6 +5,7 @@ import com.quran.shared.syncv2.Field
 import com.quran.shared.syncv2.MergeItem
 import com.quran.shared.syncv2.Merger
 import com.quran.shared.syncv2.Refs
+import com.quran.shared.syncv2.RemoteEntry
 import com.quran.shared.syncv2.RemoteItem
 import com.quran.shared.syncv2.State
 import com.quran.shared.syncv2.SyncType
@@ -12,9 +13,13 @@ import com.quran.shared.syncv2.get
 import com.quran.shared.syncv2.inMemoryDatabase
 import com.quran.shared.syncv2.stateOf
 import com.quran.shared.syncv2.with
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /** The session, collection and verse types over each platform's SQLite driver, without a server. */
@@ -115,6 +120,40 @@ class CollectionTypesTest {
 
         assertEquals(9L, item.working!![addedAt])
         assertEquals(9L, item.base!![addedAt])
+    }
+
+    /**
+     * A BOOKMARK with no `__default__` entry in the GET stands for its Favorites membership: in while its flag is true,
+     * out when it is false or the bookmark is deleted. A logged entry wins; no flag (`{}` data) says nothing.
+     */
+    @Test
+    fun the_favorites_flag_of_a_bookmark_stands_for_an_unlogged_membership() {
+        val favorites = collections.favorites().localId
+        val refs = object : Refs {
+            override fun remoteId(type: SyncType, localId: Long): String? = null
+            override fun localId(type: SyncType, remoteId: String): Long? = favorites.takeIf { remoteId == "__default__" }
+        }
+        fun bookmark(id: String, sura: Int, inFavorites: Boolean?) = RemoteEntry("BOOKMARK", id, "CREATE", buildJsonObject {
+            put("bookmarkType", "ayah"); put("key", sura); put("verseNumber", 1)
+            inFavorites?.let { put("isInDefaultCollection", it) }
+            put("clientUpdatedAt", "2023-11-14T22:13:20Z")
+        }, 5)
+        val entries = listOf(
+            bookmark("bm1", 1, inFavorites = true),
+            bookmark("bm2", 2, inFavorites = false),
+            bookmark("bm3", 3, inFavorites = null),
+            bookmark("bm4", 4, inFavorites = true),
+            RemoteEntry("COLLECTION_BOOKMARK", null, "DELETE", buildJsonObject { put("collectionId", "__default__"); put("bookmarkId", "bm4") }, 6),
+            RemoteEntry("BOOKMARK", "bm5", "DELETE", JsonObject(emptyMap()), 7)
+        )
+
+        val items = verses.fromRemote(entries, refs).associateBy { it.remoteId }
+
+        assertEquals(setOf("__default__-bm1", "__default__-bm2", "__default__-bm4", "__default__-bm5"), items.keys)
+        val favorite = assertIs<RemoteItem.Upsert>(items["__default__-bm1"])
+        assertEquals(favorites, favorite.state[Field.long("collection")])
+        assertEquals(1_700_000_000_000L, favorite.state[addedAt], "the bookmark's client time, as a logged membership has")
+        listOf("bm2", "bm4", "bm5").forEach { assertIs<RemoteItem.Deleted>(items["__default__-$it"], it) }
     }
 
     private fun sessionAt(sura: Int, ayah: Int, at: Long): State =

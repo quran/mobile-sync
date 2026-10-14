@@ -24,7 +24,7 @@ class Reconciler(private val store: SyncStore, private val types: List<SyncType>
 
     private fun reconcileType(type: SyncType, entries: List<RemoteEntry>) {
         val revived = revive(type)
-        val remote = type.fromRemote(entries, refs).associateBy { it.remoteId }
+        val remote = remoteItems(type, entries)
         val working = type.readAll()
         val rows = store.rows(type.name)
         val items = buildItems(type, working, rows, remote)
@@ -49,6 +49,16 @@ class Reconciler(private val store: SyncStore, private val types: List<SyncType>
         UniquenessRepair(type, merger, this::repointChildren).repair(items)
         dropOrphans(type, items)
         write(type, items)
+    }
+
+    /**
+     * [type]'s items in the GET. Its parents are written by now, so an item still [RemoteItem.Unresolved] is skipped
+     * and reported here (earlier mappings of the same GET may not resolve it yet, and stay quiet).
+     */
+    private fun remoteItems(type: SyncType, entries: List<RemoteEntry>): Map<String, RemoteItem> {
+        val (unresolved, items) = type.fromRemote(entries, refs).partition { it is RemoteItem.Unresolved }
+        unresolved.forEach { logger.w { "${type.name}: skipping ${it.remoteId}: ${(it as RemoteItem.Unresolved).reason}" } }
+        return items.associateBy { it.remoteId }
     }
 
     private fun buildItems(
@@ -176,7 +186,7 @@ class Reconciler(private val store: SyncStore, private val types: List<SyncType>
             when (val remote = item.remote) {
                 is RemoteItem.Deleted -> item.base != null
                 is RemoteItem.Upsert -> !merger.same(remote.state, item.base)
-                null -> false
+                is RemoteItem.Unresolved, null -> false
             }
         }
         if (!remoteChanged) return

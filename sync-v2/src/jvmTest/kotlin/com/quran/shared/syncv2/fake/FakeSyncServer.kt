@@ -58,6 +58,12 @@ class FakeSyncServer : AutoCloseable {
      * collapses: the response is then shorter than the request.
      */
     @Volatile var dropFromNextResponse: ((JsonObject) -> Boolean)? = null
+    /**
+     * The backend before quran.com-users-backend#1491: logs no `__default__` membership, so a bookmark in Favorites
+     * appears in GET only as a BOOKMARK with `isInDefaultCollection`. Turned on while writing, it seeds the legacy
+     * Favorites an account has from before then (the backfill never reached them).
+     */
+    @Volatile var legacyFavorites = false
     /** Leaves the virtual Favorites (`__default__`) out of GET, as a server without it would. */
     @Volatile var omitDefaultCollection = false
     /** Runs while a GET is being processed, before it answers. */
@@ -90,7 +96,7 @@ class FakeSyncServer : AutoCloseable {
     /** Another device: applies mutations directly at the current head and returns their resource ids. */
     @Synchronized
     fun remote(name: String, vararg mutations: JsonObject): List<String?> {
-        val mutationRules = FakeMutations(account(name))
+        val mutationRules = FakeMutations(account(name), legacyFavorites)
         return mutations.map { mutation ->
             val resource = mutation.str("resource")!!
             val type = mutation.str("type")!!
@@ -172,7 +178,7 @@ class FakeSyncServer : AutoCloseable {
         }
         duringNextPost?.let { duringNextPost = null; it() }
         val mutations = body["mutations"]!!.jsonArray.map { it.jsonObject }
-        val rules = FakeMutations(account)
+        val rules = FakeMutations(account, legacyFavorites)
         // As the backend's middleware order: body validation (422), then the head check (409) in the transaction.
         if (mutations.size > MAX_MUTATIONS) {
             fail(exchange, HttpError(422, "ValidationError", "Mutations must not exceed $MAX_MUTATIONS"), null)

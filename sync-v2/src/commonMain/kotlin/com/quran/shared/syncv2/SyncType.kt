@@ -22,6 +22,13 @@ sealed interface RemoteItem {
 
     data class Upsert(override val remoteId: String, val state: State, override val timestamp: Long) : RemoteItem
     data class Deleted(override val remoteId: String, override val timestamp: Long) : RemoteItem
+    /**
+     * An entry the type skips ([reason]): its data can't be read, or it refers to a parent this device can't resolve.
+     * It is never merged. A GET is mapped more than once in a run (outbox resolution, a parent's check for remote child
+     * edits), the earlier passes before its parents are written, when a parent new in that GET is not linked yet. Only
+     * the [Reconciler], which maps a type after its parents, reports it, so a skip is logged once and only if it stands.
+     */
+    data class Unresolved(override val remoteId: String, val reason: String, override val timestamp: Long) : RemoteItem
 }
 
 /** A mutation the engine POSTs. [resourceId] is null for creates and for key-based deletes. */
@@ -124,7 +131,8 @@ interface SyncType {
     // Server mapping.
     /**
      * This type's items in a GET: [entries] holds every resource, so a type can also read resources it never pushes.
-     * Must tolerate `{}` data and skip unsupported kinds.
+     * Must tolerate `{}` data and skip unsupported kinds. An item worth a warning (unreadable data, a parent [refs]
+     * can't resolve) is [RemoteItem.Unresolved], not logged here: the GET may be mapped again in the same run.
      */
     fun fromRemote(entries: List<RemoteEntry>, refs: Refs): List<RemoteItem>
     /** Null defers the change to a later phase (a parent has no remote id yet), or skips it (no UPDATE). */

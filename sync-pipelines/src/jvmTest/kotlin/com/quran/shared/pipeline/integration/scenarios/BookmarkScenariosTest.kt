@@ -416,6 +416,82 @@ class BookmarkScenariosTest {
         assertConverged(ALICE, phone)
     }
 
+    /** Favorites from before quran.com-users-backend#1491 have no `__default__` log; GET has only their BOOKMARK. */
+    @Test
+    fun `BMK-20 legacy Favorites with no membership log arrive on the first sync`() = syncScenario {
+        val web = web(ALICE)
+        val study = web.createCollection("Study")
+        server.faults.legacyFavorites = true
+        web.addBookmark(1, 2)
+        web.addBookmark(3, 1)
+        web.addToCollection(study, 2, 255)
+        web.setAyahReadingBookmark(1, 5, 3)
+        server.faults.legacyFavorites = false
+        web.addBookmark(4, 1)
+
+        val phone = device("phone")
+        val run = phone.login(ALICE)
+
+        assertSucceeded(run)
+        assertEquals(listOf("1:2", "3:1", "4:1"), phone.favoriteVerses(), "not the Study verse nor the reading bookmark")
+        assertEquals(listOf("2:255"), phone.versesIn("Study"))
+        assertEquals(0, run.posts)
+        assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `BMK-21 a legacy favorite leaves Favorites when its flag clears or its bookmark goes`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+        val web = web(ALICE)
+        server.faults.legacyFavorites = true
+        listOf(2, 3, 4).forEach { web.addBookmark(1, it) }
+        web.addToCollection(web.createCollection("Study"), 1, 2)
+        syncUntilQuiescent(phone, tablet)
+        assertEquals(listOf("1:2", "1:3", "1:4"), phone.favoriteVerses())
+
+        // Still with no membership log: 1:2 stays bookmarked in Study with its flag cleared, and 1:3's bookmark goes.
+        web.removeFromFavorites(1, 2)
+        web.removeFromFavorites(1, 3)
+        val runs = syncAll(phone, tablet)
+        runs.forEach(::assertSucceeded)
+        assertEquals(0, runs.sumOf { it.posts })
+        listOf(phone, tablet).forEach { assertEquals(listOf("1:4"), it.favoriteVerses(), "${it.name} Favorites") }
+        assertEquals(listOf("1:2"), phone.versesIn("Study"))
+
+        server.faults.legacyFavorites = false
+        tablet.removeFromFavorites(1, 4)
+        syncUntilQuiescent(tablet, phone)
+        assertEquals(emptySet(), server.state(ALICE).favorites)
+        assertEquals(emptyList(), phone.favoriteVerses())
+        assertConverged(ALICE, phone, tablet)
+    }
+
+    @Test
+    fun `BMK-22 a bookmark-only update leaves logged memberships alone`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+        val web = web(ALICE)
+        web.addBookmark(2, 255, times = ClientTimes(T0 + 1_000, T0 + 2_000))
+        web.addToCollection(web.createCollection("Study"), 4, 1)
+        web.addToFavorites(4, 1)
+        web.removeFromFavorites(4, 1)
+        syncUntilQuiescent(phone, tablet)
+        val dates = phone.bookmarkDates("Favorites", 2, 255)
+
+        // Slot 1 moves onto the favorite, then off it onto 4:1, which left Favorites earlier.
+        val runs = listOf(2 to 255, 4 to 1).flatMap { (sura, ayah) -> web.setAyahReadingBookmark(1, sura, ayah); syncAll(phone, tablet) }
+
+        runs.forEach(::assertSucceeded)
+        assertTrue(runs.flatMap { it.received }.of("BOOKMARK").isNotEmpty())
+        assertEquals(emptyList(), runs.flatMap { it.received }.of("COLLECTION_BOOKMARK"), "bookmark-only updates")
+        assertEquals(0, runs.sumOf { it.posts })
+        listOf(phone, tablet).forEach {
+            assertEquals(listOf("2:255"), it.favoriteVerses(), "${it.name} Favorites")
+            assertEquals(listOf("4:1"), it.versesIn("Study"), "${it.name} Study")
+        }
+        assertEquals(dates, phone.bookmarkDates("Favorites", 2, 255))
+        assertConverged(ALICE, phone, tablet)
+    }
+
     /** The last entry of the run's first GET page and the first entry of its second. */
     private fun SyncRun.firstPageBoundary(): List<String> {
         val (first, second) = requests.filter { it.method == "GET" && it.status == 200 }.take(2).map { page ->

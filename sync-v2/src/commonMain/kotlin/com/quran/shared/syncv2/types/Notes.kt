@@ -1,6 +1,5 @@
 package com.quran.shared.syncv2.types
 
-import co.touchlab.kermit.Logger
 import com.quran.shared.mutations.ServerTextLimit
 import com.quran.shared.mutations.escapeServerText
 import com.quran.shared.mutations.trimLikeServer
@@ -93,7 +92,6 @@ class NotesRepository(private val database: SyncV2Database) {
  */
 class NotesType(private val database: SyncV2Database) : SyncType {
     private val queries get() = database.notesQueries
-    private val logger = Logger.withTag("SyncV2Notes")
     override val name = "NOTE"
     override val ignoredFields = setOf(UPDATED_AT.name)
 
@@ -142,8 +140,7 @@ class NotesType(private val database: SyncV2Database) : SyncType {
         val body = entry.data.string("body")?.unescapeServerText() ?: return null
         val ranges = (entry.data["ranges"] as? JsonArray)?.map { (it as? JsonPrimitive)?.contentOrNull?.let(NoteRange::parse) }
         if (ranges.isNullOrEmpty() || ranges.any { it == null }) {
-            logger.w { "Skipping note $id: unreadable ranges ${entry.data["ranges"]}" }
-            return null
+            return RemoteItem.Unresolved(id, "unreadable ranges ${entry.data["ranges"]}", entry.timestamp)
         }
         val createdAt = entry.data.epochMillis("clientCreatedAt") ?: entry.timestamp
         val updatedAt = entry.data.epochMillis("clientUpdatedAt") ?: createdAt

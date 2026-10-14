@@ -64,7 +64,7 @@ Command notes:
 - App metadata tables live in `persistence`; synced domain tables live with their sync types in `sync-v2`. Every local write goes through a `persistence` store, so its rules (trimming, the note creation-time nudge, one highlight color per verse, the 20-session prune) hold for the app and the importer alike.
 - Keep public iOS exports coordinated through `umbrella`.
 
-Synced types (`sync-v2` `syncTypes`, in dependency order): collections, verses in collections (Favorites, highlights and user collections, sent as `COLLECTION_BOOKMARK`), reading sessions, notes, reading bookmarks. `BOOKMARK` entries are only read, to map bookmark ids to verses.
+Synced types (`sync-v2` `syncTypes`, in dependency order): collections, verses in collections (Favorites, highlights and user collections, sent as `COLLECTION_BOOKMARK`), reading sessions, notes, reading bookmarks. `BOOKMARK` entries are only read, to map bookmark ids to verses and to read the Favorites flag (`isInDefaultCollection`) of bookmarks whose `__default__` membership the server never logged.
 
 ## Sync Protocol Notes
 

@@ -9,8 +9,8 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 
 /** One account's rules, shared by POSTed mutations and the web actor. */
-internal class AccountRules(account: FakeAccount, ownerOf: (String) -> String?) {
-    val collections = CollectionRules(account, ownerOf)
+internal class AccountRules(account: FakeAccount, ownerOf: (String) -> String?, legacyFavorites: Boolean = false) {
+    val collections = CollectionRules(account, ownerOf, legacyFavorites)
     val notes = NoteSessionRules(account, collections, ownerOf)
 }
 

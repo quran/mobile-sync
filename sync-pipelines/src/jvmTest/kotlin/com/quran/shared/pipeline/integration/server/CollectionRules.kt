@@ -31,7 +31,8 @@ data class ClientTimes(val createdAt: Long? = null, val updatedAt: Long? = null)
  */
 internal class CollectionRules(
     private val account: FakeAccount,
-    private val ownerOf: (String) -> String?
+    private val ownerOf: (String) -> String?,
+    private val legacyFavorites: Boolean = false
 ) {
     // region COLLECTION
     fun createCollection(name: String, times: ClientTimes, requestSource: String? = null, source: String? = null): String {
@@ -152,7 +153,7 @@ internal class CollectionRules(
             old != new || touch -> {
                 account.log("BOOKMARK", new.id, LogKind.UPDATE)
                 if (old.inDefault != new.inDefault) {
-                    if (new.inDefault) ensureDefaultMembership(new.id) else account.log("COLLECTION_BOOKMARK", defaultId(new.id), LogKind.DELETE)
+                    if (new.inDefault) ensureDefaultMembership(new.id) else logFavorites(new.id, LogKind.DELETE)
                 }
             }
         }
@@ -161,14 +162,22 @@ internal class CollectionRules(
     private fun removeBookmark(bookmark: ServerBookmark) {
         account.bookmarks.remove(bookmark.id)
         account.log("BOOKMARK", bookmark.id, LogKind.DELETE)
-        if (bookmark.inDefault) account.log("COLLECTION_BOOKMARK", defaultId(bookmark.id), LogKind.DELETE)
+        if (bookmark.inDefault) logFavorites(bookmark.id, LogKind.DELETE)
     }
 
     /** A live, never-updated default membership row is left alone; otherwise it is (re)created. */
     private fun ensureDefaultMembership(bookmarkId: String) {
         val row = account.logRow("COLLECTION_BOOKMARK", defaultId(bookmarkId))
         if (row != null && row.updatedAt == null && row.deletedAt == null) return
-        account.log("COLLECTION_BOOKMARK", defaultId(bookmarkId), LogKind.CREATE)
+        logFavorites(bookmarkId, LogKind.CREATE)
+    }
+
+    /**
+     * `ResourceLogSubscriber`'s `__default__` membership log. A [legacyFavorites] server writes none, as the backend
+     * before quran.com-users-backend#1491 did.
+     */
+    private fun logFavorites(bookmarkId: String, kind: LogKind) {
+        if (!legacyFavorites) account.log("COLLECTION_BOOKMARK", defaultId(bookmarkId), kind)
     }
 
     /** `projectLegacySlotOne`: exactly one bookmark carries `isReading=true`, the slot 1 location. */

@@ -11,7 +11,7 @@ import kotlinx.serialization.json.JsonPrimitive
  * and the services they call. As on the server, [validate] (the `validateMutationBody` middleware: structure and Joi)
  * runs for the whole batch before the head check, and [apply] runs inside the transaction after it.
  */
-class FakeMutations(private val account: FakeAccount) {
+class FakeMutations(private val account: FakeAccount, private val legacyFavorites: Boolean = false) {
 
     /** Structural and Joi checks (422). Returns the data as Joi leaves it: text sanitized and trimmed. */
     fun validate(resource: String, type: String, resourceId: String?, data: JsonObject?): JsonObject {
@@ -184,7 +184,7 @@ class FakeMutations(private val account: FakeAccount) {
                 account.memberships.keys.filter { it.endsWith("-$id") }.forEach { removeMembership(it) }
                 account.bookmarks.remove(id)
                 account.log("BOOKMARK", id!!, "DELETE")
-                if (existing.inDefault) account.log("COLLECTION_BOOKMARK", "$DEFAULT_ID-$id", "DELETE")
+                if (existing.inDefault) logFavorites(id, "DELETE")
             }
             id
         }
@@ -195,8 +195,16 @@ class FakeMutations(private val account: FakeAccount) {
         val createdAt = data.timestamp("clientCreatedAt") ?: account.now()
         account.bookmarks[id] = FBookmark(key, verse, inDefault, false, createdAt, data.timestamp("clientUpdatedAt") ?: createdAt)
         account.log("BOOKMARK", id, "CREATE")
-        if (inDefault) account.log("COLLECTION_BOOKMARK", "$DEFAULT_ID-$id", "CREATE")
+        if (inDefault) logFavorites(id, "CREATE")
         return id
+    }
+
+    /**
+     * `ResourceLogSubscriber`'s `__default__` membership log for a bookmark entering or leaving Favorites. A
+     * [legacyFavorites] server writes none, as the backend before quran.com-users-backend#1491 did.
+     */
+    private fun logFavorites(bookmarkId: String, kind: String) {
+        if (!legacyFavorites) account.log("COLLECTION_BOOKMARK", "$DEFAULT_ID-$bookmarkId", kind)
     }
 
     private fun findBookmark(key: Int, verse: Int) =
@@ -216,7 +224,7 @@ class FakeMutations(private val account: FakeAccount) {
                     if (!bookmark.inDefault) {
                         account.bookmarks[bookmarkId] = bookmark.copy(inDefault = true)
                         account.log("BOOKMARK", bookmarkId, "UPDATE")
-                        account.log("COLLECTION_BOOKMARK", "$DEFAULT_ID-$bookmarkId", "CREATE")
+                        logFavorites(bookmarkId, "CREATE")
                     }
                     return "$DEFAULT_ID-$bookmarkId"
                 }
@@ -244,7 +252,7 @@ class FakeMutations(private val account: FakeAccount) {
                     val bookmark = account.bookmarks[bookmarkId] ?: throw HttpError(404, "NotFoundError", "bookmark is not found")
                     if (!bookmark.inDefault) throw HttpError(404, "NotFoundError", "collection bookmark is not found")
                     val inCollections = account.memberships.values.count { it.bookmarkId == bookmarkId }
-                    account.log("COLLECTION_BOOKMARK", "$DEFAULT_ID-$bookmarkId", "DELETE")
+                    logFavorites(bookmarkId, "DELETE")
                     if (inCollections == 0 && !bookmark.isReading) {
                         // Removing from Favorites when no other collection holds it deletes the bookmark.
                         account.bookmarks.remove(bookmarkId)

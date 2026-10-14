@@ -13,6 +13,7 @@ import com.quran.shared.syncv2.State
 import com.quran.shared.syncv2.SyncType
 import com.quran.shared.syncv2.db.HighlightAyahs
 import com.quran.shared.syncv2.db.SyncV2Database
+import com.quran.shared.syncv2.bool
 import com.quran.shared.syncv2.get
 import com.quran.shared.syncv2.int
 import com.quran.shared.syncv2.epochMillis
@@ -28,8 +29,9 @@ import kotlinx.serialization.json.put
  * "Verse in collection": one type for the server's BOOKMARK, COLLECTION_BOOKMARK and Favorites flag.
  * Natural key = (collection, verse). Every row maps to a key-based COLLECTION_BOOKMARK, Favorites included
  * (`collectionId = __default__`), which the server upserts and which creates the bookmark itself.
- * BOOKMARK is never pushed; GET BOOKMARK entries only feed this type's bookmark-id-to-verse index
- * (`remote_ayah_bookmark`), used to read memberships, which carry only `{collectionId, bookmarkId}`.
+ * BOOKMARK is never pushed; GET BOOKMARK entries feed this type's bookmark-id-to-verse index
+ * (`remote_ayah_bookmark`), used to read memberships, which carry only `{collectionId, bookmarkId}`, and stand for
+ * the Favorites memberships the server never logged (see [unloggedFavorites]).
  * Ayah bookmarks are mushaf-agnostic: one mushaf, sent as `mushaf` (the key the server's membership code reads) and
  * `mushafId`. [ADDED_AT] is when the verse was added (`clientUpdatedAt` on the server): a tie-breaker, not data.
  * Highlights (`system:highlights:<color>`) keep one color per verse, the newest, on remote changes too (see [prune]).
@@ -78,18 +80,64 @@ class CollectionAyahsType(private val database: SyncV2Database, collections: Col
 
     /**
      * First records which verse each ayah bookmark id is, from GET BOOKMARK entries (idempotent: the engine may map
-     * one GET more than once), then reads the memberships.
+     * one GET more than once), then reads the memberships, Favorites' unlogged ones included ([unloggedFavorites]).
      */
     override fun fromRemote(entries: List<RemoteEntry>, refs: Refs): List<RemoteItem> {
-        entries.filter { it.resource == "BOOKMARK" && it.type != "DELETE" && it.resourceId != null }.forEach { entry ->
-            val kind = entry.data.string("bookmarkType") ?: entry.data.string("type")
-            if (!kind.equals("ayah", ignoreCase = true)) return@forEach
+        entries.filter { it.resource == BOOKMARK && it.type != "DELETE" && it.resourceId != null && isAyah(it) }.forEach { entry ->
             val sura = entry.data.int("key") ?: return@forEach
             val ayah = entry.data.int("verseNumber") ?: return@forEach
             rememberBookmark(entry.resourceId!!, sura, ayah)
         }
-        return entries.filter { it.resource == RESOURCE }.mapNotNull { fromRemote(it, refs) }
+        val memberships = entries.filter { it.resource == RESOURCE }
+        val unlogged = unloggedFavorites(entries, memberships).mapNotNull { fromRemote(it, refs) }
+        return memberships.mapNotNull { fromRemote(it, refs) } + keepAddedAt(unlogged, refs)
     }
+
+    /**
+     * Favorites memberships the server never logged. The backend logs a `__default__` membership only for bookmarks
+     * written since quran.com-users-backend#1491; an older bookmark in Favorites that has not changed since (and that
+     * the default-collection backfill has not reached) appears only as a BOOKMARK whose data has
+     * `isInDefaultCollection`. So an ayah BOOKMARK with no `__default__` entry in the same GET stands for its
+     * Favorites membership, under the remote id a logged one has: in Favorites while the flag is true, out when it is
+     * false or the bookmark is deleted. A logged entry always wins: it is the server's own record. Favorites is still
+     * pushed by key, as a COLLECTION_BOOKMARK `__default__`.
+     * A new one is added at the bookmark's client time, as a logged one is ([keepAddedAt] covers the others).
+     * Every flag-false or deleted BOOKMARK becomes a DELETE, though most were never in Favorites here: a deleted entry
+     * has no data to tell an ayah bookmark from another, and a DELETE of an item this device never had is dropped by
+     * the merge, so telling them apart would save nothing.
+     */
+    private fun unloggedFavorites(entries: List<RemoteEntry>, memberships: List<RemoteEntry>): List<RemoteEntry> {
+        val logged = memberships.filter { it.data.string("collectionId") == FAVORITES_ID }
+            .mapNotNullTo(mutableSetOf()) { it.data.string("bookmarkId") }
+        return entries.filter { it.resource == BOOKMARK && it.resourceId != null && it.resourceId !in logged }.mapNotNull { entry ->
+            val inFavorites = entry.type != "DELETE" && (entry.data.bool("isInDefaultCollection") ?: return@mapNotNull null)
+            if (inFavorites && !isAyah(entry)) return@mapNotNull null
+            val data = buildJsonObject {
+                put("collectionId", FAVORITES_ID)
+                put("bookmarkId", entry.resourceId)
+                if (inFavorites) CLIENT_TIMES.forEach { key -> entry.data[key]?.let { put(key, it) } }
+            }
+            RemoteEntry(RESOURCE, null, if (inFavorites) "CREATE" else "DELETE", data, entry.timestamp)
+        }
+    }
+
+    /**
+     * Unlike a logged membership, an unlogged one comes with every change to its bookmark (slot 1 moving onto it, a
+     * re-bookmark that moves `clientUpdatedAt`), even when the verse was already in Favorites by a logged entry. An
+     * unchanged item takes the server's added date, so a verse this device has keeps its own: the date it was added
+     * doesn't move, and Favorites isn't reordered.
+     */
+    private fun keepAddedAt(items: List<RemoteItem>, refs: Refs): List<RemoteItem> {
+        if (items.none { it is RemoteItem.Upsert }) return items
+        val working = readAll()
+        return items.map { item ->
+            val kept = (item as? RemoteItem.Upsert)?.let { refs.localId(this, it.remoteId) }?.let(working::get) ?: return@map item
+            item.copy(state = item.state.with(ADDED_AT(kept[ADDED_AT])))
+        }
+    }
+
+    private fun isAyah(bookmark: RemoteEntry) =
+        (bookmark.data.string("bookmarkType") ?: bookmark.data.string("type")).equals("ayah", ignoreCase = true)
 
     private fun fromRemote(entry: RemoteEntry, refs: Refs): RemoteItem? {
         val collectionId = entry.data.string("collectionId") ?: return null
@@ -101,11 +149,9 @@ class CollectionAyahsType(private val database: SyncV2Database, collections: Col
             logger.d { "Skipping membership $remoteId: bookmark $bookmarkId is not a known ayah bookmark" }
             return null
         }
-        // A collection this device has never seen: it is not in this GET's collections, so it is skipped.
-        val collection = refs.localId(parent.type, collectionId) ?: run {
-            logger.w { "Skipping membership $remoteId: collection $collectionId is unknown" }
-            return null
-        }
+        // Unknown before the collections of this GET are written; unknown after, it is not in this GET's collections.
+        val collection = refs.localId(parent.type, collectionId)
+            ?: return RemoteItem.Unresolved(remoteId, "collection $collectionId is unknown", entry.timestamp)
         val addedAt = entry.data.epochMillis("clientUpdatedAt") ?: entry.data.epochMillis("clientCreatedAt") ?: entry.timestamp
         return RemoteItem.Upsert(
             remoteId,
@@ -175,6 +221,9 @@ class CollectionAyahsType(private val database: SyncV2Database, collections: Col
         val AYAH = Field.int("ayah")
         val ADDED_AT = Field.long("addedAt")
         const val RESOURCE = "COLLECTION_BOOKMARK"
+        const val BOOKMARK = "BOOKMARK"
+        const val FAVORITES_ID = CollectionsType.DEFAULT_COLLECTION_ID
+        val CLIENT_TIMES = listOf("clientCreatedAt", "clientUpdatedAt")
         const val MUSHAF = 1
     }
 }
