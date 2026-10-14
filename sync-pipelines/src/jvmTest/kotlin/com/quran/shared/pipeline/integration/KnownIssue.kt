@@ -1,6 +1,7 @@
 package com.quran.shared.pipeline.integration
 
 import com.quran.shared.pipeline.SyncStatus
+import com.quran.shared.syncengine.SyncErrorKind
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.test.fail
 import kotlin.time.Duration
@@ -52,6 +53,16 @@ suspend fun knownIssue(
 fun syncRejectedWith(status: Int): (AssertionError) -> Boolean = { failure ->
     val run = (failure as? SyncRunFailure)?.run
     (run?.status as? SyncStatus.Failed)?.error?.httpStatus == status
+}
+
+/**
+ * Accepts a sync run that gave up on a local [exception], named by its simple class name: no HTTP
+ * status, kind UNKNOWN. That is how an exception thrown while applying remote changes surfaces
+ * through the public status.
+ */
+fun syncFailedLocally(exception: String): (AssertionError) -> Boolean = { failure ->
+    val error = ((failure as? SyncRunFailure)?.run?.status as? SyncStatus.Failed)?.error
+    error != null && error.httpStatus == null && error.kind == SyncErrorKind.UNKNOWN && "($exception)" in error.message
 }
 
 /** The harness itself gave up waiting. It is not an assertion, so [knownIssue] never accepts it. */
