@@ -64,16 +64,15 @@ class FailureScenariosTest {
     @Test
     fun `ERR-03 a lost response for natural-key creates`() = syncScenario {
         val (phone) = signedIn("phone")
-        server.faults.loseResponse { it.carries("COLLECTION_BOOKMARK") }
-        server.faults.loseResponse { it.carries("READING_SESSION") }
+        // The verse, the session and the slot go in one POST, so one lost response covers every kind.
+        server.faults.loseResponse { it.carries("COLLECTION_BOOKMARK") && it.carries("READING_SESSION") }
 
         phone.addToFavorites(2, 255)
         phone.data.addReadingSession(18, 1)
         phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 36, 1)
         syncUntilQuiescent(phone)
 
-        // The verse, the session and the slot go in one POST, so one lost response covers both kinds.
-        assertTrue(server.posts("phone").any { it.status == 504 }, "a response was lost")
+        assertEquals(1, server.posts("phone").count { it.status == 504 }, "the response was lost once")
         val state = server.state(ALICE)
         assertEquals(setOf("2:255"), state.favorites)
         assertEquals(listOf("18:1"), state.sessionVerses)
