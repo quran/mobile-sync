@@ -6,10 +6,6 @@ import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.mutation
 import com.quran.shared.pipeline.integration.syncRejectedWith
 import com.quran.shared.pipeline.integration.syncScenario
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -33,11 +29,8 @@ class BookmarkScenariosTest {
         assertSucceeded(run)
         val bookmark = assertNotNull(server.state(ALICE).bookmarkAt(2, 255))
         assertTrue(bookmark.inDefault)
-        val received = run.requests.filter { it.method == "GET" }.flatMap { get ->
-            (Json.parseToJsonElement(get.response!!).jsonObject["data"]!!.jsonObject["mutations"] as JsonArray).map { it as JsonObject }
-        }
         assertTrue(
-            received.of("COLLECTION_BOOKMARK").any { it.data("collectionId") == "__default__" && it.data("bookmarkId") == bookmark.id },
+            run.received.of("COLLECTION_BOOKMARK").any { it.data("collectionId") == "__default__" && it.data("bookmarkId") == bookmark.id },
             "GET carries the __default__ membership"
         )
         assertEquals(listOf("2:255"), tablet.favoriteVerses())

@@ -1,11 +1,5 @@
 package com.quran.shared.pipeline.integration.scenarios
 
-import com.quran.shared.persistence.input.ImportAyahHighlight
-import com.quran.shared.persistence.input.ImportCollection
-import com.quran.shared.persistence.input.ImportCollectionAyahBookmark
-import com.quran.shared.persistence.input.ImportNote
-import com.quran.shared.persistence.input.ImportReadingSession
-import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.pipeline.LogoutWarning
@@ -117,9 +111,9 @@ class LifecycleScenariosTest {
         val state = server.state(ALICE)
         assertEquals(1, state.collections.count { CollectionRules.nameKey(it.name) == "study" })
         assertEquals(1, state.bookmarks.count { it.type == "ayah" && it.key == 2 && it.verse == 255 })
-        assertEquals(setOf("2:255"), state.versesIn(state.collectionNamed("system:highlights:blue")!!.id))
+        assertEquals(setOf("2:255"), state.versesIn(state.collectionNamed(HIGHLIGHTS_BLUE)!!.id))
         val session = state.sessions.single()
-        assertEquals(18 to 1, session.chapter to session.verse)
+        assertEquals("18:1", session.verseKey)
         assertEquals(T0 + 5_000, session.clientUpdatedAt, "the newest visit wins")
         val slotOne = state.readingBookmarks.single { it.slot == 1 }
         assertEquals(18 to 10, slotOne.key to slotOne.verse, "the newest slot 1 wins")
@@ -131,19 +125,16 @@ class LifecycleScenariosTest {
     fun `LIFE-05 two devices importing the same legacy data don't duplicate`() = syncScenario {
         val phone = device("phone")
         val tablet = device("tablet")
-        phone.login(ALICE)
-        tablet.login(ALICE)
-        phone.data.importData(LEGACY)
-        tablet.data.importData(LEGACY)
+        assertSucceeded(phone.login(ALICE))
+        assertSucceeded(tablet.login(ALICE))
+        phone.data.importData(IMPORTED)
+        tablet.data.importData(IMPORTED)
 
         assertSucceeded(phone.syncNow())
         assertSucceeded(tablet.syncNow())
         syncUntilQuiescent(phone, tablet)
 
-        val state = server.state(ALICE)
-        assertEquals(1, state.notes.size)
-        assertEquals(setOf("2:255", "2:256"), state.versesIn(state.collectionNamed("Old Page Bookmarks")!!.id))
-        assertEquals(listOf("18:1", "36:1"), state.sessions.map { "${it.chapter}:${it.verse}" }.sorted())
+        assertEquals(IMPORTED.asSnapshot(), UserDataSnapshot.of(server.state(ALICE)), "the server holds the import once")
         assertConverged(ALICE, phone, tablet)
     }
 
@@ -176,7 +167,7 @@ class LifecycleScenariosTest {
         web(BOB).createNote("Bob wrote this long ago", "1:1-1:7")
         web(BOB).addBookmark(112, 1)
         val phone = device("phone")
-        phone.login(ALICE)
+        assertSucceeded(phone.login(ALICE))
         phone.data.addNote("Alice's pending note", 2, 255, 2, 255)
         phone.data.addReadingSession(18, 1)
         phone.auth.expireSession()
@@ -191,7 +182,7 @@ class LifecycleScenariosTest {
         ) {
             assertSucceeded(run)
             assertEquals(emptyList(), server.state(BOB).notes.map { it.body }.filter { "Alice" in it }, "A's data reached B")
-            assertEquals(emptyList(), server.state(BOB).sessions.map { "${it.chapter}:${it.verse}" }, "A's data reached B")
+            assertEquals(emptyList(), server.state(BOB).sessionVerses, "A's data reached B")
             assertEquals(listOf("Bob wrote this long ago"), phone.noteBodies(), "B's history on the device")
             assertConverged(BOB, phone)
         }
@@ -218,7 +209,7 @@ class LifecycleScenariosTest {
     @Test
     fun `LIFE-12 app relaunch resumes cleanly`() = syncScenario {
         val phone = device("phone")
-        phone.login(ALICE)
+        assertSucceeded(phone.login(ALICE))
         phone.data.addNote("Synced before the relaunch", 1, 1, 1, 7)
         phone.addToFavorites(2, 255)
         syncUntilQuiescent(phone)
@@ -243,7 +234,7 @@ class LifecycleScenariosTest {
 
     /** Syncs one of each type, makes unsynced edits, then logs out. Returns the server as it was before the edits. */
     private suspend fun SyncScenario.syncedThenLoggedOut(phone: SyncDevice): ServerBefore {
-        phone.login(ALICE)
+        assertSucceeded(phone.login(ALICE))
         phone.writeOneOfEach()
         syncUntilQuiescent(phone)
         val data = UserDataSnapshot.of(server.state(ALICE))
@@ -253,27 +244,4 @@ class LifecycleScenariosTest {
         phone.data.deleteNote(phone.data.notes.first().first { it.body.startsWith("Q&A") }.id)
         return ServerBefore(data, head, phone.logout().warnings)
     }
-
-    private companion object {
-        val LEGACY = PersistenceImportData(
-            collections = listOf(ImportCollection("Old Page Bookmarks", at(100), at(100))),
-            collectionBookmarks = listOf(
-                ImportCollectionAyahBookmark("Old Page Bookmarks", 2, 255, at(110), at(110)),
-                ImportCollectionAyahBookmark("Old Page Bookmarks", 2, 256, at(111), at(111))
-            ),
-            notes = listOf(ImportNote("An imported reflection on mercy", 1, 1, 1, 7, at(120), at(120))),
-            highlights = listOf(ImportAyahHighlight(3, 18, AyahHighlightColor.BLUE, at(130), at(130))),
-            readingSessions = listOf(ImportReadingSession(18, 1, at(140), at(140)), ImportReadingSession(36, 1, at(150), at(150)))
-        )
-    }
-}
-
-/** One of every user data type, including text the server escapes. */
-internal suspend fun SyncDevice.writeOneOfEach() {
-    data.addNote("Q&A on <patience>", 2, 153, 2, 153)
-    data.addAyahBookmarkToCollection(data.addCollection("Study").id, 3, 18)
-    addToFavorites(1, 1)
-    data.setHighlight(2, 255, AyahHighlightColor.BLUE)
-    data.addReadingSession(18, 1)
-    data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10)
 }

@@ -21,10 +21,10 @@ class HighlightScenariosTest {
         assertSucceeded(tablet.syncNow())
 
         val state = server.state(ALICE)
-        assertEquals(listOf(BLUE), state.collections.map { it.name })
-        assertTrue(CollectionRules.isSystemName(BLUE))
-        assertEquals(setOf("2:255"), state.versesIn(state.collectionNamed(BLUE)!!.id))
-        assertEquals(listOf(BLUE), run.accepted.of("COLLECTION", "CREATE").map { it.data("name") }, "color collections pushed")
+        assertEquals(listOf(HIGHLIGHTS_BLUE), state.collections.map { it.name })
+        assertTrue(CollectionRules.isSystemName(HIGHLIGHTS_BLUE))
+        assertEquals(setOf("2:255"), state.versesIn(state.collectionNamed(HIGHLIGHTS_BLUE)!!.id))
+        assertEquals(listOf(HIGHLIGHTS_BLUE), run.accepted.of("COLLECTION", "CREATE").map { it.data("name") }, "color collections pushed")
         assertEquals(listOf("2:255 blue"), tablet.highlightList())
         assertConverged(ALICE, phone, tablet)
     }
@@ -40,8 +40,8 @@ class HighlightScenariosTest {
         assertSucceeded(tablet.syncNow())
 
         val state = server.state(ALICE)
-        assertEquals(emptySet(), state.versesIn(state.collectionNamed(BLUE)!!.id))
-        assertEquals(setOf("2:255"), state.versesIn(state.collectionNamed(GREEN)!!.id))
+        assertEquals(emptySet(), state.versesIn(state.collectionNamed(HIGHLIGHTS_BLUE)!!.id))
+        assertEquals(setOf("2:255"), state.versesIn(state.collectionNamed(HIGHLIGHTS_GREEN)!!.id))
         assertEquals(listOf("2:255 green"), tablet.highlightList())
         assertConverged(ALICE, phone, tablet)
     }
@@ -58,7 +58,7 @@ class HighlightScenariosTest {
         assertSucceeded(tablet.syncNow())
 
         val state = server.state(ALICE)
-        assertEquals(emptySet(), state.versesIn(state.collectionNamed(BLUE)!!.id))
+        assertEquals(emptySet(), state.versesIn(state.collectionNamed(HIGHLIGHTS_BLUE)!!.id))
         assertEquals(setOf("2:255"), state.favorites)
         listOf(phone, tablet).forEach {
             assertEquals(emptyList(), it.highlightList(), "${it.name} highlights")
@@ -78,8 +78,8 @@ class HighlightScenariosTest {
         syncUntilQuiescent(phone, tablet)
 
         val state = server.state(ALICE)
-        assertEquals(listOf(BLUE), state.collections.map { it.name })
-        assertEquals(setOf("2:255", "3:18"), state.versesIn(state.collectionNamed(BLUE)!!.id))
+        assertEquals(listOf(HIGHLIGHTS_BLUE), state.collections.map { it.name })
+        assertEquals(setOf("2:255", "3:18"), state.versesIn(state.collectionNamed(HIGHLIGHTS_BLUE)!!.id))
         assertTrue(server.requests.count { it.status == 409 } <= 1, "409 statuses: ${server.requests.count { it.status == 409 }}")
         assertConverged(ALICE, phone, tablet)
     }
@@ -98,14 +98,8 @@ class HighlightScenariosTest {
         assertSucceeded(run)
         assertEquals(emptyList(), server.accepted("phone").of("COLLECTION", "CREATE"), "no color collection created")
         val state = server.state(ALICE)
-        assertEquals(setOf("3:18", "4:1", "5:3"), state.versesIn(state.collectionNamed(PINK)!!.id))
+        assertEquals(setOf("3:18", "4:1", "5:3"), state.versesIn(state.collectionNamed(HIGHLIGHTS_PINK)!!.id))
         assertEquals(listOf("2:255 blue", "3:18 pink", "4:1 pink", "5:3 pink"), phone.highlightList())
         assertConverged(ALICE, phone)
-    }
-
-    private companion object {
-        const val BLUE = "system:highlights:blue"
-        const val GREEN = "system:highlights:green"
-        const val PINK = "system:highlights:pink"
     }
 }

@@ -1,14 +1,9 @@
 package com.quran.shared.pipeline.integration.scenarios
 
-import com.quran.shared.persistence.input.ImportAyahHighlight
-import com.quran.shared.persistence.input.ImportCollection
-import com.quran.shared.persistence.input.ImportCollectionAyahBookmark
 import com.quran.shared.persistence.input.ImportNote
-import com.quran.shared.persistence.input.ImportReadingBookmark
 import com.quran.shared.persistence.input.ImportReadingSession
 import com.quran.shared.persistence.input.PersistenceImportData
-import com.quran.shared.persistence.model.AyahHighlightColor
-import com.quran.shared.persistence.model.ReadingBookmarkSlot
+import com.quran.shared.pipeline.integration.UserDataSnapshot
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.syncScenario
@@ -24,7 +19,7 @@ class ImportScenariosTest {
     fun `IMP-01 importing while logged in uploads once`() = syncScenario {
         val (phone) = signedIn("phone")
 
-        phone.data.importData(EVERY_TYPE)
+        phone.data.importData(IMPORTED)
         syncUntilQuiescent(phone)
 
         assertConverged(ALICE, phone)
@@ -48,10 +43,10 @@ class ImportScenariosTest {
     @Test
     fun `IMP-02 repeated tracked imports are no-ops`() = syncScenario {
         val (phone) = signedIn("phone")
-        assertTrue(phone.data.importData(EVERY_TYPE, deleteExisting = false, trackHistory = true).changed)
+        assertTrue(phone.data.importData(IMPORTED, deleteExisting = false, trackHistory = true).changed)
         syncUntilQuiescent(phone)
 
-        val second = phone.data.importData(EVERY_TYPE, deleteExisting = false, trackHistory = true)
+        val second = phone.data.importData(IMPORTED, deleteExisting = false, trackHistory = true)
 
         assertFalse(second.changed)
         assertTrue(second.alreadyProcessed > 0, "alreadyProcessed = ${second.alreadyProcessed}")
@@ -71,16 +66,12 @@ class ImportScenariosTest {
         web.addReadingSession(18, 1, ClientTimes(T0 + 140, T0 + 140))
         web.highlight(3, 18, "blue")
         val phone = device("phone")
-        phone.data.importData(EVERY_TYPE)
+        phone.data.importData(IMPORTED)
 
         assertSucceeded(phone.login(ALICE))
         syncUntilQuiescent(phone)
 
-        val state = server.state(ALICE)
-        assertEquals(2, state.notes.size)
-        assertEquals(setOf("2:255", "2:256"), state.versesIn(state.collectionNamed("Old Page Bookmarks")!!.id))
-        assertEquals(listOf("18:1", "36:1"), state.sessions.map { "${it.chapter}:${it.verse}" }.sorted())
-        assertEquals(setOf("3:18"), state.versesIn(state.collectionNamed("system:highlights:blue")!!.id))
+        assertEquals(IMPORTED.asSnapshot(), UserDataSnapshot.of(server.state(ALICE)), "the union, each item once")
         assertConverged(ALICE, phone)
     }
 
@@ -102,28 +93,11 @@ class ImportScenariosTest {
         assertSucceeded(first)
         assertEquals(listOf("A valid imported note", "Good"), phone.noteBodies(), "Good is kept locally")
         assertEquals(listOf("A valid imported note"), server.state(ALICE).notes.map { it.body })
-        assertEquals(listOf(18 to 1), server.state(ALICE).sessions.map { it.chapter to it.verse })
+        assertEquals(listOf("18:1"), server.state(ALICE).sessionVerses)
         repeat(2) {
             val later = phone.syncNow()
             assertSucceeded(later)
             assertEquals(0, later.posts, "a later sync pushed again")
         }
-    }
-
-    private companion object {
-        val EVERY_TYPE = PersistenceImportData(
-            collections = listOf(ImportCollection("Old Page Bookmarks", at(100), at(100))),
-            collectionBookmarks = listOf(
-                ImportCollectionAyahBookmark("Old Page Bookmarks", 2, 255, at(110), at(110)),
-                ImportCollectionAyahBookmark("Old Page Bookmarks", 2, 256, at(111), at(111))
-            ),
-            notes = listOf(
-                ImportNote("An imported reflection on mercy", 1, 1, 1, 7, at(120), at(120)),
-                ImportNote("Another imported note on patience", 2, 153, 2, 153, at(121), at(121))
-            ),
-            highlights = listOf(ImportAyahHighlight(3, 18, AyahHighlightColor.BLUE, at(130), at(130))),
-            readingSessions = listOf(ImportReadingSession(18, 1, at(140), at(140)), ImportReadingSession(36, 1, at(150), at(150))),
-            readingBookmarks = listOf(ImportReadingBookmark.Ayah(67, 1, at(160), ReadingBookmarkSlot.TEAL))
-        )
     }
 }

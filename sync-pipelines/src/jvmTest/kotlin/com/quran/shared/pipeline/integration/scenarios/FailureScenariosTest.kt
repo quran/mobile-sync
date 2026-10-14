@@ -73,7 +73,7 @@ class FailureScenariosTest {
         assertEquals(2, server.posts("phone").count { it.status == 504 }, "both faults fired")
         val state = server.state(ALICE)
         assertEquals(setOf("2:255"), state.favorites)
-        assertEquals(listOf(18 to 1), state.sessions.map { it.chapter to it.verse })
+        assertEquals(listOf("18:1"), state.sessionVerses)
         assertEquals(listOf(1), state.readingBookmarks.map { it.slot })
         assertConverged(ALICE, phone)
     }
@@ -93,7 +93,7 @@ class FailureScenariosTest {
             assertSucceeded(run)
             val state = server.state(ALICE)
             assertNotNull(state.collectionNamed("Study"))
-            assertEquals(listOf(18 to 1), state.sessions.map { it.chapter to it.verse })
+            assertEquals(listOf("18:1"), state.sessionVerses)
             assertEquals(listOf(1), state.readingBookmarks.map { it.slot })
             assertEquals(emptyList(), state.notes)
             assertEquals(listOf(POISON), phone.noteBodies(), "the poison note is held locally")

@@ -143,7 +143,7 @@ class ConvergenceScenariosTest {
 
         assertSucceeded(followUp)
         assertEquals(1, followUp.accepted.of("READING_SESSION", "CREATE").size)
-        assertEquals(listOf(2 to 255), server.state(ALICE).sessions.map { it.chapter to it.verse })
+        assertEquals(listOf("2:255"), server.state(ALICE).sessionVerses)
         assertEquals(1, phone.data.readingSessions.first().size)
         assertConverged(ALICE, phone)
     }

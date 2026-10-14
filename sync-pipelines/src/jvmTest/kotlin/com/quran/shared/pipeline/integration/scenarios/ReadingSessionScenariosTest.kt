@@ -22,7 +22,7 @@ class ReadingSessionScenariosTest {
         assertSucceeded(phone.syncNow())
         assertSucceeded(tablet.syncNow())
 
-        assertEquals(listOf(2 to 255), server.state(ALICE).sessions.map { it.chapter to it.verse })
+        assertEquals(listOf("2:255"), server.state(ALICE).sessionVerses)
         assertEquals(listOf("2:255"), tablet.sessionVerses())
         assertConverged(ALICE, phone, tablet)
     }
@@ -38,7 +38,7 @@ class ReadingSessionScenariosTest {
         assertSucceeded(tablet.syncNow())
 
         val session = server.state(ALICE).sessions.single()
-        assertEquals(2 to 255, session.chapter to session.verse)
+        assertEquals("2:255", session.verseKey)
         assertEquals(T0 + 60_000, session.clientUpdatedAt)
         assertEquals(listOf("2:255"), tablet.sessionVerses())
         assertConverged(ALICE, phone, tablet)
@@ -55,7 +55,7 @@ class ReadingSessionScenariosTest {
         assertSucceeded(tablet.syncNow())
 
         val expected = ((2..20).map { "2:$it" } + "3:1").sorted()
-        assertEquals(expected, server.state(ALICE).sessions.map { "${it.chapter}:${it.verse}" }.sorted(), "the oldest, 2:1, is pruned")
+        assertEquals(expected, server.state(ALICE).sessionVerses, "the oldest, 2:1, is pruned")
         assertEquals(expected, tablet.sessionVerses())
         assertConverged(ALICE, phone, tablet)
     }
@@ -95,7 +95,7 @@ class ReadingSessionScenariosTest {
         ) {
             assertSucceeded(phone.syncNow())
             assertSucceeded(phone.syncNow())
-            assertTrue(server.state(ALICE).sessions.any { it.chapter == 18 && it.verse == 1 }, "18:1 on the server")
+            assertTrue("18:1" in server.state(ALICE).sessionVerses, "18:1 on the server")
         }
     }
 
@@ -115,7 +115,7 @@ class ReadingSessionScenariosTest {
         ) {
             assertSucceeded(phone.syncNow())
             assertTrue("2:255" in phone.sessionVerses(), "2:255 on the device")
-            assertTrue(server.state(ALICE).sessions.any { it.chapter == 2 && it.verse == 255 }, "2:255 on the server")
+            assertTrue("2:255" in server.state(ALICE).sessionVerses, "2:255 on the server")
         }
     }
 
@@ -137,7 +137,7 @@ class ReadingSessionScenariosTest {
         ) {
             assertSucceeded(phone.syncNow())
             assertEquals(listOf("2:255"), phone.sessionVerses())
-            assertEquals(listOf(2 to 255), server.state(ALICE).sessions.map { it.chapter to it.verse })
+            assertEquals(listOf("2:255"), server.state(ALICE).sessionVerses)
         }
     }
 }

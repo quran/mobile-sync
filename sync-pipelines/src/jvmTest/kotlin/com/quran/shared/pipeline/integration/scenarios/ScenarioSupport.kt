@@ -9,8 +9,11 @@ import com.quran.shared.pipeline.integration.UserDataSnapshot
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.server.FakeSyncServer
 import com.quran.shared.pipeline.integration.server.RequestRecord
+import com.quran.shared.pipeline.integration.server.ServerSession
+import com.quran.shared.pipeline.integration.server.ServerState
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -84,6 +87,14 @@ private suspend fun SyncDevice.removeFrom(collection: CollectionWithAyahBookmark
 }
 // endregion
 
+// region Server reads
+/** A server session's verse, "sura:ayah". */
+internal val ServerSession.verseKey: String get() = "$chapter:$verse"
+
+/** The server's session verses, sorted. */
+internal val ServerState.sessionVerses: List<String> get() = sessions.map { it.verseKey }.sorted()
+// endregion
+
 // region Request log
 internal val RequestRecord.isPost: Boolean get() = method == "POST"
 
@@ -101,6 +112,12 @@ internal val JsonObject.type: String? get() = (this["type"] as? JsonPrimitive)?.
 internal fun JsonObject.data(key: String): String? = (this["data"] as? JsonObject)?.get(key)?.let { (it as? JsonPrimitive)?.contentOrNull }
 
 internal fun List<JsonObject>.of(resource: String, type: String? = null) = filter { it.resource == resource && (type == null || it.type == type) }
+
+/** Every mutation this run's successful GET pages delivered, in page order. */
+internal val SyncRun.received: List<JsonObject>
+    get() = requests.filter { it.method == "GET" && it.status == 200 }.flatMap { get ->
+        (Json.parseToJsonElement(checkNotNull(get.response)).jsonObject["data"]!!.jsonObject["mutations"] as JsonArray).map { it as JsonObject }
+    }
 
 /** The `lastMutationAt` a successful POST's response carried. */
 internal fun RequestRecord.responseHead(): Long =
