@@ -45,22 +45,6 @@ internal class SynchronizationClientImpl(
         }
     )
 
-    /**
-     * Returns a client with this client's configuration and [timings]. Integration tests use it to
-     * shorten trigger delays and retries. Use only the returned client afterwards.
-     */
-    internal fun withSchedulerTimings(timings: SchedulerTimings): SynchronizationClientImpl =
-        SynchronizationClientImpl(
-            environment = environment,
-            httpClient = httpClient,
-            resourceAdapters = resourceAdapters,
-            authenticationDataFetcher = authenticationDataFetcher,
-            syncCompletionFinalizer = syncCompletionFinalizer,
-            syncLifecycleGate = syncLifecycleGate,
-            syncRunObserver = syncRunObserver,
-            schedulerTimings = timings
-        )
-
     override fun localDataUpdated() {
         invokeSchedulerIfAvailable(
             trigger = Trigger.LOCAL_DATA_MODIFIED,

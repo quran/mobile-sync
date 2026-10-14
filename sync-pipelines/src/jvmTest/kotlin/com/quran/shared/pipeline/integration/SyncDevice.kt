@@ -16,7 +16,6 @@ import com.quran.shared.pipeline.di.AppGraph
 import com.quran.shared.pipeline.integration.server.FakeSyncServer
 import com.quran.shared.pipeline.integration.server.RequestRecord
 import com.quran.shared.pipeline.storage.MobileSyncStorage
-import com.quran.shared.syncengine.SynchronizationClientImpl
 import com.quran.shared.syncengine.SynchronizationEnvironment
 import com.quran.shared.syncengine.scheduling.FailureRetryingConfig
 import com.quran.shared.syncengine.scheduling.SchedulerTimings
@@ -169,7 +168,7 @@ class SyncDevice internal constructor(
 
 /**
  * The per-device graph bindings: this device's database instead of the process-wide one, the fake
- * OIDC boundary, and short scheduler timings through the engine's internal timing seam.
+ * OIDC boundary, and short scheduler timings.
  */
 @BindingContainer
 internal class DeviceBindings(
@@ -186,8 +185,7 @@ internal class DeviceBindings(
     @Provides
     fun synchronizationClientFactory(): QuranDataServiceSynchronizationClientFactory =
         QuranDataServiceSynchronizationClientFactory { pipeline, environment, dates, auth, gate, callback, observer ->
-            val client = pipeline.setup(environment, dates, auth, gate, callback, observer)
-            (client as SynchronizationClientImpl).withSchedulerTimings(timings)
+            pipeline.setup(environment, dates, auth, gate, callback, observer, schedulerTimings = timings)
         }
 }
 
