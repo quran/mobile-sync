@@ -4,15 +4,10 @@ import com.quran.shared.pipeline.integration.DeviceTimings
 import com.quran.shared.pipeline.integration.KnownIssue
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.knownIssue
-import com.quran.shared.pipeline.integration.mutation
-import com.quran.shared.pipeline.integration.syncRejectedWith
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-
-/** S7's signature: a note UPDATE carrying `ranges` gets 422. */
-private val NOTE_UPDATE_REJECTED = syncRejectedWith(422, carrying = mutation("NOTE", "UPDATE", "ranges"))
 
 /** Notes. */
 class NoteScenariosTest {

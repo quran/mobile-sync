@@ -3,8 +3,6 @@ package com.quran.shared.pipeline.integration.scenarios
 import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.knownIssue
-import com.quran.shared.pipeline.integration.mutation
-import com.quran.shared.pipeline.integration.syncRejectedWith
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.flow.first
 import kotlin.test.Test
@@ -13,9 +11,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-
-/** S6's signature: the retried Favorites membership DELETE gets 404 "bookmark is not found". */
-private val FAVORITES_DELETE_REJECTED = syncRejectedWith(404, carrying = mutation("COLLECTION_BOOKMARK", "DELETE"))
 
 /** Ayah bookmarks, Favorites and collection memberships. */
 class BookmarkScenariosTest {
