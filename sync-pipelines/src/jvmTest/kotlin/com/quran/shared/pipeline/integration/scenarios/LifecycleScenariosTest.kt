@@ -22,13 +22,14 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.fail
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
@@ -312,13 +313,20 @@ class LifecycleScenariosTest {
         // The app dies after the reset began, with its flag persisted, and before any data was
         // deleted. Token capture runs non-cancellable, so the held logout is left suspended for
         // good, outside the test's scope, as a killed process never runs again.
-        CoroutineScope(Dispatchers.Default).launch { phone.logout() }
-        hold.reached.await()
+        val dyingLogout = CoroutineScope(Dispatchers.Default).async { phone.logout() }
+        withTimeout(10.seconds) {
+            // A logout that fails, or finishes, before the hold surfaces here instead of timing out.
+            select {
+                hold.reached.onAwait { }
+                dyingLogout.onAwait { fail("the logout finished before the hold: $it") }
+            }
+        }
         assertEquals(2, phone.data.notes.first().size, "nothing deleted before the crash")
         val requestsBefore = server.requests("phone").size
         val relaunch = phone.restart()
 
         assertNull(relaunch, "the relaunch finished the logout, which signs out")
+        assertTrue(dyingLogout.isActive, "the dead launch's logout never resumed")
         assertEquals(EMPTY_SNAPSHOT, phone.snapshot(), "cleared at launch")
         phone.data.addNote("Written after the relaunch", 1, 1, 1, 7)
         assertEquals(listOf("Written after the relaunch"), phone.noteBodies(), "the first write after the relaunch lands on cleared data")

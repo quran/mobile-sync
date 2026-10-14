@@ -6,6 +6,7 @@ import com.quran.shared.pipeline.integration.mutation
 import com.quran.shared.pipeline.integration.syncFailedLocally
 import com.quran.shared.pipeline.integration.syncRejectedWith
 import com.quran.shared.pipeline.integration.syncScenario
+import kotlinx.coroutines.flow.first
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
@@ -344,19 +345,27 @@ class CollectionScenariosTest {
         syncUntilQuiescent(phone)
         val web = web(ALICE)
 
-        web.addToCollection(web.createCollection("Favorites"), 4, 1)
-        assertSucceeded(phone.syncNow())
+        val userFavorites = web.createCollection("Favorites")
+        web.addToCollection(userFavorites, 4, 1)
+        val run = phone.syncNow()
 
-        // Nothing is silently dropped: the default Favorites and the web's own "Favorites" both show.
+        assertSucceeded(run)
+        assertEquals(0, run.posts, "nothing pushed")
+        assertEquals(setOf("4:1"), server.state(ALICE).versesIn(userFavorites), "the server keeps the web's Favorites")
+        assertEquals(setOf("1:1"), server.state(ALICE).favorites)
+
+        // Nothing is silently dropped: the default Favorites keeps 1:1, and the web's "Favorites"
+        // shows as some user collection holding 4:1, under its name or a documented rename.
         knownIssue(
             "S9",
             "A web user collection named Favorites is skipped as colliding with the default",
             // The catalog predicted S9. The sync succeeds, and the web's Favorites never shows.
-            expect = failureMentions("the web's Favorites", "expected:<[4:1]> but was:<null>")
+            expect = failureMentions("user collections holding 4:1", "expected:<1> but was:<0>")
         ) {
             assertEquals(listOf("1:1"), phone.favoriteVerses(), "the default Favorites")
-            assertEquals(listOf("4:1"), phone.versesIn("Favorites"), "the web's Favorites")
-            assertConverged(ALICE, phone)
+            val holding = phone.data.collectionsWithBookmarks.first()
+                .filter { c -> !c.collection.isDefault && c.bookmarks.any { it.sura == 4 && it.ayah == 1 } }
+            assertEquals(1, holding.size, "user collections holding 4:1")
         }
     }
 

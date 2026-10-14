@@ -164,8 +164,9 @@ class TextScenariosTest {
         phone.data.addCollection("STRASSE")
         syncUntilQuiescent(phone, tablet)
 
-        // unverified vs Postgres: the fake models lower() with the root locale, which folds É to é,
-        // as a UTF-8 collation does, and leaves ß alone, as every collation does. So étude links to
+        // unverified vs Postgres: this assumes production Postgres uses a UTF-8 lc_ctype. The fake
+        // models lower() with the root locale, which folds É to é, as a UTF-8 lc_ctype does (a C
+        // lc_ctype folds only ASCII), and leaves ß alone, as every lc_ctype does. So étude links to
         // ÉTUDE and STRASSE stays its own collection.
         val names = server.state(ALICE).collections.map { it.name }.sorted()
         assertEquals(listOf("STRASSE", "Straße", "ÉTUDE"), names)

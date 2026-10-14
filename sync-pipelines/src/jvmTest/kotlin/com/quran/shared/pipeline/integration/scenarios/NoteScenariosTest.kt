@@ -131,13 +131,17 @@ class NoteScenariosTest {
         knownIssue(
             "The range edit's UPDATE gets 422 (S7); once accepted without ranges, the server keeps the old range (S4)",
             "S7" to NOTE_UPDATE_REJECTED,
-            "S4" to failureMentions(
-                "expected:<UserDataSnapshot(notes=[A note to move elsewhere | 2:255-2:255]",
-                "but was:<UserDataSnapshot(notes=[A note to move elsewhere | 3:18-3:18]"
-            )
+            // Either the phone keeps 3:18 while the server keeps 2:255, or the echo reverts the phone too.
+            "S4" to { failure ->
+                failureMentions(
+                    "expected:<UserDataSnapshot(notes=[A note to move elsewhere | 2:255-2:255]",
+                    "but was:<UserDataSnapshot(notes=[A note to move elsewhere | 3:18-3:18]"
+                )(failure) || failureMentions("the agreed range", "but was:<[2:255-2:255]>")(failure)
+            }
         ) {
             repeat(2) { assertSucceeded(phone.syncNow()) }
             assertConverged(ALICE, phone)
+            assertEquals(listOf("3:18-3:18"), server.state(ALICE).notes.single().ranges, "the agreed range")
         }
     }
 

@@ -106,11 +106,12 @@ class ReadingBookmarkScenariosTest {
         val (phone) = signedIn("phone")
 
         web(ALICE).setPageReadingBookmark(1, 300, mushafId = 7)
-        val run = phone.syncNow()
+        val runs = listOf(phone.syncNow(), phone.syncNow())
 
-        assertSucceeded(run)
-        assertEquals("pages_548", server.state(ALICE).readingBookmarks.single { it.slot == 1 }.group, "the 16-line IndoPak's pages")
-        val onPhone = assertIs<PageReadingBookmark>(phone.data.readingBookmarks.first().single())
+        runs.forEach(::assertSucceeded)
+        assertEquals(0, runs.sumOf { it.posts }, "nothing pushed back")
+        val slot = server.state(ALICE).readingBookmarks.single { it.slot == 1 }
+        assertEquals(Triple("page", "pages_548", 300), Triple(slot.type, slot.group, slot.key), "the server keeps the IndoPak page")
         // The public model has no mushaf, so the test can only require that page 300 of the 548-page
         // IndoPak is not shown as Madani page 300.
         knownIssue(
@@ -118,6 +119,7 @@ class ReadingBookmarkScenariosTest {
             "A web page reading bookmark from an IndoPak mushaf lands on the same-numbered Madani page",
             expect = failureMentions("mapped to the Madani mushaf", "Actual: 300")
         ) {
+            val onPhone = assertIs<PageReadingBookmark>(phone.data.readingBookmarks.first().single())
             assertNotEquals(300, onPhone.page, "mapped to the Madani mushaf")
         }
     }
