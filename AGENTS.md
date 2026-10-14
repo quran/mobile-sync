@@ -93,6 +93,17 @@ Default timings:
 - Standard follow-up interval: 30 minutes
 - Retry backoff: 200 ms base, 2.5x multiplier, maximum 5 retries
 
+## Integration Tests
+
+`sync-pipelines/src/jvmTest/kotlin/com/quran/shared/pipeline/integration` runs whole devices against one fake sync server, end to end. Each `SyncDevice` is the production graph with its own in-memory database and the real Ktor client, talking over loopback HTTP to `FakeSyncServer`; `FakeAuthRepository` stands in for OIDC.
+
+- **Public API only.** Test bodies drive devices through `QuranDataService`/`AuthService` and assert on public flows, return values, and the fake server's state and request log. They never read engine tables or the sync token, so a scenario survives an engine rewrite. Keep it that way.
+- **Writing a scenario.** Wrap the test in `syncScenario { }`. Create installs with `device("phone")`, sign in with `login("alice")`, and write as the website with `web("alice")`. Nothing syncs on its own (`DeviceTimings` defaults every trigger to an hour): call `syncNow()` for one run, `syncAll(...)` for one run per device, or `syncUntilQuiescent(...)` to sync until a round changes nothing. Check runs with `assertSucceeded(run)` and devices with `assertConverged(account, ...)`. The `SyncScenario.kt` KDoc has a worked example.
+- **Known issues.** Wrap a test that fails today in `knownIssue(id, description, expect) { }`. The block asserts the correct behavior; `expect` pins how it fails now (for example `syncRejectedWith(422)`). It is strict: any other failure is an error, and once the bug is fixed the block passes and the test fails with "<id> appears fixed; remove knownIssue". Remove the wrapper then. After every scenario the server is checked for duplicates; pass `knownDuplicates = KnownIssue(...)` when an open issue leaves them.
+- **Fault hooks.** `server.faults` fails, blocks (`blockPost`), loses (`loseResponse`) or garbles requests, takes the network down, rejects chosen mutations, runs web writes `beforePost` or `betweenPages`, makes an entry vanish, caps GET pages, and turns on the backend's `mutationIndex`. Faults act on the server's answers only, never on the client. `device.auth` expires the session, rotates the token, or fails a logout; `server.clock` moves server time.
+- **The fake mirrors the backend** (`quran.com-users-backend`, `apps/api/src/modules/v1/sync/`). When a synced data type is added or the backend changes, model it in `FakeSyncServer` the way the backend does: validation (`MutationValidation`), side effects and cascades (`MutationApplier`, `CollectionRules`, `NoteSessionRules`), GET rendering (`ResourceRendering`), and the web writes (`WebActor`). An error the fake hits that models no backend behavior fails the scenario. `FakeSyncServerTest` pins the fake's own fidelity.
+- **Running.** `./gradlew :sync-pipelines:jvmTest --tests 'com.quran.shared.pipeline.integration.*'`, or one class or test with a narrower `--tests` filter.
+
 ## Development Notes
 
 - Use `kotlinx.coroutines.test` and virtual time for timing-sensitive tests.

@@ -353,6 +353,11 @@ Run all tests:
 ./gradlew allTests --stacktrace --continue
 ```
 
+Run the end-to-end sync integration tests (devices against a fake sync server; see `AGENTS.md`):
+```bash
+./gradlew :sync-pipelines:jvmTest --tests 'com.quran.shared.pipeline.integration.*'
+```
+
 Build iOS XCFramework:
 ```bash
 ./gradlew :umbrella:assembleSharedXCFramework
