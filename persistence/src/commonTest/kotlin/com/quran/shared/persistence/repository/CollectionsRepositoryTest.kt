@@ -1,6 +1,7 @@
 package com.quran.shared.persistence.repository
 
 import com.quran.shared.persistence.MobileSyncDatabase
+import com.quran.shared.persistence.ReservedCollectionNameException
 import com.quran.shared.persistence.at
 import com.quran.shared.persistence.createTestDatabase
 import com.quran.shared.persistence.input.ImportCollection
@@ -94,23 +95,24 @@ class CollectionsRepositoryTest {
     }
 
     @Test
-    fun `addCollection rejects reserved system names`() = runTest {
-        listOf("system:highlights:blue", "System:Highlights:Pink", " system:anything").forEach { name ->
-            assertFailsWith<IllegalArgumentException> { repository.addCollection(name, at(100L)) }
+    fun `addCollection rejects reserved names`() = runTest {
+        listOf("system:highlights:blue", "System:Highlights:Pink", " system:anything", " favorites ").forEach { name ->
+            val error = assertFailsWith<ReservedCollectionNameException> { repository.addCollection(name, at(100L)) }
+            assertEquals(name, error.name)
         }
 
         assertEquals(listOf(DEFAULT_COLLECTION_NAME), repository.getAllCollections().map { it.name })
     }
 
     @Test
-    fun `collection rename rejects reserved system names`() = runTest {
+    fun `collection rename rejects reserved names`() = runTest {
         val collection = repository.addCollection("Study", at(100L))
 
-        assertFailsWith<IllegalArgumentException> {
-            repository.updateCollection(collection.id, DEFAULT_COLLECTION_NAME, at(200L))
-        }
-        assertFailsWith<IllegalArgumentException> {
-            repository.updateCollection(collection.id, "system:highlights:yellow", at(200L))
+        listOf(DEFAULT_COLLECTION_NAME, "FAVORITES ", "system:highlights:yellow").forEach { name ->
+            val error = assertFailsWith<ReservedCollectionNameException> {
+                repository.updateCollection(collection.id, name, at(200L))
+            }
+            assertEquals(name, error.name)
         }
 
         assertEquals("Study", repository.getAllCollections().single { it.id == collection.id }.name)
