@@ -13,6 +13,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
 
 /** Reading bookmarks, the three colored slots. */
 class ReadingBookmarkScenariosTest {
@@ -98,6 +99,27 @@ class ReadingBookmarkScenariosTest {
             assertEquals(36 to 1, bookmark.sura to bookmark.ayah, it.name)
         }
         assertConverged(ALICE, phone, tablet)
+    }
+
+    @Test
+    fun `RB-06 a web page bookmark from an IndoPak mushaf`() = syncScenario {
+        val (phone) = signedIn("phone")
+
+        web(ALICE).setPageReadingBookmark(1, 300, mushafId = 7)
+        val run = phone.syncNow()
+
+        assertSucceeded(run)
+        assertEquals("pages_548", server.state(ALICE).readingBookmarks.single { it.slot == 1 }.group, "the 16-line IndoPak's pages")
+        val onPhone = assertIs<PageReadingBookmark>(phone.data.readingBookmarks.first().single())
+        // The public model has no mushaf, so the test can only require that page 300 of the 548-page
+        // IndoPak is not shown as Madani page 300.
+        knownIssue(
+            "S13",
+            "A web page reading bookmark from an IndoPak mushaf lands on the same-numbered Madani page",
+            expect = failureMentions("mapped to the Madani mushaf", "Actual: 300")
+        ) {
+            assertNotEquals(300, onPhone.page, "mapped to the Madani mushaf")
+        }
     }
 
     @Test
