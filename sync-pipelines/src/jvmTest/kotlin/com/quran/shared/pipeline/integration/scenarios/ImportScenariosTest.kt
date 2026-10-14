@@ -22,6 +22,7 @@ class ImportScenariosTest {
         phone.data.importData(IMPORTED)
         syncUntilQuiescent(phone)
 
+        assertEquals(IMPORTED.asSnapshot(), UserDataSnapshot.of(server.state(ALICE)), "the server holds exactly the import")
         assertConverged(ALICE, phone)
         val creates = server.accepted("phone").filter { it.type == "CREATE" }
         assertEquals(

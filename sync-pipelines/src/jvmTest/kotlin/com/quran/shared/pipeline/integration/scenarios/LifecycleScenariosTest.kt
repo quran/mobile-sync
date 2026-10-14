@@ -217,16 +217,22 @@ class LifecycleScenariosTest {
         phone.data.addNote("Written before the relaunch", 3, 18, 3, 18)
         phone.data.addCollection("Study")
         phone.data.addReadingSession(36, 1)
+        val requestsBefore = server.requests("phone").size
 
         val run = phone.restart()!!
 
         assertSucceeded(run)
         assertEquals(head.toString(), run.requests.first { it.method == "GET" }.query["mutationsSince"], "the GET resumed from the stored token")
         assertTrue(run.postStatuses.all { it == 200 }, "POST statuses ${run.postStatuses}")
-        assertEquals(1, run.accepted.of("NOTE", "CREATE").size)
-        assertEquals(1, run.accepted.of("COLLECTION", "CREATE").size)
-        assertEquals(1, run.accepted.of("READING_SESSION", "CREATE").size)
         syncUntilQuiescent(phone)
+        // Pushed once across the relaunch sync and every later run.
+        val pushed = server.requests("phone").drop(requestsBefore).filter { it.isPost && it.status == 200 }.flatMap { it.mutations }
+        assertEquals(
+            mapOf<String?, Int>("NOTE" to 1, "COLLECTION" to 1, "READING_SESSION" to 1),
+            pushed.groupingBy { it.resource }.eachCount(),
+            "mutations pushed after the relaunch: $pushed"
+        )
+        assertTrue(pushed.all { it.type == "CREATE" }, "only CREATEs: $pushed")
         assertConverged(ALICE, phone)
     }
 
