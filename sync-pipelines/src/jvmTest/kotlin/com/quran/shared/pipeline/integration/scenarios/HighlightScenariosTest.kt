@@ -2,7 +2,6 @@ package com.quran.shared.pipeline.integration.scenarios
 
 import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.pipeline.integration.assertSucceeded
-import com.quran.shared.pipeline.integration.server.CollectionRules
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -18,11 +17,13 @@ class HighlightScenariosTest {
         phone.data.setHighlight(2, 255, AyahHighlightColor.BLUE)
         val run = phone.syncNow()
         assertSucceeded(run)
-        assertSucceeded(tablet.syncNow())
+        val tabletRun = tablet.syncNow()
+        assertSucceeded(tabletRun)
 
         val state = server.state(ALICE)
         assertEquals(listOf(HIGHLIGHTS_BLUE), state.collections.map { it.name })
-        assertTrue(CollectionRules.isSystemName(HIGHLIGHTS_BLUE))
+        val blue = tabletRun.received.of("COLLECTION").single { it.data("name") == HIGHLIGHTS_BLUE }
+        assertEquals("true", blue.data("isSystem"), "the tablet's GET marks the color collection isSystem")
         assertEquals(setOf("2:255"), state.versesIn(state.collectionNamed(HIGHLIGHTS_BLUE)!!.id))
         assertEquals(listOf(HIGHLIGHTS_BLUE), run.accepted.of("COLLECTION", "CREATE").map { it.data("name") }, "color collections pushed")
         assertEquals(listOf("2:255 blue"), tablet.highlightList())
