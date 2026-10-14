@@ -2,8 +2,6 @@
 
 package com.quran.shared.pipeline.sync
 
-import com.quran.shared.syncengine.scheduling.FailureRetryingConfig
-import com.quran.shared.syncengine.scheduling.SchedulerTimings
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher

@@ -1,9 +1,9 @@
 package com.quran.shared.pipeline
 
 import com.quran.shared.di.AppScope
-import com.quran.shared.syncengine.SyncLifecycleGate
-import com.quran.shared.syncengine.SyncOperationInvalidatedException
 import com.quran.shared.pipeline.storage.SyncMetadataSettings
+import com.quran.shared.pipeline.sync.SyncLifecycleGate
+import com.quran.shared.pipeline.sync.SyncOperationInvalidatedException
 import com.russhwolf.settings.coroutines.SuspendSettings
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn

@@ -2,7 +2,7 @@
 
 package com.quran.shared.pipeline
 
-import com.quran.shared.syncengine.SyncOperationInvalidatedException
+import com.quran.shared.pipeline.sync.SyncOperationInvalidatedException
 import com.russhwolf.settings.MapSettings
 import com.russhwolf.settings.coroutines.toSuspendSettings
 import kotlinx.coroutines.CompletableDeferred

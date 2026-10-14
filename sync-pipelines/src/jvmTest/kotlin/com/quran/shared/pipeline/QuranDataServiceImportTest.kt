@@ -20,8 +20,7 @@ import com.quran.shared.persistence.repository.note.repository.NotesRepositoryIm
 import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksRepositoryImpl
 import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepositoryImpl
 import com.quran.shared.persistence.util.toPlatform
-import com.quran.shared.syncengine.SynchronizationClient
-import com.quran.shared.syncengine.SynchronizationEnvironment
+import com.quran.shared.pipeline.sync.SynchronizationClient
 import com.russhwolf.settings.MapSettings
 import com.russhwolf.settings.coroutines.toSuspendSettings
 import dev.zacsweers.metro.BindingContainer

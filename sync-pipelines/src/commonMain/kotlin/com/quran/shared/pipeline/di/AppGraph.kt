@@ -11,10 +11,10 @@ import com.quran.shared.pipeline.AppEnvironment
 import com.quran.shared.pipeline.SyncAuthService
 import com.quran.shared.pipeline.QuranDataService
 import com.quran.shared.pipeline.QuranDataServiceModule
+import com.quran.shared.pipeline.SynchronizationEnvironment
 import com.quran.shared.pipeline.defaultAppEnvironment
 import com.quran.shared.pipeline.storage.MobileSyncStorage
 import com.quran.shared.pipeline.storage.MobileSyncStorageModule
-import com.quran.shared.syncengine.SynchronizationEnvironment
 import dev.zacsweers.metro.DependencyGraph
 import dev.zacsweers.metro.Provides
 import dev.zacsweers.metro.createGraphFactory

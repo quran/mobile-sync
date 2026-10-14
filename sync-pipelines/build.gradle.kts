@@ -41,11 +41,25 @@ kotlin {
             implementation(libs.multiplatform.settings.datastore)
             implementation(libs.oidc.tokenstore)
             api(libs.androidx.lifecycle.viewmodel)
-            api(projects.syncengine)
             api(projects.persistence)
             api(projects.mutationsDefinitions)
             api(projects.auth)
             implementation(projects.syncV2)
+            implementation(projects.logging)
+            implementation(libs.ktor.client.core)
+        }
+
+        // The sync client's HTTP engine.
+        jvmMain.dependencies {
+            implementation(libs.ktor.client.okhttp)
+        }
+
+        androidMain.dependencies {
+            implementation(libs.ktor.client.okhttp)
+        }
+
+        iosMain.dependencies {
+            implementation(libs.ktor.client.darwin)
         }
 
         commonTest.dependencies {
@@ -96,7 +110,7 @@ mavenPublishing {
 
     pom {
         name = "Quran.com Mobile Sync"
-        description = "Top-level mobile sync artifact integrating auth, persistence, and syncengine"
+        description = "Top-level mobile sync artifact integrating auth, persistence, and the sync engine"
         inceptionYear = libs.versions.project.inception.year.get()
         url = libs.versions.project.url.get()
 

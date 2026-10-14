@@ -29,10 +29,9 @@ import com.quran.shared.persistence.util.currentPlatformDateTime
 import com.quran.shared.persistence.util.toPlatform
 import com.quran.shared.pipeline.sync.SyncAccount
 import com.quran.shared.pipeline.sync.SyncClient
-import com.quran.shared.syncengine.SyncLifecycleGate
-import com.quran.shared.syncengine.SyncRunObserver
-import com.quran.shared.syncengine.SynchronizationClient
-import com.quran.shared.syncengine.SynchronizationEnvironment
+import com.quran.shared.pipeline.sync.SyncLifecycleGate
+import com.quran.shared.pipeline.sync.SyncRunObserver
+import com.quran.shared.pipeline.sync.SynchronizationClient
 import com.quran.shared.syncv2.db.SyncV2Database
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutinesState

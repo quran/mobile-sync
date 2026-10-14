@@ -2,7 +2,6 @@ package com.quran.shared.pipeline
 
 import com.quran.shared.auth.model.AuthEnvironment
 import com.quran.shared.auth.model.defaultAuthEnvironment
-import com.quran.shared.syncengine.SynchronizationEnvironment
 
 enum class AppEnvironment(
     val authEnvironment: AuthEnvironment,
@@ -28,3 +27,6 @@ fun defaultAppEnvironment(): AppEnvironment {
         AuthEnvironment.PRODUCTION -> AppEnvironment.PRODUCTION
     }
 }
+
+/** The sync server: [endPointURL] is the base URL the sync API paths are resolved against. */
+data class SynchronizationEnvironment(val endPointURL: String)

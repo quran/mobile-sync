@@ -1,8 +1,8 @@
 package com.quran.shared.pipeline.integration
 
+import com.quran.shared.pipeline.SyncErrorKind
 import com.quran.shared.pipeline.SyncStatus
 import com.quran.shared.pipeline.integration.server.text
-import com.quran.shared.syncengine.SyncErrorKind
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
 import kotlin.test.fail
