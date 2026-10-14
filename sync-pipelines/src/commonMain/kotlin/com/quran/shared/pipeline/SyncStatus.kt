@@ -32,9 +32,6 @@ sealed class SyncStatus {
     data class Failed(val at: PlatformDateTime, val error: SyncError) : SyncStatus()
 }
 
-/**
- * Turns sync run events into [SyncStatus].
- */
 internal class SyncStatusTracker : SyncRunObserver {
     private val mutableStatus = MutableStateFlow<SyncStatus>(SyncStatus.Idle)
     val status: StateFlow<SyncStatus> = mutableStatus.asStateFlow()

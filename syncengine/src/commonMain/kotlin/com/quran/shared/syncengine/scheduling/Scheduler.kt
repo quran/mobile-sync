@@ -474,7 +474,7 @@ fun createScheduler(
 ): Scheduler = createScheduler(DefaultTimings, taskFunction, reachedMaximumFailureRetries)
 
 /**
- * Creates a Scheduler with the given [timings]. Tests use it to shorten trigger delays and retries.
+ * Tests use it to shorten trigger delays and retries.
  */
 internal fun createScheduler(
     timings: SchedulerTimings,
