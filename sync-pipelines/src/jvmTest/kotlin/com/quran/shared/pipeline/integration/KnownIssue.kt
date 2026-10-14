@@ -35,20 +35,36 @@ suspend fun knownIssue(
     expect: (AssertionError) -> Boolean,
     timeout: Duration = 20.seconds,
     block: suspend () -> Unit
+) = knownIssue(description, id to expect, timeout = timeout, block = block)
+
+/**
+ * A strict expected failure for several open issues that hide one another, such as S2 hiding S7:
+ * the block fails the way one of [issues] does, each pinned by its own matcher. They are tried in
+ * order, and the first that accepts the failure is reported as the one that reproduced.
+ *
+ * When the block passes, the test fails and names every id ("S2, S7 appear fixed"); when no matcher
+ * accepts the failure, it is an error, as in the single-issue form.
+ */
+suspend fun knownIssue(
+    description: String,
+    vararg issues: Pair<String, (AssertionError) -> Boolean>,
+    timeout: Duration = 20.seconds,
+    block: suspend () -> Unit
 ) {
-    val issue = KnownIssue(id, description)
+    require(issues.isNotEmpty()) { "Name at least one known issue" }
+    issues.forEach { (id, _) -> KnownIssue(id, description) }
+    val ids = issues.joinToString { it.first }
     val failure = try {
         withTimeoutOrNull(timeout) { block() }
-            ?: throw HarnessTimeoutException("Known issue $id: the block did not finish within $timeout")
+            ?: throw HarnessTimeoutException("Known issue $ids: the block did not finish within $timeout")
         null
     } catch (failure: AssertionError) {
         failure
     }
-    if (failure == null) fail("$id appears fixed; remove knownIssue")
-    if (!expect(failure)) {
-        throw AssertionError("Known issue $id (${issue.description}) failed, but not the way the issue does: ${failure.message}", failure)
-    }
-    println("Known issue $id still reproduces: ${failure.message?.lineSequence()?.firstOrNull()}")
+    if (failure == null) fail("$ids ${if (issues.size == 1) "appears" else "appear"} fixed; remove knownIssue")
+    val matched = issues.firstOrNull { (_, expect) -> expect(failure) }
+        ?: throw AssertionError("Known issue $ids ($description) failed, but not the way ${if (issues.size == 1) "the issue does" else "any of them does"}: ${failure.message}", failure)
+    println("Known issue ${matched.first} still reproduces: ${failure.message?.lineSequence()?.firstOrNull()}")
 }
 
 /**
