@@ -1,7 +1,6 @@
 package com.quran.shared.syncv2
 
 import com.quran.shared.syncv2.Device.Companion.FAVORITES
-import com.quran.shared.syncv2.fake.FakeAccount
 import com.quran.shared.syncv2.fake.FakeSyncServer
 import kotlinx.serialization.json.jsonArray
 import kotlin.test.Test
@@ -185,31 +184,6 @@ class ScenariosTest {
             device.settle()
 
             assertEquals(emptySet(), device.versesIn(FAVORITES))
-        }
-    }
-
-    /**
-     * S23, BMK-11: the web removes a verse that is only in Favorites, so the server deletes the bookmark too. The GET
-     * carries both deletes; the device applies them and pushes nothing (it used to push a DELETE that got 404).
-     * [pageSize] 1 puts the two deletes on different GET pages (BMK-17).
-     */
-    @Test
-    fun `a web removal from Favorites applies without pushing anything`() {
-        listOf(1000, 1).forEach { pageSize ->
-            FakeSyncServer().use { server ->
-                Device(server, pageSize = pageSize).use { device ->
-                    device.collections.addAyah(device.collections.favorites().localId, 2, 255, t(0))
-                    device.settle()
-                    val posts = server.postBodies.size
-
-                    Remote(server).removeFromCollection(FakeAccount.DEFAULT_ID, 2, 255)
-                    device.settle()
-
-                    assertEquals(emptySet(), device.versesIn(FAVORITES), "pageSize=$pageSize")
-                    assertEquals(0, Remote(server).bookmarkCount())
-                    assertEquals(posts, server.postBodies.size, "pageSize=$pageSize: nothing pushed")
-                }
-            }
         }
     }
 

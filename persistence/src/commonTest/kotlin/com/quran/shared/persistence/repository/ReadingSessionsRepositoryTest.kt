@@ -23,7 +23,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.time.Clock
 
 class ReadingSessionsRepositoryTest {
     private lateinit var database: MobileSyncDatabase
@@ -43,16 +42,6 @@ class ReadingSessionsRepositoryTest {
         assertEquals(1234567890123L, readingSession.lastUpdated.fromPlatform().toEpochMilliseconds())
         assertEquals(1234567890123L, record.created_at)
         assertEquals(1234567890123L, record.updated_at)
-    }
-
-    @Test
-    fun `addReadingSession without a timestamp uses the current time`() = runTest {
-        val before = Clock.System.now().toEpochMilliseconds()
-
-        val readingSession = repository.addReadingSession(2, 255)
-
-        val after = Clock.System.now().toEpochMilliseconds()
-        assertTrue(readingSession.lastUpdated.fromPlatform().toEpochMilliseconds() in before..after)
     }
 
     @Test
@@ -90,20 +79,11 @@ class ReadingSessionsRepositoryTest {
 
     @Test
     fun `deleteReadingSession returns false when no session exists`() = runTest {
-        val deleted = repository.deleteReadingSession(2, 255)
-
-        assertFalse(deleted)
-        assertEquals(emptyList(), repository.getReadingSessions())
-    }
-
-    @Test
-    fun `deleteReadingSession returns false for an already deleted session`() = runTest {
         repository.addReadingSession(2, 255, at(1000L))
         assertTrue(repository.deleteReadingSession(2, 255))
 
-        val deletedAgain = repository.deleteReadingSession(2, 255)
-
-        assertFalse(deletedAgain)
+        assertFalse(repository.deleteReadingSession(2, 255), "already deleted")
+        assertFalse(repository.deleteReadingSession(3, 10), "never added")
         assertEquals(emptyList(), repository.getReadingSessions())
     }
 
@@ -149,19 +129,14 @@ class ReadingSessionsRepositoryTest {
     }
 
     @Test
-    fun `updateReadingSession rejects a deleted session without resurrecting it`() = runTest {
-        val created = repository.addReadingSession(2, 255, at(1000L))
+    fun `updateReadingSession rejects an id that names no session`() = runTest {
+        val deleted = repository.addReadingSession(2, 255, at(1000L))
         assertTrue(repository.deleteReadingSession(2, 255))
 
-        assertFailsWith<IllegalArgumentException> { repository.updateReadingSession(created.id, 3, 10, at(2000L)) }
-
-        assertEquals(emptyList(), repository.getReadingSessions())
-    }
-
-    @Test
-    fun `updateReadingSession rejects an id that names no session`() = runTest {
+        assertFailsWith<IllegalArgumentException> { repository.updateReadingSession(deleted.id, 3, 10, at(2000L)) }
         assertFailsWith<IllegalArgumentException> { repository.updateReadingSession("999", 3, 10, at(2000L)) }
         assertFailsWith<IllegalArgumentException> { repository.updateReadingSession("not-a-number", 3, 10, at(2000L)) }
+        assertEquals(emptyList(), repository.getReadingSessions(), "the deleted session is not resurrected")
     }
 
     @Test

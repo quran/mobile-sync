@@ -151,22 +151,15 @@ class CollectionBookmarksRepositoryTest {
         val collectionId = createCollection("RemoveMissingMember")
         val otherCollectionId = createCollection("KeepOtherMember")
         val bookmark = collectionBookmarksRepository.addAyahBookmarkToCollection(otherCollectionId, 2, 21, at(100))
+        val removedBookmark = collectionBookmarksRepository.addAyahBookmarkToCollection(collectionId, 2, 22, at(100))
+        assertTrue(collectionBookmarksRepository.removeAyahBookmarkFromCollection(collectionId, removedBookmark.bookmarkId))
 
         val removed = collectionBookmarksRepository.removeAyahBookmarkFromCollection(collectionId, bookmark.bookmarkId)
+        val removedAgain = collectionBookmarksRepository.removeAyahBookmarkFromCollection(collectionId, removedBookmark.bookmarkId)
 
         assertFalse(removed)
+        assertFalse(removedAgain, "a verse already removed is not a member either")
         assertEquals(1, collectionBookmarksRepository.getBookmarksForCollection(otherCollectionId).size)
-    }
-
-    @Test
-    fun `removing a collection bookmark twice reports nothing removed the second time`() = runTest {
-        val collectionId = createCollection("RemoveTwice")
-        val bookmark = collectionBookmarksRepository.addAyahBookmarkToCollection(collectionId, 2, 22, at(100))
-        collectionBookmarksRepository.removeAyahBookmarkFromCollection(collectionId, bookmark.bookmarkId)
-
-        val removedAgain = collectionBookmarksRepository.removeAyahBookmarkFromCollection(collectionId, bookmark.bookmarkId)
-
-        assertFalse(removedAgain)
     }
 
     @Test

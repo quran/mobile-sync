@@ -147,22 +147,13 @@ class NotesRepositoryTest {
     }
 
     @Test
-    fun `getAllNotes hides archived notes`() = runTest {
+    fun `getAllNotes and getNotesFlow hide archived notes`() = runTest {
         val archived = repository.addNote("archived note", 2, 13, 2, 13, at(1_000L))
         val active = repository.addNote("active note", 2, 14, 2, 14, at(2_000L))
 
         archive(archived.id, at = 3_000L)
 
         assertEquals(listOf(active.id), repository.getAllNotes().map { it.id })
-    }
-
-    @Test
-    fun `getNotesFlow hides archived notes`() = runTest {
-        val archived = repository.addNote("archived note", 2, 13, 2, 13, at(1_000L))
-        val active = repository.addNote("active note", 2, 14, 2, 14, at(2_000L))
-
-        archive(archived.id, at = 3_000L)
-
         assertEquals(listOf(active.id), repository.getNotesFlow().first().map { it.id })
     }
 

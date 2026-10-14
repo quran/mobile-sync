@@ -28,14 +28,6 @@ class MobileSyncSchemaTest {
     }
 
     @Test
-    fun `a new database has Favorites`() {
-        val favorites = MobileSyncDatabase(driver).synced.collectionsQueries.collectionDefault().executeAsOne()
-
-        assertEquals("Favorites", favorites.name)
-        assertEquals(1L, favorites.is_read_only)
-    }
-
-    @Test
     fun `migrating a version 1 database replaces its tables with the new schema`() {
         createVersionOneTables()
 

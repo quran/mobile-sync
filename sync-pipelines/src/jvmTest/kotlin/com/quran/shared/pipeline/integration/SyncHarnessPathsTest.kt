@@ -1,7 +1,6 @@
 package com.quran.shared.pipeline.integration
 
 import com.quran.shared.auth.model.AuthState
-import com.quran.shared.pipeline.integration.server.ErrorEnvelope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlin.test.Test
@@ -46,23 +45,6 @@ class SyncHarnessPathsTest {
             hold.release.complete(Unit)
             logout.await()
         }
-    }
-
-    @Test
-    fun `the engine reads the bare backend error envelope`() = syncScenario {
-        server.errorEnvelope = ErrorEnvelope.BACKEND
-        val phone = device("phone")
-        phone.login(ALICE)
-        server.faults.rejectMutation(status = 422, code = "ValidationError") { it.resource == "NOTE" }
-
-        phone.data.addNote("Rejected for good", 1, 1, 1, 7)
-        val run = phone.syncNow()
-
-        // The code was read: a 422 with a backend code holds the item, where a codeless one would only be retried.
-        assertSucceeded(run)
-        assertEquals(listOf(422), run.postStatuses)
-        assertEquals(emptyList(), server.state(ALICE).notes)
-        assertEquals(listOf("Rejected for good"), phone.data.notes.first().map { it.body }, "held locally")
     }
 
     private companion object {

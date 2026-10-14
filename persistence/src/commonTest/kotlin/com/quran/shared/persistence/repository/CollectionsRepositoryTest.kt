@@ -179,21 +179,14 @@ class CollectionsRepositoryTest {
     }
 
     @Test
-    fun `deleteCollection returns false for missing collection`() = runTest {
-        assertFalse(repository.deleteCollection("999"))
-        assertFalse(repository.deleteCollection("not-a-number"))
-
-        assertEquals(1, repository.getAllCollections().size)
-    }
-
-    @Test
-    fun `deleteCollection returns false for an already deleted collection`() = runTest {
+    fun `deleteCollection returns false for a missing or already deleted collection`() = runTest {
         val collection = repository.addCollection(CUSTOM_COLLECTION_NAME, at(1000L))
         assertTrue(repository.deleteCollection(collection.id))
 
-        val deletedAgain = repository.deleteCollection(collection.id)
+        assertFalse(repository.deleteCollection(collection.id))
+        assertFalse(repository.deleteCollection("999"))
+        assertFalse(repository.deleteCollection("not-a-number"))
 
-        assertFalse(deletedAgain)
         assertEquals(listOf(DEFAULT_COLLECTION_NAME), repository.getAllCollections().map { it.name })
     }
 

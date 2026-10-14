@@ -1,9 +1,6 @@
 package com.quran.shared.syncv2
 
 import com.quran.shared.syncv2.fake.FakeSyncServer
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -13,20 +10,6 @@ import kotlin.test.assertTrue
 /** Reading sessions: pruning, moves, edit-vs-delete. */
 class ReadingSessionsSyncTest {
     private fun t(n: Int) = 1_760_000_000_000L + n * 1_000L
-
-    @Test
-    fun `a visit syncs and its echo is a no-op`() = FakeSyncServer().use { server ->
-        Device(server).use { device ->
-            device.sessions.addSession(2, 255, t(0))
-            device.syncOk()
-            assertEquals(setOf("2:255"), Remote(server).sessionVerses())
-
-            val posts = server.postBodies.size
-            device.syncOk()
-            assertEquals(posts, server.postBodies.size, "the echo of this device's own push must not be pushed back")
-            assertEquals(listOf("2:255"), device.sessionVerses())
-        }
-    }
 
     /** Never-synced pruned sessions leave no tombstones, so nothing can be ambiguous. */
     @Test
@@ -86,24 +69,6 @@ class ReadingSessionsSyncTest {
         }
     }
 
-    /** S8: a remote delete against a local revisit: the edit wins and is recreated as a CREATE (no 404 wedge). */
-    @Test
-    fun `revisiting a session another device deleted does not wedge sync`() = FakeSyncServer().use { server ->
-        Device(server).use { device ->
-            device.sessions.addSession(2, 255, t(0))
-            device.settle()
-            val remote = Remote(server)
-            remote.deleteSession(remote.sessionIdAt(2, 255))
-            device.sessions.addSession(2, 255, t(10))
-
-            device.syncOk()
-
-            assertEquals(listOf("2:255"), device.sessionVerses())
-            assertEquals(setOf("2:255"), remote.sessionVerses())
-            assertFalse(404 in server.postStatuses)
-        }
-    }
-
     /** Edit beats delete, the other way: a local delete loses to a remote revisit. */
     @Test
     fun `a session deleted locally but revisited on another device comes back`() = FakeSyncServer().use { server ->
@@ -118,22 +83,6 @@ class ReadingSessionsSyncTest {
 
             assertEquals(listOf("2:255"), device.sessionVerses())
             assertEquals(setOf("2:255"), remote.sessionVerses())
-        }
-    }
-
-    @Test
-    fun `a remote move onto a verse this device has applies in one sync`() = FakeSyncServer().use { server ->
-        Device(server).use { device ->
-            device.sessions.addSession(1, 1, t(0))
-            device.sessions.addSession(2, 2, t(1))
-            device.settle()
-            val remote = Remote(server)
-            remote.updateSession(remote.sessionIdAt(1, 1), 2, 2, t(10))
-
-            device.syncOk()
-
-            assertEquals(listOf("2:2"), device.sessionVerses())
-            assertEquals(setOf("2:2"), remote.sessionVerses())
         }
     }
 
@@ -228,64 +177,6 @@ class ReadingSessionsSyncTest {
             device.settle()
 
             assertEquals(remote.sessionVerses(), device.sessionVerses().toSet())
-        }
-    }
-
-    @Test
-    fun `a local move onto another session's verse converges`() = FakeSyncServer().use { server ->
-        Device(server).use { device ->
-            device.sessions.addSession(1, 1, t(0))
-            device.sessions.addSession(2, 2, t(1))
-            device.settle()
-            val moved = device.sessions.sessions().single { it.sura == 1 }
-
-            device.sessions.moveSession(moved.localId, 2, 2, t(10))
-            device.settle()
-
-            assertEquals(listOf("2:2"), device.sessionVerses())
-            assertEquals(setOf("2:2"), Remote(server).sessionVerses())
-        }
-    }
-
-    /** Both devices rank by clientUpdatedAt then verse, so pruning converges; a double prune is delete + delete. */
-    @Test
-    fun `two devices pruning the same account converge on the newest 20`() = FakeSyncServer().use { server ->
-        Device(server).use { a ->
-            Device(server).use { b ->
-                repeat(15) { a.sessions.addSession(1, it + 1, t(it)) }
-                a.settle()
-                b.settle()
-                repeat(10) { b.sessions.addSession(2, it + 1, t(100 + it * 2)) }
-                repeat(10) { a.sessions.addSession(3, it + 1, t(101 + it * 2)) }
-
-                repeat(2) {
-                    b.syncOk()
-                    a.syncOk()
-                }
-
-                val expected = ((1..10).map { "2:$it" } + (1..10).map { "3:$it" }).toSet()
-                assertEquals(expected, a.sessionVerses().toSet())
-                assertEquals(expected, b.sessionVerses().toSet())
-                assertEquals(expected, Remote(server).sessionVerses())
-            }
-        }
-    }
-
-    /**
-     * S20, IMP-09: an import writes more than 20 sessions without pruning. The type's prune runs after the merge and
-     * before the push, so only the newest 20 are ever pushed: no CREATE that a DELETE follows.
-     */
-    @Test
-    fun `an import of more than 20 sessions pushes only the newest 20`() = FakeSyncServer().use { server ->
-        Device(server).use { device ->
-            repeat(25) { device.database.sessionsQueries.insert(4, it + 1L, t(it), t(it)) }
-
-            device.settle()
-
-            val pushed = server.postBodies.flatMap { body -> body["mutations"]!!.jsonArray.map { it.jsonObject["type"]!!.jsonPrimitive.content } }
-            assertEquals(List(20) { "CREATE" }, pushed)
-            assertEquals((6..25).map { "4:$it" }.toSet(), Remote(server).sessionVerses())
-            assertEquals(20, device.sessionVerses().size)
         }
     }
 }

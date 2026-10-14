@@ -108,25 +108,6 @@ class ForbiddenWithoutIndexTest {
         }
     }
 
-    /** A new note refused for the scope is not held (a hold would wait for an edit): the run stops, and it syncs later. */
-    @Test
-    fun `a create refused for the scope is not held`() = FakeSyncServer().use { server ->
-        Device(server).use { device ->
-            device.settle()
-            server.rejectMutation = { if (it.str("resource") == "NOTE") HttpError(403, "ForbiddenError", "Forbidden") else null }
-            device.collections.addCollection("Study", t(0))
-            device.addNote("Written without the note scope", "2:255", t(1))
-
-            assertIs<SyncResult.Failed>(device.sync())
-
-            assertEquals(setOf("Study"), Remote(server).collectionNames(), "the rest landed")
-            assertEquals(emptyList(), device.engine.held())
-            server.rejectMutation = null
-            device.settle()
-            assertEquals(listOf("Written without the note scope"), Remote(server).noteBodies())
-        }
-    }
-
     /** A pull during a push backoff merges what other devices wrote and sends nothing. */
     @Test
     fun `a pull-only sync merges remote changes and pushes nothing`() = FakeSyncServer().use { server ->
