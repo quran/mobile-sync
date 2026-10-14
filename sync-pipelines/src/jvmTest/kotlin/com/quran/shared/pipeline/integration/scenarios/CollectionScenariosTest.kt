@@ -245,9 +245,12 @@ class CollectionScenariosTest {
 
         val failure = assertFails { phone.data.updateCollection(study.id, "memorize") }
 
+        // The API has no duplicate-name error type yet, so this accepts the API's validation family,
+        // IllegalArgumentException, as TextLengthLimitException and the reserved-name checks use.
+        // Tighten it to the type S16's fix adds.
         knownIssue(
             "S16",
-            "Renaming a collection to another existing name throws a raw SQLite exception",
+            "Renaming a collection to another existing name throws an untyped SQLite exception",
             expect = failureMentions("a typed duplicate-name error", "SQLiteException")
         ) {
             assertTrue(failure is IllegalArgumentException, "a typed duplicate-name error, not ${failure::class.qualifiedName}")

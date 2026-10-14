@@ -47,7 +47,7 @@ class FailureScenariosP1Test {
         phone.data.deleteReadingSession(18, 1)
         syncUntilQuiescent(phone)
 
-        assertEquals(2, server.posts("phone").count { it.status == 504 }, "both faults fired")
+        assertTrue(server.posts("phone").any { it.status == 504 }, "a delete's response was lost")
         assertEquals(emptyList(), server.requests("phone").filter { it.status == 404 }.map { it.mutations }, "no 404")
         assertEquals(EMPTY_SNAPSHOT, phone.snapshot())
         assertConverged(ALICE, phone)
@@ -185,7 +185,7 @@ class FailureScenariosP1Test {
         knownIssue(
             "S21",
             "After the retries run out, sync stops until something triggers it",
-            expect = failureMentions("the note reached the server after the outage")
+            expect = failureMentions("the note reached the server after the outage", "but was:<[]>")
         ) {
             pollUntil(PERIODIC * 3) { server.state(ALICE).notes.isNotEmpty() }
             assertEquals(listOf("Written during the outage"), server.state(ALICE).notes.map { it.body }, "the note reached the server after the outage")

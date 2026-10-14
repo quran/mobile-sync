@@ -207,14 +207,16 @@ class ReadingSessionScenariosTest {
 
     @Test
     fun `RS-12 both devices delete the same session`() = syncScenario {
+        // Deletes take no timestamp, so the devices stamp them with the wall clock. The server's
+        // clock stands an hour back, so every server change, the tablet's delete included, is
+        // stamped then plus 1 ms per change (the backend's monotonic bump). The phone's later delete
+        // is newer for sure.
+        server.clock.frozenAt = System.currentTimeMillis() - 3_600_000
         val (phone, tablet) = signedIn("phone", "tablet")
         phone.data.addReadingSession(2, 255)
         phone.data.addReadingSession(18, 1)
         syncUntilQuiescent(phone, tablet)
 
-        // Deletes take no timestamp. Setting the server's clock back keeps the phone's later delete
-        // newer than the tablet's, even within one millisecond.
-        server.clock.offsetMillis = -60_000
         tablet.data.deleteReadingSession(2, 255)
         assertSucceeded(tablet.syncNow())
         phone.data.deleteReadingSession(2, 255)

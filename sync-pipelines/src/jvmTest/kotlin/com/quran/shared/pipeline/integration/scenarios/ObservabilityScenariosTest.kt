@@ -70,9 +70,13 @@ class ObservabilityScenariosTest {
             phone.syncNow().also { collector.cancel() }
         }
 
-        val failures = statuses.filterIsInstance<SyncStatus.Failed>()
-        assertEquals(1, failures.size, "failure events: $statuses")
-        assertEquals(run.status, failures.single())
+        // A StateFlow replays its current value, the login's result, to a new collector. It also
+        // conflates: equal values are not repeated, so the retries show as one Syncing, and a
+        // value replaced before the collector runs would be missed. The collector is unconfined,
+        // which in practice sees every change, but this can't prove that no value was ever
+        // dropped, only that the flow showed one failure.
+        assertIs<SyncStatus.Succeeded>(statuses.first(), "the login's result: $statuses")
+        assertEquals(listOf(SyncStatus.Syncing, run.status), statuses.drop(1), "one run, then exactly one failure")
         val error = assertIs<SyncStatus.Failed>(run.status).error
         assertEquals(422 to "ValidationError", error.httpStatus to error.serverCode)
     }
