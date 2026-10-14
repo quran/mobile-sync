@@ -20,7 +20,7 @@ class KnownIssueTest {
     @Test
     fun `a passing block fails the test so the wrapper is removed`() {
         val failure = assertFailsWith<AssertionError> {
-            runBlocking { knownIssue("S1", "Example issue") { } }
+            runBlocking { knownIssue("S1", "Example issue", expect = { true }) { } }
         }
         assertEquals("S1 appears fixed; remove knownIssue", failure.message)
     }
@@ -36,10 +36,10 @@ class KnownIssueTest {
     @Test
     fun `exceptions and hangs are errors, not reproductions`() {
         assertFailsWith<NullPointerException> {
-            runBlocking { knownIssue("S1", "Example issue") { throw NullPointerException() } }
+            runBlocking { knownIssue("S1", "Example issue", expect = { true }) { throw NullPointerException() } }
         }
         assertFailsWith<HarnessTimeoutException> {
-            runBlocking { knownIssue("S1", "Example issue", timeout = 50.milliseconds) { delay(5_000) } }
+            runBlocking { knownIssue("S1", "Example issue", expect = { true }, timeout = 50.milliseconds) { delay(5_000) } }
         }
     }
 

@@ -8,9 +8,11 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.URLDecoder
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 enum class ErrorEnvelope { API_GATEWAY, BACKEND }
 
@@ -162,12 +164,24 @@ class FakeSyncServer : AutoCloseable {
                 }
             }
         } catch (error: HttpError) {
-            errorBody(error).let { record(error.status, it); respond(exchange, error.status, it) }
+            errorBody(error).let { record(error.status, it); respondQuietly(exchange, error.status, it) }
+        } catch (transport: IOException) {
+            // The client went away while we read or answered; that is the network, not the fake.
+            exchange.close()
         } catch (bug: Throwable) {
             // Not a modelled backend error: a bug in the fake or in a test's fault callback.
             synchronized(bugs) { bugs += AssertionError("${request.method} from ${request.device}: ${bug.message}", bug) }
             errorBody(HttpError(500, "ServerError", "Something went wrong", details = null))
-                .let { record(500, it); respond(exchange, 500, it) }
+                .let { record(500, it); respondQuietly(exchange, 500, it) }
+        }
+    }
+
+    /** Answers an error, ignoring a client that has already gone away. */
+    private fun respondQuietly(exchange: HttpExchange, status: Int, body: String) {
+        try {
+            respond(exchange, status, body)
+        } catch (_: IOException) {
+            exchange.close()
         }
     }
 
@@ -341,9 +355,18 @@ class FakeSyncServer : AutoCloseable {
     }
     // endregion
 
+    /**
+     * Releases held requests, stops accepting new ones, and waits for every handler to finish, so
+     * [internalErrors] is complete when this returns.
+     */
     override fun close() {
+        faults.releaseGates()
         http.stop(0)
-        executor.shutdownNow()
+        executor.shutdown()
+        if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
+            synchronized(bugs) { bugs += AssertionError("Fake server handlers did not finish within 10 s of close") }
+            executor.shutdownNow()
+        }
     }
 
     companion object {

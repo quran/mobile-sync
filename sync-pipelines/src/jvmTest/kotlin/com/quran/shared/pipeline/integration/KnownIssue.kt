@@ -1,8 +1,7 @@
 package com.quran.shared.pipeline.integration
 
 import com.quran.shared.pipeline.SyncStatus
-import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.test.fail
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -24,22 +23,21 @@ data class KnownIssue(val id: String, val description: String) {
  *
  * Anything else fails the test as an error: an assertion [expect] rejects, any other exception
  * (harness misuse, a bug in the fake server, a [HarnessTimeoutException]), or a block that runs
- * longer than [timeout]. Pin the failure with [expect] where the issue has a signature, for
- * example `expect = syncRejectedWith(422)`.
+ * longer than [timeout]. [expect] is required, so every known issue pins its failure, for example
+ * `expect = syncRejectedWith(422)`.
  */
 suspend fun knownIssue(
     id: String,
     description: String,
-    expect: (AssertionError) -> Boolean = { true },
-    timeout: Duration = 10.seconds,
+    expect: (AssertionError) -> Boolean,
+    timeout: Duration = 20.seconds,
     block: suspend () -> Unit
 ) {
     val issue = KnownIssue(id, description)
     val failure = try {
-        withTimeout(timeout) { block() }
+        withTimeoutOrNull(timeout) { block() }
+            ?: throw HarnessTimeoutException("Known issue $id: the block did not finish within $timeout")
         null
-    } catch (timeout: TimeoutCancellationException) {
-        throw HarnessTimeoutException("Known issue $id: the block did not finish within $timeout", timeout)
     } catch (failure: AssertionError) {
         failure
     }

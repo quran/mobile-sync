@@ -56,16 +56,18 @@ data class DeviceTimings(
 }
 
 /**
- * One sync run as the device saw it: how it ended and the requests it made. A [skipped] run found
- * no session (for example an expired one), synced nothing, and left [status] as it was.
+ * One sync run as the device saw it: how it ended and the requests it made. [status] is null for a
+ * [skipped] run, which found no session (for example an expired one) and synced nothing.
  */
-data class SyncRun(val status: SyncStatus, val requests: List<RequestRecord>, val skipped: Boolean = false) {
+data class SyncRun(val status: SyncStatus?, val requests: List<RequestRecord>) {
+    val skipped: Boolean get() = status == null
+
     val gets: Int get() = requests.count { it.method == "GET" }
     val posts: Int get() = requests.count { it.method == "POST" }
     val postStatuses: List<Int> get() = requests.filter { it.method == "POST" }.map { it.status }
 
     /** The run synced: it was not skipped and ended [SyncStatus.Succeeded]. */
-    val succeeded: Boolean get() = !skipped && status is SyncStatus.Succeeded
+    val succeeded: Boolean get() = status is SyncStatus.Succeeded
 }
 
 /** [assertSucceeded]'s failure, carrying the run so [knownIssue] can pin it (see [syncRejectedWith]). */
@@ -126,11 +128,11 @@ class SyncDevice internal constructor(
 
     /**
      * Runs one sync now, with its retries, and returns it. Waits first for a run already in flight,
-     * so the returned run started after this call. A run that finds no session is returned with
-     * [SyncRun.skipped] set; [assertSucceeded] fails on it.
+     * so the returned run started after this call. A run that finds no session is returned with no
+     * status ([SyncRun.skipped]); [assertSucceeded] fails on it.
      */
     suspend fun syncNow(): SyncRun {
-        check(auth.token != null) { "$name is signed out; sign in before syncNow()" }
+        checkNotNull(auth.accessToken()) { "$name is signed out; sign in before syncNow()" }
         status.awaitNotSyncing(name)
         return recordRun { data.triggerSync(immediately = true) }
     }
@@ -154,7 +156,7 @@ class SyncDevice internal constructor(
             graph = newGraph()
             status = SyncStatusRecorder(graph.quranDataService.syncStatus)
         }
-        if (auth.token == null) {
+        if (auth.accessToken() == null) {
             data.awaitInitialization()
             return null
         }
@@ -172,8 +174,7 @@ class SyncDevice internal constructor(
     ): SyncRun {
         start()
         val ended = status.awaitRunAfter(mark, name, skipped = auth.headerDenials.map { it > denialsBefore })
-        return SyncRun(ended ?: data.syncStatus.value, server.requests(name).drop(requestsBefore), skipped = ended == null)
-            .also { lastRun = it }
+        return SyncRun(ended, server.requests(name).drop(requestsBefore)).also { lastRun = it }
     }
 
     private fun newGraph(): AppGraph =

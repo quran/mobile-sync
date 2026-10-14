@@ -7,6 +7,7 @@ import com.quran.shared.auth.repository.RemoteLogoutFailure
 import com.quran.shared.auth.repository.RemoteLogoutMode
 import com.quran.shared.auth.repository.RemoteLogoutOperation
 import com.quran.shared.pipeline.integration.server.FakeSyncServer
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -15,19 +16,20 @@ import org.publicvalue.multiplatform.oidc.tokenstore.TokenStore
 /**
  * The OIDC boundary for one simulated device: the part of `OidcAuthRepository` that talks to the
  * browser login, the token endpoint and the token store. Login is not interactive; it signs in as
- * the account [signInAs] chose and gets a token from [server]. Like `OidcAuthRepository`, it keeps
- * tokens in the graph's token store ([useTokenStore]), so the session survives
- * `SyncDevice.restart()`.
+ * the account [signInAs] chose and gets a token from [server].
+ *
+ * Like `OidcAuthRepository`, it keeps the session's tokens only in the graph's token store
+ * ([useTokenStore]), which outlives the graph, so the session survives `SyncDevice.restart()`.
  */
 class FakeAuthRepository(private val device: String, private val server: FakeSyncServer) : AuthRepository {
     @Volatile private var pendingAccount: String? = null
     @Volatile private var expireOnNextRefresh = false
     @Volatile private var remoteLogoutFails = false
-    @Volatile private var tokenStore: TokenStore? = null
+    @Volatile private var logoutHold: LogoutHold? = null
+    private lateinit var tokenStore: TokenStore
 
+    /** The account of the latest login; null after a logout or an expired session. */
     @Volatile var account: String? = null
-        private set
-    @Volatile var token: String? = null
         private set
 
     private val deniedHeaders = MutableStateFlow(0)
@@ -48,15 +50,7 @@ class FakeAuthRepository(private val device: String, private val server: FakeSyn
     /** Replaces the access token, as a successful refresh does. */
     suspend fun rotateToken() {
         val account = checkNotNull(account) { "Not signed in" }
-        saveToken(server.issueToken(account, device))
-    }
-
-    /** Keeps tokens in [store], the device graph's `MobileSyncStorage` token store. */
-    internal fun useTokenStore(store: TokenStore): FakeAuthRepository = also { tokenStore = store }
-
-    private suspend fun saveToken(value: String?) {
-        token = value
-        tokenStore?.let { store -> if (value == null) store.removeTokens() else store.saveTokens(value, "refresh-$value", null) }
+        tokenStore.saveTokens(server.issueToken(account, device), null, null)
     }
 
     /** Remote token revocation fails during logout. */
@@ -64,30 +58,54 @@ class FakeAuthRepository(private val device: String, private val server: FakeSyn
         remoteLogoutFails = true
     }
 
+    /**
+     * Holds the next logout while it captures the tokens to revoke, which is after the managed reset
+     * began. Returns the hold; complete [LogoutHold.release] to let the logout go on.
+     */
+    fun holdNextLogout(): LogoutHold = LogoutHold().also { logoutHold = it }
+
+    class LogoutHold internal constructor() {
+        val reached = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+    }
+
+    /** The current access token, read from the token store. */
+    suspend fun accessToken(): String? = tokenStore.getAccessToken()
+
+    /** Keeps tokens in [store], the device graph's `MobileSyncStorage` token store. */
+    internal fun useTokenStore(store: TokenStore): FakeAuthRepository = also { tokenStore = store }
+
     override suspend fun login() {
         val account = checkNotNull(pendingAccount) { "Call signInAs(account) before login()" }
         this.account = account
-        saveToken(server.issueToken(account, device))
+        tokenStore.saveTokens(server.issueToken(account, device), null, null)
         expireOnNextRefresh = false
     }
 
     override suspend fun loginWithReauthentication() = login()
 
     override suspend fun refreshTokensIfNeeded(): Boolean {
-        if (expireOnNextRefresh && token != null) {
+        if (expireOnNextRefresh && accessToken() != null) {
             expireOnNextRefresh = false
             clearLocalSession()
         }
-        return token != null
+        return accessToken() != null
     }
 
     override suspend fun logout() = clearLocalSession()
 
-    override suspend fun captureLogoutTokenMaterial() = LogoutTokenMaterial(refreshToken = token?.let { "refresh-$it" }, idToken = null)
+    override suspend fun captureLogoutTokenMaterial(): LogoutTokenMaterial {
+        logoutHold?.let { hold ->
+            logoutHold = null
+            hold.reached.complete(Unit)
+            hold.release.await()
+        }
+        return LogoutTokenMaterial(refreshToken = accessToken()?.let { "refresh-$it" }, idToken = null)
+    }
 
     override suspend fun clearLocalSession() {
         account = null
-        saveToken(null)
+        tokenStore.removeTokens()
     }
 
     override suspend fun attemptRemoteLogout(tokenMaterial: LogoutTokenMaterial, mode: RemoteLogoutMode): List<RemoteLogoutFailure> =
@@ -97,14 +115,14 @@ class FakeAuthRepository(private val device: String, private val server: FakeSyn
             emptyList()
         }
 
-    override suspend fun getAccessToken(): String? = tokenStore?.getAccessToken() ?: token
+    override suspend fun getAccessToken(): String? = accessToken()
 
-    override suspend fun isLoggedIn(): Boolean = token != null
+    override suspend fun isLoggedIn(): Boolean = accessToken() != null
 
     override suspend fun getCurrentUser(): UserInfo? = account?.let { UserInfo(id = it, name = it) }
 
     override suspend fun getAuthHeaders(): Map<String, String> {
-        val token = token?.takeIf { refreshTokensIfNeeded() } ?: run {
+        val token = accessToken()?.takeIf { refreshTokensIfNeeded() } ?: run {
             deniedHeaders.update { it + 1 }
             return emptyMap()
         }

@@ -83,15 +83,13 @@ class ServerFaults internal constructor() {
         failRequests(requests, status, "ServiceUnavailableError", "Service unavailable") { true }
 
     /**
-     * Closes matching connections without an answer. Not deterministic with a finite [times]:
-     * OkHttp may retry a dropped request on a new connection by itself, which consumes another
-     * firing or goes through. For a deterministic failure use [networkDown] (every request),
-     * [failRequests], [outage], or [loseResponse]'s default 504 mode.
+     * Drops every connection without an answer until [networkUp]: the device sees a network error
+     * on each attempt, OkHttp's own retries included. There is no finite variant, because OkHttp may
+     * retry a dropped request by itself; use [failRequests], [outage] or [loseResponse] instead.
      */
-    fun dropConnection(times: Int = 1, match: (FakeRequest) -> Boolean = { true }) = add(times, match, Action.Drop)
-
-    /** Drops every connection until [networkUp]: the device sees a network error on each attempt. */
-    fun networkDown() = dropConnection(ALWAYS) { true }.also { networkDownRule = it }
+    fun networkDown() {
+        networkDownRule = add(ALWAYS, { true }, Action.Drop)
+    }
 
     fun networkUp() = synchronized(rules) { networkDownRule?.let(rules::remove); networkDownRule = null }
 
@@ -106,7 +104,15 @@ class ServerFaults internal constructor() {
 
     /** Holds the next matching POST before it is applied, until the returned gate is released. */
     fun blockPost(times: Int = 1, match: (FakeRequest) -> Boolean = { true }): RequestGate =
-        RequestGate().also { add(times, { it.isPost && match(it) }, Action.Block(it)) }
+        RequestGate().also { gate ->
+            synchronized(gates) { gates += gate }
+            add(times, { it.isPost && match(it) }, Action.Block(gate))
+        }
+
+    private val gates = mutableListOf<RequestGate>()
+
+    /** Releases every gate, so held requests finish before the server stops. */
+    internal fun releaseGates() = synchronized(gates) { gates.forEach(RequestGate::release) }
 
     /**
      * Rejects a POST at the first mutation matching [match], inside the transaction, so the whole

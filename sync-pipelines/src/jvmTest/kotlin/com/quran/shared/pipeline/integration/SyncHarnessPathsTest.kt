@@ -2,7 +2,9 @@ package com.quran.shared.pipeline.integration
 
 import com.quran.shared.auth.model.AuthState
 import com.quran.shared.pipeline.LogoutWarningType
+import com.quran.shared.pipeline.SyncStatus
 import com.quran.shared.pipeline.integration.server.ClientTimes
+import com.quran.shared.pipeline.integration.server.ErrorEnvelope
 import com.quran.shared.pipeline.integration.server.WebActor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -17,8 +19,11 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.nanoseconds
+import kotlin.time.Duration.Companion.seconds
 
 /** The harness's less obvious paths, each against today's engine. */
 class SyncHarnessPathsTest {
@@ -78,8 +83,10 @@ class SyncHarnessPathsTest {
         phone.data.addNote("Response lost on the way", 1, 1, 1, 7)
         val run = phone.syncNow()
 
+        // The only POST got the 504, so the server committed the note before losing the answer;
+        // the retry found it in GET and pushed nothing.
         assertSucceeded(run)
-        assertEquals(504, run.postStatuses.first())
+        assertEquals(listOf(504), run.postStatuses)
         syncUntilQuiescent(phone)
         assertEquals(1, server.state(ALICE).notes.size)
         assertConverged(ALICE, phone)
@@ -137,6 +144,42 @@ class SyncHarnessPathsTest {
     }
 
     /** Seeds distinct notes: each has its own creation time, so none look like duplicates. */
+    @Test
+    fun `a run the lifecycle gate skips fails fast with a clear message`() = syncScenario {
+        val phone = device("phone")
+        phone.login(ALICE)
+        val hold = phone.auth.holdNextLogout()
+
+        coroutineScope {
+            val logout = async { phone.logout() }
+            hold.reached.await()
+            val started = System.nanoTime()
+            val failure = assertFailsWith<HarnessTimeoutException> { phone.syncNow() }
+            val elapsed = (System.nanoTime() - started).nanoseconds
+
+            assertTrue("lifecycle gate" in failure.message.orEmpty(), failure.message)
+            assertTrue(elapsed < SyncStatusRecorder.START_TIMEOUT + 2.seconds, "took $elapsed")
+            hold.release.complete(Unit)
+            logout.await()
+        }
+    }
+
+    @Test
+    fun `the engine reads the bare backend error envelope`() = syncScenario {
+        server.errorEnvelope = ErrorEnvelope.BACKEND
+        val phone = device("phone")
+        phone.login(ALICE)
+        server.faults.rejectMutation(status = 422, code = "ValidationError") { it.resource == "NOTE" }
+
+        phone.data.addNote("Rejected for good", 1, 1, 1, 7)
+        val run = phone.syncNow()
+
+        val error = assertIs<SyncStatus.Failed>(run.status).error
+        assertEquals(422, error.httpStatus)
+        assertEquals("ValidationError", error.serverCode)
+        assertEquals(List(6) { 422 }, run.postStatuses)
+    }
+
     private fun seedNotes(web: WebActor, count: Int) = repeat(count) {
         val verse = "2:${it % 286 + 1}"
         web.createNote("Seeded note number $it", "$verse-$verse", times = ClientTimes(createdAt = SEED_TIME + it))

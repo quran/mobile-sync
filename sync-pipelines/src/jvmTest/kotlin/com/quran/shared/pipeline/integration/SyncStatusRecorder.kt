@@ -4,7 +4,6 @@ import com.quran.shared.pipeline.SyncStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,7 +15,7 @@ import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -64,11 +63,9 @@ internal class SyncStatusRecorder(flow: StateFlow<SyncStatus>) {
         }
     }
 
-    private suspend fun <T> within(timeout: Duration, message: String, block: suspend () -> T): T = try {
-        withTimeout(timeout) { block() }
-    } catch (timeout: TimeoutCancellationException) {
-        throw HarnessTimeoutException("$message; statuses: ${history.value}", timeout)
-    }
+    /** Only this wait's own timeout becomes [HarnessTimeoutException]; an outer cancellation passes through. */
+    private suspend fun <T : Any> within(timeout: Duration, message: String, block: suspend () -> T): T =
+        withTimeoutOrNull(timeout) { block() } ?: throw HarnessTimeoutException("$message; statuses: ${history.value}")
 
     private fun start(values: List<SyncStatus>, mark: Int): Int? =
         (mark until values.size).firstOrNull { values[it] is SyncStatus.Syncing }
@@ -81,7 +78,7 @@ internal class SyncStatusRecorder(flow: StateFlow<SyncStatus>) {
     fun close() = scope.cancel()
 
     companion object {
-        val START_TIMEOUT = 5.seconds
+        val START_TIMEOUT = 3.seconds
         val RUN_TIMEOUT = 15.seconds
     }
 }

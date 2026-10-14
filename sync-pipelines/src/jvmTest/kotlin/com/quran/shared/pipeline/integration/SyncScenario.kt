@@ -52,8 +52,8 @@ import kotlin.test.fail
  *   device's GET and POST through [FakeSyncServer.faults] (`beforePost`, `betweenPages`).
  * - **Faults.** `server.faults` fails, blocks or loses requests, rejects chosen mutations, and
  *   turns on BE1's `mutationIndex`.
- * - **Known issues.** Wrap a test that fails today in [knownIssue] with its tracker id and a
- *   one-line description, and pin the failure with `expect` where it has a signature.
+ * - **Known issues.** Wrap a test that fails today in [knownIssue] with its tracker id, a
+ *   one-line description, and an `expect` predicate that pins how it fails today.
  * - **Time.** Pass explicit `PlatformDateTime` timestamps for anything compared by time, and move
  *   the server's clock with `server.clock`.
  *
@@ -70,7 +70,11 @@ fun syncScenario(knownDuplicates: KnownIssue? = null, block: suspend SyncScenari
         if (knownDuplicates == null) {
             scenario.assertNoServerDuplicates()
         } else {
-            knownIssue(knownDuplicates.id, knownDuplicates.description) { scenario.assertNoServerDuplicates() }
+            knownIssue(
+                knownDuplicates.id,
+                knownDuplicates.description,
+                expect = { DUPLICATES_FAILURE in it.message.orEmpty() }
+            ) { scenario.assertNoServerDuplicates() }
         }
     } catch (error: Throwable) {
         failure = error
@@ -82,6 +86,9 @@ fun syncScenario(knownDuplicates: KnownIssue? = null, block: suspend SyncScenari
     }
     if (failure != null) throw failure
 }
+
+/** The start of [com.quran.shared.pipeline.integration.server.ServerState.assertNoDuplicates]'s failure message. */
+private const val DUPLICATES_FAILURE = "has duplicates"
 
 class SyncScenario internal constructor() {
     private val main = Executors.newSingleThreadExecutor { Thread(it, "device-main").apply { isDaemon = true } }
@@ -120,7 +127,7 @@ class SyncScenario internal constructor() {
             val runs = order.map { it.name to it.syncNow() }
             val headsAfter = heads()
             rounds += "round ${round + 1}: " + runs.joinToString { (name, run) ->
-                "$name ${if (run.skipped) "skipped" else run.status::class.simpleName} GET=${run.gets} POST=${run.postStatuses}"
+                "$name ${run.status?.let { it::class.simpleName } ?: "skipped"} GET=${run.gets} POST=${run.postStatuses}"
             } + if (heads != headsAfter) " (head moved)" else ""
             if (heads == headsAfter && runs.all { (_, run) -> run.succeeded && run.posts == 0 }) return
         }
@@ -142,7 +149,10 @@ class SyncScenario internal constructor() {
         server.accountNames.forEach { server.state(it).assertNoDuplicates() }
     }
 
-    /** Shuts everything down and returns the fake server's internal errors. */
+    /**
+     * Shuts everything down and returns the fake server's internal errors, read only after the
+     * server released its held requests and every handler finished.
+     */
     internal suspend fun close(): List<Throwable> {
         try {
             devices.forEach { it.shutdown() }
