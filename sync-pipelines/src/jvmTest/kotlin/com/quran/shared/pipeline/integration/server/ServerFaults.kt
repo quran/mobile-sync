@@ -109,6 +109,13 @@ class ServerFaults internal constructor() {
             add(times, { it.isPost && match(it) }, Action.Block(gate))
         }
 
+    /** Holds the next matching GET before it is answered, until the returned gate is released. */
+    fun blockGet(times: Int = 1, match: (FakeRequest) -> Boolean = { true }): RequestGate =
+        RequestGate().also { gate ->
+            synchronized(gates) { gates += gate }
+            add(times, { !it.isPost && match(it) }, Action.Block(gate))
+        }
+
     private val gates = mutableListOf<RequestGate>()
 
     /** Releases every gate, so held requests finish before the server stops. */

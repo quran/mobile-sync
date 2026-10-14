@@ -124,7 +124,9 @@ class FailureScenariosTest {
     /**
      * S10: the old engine applied a GET's remote delete after its POST, so a row edited during the POST skipped the
      * delete and pushed an UPDATE that got 404 forever. The new engine merges the delete, with the token, before it
-     * pushes: by the time the POST is in flight the row is gone, so there is no stale row to edit and no 404.
+     * pushes: by the time the POST is in flight the row is gone, so there is no stale row to edit and no 404. An edit
+     * made while the GET is held, before the merge commits, is the catalog's race: edit beats delete, so R is recreated
+     * with the edit.
      */
     @Test
     fun `ERR-06 a 404 after a remote delete raced a local edit`() = syncScenario {
@@ -144,6 +146,26 @@ class FailureScenariosTest {
         assertEquals(emptyList(), server.requests("phone").filter { it.status == 404 }.map { it.mutations }, "no 404")
         assertEquals(emptyList(), server.state(ALICE).notes)
         assertConverged(ALICE, phone)
+
+        // The catalog's race, before the merge commits: the edit lands while the GET carrying the delete is held.
+        // Edit beats delete, so R is recreated with the edit.
+        phone.data.addNote("Deleted on the web while the GET is held", 3, 18, 3, 18)
+        syncUntilQuiescent(phone)
+        web.deleteNote(web.noteId("Deleted on the web while the GET is held")!!)
+        val getGate = server.faults.blockGet()
+
+        assertSucceeded(
+            phone.syncWhileHeld(getGate) {
+                phone.data.updateNote(phone.note("Deleted on the web while the GET is held").id, "Edited while the GET was held")
+            }
+        )
+
+        syncUntilQuiescent(phone)
+        assertEquals(listOf("Edited while the GET was held"), phone.noteBodies())
+        assertEquals(listOf("Edited while the GET was held"), server.state(ALICE).notes.map { it.body })
+        assertEquals(listOf("3:18-3:18"), server.state(ALICE).notes.single().ranges)
+        assertEquals(emptyList(), server.requests("phone").filter { it.status == 404 }.map { it.mutations }, "no 404")
+        assertConverged(ALICE, phone)
     }
 
     @Test
@@ -162,6 +184,21 @@ class FailureScenariosTest {
         syncUntilQuiescent(phone)
         assertEquals(emptyList(), server.requests("phone").filter { it.status == 404 }.map { it.mutations }, "no 404")
         assertEquals(listOf("Other"), phone.collectionNames())
+        assertConverged(ALICE, phone)
+
+        // The edit lands while the GET carrying the delete is held, before the merge: the renamed collection is
+        // recreated with the new name.
+        phone.data.addCollection("Study")
+        syncUntilQuiescent(phone)
+        web.deleteCollection(web.collectionId("Study")!!)
+        val getGate = server.faults.blockGet()
+
+        assertSucceeded(phone.syncWhileHeld(getGate) { phone.data.updateCollection(phone.collectionId("Study"), "Memorize") })
+
+        syncUntilQuiescent(phone)
+        assertEquals(listOf("Memorize", "Other"), phone.collectionNames())
+        assertEquals(listOf("Memorize", "Other"), server.state(ALICE).collections.map { it.name }.sorted())
+        assertEquals(emptyList(), server.requests("phone").filter { it.status == 404 }.map { it.mutations }, "no 404")
         assertConverged(ALICE, phone)
     }
 
