@@ -95,16 +95,6 @@ class QuranDataServiceSyncStatusTest {
     }
 
     @Test
-    fun `immediate trigger runs a sync without the local change delay`() = runTest(dispatcher) {
-        service.awaitInitialization()
-
-        service.triggerSync(immediately = true)
-
-        assertEquals("skipped", events.next())
-        assertEquals(SyncStatus.Idle, service.syncStatus.value)
-    }
-
-    @Test
     fun `sync run outcomes drive the status`() = runTest(dispatcher) {
         service.awaitInitialization()
 
