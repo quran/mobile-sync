@@ -15,15 +15,15 @@ Use `README.md` as the source of truth for public architecture, setup, and usage
 Core modules:
 
 - `:auth`: OIDC login/logout, auth state, token handling.
-- `:persistence`: SQLDelight DB and repositories for bookmarks, collections, notes, and reading sessions.
-- `:syncengine`: sync business logic, resource adapters, conflict resolution, Ktor networking, and scheduling.
-- `:sync-v2`: the generic sync engine (fetch, three-way merge, push) and its per-type mappings. It will replace `:syncengine`; it is not wired into `QuranDataService` or exported through `umbrella` yet.
-- `:sync-pipelines`: DI graph, storage wiring, repository adapters, and `QuranDataService`.
+- `:persistence`: the app database (`MobileSyncDatabase`: `QuranDatabase` for app metadata plus `:sync-v2`'s `SyncV2Database` on one driver, schema `MobileSyncSchema`) and the repositories for bookmarks, collections, notes, and reading sessions. Repositories write plain domain rows through one store per type (`NoteStore`, `CollectionStore`, `ReadingSessionStore`, `ReadingBookmarkStore`), which the importer uses too.
+- `:syncengine`: the previous sync engine. Nothing runs it any more; its shared types (`SyncError`, `SynchronizationEnvironment`, `SyncLifecycleGate`, `SyncRunObserver`, `SchedulerTimings`, `HttpClientFactory`) are still used until it is deleted.
+- `:sync-v2`: the generic sync engine (fetch, three-way merge, push), its per-type mappings and their plain domain tables (plus `sync_item` and `sync_meta`). Not exported through `umbrella`.
+- `:sync-pipelines`: DI graph, storage wiring, the sync client and scheduler (`pipeline/sync`), and `QuranDataService`.
 - `:umbrella`: iOS `Shared` XCFramework export.
 - `:demo:android`: Android Compose demo.
 - `:demo:common`: shared demo helpers/models.
 - `:mutations-definitions`: shared mutation types.
-- `:logging`: `MobileSyncLogging` sink for host apps and the shared Ktor HTTP logging used by `:auth` and `:syncengine`.
+- `:logging`: `MobileSyncLogging` sink for host apps and the shared Ktor HTTP logging used by `:auth` and the sync client.
 
 ## Common Commands
 
@@ -62,38 +62,26 @@ Command notes:
 
 ## Architecture Rules
 
-- Keep `syncengine` independent from persistence, auth, platform storage, and app UI.
-- Put integration code in `sync-pipelines`; this module bridges repositories, auth, storage, and `syncengine`.
+- Keep `sync-v2`'s engine core independent from persistence, auth, platform storage, and app UI; its types own their plain tables.
+- Put integration code in `sync-pipelines`; this module bridges repositories, auth, storage, and the sync engine.
 - Treat `QuranDataService` as the app-facing API. It should be obtained through `SharedDependencyGraph` / `AppGraph`, not constructed directly.
-- Keep SQLDelight schema and mutation tracking inside `persistence`.
+- App metadata tables live in `persistence`; synced domain tables live with their sync types in `sync-v2`. Every local write goes through a `persistence` store, so its rules (trimming, the note creation-time nudge, one highlight color per verse, the 20-session prune) hold for the app and the importer alike.
 - Keep public iOS exports coordinated through `umbrella`.
 
-Current sync resources are:
-
-- `BOOKMARK`
-- `COLLECTION`
-- `COLLECTION_BOOKMARK`: link between a collection and a bookmark.
-- `NOTE`
-- `READING_SESSION`
-
-The sync engine uses `SyncResourceAdapter` implementations and dependency-aware phases. Primary resources (`BOOKMARK`, `COLLECTION`) run before `COLLECTION_BOOKMARK`; remaining resources run afterward.
+Synced types (`sync-v2` `syncTypes`, in dependency order): collections, verses in collections (Favorites, highlights and user collections, sent as `COLLECTION_BOOKMARK`), reading sessions, notes, reading bookmarks. `BOOKMARK` entries are only read, to map bookmark ids to verses.
 
 ## Sync Protocol Notes
 
-- `GET /v1/sync` is offset-paginated and returns the account's sync head as `lastMutationAt`, not the last item's timestamp. `GetMutationsRequest` fetches every page before anything is applied and fails if the head changes between pages.
-- `POST /v1/sync` accepts at most 100 mutations. Each sync phase pushes in batches, passing each response's `lastMutationAt` to the next batch.
+- `GET /v1/sync` is offset-paginated and returns the account's sync head as `lastMutationAt`. `SyncApi` fetches every page before anything is merged and fetches again when the head moves between pages.
+- `POST /v1/sync` accepts at most 100 mutations; each POST is chained on the previous one's head. The stored token stays at the GET head, so the next GET brings back this device's pushes and their server side effects.
 
 ## Scheduler Notes
 
-`Scheduler` uses exception-based failure handling. Task functions should throw to signal failure and complete normally to signal success.
+`SyncScheduler` (`sync-pipelines`) runs one sync at a time. Default timings (`DefaultSyncTimings`):
 
-Default timings:
-
-- `APP_REFRESH`: 30 seconds
-- `LOCAL_DATA_MODIFIED`: 5 seconds
-- `IMMEDIATE`: 0 seconds
-- Standard follow-up interval: 30 minutes
-- Retry backoff: 200 ms base, 2.5x multiplier, maximum 5 retries
+- app start: 30 seconds; local change: 5 seconds; immediate: 0 seconds
+- after every run, success or not: the next one in 30 minutes, so sync never stops after its retries
+- retry backoff: 200 ms base, 2.5x multiplier, maximum 5 retries; a failure that asks for a longer backoff (a 403 that may be the token's scope) stops pushes for that long, while automatic runs keep pulling and "sync now" pushes again
 
 ## sync-v2
 
@@ -121,7 +109,8 @@ Default timings:
 ## Development Notes
 
 - Use `kotlinx.coroutines.test` and virtual time for timing-sensitive tests.
-- When adding a sync resource, update the sync model, adapter, serialization/network mapping, persistence schema/repository, `SyncEnginePipeline`, `QuranDataService` surface if needed, and tests.
+- When adding a synced type, add its `SyncType` and plain table in `sync-v2` (and to `syncTypes`), its store and repository in `persistence`, the `QuranDataService` surface if needed, and tests.
 - When changing auth or environment behavior, check `AuthConfig`, `AppEnvironment`, `SharedDependencyGraph`, storage factories, and Android manifest placeholders.
 - Android demo OAuth configuration comes from `local.properties` via `OAUTH_CLIENT_ID`.
-- Sync and session lifecycle metadata lives in the `key_value_store` table of `quran.db` (`@SyncMetadataSettings`); auth metadata stays in its own DataStore and tokens in the platform token store so database loss does not sign users out. Android backup exclusions are documented in `README.md`.
+- Session lifecycle metadata lives in the `key_value_store` table of `quran.db` (`@SyncMetadataSettings`), and sync state (token, account, outbox) in `sync_meta`; auth metadata stays in its own DataStore and tokens in the platform token store so database loss does not sign users out. Android backup exclusions are documented in `README.md`.
+- The schema has no migrations: mobile-sync is pre-release with no backward compatibility. Bump `MobileSyncSchema.version` when it changes; an older database is dropped and created again.

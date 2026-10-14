@@ -20,7 +20,7 @@ This repository contains shared modules used by Android and iOS apps for:
 
 ## Architecture
 
-`auth` + `persistence` + `syncengine` are composed in `sync-pipelines`, exposed through a managed DI graph (`AppGraph` / `SharedDependencyGraph`), and exported to iOS through `umbrella`.
+`auth` + `persistence` + `sync-v2` are composed in `sync-pipelines`, exposed through a managed DI graph (`AppGraph` / `SharedDependencyGraph`), and exported to iOS through `umbrella`. The repositories write plain domain tables (no sync columns); the sync engine diffs them against the last state both sides agreed on (`sync_item`) to find what to push.
 
 ```mermaid
 flowchart LR
@@ -30,7 +30,8 @@ flowchart LR
   F --> A[Auth Module]
   S --> A
   S --> P[Persistence Module]
-  S --> E[SyncEngine Module]
+  S --> E[sync-v2 engine]
+  P --> E
   U[Umbrella XCFramework] --> UI
 ```
 
@@ -39,9 +40,9 @@ flowchart LR
 | Module | Purpose |
 |---|---|
 | `:auth` | OIDC login/logout, auth state, token handling |
-| `:persistence` | SQLDelight DB, repositories for bookmarks/collections/notes/reading sessions |
-| `:syncengine` | Core sync engine and scheduling |
-| `:sync-v2` | The generic sync engine that will replace `:syncengine` (not wired into `QuranDataService` yet) |
+| `:persistence` | The app database (`MobileSyncDatabase`) and the repositories for bookmarks/collections/notes/reading sessions, over `:sync-v2`'s plain tables |
+| `:syncengine` | The previous sync engine; no longer used, kept for its shared types (`SyncError`, `SynchronizationEnvironment`, `SchedulerTimings`) until it is deleted |
+| `:sync-v2` | The generic sync engine (fetch, three-way merge, push) and the plain domain tables of its types |
 | `:sync-pipelines` | DI graph and `QuranDataService` managed data API |
 | `:umbrella` | iOS XCFramework export (`Shared.xcframework`) |
 | `:demo:android` | Android sample app (Compose) |
@@ -247,7 +248,7 @@ val graph = SharedDependencyGraph.init(
 ### Android backup exclusions
 
 Sync and session lifecycle metadata is stored in the shared `quran.db` database next to the data it
-describes. Auth metadata and OAuth tokens stay outside the database, so a lost or recreated database
+describes (the sync token, account and outbox in `sync_meta`, per-item sync state in `sync_item`). Auth metadata and OAuth tokens stay outside the database, so a lost or recreated database
 does not sign the user out. Both use stable DataStore file names so apps can exclude them from backup
 or device transfer:
 
@@ -278,6 +279,9 @@ location, name (including clearing it when null), and modification time. Merge i
 omitted slots unchanged; `deleteExisting = true` clears their locations while preserving slot
 identities and names for sync. Imports are atomic, track local sync mutations, and report the
 number of supplied reading bookmarks in `PersistenceImportResult.readingBookmarksImported`.
+An import writes through the repositories' rules: text is trimmed like the server, each note gets a
+creation time of its own (nudged by a millisecond on a clash), a verse keeps one highlight color, and
+only the newest 20 reading sessions are kept. The next sync pushes it like any other local change.
 
 Lifecycle note:
 - `QuranDataService` is app-scoped. Initialize once via `SharedDependencyGraph.init(...)`.

@@ -1,5 +1,7 @@
 # SyncEngine Architecture & Conflict Resolution
 
+> This describes the previous engine (`:syncengine`). `QuranDataService` now runs the `:sync-v2` engine; this module and document go when `:syncengine` is deleted.
+
 ## Overview
 
 The SyncEngine package provides a robust synchronization system for page bookmarks across multiple devices. It handles bidirectional synchronization between local and remote data stores, with sophisticated conflict detection and resolution mechanisms.
