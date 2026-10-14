@@ -198,11 +198,13 @@ class CollectionsRepositoryTest {
     }
 
     @Test
-    fun `getCollectionsFlow emits the current collections`() = runTest {
+    fun `getCollectionsFlow emits the current collections newest first`() = runTest {
         val study = repository.addCollection("Study", at(1000L))
+        val memorize = repository.addCollection("Memorize", at(2000L))
 
-        assertEquals(listOf(DEFAULT_COLLECTION_NAME, "Study"), repository.getCollectionsFlow().first().map { it.name })
-        assertEquals(study, repository.getCollectionsFlow().first().last())
+        // Favorites is seeded with no creation time of its own, so it is the oldest; the app lists it first anyway.
+        assertEquals(listOf("Memorize", "Study", DEFAULT_COLLECTION_NAME), repository.getCollectionsFlow().first().map { it.name })
+        assertEquals(listOf(memorize, study), repository.getAllCollections().take(2))
     }
 
     private fun row(id: String) = database.synced.collectionsQueries.collectionGet(id.toLong()).executeAsOne()
