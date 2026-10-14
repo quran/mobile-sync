@@ -12,7 +12,8 @@ is the reference.
 - **Sync state:** `sync_meta` holds the token (the GET head), the account, the outbox (the last POST batch, saved
   before it is sent), the wipe epoch, and the hold bookkeeping.
 
-Every step is idempotent, so a crash anywhere is repaired by the next run.
+A run compares three states of each item, all in the same canonical shape (`State`): working, base, and remote (what
+`GET /v1/sync` returns). Every step is idempotent, so a crash anywhere is repaired by the next run.
 
 ## A run
 
@@ -25,7 +26,9 @@ Every step is idempotent, so a crash anywhere is repaired by the next run.
    new token.
 3. **Push:** `PushPlanner` diffs base against working (deletes, then updates, then creates; children wait for their
    parent's remote id), and `Pusher` posts batches of at most 100. Server errors are handled as the table in
-   `SyncErrors.kt` says; an item the server keeps refusing is held (`Holds`) instead of blocking the rest.
+   `SyncErrors.kt` says; an item the server keeps refusing, or one that fails local validation, is held (`Holds`) with
+   its dependents instead of blocking the rest. A hold ends when the user edits the item, the app version changes, or
+   it expires.
 
 A logout or account switch bumps the wipe epoch (`Generation`), so a sync in flight can't write back wiped data.
 
@@ -43,4 +46,4 @@ from the server's resources. To add one, see `AGENTS.md`.
 - `SessionLifecycleCoordinator` (`SyncLifecycleGate`) stops a run's requests once a logout or reset begins.
 
 The integration tests (`sync-pipelines/src/jvmTest/.../pipeline/integration`) run devices against a fake sync server,
-one test per scenario.
+one test per scenario; `AGENTS.md` says how to write one.
