@@ -163,10 +163,19 @@ class ProtocolScenariosTest {
         val first = phone.syncNow()
 
         assertSucceeded(first)
-        assertEquals(4, first.received.count { it["data"] == JsonObject(emptyMap()) }, "the GET sent four {} entries")
+        assertEquals(3, first.received.count { it["data"] == JsonObject(emptyMap()) }, "the GET sent three {} entries")
+        val keyOnly = first.received.of("COLLECTION_BOOKMARK").single()
+        assertEquals(setOf("collectionId", "bookmarkId"), (keyOnly["data"] as JsonObject).keys, "the membership came as its key alone")
         assertEquals(0, first.posts, "no wrong deletes pushed")
         val after = phone.snapshot()
-        assertEquals(before.copy(readingBookmarks = emptyList()), after.copy(readingBookmarks = emptyList()), "unchanged by the {} entries")
+        // The collection's and the session's {} are ignored. The key-only membership, with no
+        // timestamps, reads like any other membership: the phone applies it, with 3:18 from the
+        // BOOKMARK CREATE in the same GET, in the collection it still calls Study.
+        assertEquals(
+            before.copy(collections = listOf("Study: 2:255,3:18"), readingBookmarks = emptyList()),
+            after.copy(readingBookmarks = emptyList()),
+            "after the vanished entries"
+        )
         // The catalog left this unknown. A READING_BOOKMARK entry without a slot falls back to the
         // local slot with no location, the way a cleared slot is read, so slot 1 disappears.
         knownIssue(

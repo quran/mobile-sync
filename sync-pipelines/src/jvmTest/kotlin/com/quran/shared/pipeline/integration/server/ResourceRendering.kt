@@ -41,7 +41,12 @@ internal object ResourceRendering {
         }
         val isUpdate = row.updatedAt != null && row.updatedAt > row.createdAt
         put("type", if (isUpdate) "UPDATE" else "CREATE")
-        put("data", if (vanished) JsonObject(emptyMap()) else data(account, row))
+        put("data", when {
+            !vanished -> data(account, row)
+            // `hasResourceId` is false for memberships, so the backend always fills the split key.
+            row.resource == "COLLECTION_BOOKMARK" -> membershipKey(row.resourceId)
+            else -> JsonObject(emptyMap())
+        })
         put("timestamp", if (isUpdate) row.updatedAt else row.createdAt)
     }
 
