@@ -1,0 +1,57 @@
+-- One row per synced item once the server knows it, or while it is held.
+-- base_json is the last state both sides agreed on; NULL when the server never saw the item.
+-- A row whose domain row is gone is a tombstone and is pushed as a DELETE.
+-- A hold lasts until the user edits the item (working != held_json), the app version changes, or held_until
+-- passes (holds caused by server errors expire; NULL = no expiry).
+CREATE TABLE sync_item(
+  resource TEXT NOT NULL,
+  local_id INTEGER NOT NULL,
+  remote_id TEXT,
+  base_json TEXT,
+  held_reason TEXT,
+  held_json TEXT,
+  held_until INTEGER,
+  PRIMARY KEY (resource, local_id)
+);
+
+CREATE UNIQUE INDEX sync_item_remote_idx ON sync_item(resource, remote_id);
+
+all:
+SELECT * FROM sync_item WHERE resource = ?;
+
+get:
+SELECT * FROM sync_item WHERE resource = ? AND local_id = ?;
+
+byRemote:
+SELECT * FROM sync_item WHERE resource = ? AND remote_id = ?;
+
+upsert:
+INSERT OR REPLACE INTO sync_item(resource, local_id, remote_id, base_json, held_reason, held_json, held_until)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+delete:
+DELETE FROM sync_item WHERE resource = ? AND local_id = ?;
+
+deleteByRemote:
+DELETE FROM sync_item WHERE resource = ? AND remote_id = ?;
+
+deleteAll:
+DELETE FROM sync_item;
+
+-- Token, account, outbox, app version and wipe epoch.
+CREATE TABLE sync_meta(
+  key TEXT NOT NULL PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+metaGet:
+SELECT value FROM sync_meta WHERE key = ?;
+
+metaSet:
+INSERT OR REPLACE INTO sync_meta(key, value) VALUES (?, ?);
+
+metaDelete:
+DELETE FROM sync_meta WHERE key = ?;
+
+metaDeleteAll:
+DELETE FROM sync_meta;

@@ -41,6 +41,7 @@ flowchart LR
 | `:auth` | OIDC login/logout, auth state, token handling |
 | `:persistence` | SQLDelight DB, repositories for bookmarks/collections/notes/reading sessions |
 | `:syncengine` | Core sync engine and scheduling |
+| `:sync-v2` | The generic sync engine that will replace `:syncengine` (not wired into `QuranDataService` yet) |
 | `:sync-pipelines` | DI graph and `QuranDataService` managed data API |
 | `:umbrella` | iOS XCFramework export (`Shared.xcframework`) |
 | `:demo:android` | Android sample app (Compose) |

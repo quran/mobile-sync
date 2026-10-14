@@ -17,6 +17,7 @@ Core modules:
 - `:auth`: OIDC login/logout, auth state, token handling.
 - `:persistence`: SQLDelight DB and repositories for bookmarks, collections, notes, and reading sessions.
 - `:syncengine`: sync business logic, resource adapters, conflict resolution, Ktor networking, and scheduling.
+- `:sync-v2`: the generic sync engine (fetch, three-way merge, push) and its per-type mappings. It will replace `:syncengine`; it is not wired into `QuranDataService` or exported through `umbrella` yet.
 - `:sync-pipelines`: DI graph, storage wiring, repository adapters, and `QuranDataService`.
 - `:umbrella`: iOS `Shared` XCFramework export.
 - `:demo:android`: Android Compose demo.
@@ -36,6 +37,7 @@ Core modules:
 # Focused tests
 ./gradlew :syncengine:jvmTest
 ./gradlew :syncengine:allTests
+./gradlew :sync-v2:allTests   # JVM, Android host (JDBC SQLite driver) and iOS simulator
 ./gradlew :persistence:jvmTest
 ./gradlew :persistence:testAndroidHostTest
 ./gradlew :persistence:allTests
