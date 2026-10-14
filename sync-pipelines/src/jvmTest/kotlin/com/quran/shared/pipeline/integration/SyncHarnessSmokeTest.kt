@@ -1,10 +1,8 @@
 package com.quran.shared.pipeline.integration
 
-import com.quran.shared.pipeline.SyncStatus
 import kotlinx.coroutines.flow.first
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /** Smoke tests for the integration harness: each one passes against today's engine. */
@@ -14,10 +12,11 @@ class SyncHarnessSmokeTest {
     fun `first sync of an empty account downloads only Favorites`() = syncScenario {
         val phone = device("phone")
 
-        assertSucceeded(phone.login(ALICE))
+        val run = phone.login(ALICE)
 
-        assertEquals(1, phone.lastRun!!.gets)
-        assertEquals(0, phone.lastRun!!.posts)
+        assertSucceeded(run)
+        assertEquals(1, run.gets)
+        assertEquals(0, run.posts)
         val collections = phone.data.collectionsWithBookmarks.first()
         assertEquals(listOf("Favorites"), collections.map { it.collection.name })
         assertTrue(collections.single().collection.isDefault)
@@ -68,9 +67,10 @@ class SyncHarnessSmokeTest {
 
         web(ALICE).createNote("Written on the web", "2:255-2:255")
         web(ALICE).addBookmark(2, 255)
-        assertSucceeded(phone.syncNow())
+        val run = phone.syncNow()
 
-        assertEquals(0, phone.lastRun!!.posts)
+        assertSucceeded(run)
+        assertEquals(0, run.posts)
         assertEquals(listOf("Written on the web"), phone.data.notes.first().map { it.body })
         val favorites = phone.data.collectionsWithBookmarks.first().single { it.collection.isDefault }
         assertEquals(listOf(2 to 255), favorites.bookmarks.map { it.sura to it.ayah })
@@ -88,8 +88,9 @@ class SyncHarnessSmokeTest {
         val head = server.head(ALICE)
 
         repeat(3) {
-            assertSucceeded(phone.syncNow())
-            assertEquals(0, phone.lastRun!!.posts, "sync ${it + 1} pushed")
+            val run = phone.syncNow()
+            assertSucceeded(run)
+            assertEquals(0, run.posts, "sync ${it + 1} pushed")
         }
         assertEquals(head, server.head(ALICE))
         assertConverged(ALICE, phone)
@@ -102,9 +103,10 @@ class SyncHarnessSmokeTest {
         server.faults.failRequests(times = 1, status = 500)
 
         phone.data.addNote("Retried after a 500", 1, 1, 1, 7)
-        assertSucceeded(phone.syncNow())
+        val run = phone.syncNow()
 
-        assertEquals(listOf(500, 200), phone.lastRun!!.postStatuses)
+        assertSucceeded(run)
+        assertEquals(listOf(500, 200), run.postStatuses)
         assertEquals(1, server.state(ALICE).notes.size)
     }
 
@@ -118,13 +120,12 @@ class SyncHarnessSmokeTest {
 
         phone.data.updateNote(note.id, "Second version of it", 2, 255, 2, 255)
 
-        knownIssue("S7") {
-            // Today the UPDATE carries `ranges`, the server rejects it with 422, and every retry fails.
-            val status = phone.syncNow()
-            assertIs<SyncStatus.Succeeded>(status, "POST statuses ${phone.lastRun!!.postStatuses}")
+        // Today the UPDATE carries `ranges`, the server rejects it with 422, and every retry fails.
+        knownIssue("S7", "Editing a synced note sends ranges and gets 422 forever", expect = syncRejectedWith(422)) {
+            assertSucceeded(phone.syncNow())
             assertEquals("Second version of it", server.state(ALICE).notes.single().body)
         }
-        assertEquals(422, phone.lastRun!!.postStatuses.last())
+        assertEquals(List(6) { 422 }, phone.lastRun!!.postStatuses)
     }
 
     private companion object {

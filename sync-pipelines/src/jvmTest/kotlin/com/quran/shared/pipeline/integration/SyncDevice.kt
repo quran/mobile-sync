@@ -24,7 +24,9 @@ import com.russhwolf.settings.coroutines.toFlowSettings
 import dev.zacsweers.metro.BindingContainer
 import dev.zacsweers.metro.Provides
 import dev.zacsweers.metro.createDynamicGraphFactory
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import org.publicvalue.multiplatform.oidc.tokenstore.SettingsStore
 import org.publicvalue.multiplatform.oidc.tokenstore.SettingsTokenStore
 import kotlin.time.Duration
@@ -54,20 +56,38 @@ data class DeviceTimings(
 }
 
 /**
- * One sync run as the device saw it: its final status and the requests it made. A [skipped] run
- * found no session (for example after an expired one) and kept the previous status.
+ * One sync run as the device saw it: how it ended and the requests it made. A [skipped] run found
+ * no session (for example an expired one), synced nothing, and left [status] as it was.
  */
 data class SyncRun(val status: SyncStatus, val requests: List<RequestRecord>, val skipped: Boolean = false) {
     val gets: Int get() = requests.count { it.method == "GET" }
     val posts: Int get() = requests.count { it.method == "POST" }
     val postStatuses: List<Int> get() = requests.filter { it.method == "POST" }.map { it.status }
-    val succeeded: Boolean get() = status is SyncStatus.Succeeded
+
+    /** The run synced: it was not skipped and ended [SyncStatus.Succeeded]. */
+    val succeeded: Boolean get() = !skipped && status is SyncStatus.Succeeded
+}
+
+/** [assertSucceeded]'s failure, carrying the run so [knownIssue] can pin it (see [syncRejectedWith]). */
+class SyncRunFailure(val run: SyncRun, message: String) : AssertionError(message)
+
+/** Fails unless [run] synced: a skipped run, or one that ended in any other status, fails. */
+fun assertSucceeded(run: SyncRun, message: String? = null) {
+    if (run.succeeded) return
+    val what = if (run.skipped) "a skipped run (no session)" else "${run.status}"
+    throw SyncRunFailure(run, (message?.let { "$it: " } ?: "") + "expected a successful sync, got $what; POST statuses ${run.postStatuses}")
 }
 
 /**
  * A simulated app install: the production [AppGraph] with its own in-memory SQLDelight database,
  * the real sync engine and Ktor client pointed at [server], and [FakeAuthRepository] at the OIDC
  * boundary. Tests use only [data] and [authService], the app-facing API.
+ *
+ * Harness assumption: a run that finds no session is seen as skipped only when it asks
+ * [FakeAuthRepository] for headers, which happens when a session expires. A run skipped earlier,
+ * because the sync lifecycle gate is closed by a logout or reset in progress, reports nothing; the
+ * harness then fails fast with [HarnessTimeoutException] after
+ * [SyncStatusRecorder.START_TIMEOUT] instead of waiting for the run timeout.
  */
 class SyncDevice internal constructor(
     val name: String,
@@ -81,6 +101,7 @@ class SyncDevice internal constructor(
     /** The OIDC boundary: choose the account, expire the session, rotate tokens, fail remote logout. */
     val auth = FakeAuthRepository(name, server)
 
+    // A new install has no session, so nothing runs on its own before the recorder subscribes.
     private var graph: AppGraph = newGraph()
     private var status = SyncStatusRecorder(graph.quranDataService.syncStatus)
 
@@ -95,7 +116,7 @@ class SyncDevice internal constructor(
         private set
 
     /** Signs in to [account] and waits for the sync the login starts. */
-    suspend fun login(account: String): SyncStatus {
+    suspend fun login(account: String): SyncRun {
         auth.signInAs(account)
         return recordRun { authService.login() }
     }
@@ -104,34 +125,40 @@ class SyncDevice internal constructor(
     suspend fun logout(): LogoutResult = authService.logout()
 
     /**
-     * Runs one sync now, with its retries, and returns how it ended. Waits first for a run already
-     * in flight, so the returned run started after this call. A run that finds no session (an
-     * expired one) returns the unchanged status, with [SyncRun.skipped] set on [lastRun].
+     * Runs one sync now, with its retries, and returns it. Waits first for a run already in flight,
+     * so the returned run started after this call. A run that finds no session is returned with
+     * [SyncRun.skipped] set; [assertSucceeded] fails on it.
      */
-    suspend fun syncNow(): SyncStatus {
+    suspend fun syncNow(): SyncRun {
         check(auth.token != null) { "$name is signed out; sign in before syncNow()" }
-        status.awaitNotSyncing()
+        status.awaitNotSyncing(name)
         return recordRun { data.triggerSync(immediately = true) }
     }
 
     /** Waits for the next run that starts after this call, started by something other than the test. */
-    suspend fun awaitSync(): SyncStatus = recordRun { }
+    suspend fun awaitSync(): SyncRun = recordRun { }
 
     /**
-     * Relaunches the app: a new graph over the same database and auth session. When signed in,
+     * Relaunches the app: a new graph over the same database and token store. When signed in,
      * waits for the sync the stored session starts.
      */
-    suspend fun restart(): SyncStatus? {
+    suspend fun restart(): SyncRun? {
         data.clearAndJoin()
         status.close()
         val requestsBefore = server.requests(name).size
-        graph = newGraph()
-        status = SyncStatusRecorder(data.syncStatus)
-        // Mark from the recorder's start: the stored session's sync may begin before we get here.
-        return if (auth.token != null) recordRun(mark = 0, requestsBefore) { } else {
-            data.awaitInitialization()
-            null
+        val denialsBefore = auth.headerDenials.value
+        // QuranDataService and AuthService start their work on Main. Building the graph and
+        // subscribing on Main means the stored session's sync cannot start, let alone finish,
+        // before the recorder sees it.
+        withContext(Dispatchers.Main) {
+            graph = newGraph()
+            status = SyncStatusRecorder(graph.quranDataService.syncStatus)
         }
+        if (auth.token == null) {
+            data.awaitInitialization()
+            return null
+        }
+        return recordRun(mark = 0, requestsBefore, denialsBefore) { }
     }
 
     /** What the public flows show now, normalized for comparison with other devices and the server. */
@@ -140,14 +167,13 @@ class SyncDevice internal constructor(
     private suspend fun recordRun(
         mark: Int = status.mark(),
         requestsBefore: Int = server.requests(name).size,
+        denialsBefore: Int = auth.headerDenials.value,
         start: suspend () -> Unit
-    ): SyncStatus {
-        val denialsBefore = auth.headerDenials.value
+    ): SyncRun {
         start()
         val ended = status.awaitRunAfter(mark, name, skipped = auth.headerDenials.map { it > denialsBefore })
-        val result = ended ?: data.syncStatus.value
-        lastRun = SyncRun(result, server.requests(name).drop(requestsBefore), skipped = ended == null)
-        return result
+        return SyncRun(ended ?: data.syncStatus.value, server.requests(name).drop(requestsBefore), skipped = ended == null)
+            .also { lastRun = it }
     }
 
     private fun newGraph(): AppGraph =
@@ -167,20 +193,24 @@ class SyncDevice internal constructor(
 }
 
 /**
- * The per-device graph bindings: this device's database instead of the process-wide one, the fake
- * OIDC boundary, and short scheduler timings.
+ * The per-device graph bindings, over the app's own graph inputs: this device's database, the
+ * fake OIDC boundary keeping tokens in the graph's token store, and short scheduler timings.
  */
 @BindingContainer
 internal class DeviceBindings(
     private val database: QuranDatabase,
-    private val authRepository: AuthRepository,
+    private val authRepository: FakeAuthRepository,
     private val timings: SchedulerTimings
 ) {
+    /**
+     * The app's [DriverFactory] opens one process-wide database, which simulated devices cannot
+     * share, so each device opens its own in-memory database in place of the factory's.
+     */
     @Provides
-    fun database(): QuranDatabase = database
+    fun database(@Suppress("UNUSED_PARAMETER") appDriverFactory: DriverFactory): QuranDatabase = database
 
     @Provides
-    fun authRepository(): AuthRepository = authRepository
+    fun authRepository(storage: MobileSyncStorage): AuthRepository = authRepository.useTokenStore(storage.tokenStore)
 
     @Provides
     fun synchronizationClientFactory(): QuranDataServiceSynchronizationClientFactory =

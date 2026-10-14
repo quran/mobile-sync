@@ -55,7 +55,7 @@ data class ServerState(
             notes.groupBy { it.clientCreatedAt to it.ranges }.filterValues { it.size > 1 }
                 .forEach { (key, rows) -> add("notes created at ${key.first} on ${key.second}: ${rows.map { it.id }}") }
         }
-        check(problems.isEmpty()) { "Server account '$account' has duplicates:\n" + problems.joinToString("\n") }
+        if (problems.isNotEmpty()) throw AssertionError("Server account '$account' has duplicates:\n" + problems.joinToString("\n"))
     }
 
     companion object {

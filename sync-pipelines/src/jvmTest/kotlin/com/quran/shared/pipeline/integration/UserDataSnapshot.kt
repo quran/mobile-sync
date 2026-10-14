@@ -8,43 +8,41 @@ import com.quran.shared.pipeline.integration.server.ServerState
 import kotlinx.coroutines.flow.first
 
 /**
- * User data as the app shows it, normalized so devices and the server can be compared as sets.
+ * User data as the app shows it, normalized so devices and the server can be compared. Every
+ * field is a sorted list, a multiset, so a duplicate on either side shows as a difference.
  * Verses are "sura:ayah"; note ranges are "sura:ayah-sura:ayah" joined by ",".
  */
 data class UserDataSnapshot(
-    val notes: Set<Pair<String, String>>,
-    val favorites: Set<String>,
-    /** User collections by name, excluding Favorites and highlight collections. */
-    val collections: Map<String, Set<String>>,
-    /** Verse to highlight colors. The app shows one color per verse; the server can hold several. */
-    val highlights: Map<String, Set<String>>,
-    val sessions: Set<String>,
-    /** Slot (1..3) to (location, name); a never-used slot is left out. */
-    val readingBookmarks: Map<Int, Pair<String?, String?>>
+    /** "body | ranges" per note. */
+    val notes: List<String>,
+    val favorites: List<String>,
+    /** "name: verses" per user collection, excluding Favorites and highlight collections. */
+    val collections: List<String>,
+    /** "verse color" per highlight. The app shows one color per verse; the server can hold several. */
+    val highlights: List<String>,
+    val sessions: List<String>,
+    /** "slot location name" per reading bookmark; a slot that is unplaced and unnamed is left out. */
+    val readingBookmarks: List<String>
 ) {
     companion object {
         suspend fun of(service: QuranDataService): UserDataSnapshot {
             val collections = service.collectionsWithBookmarks.first()
             return UserDataSnapshot(
-                notes = service.notes.first().map {
-                    it.body to "${it.startSura}:${it.startAyah}-${it.endSura}:${it.endAyah}"
-                }.toSet(),
+                notes = service.notes.first().map { note(it.body, "${it.startSura}:${it.startAyah}-${it.endSura}:${it.endAyah}") }.sorted(),
                 favorites = collections.filter { it.collection.isDefault }
-                    .flatMap { c -> c.bookmarks.map { "${it.sura}:${it.ayah}" } }.toSet(),
+                    .flatMap { c -> c.bookmarks.map { "${it.sura}:${it.ayah}" } }.sorted(),
                 collections = collections.filter { !it.collection.isDefault }
-                    .associate { c -> c.collection.name to c.bookmarks.map { "${it.sura}:${it.ayah}" }.toSet() },
-                highlights = service.highlights.first()
-                    .groupBy({ "${it.sura}:${it.ayah}" }, { it.color.name.lowercase() })
-                    .mapValues { it.value.toSet() },
-                sessions = service.readingSessions.first().map { "${it.sura}:${it.ayah}" }.toSet(),
-                readingBookmarks = service.readingBookmarks.first().associate { bookmark ->
+                    .map { c -> collection(c.collection.name, c.bookmarks.map { "${it.sura}:${it.ayah}" }) }.sorted(),
+                highlights = service.highlights.first().map { "${it.sura}:${it.ayah} ${it.color.name.lowercase()}" }.sorted(),
+                sessions = service.readingSessions.first().map { "${it.sura}:${it.ayah}" }.sorted(),
+                readingBookmarks = service.readingBookmarks.first().mapNotNull { bookmark ->
                     val location = when (bookmark) {
                         is AyahReadingBookmark -> "ayah:${bookmark.sura}:${bookmark.ayah}"
                         is PageReadingBookmark -> "page:${bookmark.page}"
                         else -> null
                     }
-                    slotNumber(bookmark.slot.name) to (location to bookmark.name)
-                }.filterValues { it != null to null }
+                    readingBookmark(slotNumber(bookmark.slot.name), location, bookmark.name)
+                }.sorted()
             )
         }
 
@@ -52,27 +50,32 @@ data class UserDataSnapshot(
         fun of(state: ServerState): UserDataSnapshot {
             val ayahs = state.bookmarks.filter { it.type == "ayah" }.associateBy { it.id }
             fun versesOf(collectionId: String) = state.memberships.filter { it.collectionId == collectionId }
-                .mapNotNull { ayahs[it.bookmarkId] }.map { "${it.key}:${it.verse}" }.toSet()
+                .mapNotNull { ayahs[it.bookmarkId] }.map { "${it.key}:${it.verse}" }
             val (highlightCollections, userCollections) = state.collections.partition { CollectionRules.isSystemName(it.name) }
             return UserDataSnapshot(
-                notes = state.notes.map { unescape(it.body) to it.ranges.joinToString(",") }.toSet(),
-                favorites = state.favorites,
-                collections = userCollections.associate { unescape(it.name) to versesOf(it.id) },
+                notes = state.notes.map { note(unescape(it.body), it.ranges.joinToString(",")) }.sorted(),
+                favorites = state.bookmarks.filter { it.inDefault && it.type == "ayah" }.map { "${it.key}:${it.verse}" }.sorted(),
+                collections = userCollections.map { collection(unescape(it.name), versesOf(it.id)) }.sorted(),
                 highlights = highlightCollections
-                    .flatMap { c -> versesOf(c.id).map { it to c.name.substringAfterLast(':').lowercase() } }
-                    .groupBy({ it.first }, { it.second })
-                    .mapValues { it.value.toSet() },
-                sessions = state.sessions.map { "${it.chapter}:${it.verse}" }.toSet(),
-                readingBookmarks = state.readingBookmarks.associate { bookmark ->
+                    .flatMap { c -> versesOf(c.id).map { "$it ${c.name.substringAfterLast(':').lowercase()}" } }.sorted(),
+                sessions = state.sessions.map { "${it.chapter}:${it.verse}" }.sorted(),
+                readingBookmarks = state.readingBookmarks.mapNotNull { bookmark ->
                     val location = when (bookmark.type) {
                         "ayah" -> "ayah:${bookmark.key}:${bookmark.verse}"
                         "page" -> "page:${bookmark.key}"
                         else -> null
                     }
-                    bookmark.slot to (location to bookmark.name)
-                }.filterValues { it != null to null }
+                    readingBookmark(bookmark.slot, location, bookmark.name)
+                }.sorted()
             )
         }
+
+        private fun note(body: String, ranges: String) = "$body | $ranges"
+
+        private fun collection(name: String, verses: List<String>) = "$name: ${verses.sorted().joinToString(",")}"
+
+        private fun readingBookmark(slot: Int, location: String?, name: String?): String? =
+            if (location == null && name == null) null else "$slot $location $name"
 
         private fun slotNumber(name: String): Int = when (name) {
             "TEAL" -> 1

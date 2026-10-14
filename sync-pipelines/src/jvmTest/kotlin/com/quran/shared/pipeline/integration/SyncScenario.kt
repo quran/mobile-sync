@@ -2,7 +2,6 @@
 
 package com.quran.shared.pipeline.integration
 
-import com.quran.shared.pipeline.SyncStatus
 import com.quran.shared.pipeline.integration.server.FakeSyncServer
 import com.quran.shared.pipeline.integration.server.WebActor
 import kotlinx.coroutines.Dispatchers
@@ -44,31 +43,44 @@ import kotlin.test.fail
  * ```
  *
  * - **Syncing.** Nothing syncs on its own (see [DeviceTimings]): a device that is not told to sync
- *   is offline. [SyncDevice.syncNow] calls `triggerSync(immediately = true)` and waits on
- *   `syncStatus` for the run's end, retries included; [SyncDevice.lastRun] has its requests.
- *   [syncAll] syncs devices in order; [syncUntilQuiescent] repeats until a round makes no POST.
+ *   is offline. [SyncDevice.syncNow] calls `triggerSync(immediately = true)`, waits on
+ *   `syncStatus` for the run's end, retries included, and returns a [SyncRun] with its requests.
+ *   [syncAll] syncs devices in order; [syncUntilQuiescent] repeats until a round changes nothing.
  * - **Accounts.** [SyncDevice.login] signs in through [FakeAuthRepository] and waits for the sync
  *   the login starts. [SyncDevice.auth] can expire the session or rotate the token.
  * - **The web.** [web] writes straight into the server with REST semantics, also between a
  *   device's GET and POST through [FakeSyncServer.faults] (`beforePost`, `betweenPages`).
- * - **Faults.** `server.faults` fails, drops, blocks or loses requests, rejects chosen mutations,
- *   and turns on BE1's `mutationIndex`.
- * - **Known issues.** Wrap a test that fails today in [knownIssue] with its `SYNC-ISSUES.md` id.
+ * - **Faults.** `server.faults` fails, blocks or loses requests, rejects chosen mutations, and
+ *   turns on BE1's `mutationIndex`.
+ * - **Known issues.** Wrap a test that fails today in [knownIssue] with its tracker id and a
+ *   one-line description, and pin the failure with `expect` where it has a signature.
  * - **Time.** Pass explicit `PlatformDateTime` timestamps for anything compared by time, and move
  *   the server's clock with `server.clock`.
  *
- * After the block, every account the server knows is checked for duplicates
- * ([com.quran.shared.pipeline.integration.server.ServerState.assertNoDuplicates]) unless
- * [checkDuplicates] is false.
+ * After the block, every account on the server is checked for duplicates
+ * ([com.quran.shared.pipeline.integration.server.ServerState.assertNoDuplicates]). When an open
+ * issue leaves duplicates, pass it as [knownDuplicates], and the check runs inside [knownIssue].
+ * The scenario also fails when the fake server hit an error that models no backend behavior.
  */
-fun syncScenario(checkDuplicates: Boolean = true, block: suspend SyncScenario.() -> Unit) = runBlocking {
+fun syncScenario(knownDuplicates: KnownIssue? = null, block: suspend SyncScenario.() -> Unit): Unit = runBlocking {
     val scenario = SyncScenario()
+    var failure: Throwable? = null
     try {
         scenario.block()
-        if (checkDuplicates) scenario.assertNoServerDuplicates()
-    } finally {
-        scenario.close()
+        if (knownDuplicates == null) {
+            scenario.assertNoServerDuplicates()
+        } else {
+            knownIssue(knownDuplicates.id, knownDuplicates.description) { scenario.assertNoServerDuplicates() }
+        }
+    } catch (error: Throwable) {
+        failure = error
     }
+    val bugs = scenario.close()
+    if (bugs.isNotEmpty()) {
+        throw AssertionError("The fake server hit ${bugs.size} error(s) that model no backend behavior: ${bugs.first().message}", bugs.first())
+            .apply { (bugs.drop(1) + listOfNotNull(failure)).forEach(::addSuppressed) }
+    }
+    if (failure != null) throw failure
 }
 
 class SyncScenario internal constructor() {
@@ -92,26 +104,30 @@ class SyncScenario internal constructor() {
     fun web(account: String): WebActor = server.web(account)
 
     /** Syncs each device once, in order. */
-    suspend fun syncAll(vararg devices: SyncDevice): List<SyncStatus> = devices.map { it.syncNow() }
+    suspend fun syncAll(vararg devices: SyncDevice): List<SyncRun> = devices.map { it.syncNow() }
 
     /**
-     * Syncs [devices] in rotating order until a full round makes no POST and every run succeeds.
-     * Fails after [maxRounds] rounds.
+     * Syncs [devices] round by round until a round in which every run succeeded (none skipped),
+     * none POSTed, and no account's server head moved. Each round starts one device later than
+     * the previous one, so the order rotates. Fails after [maxRounds] rounds.
      */
     suspend fun syncUntilQuiescent(vararg devices: SyncDevice, maxRounds: Int = 4) {
+        require(devices.isNotEmpty()) { "Pass at least one device" }
         val rounds = mutableListOf<String>()
         repeat(maxRounds) { round ->
-            val runs = devices.map { device ->
-                device.syncNow()
-                device.name to device.lastRun!!
-            }
+            val order = devices.indices.map { devices[(it + round) % devices.size] }
+            val heads = heads()
+            val runs = order.map { it.name to it.syncNow() }
+            val headsAfter = heads()
             rounds += "round ${round + 1}: " + runs.joinToString { (name, run) ->
-                "$name ${run.status::class.simpleName} GET=${run.gets} POST=${run.postStatuses}"
-            }
-            if (runs.all { (_, run) -> run.succeeded && run.posts == 0 }) return
+                "$name ${if (run.skipped) "skipped" else run.status::class.simpleName} GET=${run.gets} POST=${run.postStatuses}"
+            } + if (heads != headsAfter) " (head moved)" else ""
+            if (heads == headsAfter && runs.all { (_, run) -> run.succeeded && run.posts == 0 }) return
         }
         fail("Devices did not quiesce in $maxRounds rounds:\n${rounds.joinToString("\n")}")
     }
+
+    private fun heads(): Map<String, Long> = server.accountNames.associateWith { server.head(it) }
 
     /** Every device's public flows and the server's live data for [account] show the same user data. */
     suspend fun assertConverged(account: String, vararg devices: SyncDevice) {
@@ -121,19 +137,20 @@ class SyncScenario internal constructor() {
         }
     }
 
-    internal fun assertNoServerDuplicates() {
+    /** Fails when any account on the server holds duplicates. */
+    fun assertNoServerDuplicates() {
         server.accountNames.forEach { server.state(it).assertNoDuplicates() }
     }
 
-    internal suspend fun close() {
-        devices.forEach { it.shutdown() }
-        server.close()
-        Dispatchers.resetMain()
-        main.shutdownNow()
+    /** Shuts everything down and returns the fake server's internal errors. */
+    internal suspend fun close(): List<Throwable> {
+        try {
+            devices.forEach { it.shutdown() }
+        } finally {
+            server.close()
+            Dispatchers.resetMain()
+            main.shutdownNow()
+        }
+        return server.internalErrors
     }
-}
-
-/** Fails unless [status] is a successful run. */
-fun assertSucceeded(status: SyncStatus, message: String? = null) {
-    if (status !is SyncStatus.Succeeded) fail((message?.let { "$it: " } ?: "") + "expected a successful sync, got $status")
 }
