@@ -5,7 +5,6 @@ import com.quran.shared.persistence.input.ImportCollectionAyahBookmark
 import com.quran.shared.persistence.input.ImportNote
 import com.quran.shared.persistence.input.ImportReadingSession
 import com.quran.shared.persistence.input.PersistenceImportData
-import com.quran.shared.pipeline.integration.KnownDuplicates
 import com.quran.shared.pipeline.integration.UserDataSnapshot
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.knownIssue
@@ -181,13 +180,15 @@ class ImportScenariosTest {
     }
 
     @Test
-    fun `IMP-08 an edited legacy note is imported as a second note`() = syncScenario(
+    fun `IMP-08 an edited legacy note is imported as a second note`() = syncScenario {
+        val both = listOf("A legacy reflection on patience", "A legacy reflection on patience, edited later")
         // The edit keeps the legacy note's creation date, as the iOS legacy reader passes it, so the
-        // server holds two notes created at the same time on the same range: the duplicate check's key.
-        knownDuplicates = KnownDuplicates("S14", "An edited legacy note comes back as a second note with the same creation date") {
-            it.kind == ServerDuplicate.Kind.NOTE
+        // server holds two notes created at the same time on the same range, the duplicate check's
+        // key. That pair, and only it, is the documented design.
+        allowDuplicates("An edited legacy note imports as a second note with the original's creation date") { duplicate ->
+            duplicate.kind == ServerDuplicate.Kind.NOTE &&
+                server.state(duplicate.account).notes.filter { it.id in duplicate.ids }.map { it.body }.sorted() == both
         }
-    ) {
         val (phone) = signedIn("phone")
         val original = ImportNote("A legacy reflection on patience", 2, 153, 2, 153, at(0), at(0))
         phone.data.importData(PersistenceImportData(notes = listOf(original)), deleteExisting = false, trackHistory = true)
@@ -199,9 +200,9 @@ class ImportScenariosTest {
 
         // The documented design: import history fingerprints notes by content, so the edit is a new note.
         assertTrue(second.changed)
-        val both = listOf("A legacy reflection on patience", "A legacy reflection on patience, edited later")
         assertEquals(both, phone.noteBodies())
         assertEquals(both, server.state(ALICE).notes.map { it.body }.sorted())
+        assertEquals(listOf(T0, T0), server.state(ALICE).notes.map { it.clientCreatedAt }, "both keep the legacy creation date")
         assertConverged(ALICE, phone)
     }
 
