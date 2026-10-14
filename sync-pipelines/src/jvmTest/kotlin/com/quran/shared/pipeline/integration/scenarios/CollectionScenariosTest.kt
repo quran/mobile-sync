@@ -8,7 +8,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/** Catalog section 2.4: collections. */
+/** Collections. */
 class CollectionScenariosTest {
 
     @Test

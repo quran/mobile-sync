@@ -16,7 +16,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.milliseconds
 
-/** Catalog section 2.11: convergence and idempotency. */
+/** Convergence and idempotency. */
 class ConvergenceScenariosTest {
 
     @Test
@@ -124,7 +124,7 @@ class ConvergenceScenariosTest {
 
     @Test
     fun `CONV-07 a write during an in-flight sync is not lost`() = syncScenario {
-        // The harness note for CONV-07: a short local-change delay, then awaitSync().
+        // A short local-change delay, then awaitSync().
         val phone = device("phone", DeviceTimings(localChangeDelay = 300.milliseconds))
         assertSucceeded(phone.login(ALICE))
         val gate = server.faults.blockPost()

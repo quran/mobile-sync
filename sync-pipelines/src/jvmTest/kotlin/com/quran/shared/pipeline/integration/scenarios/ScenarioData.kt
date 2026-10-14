@@ -12,8 +12,6 @@ import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.pipeline.integration.SyncDevice
 import com.quran.shared.pipeline.integration.UserDataSnapshot
 
-// Data the P0 scenarios share.
-
 /** Highlight color collection names, as the server stores them. */
 internal const val HIGHLIGHTS_BLUE = "system:highlights:blue"
 internal const val HIGHLIGHTS_GREEN = "system:highlights:green"

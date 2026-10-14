@@ -120,7 +120,7 @@ class FailureScenariosTest {
     fun `ERR-11 a short network error recovers within retries`() = syncScenario {
         val (phone) = signedIn("phone")
         phone.data.addNote("Sent after the outage", 1, 1, 1, 7)
-        // The harness note for ERR-11: a short outage is a number of failed requests, not a time.
+        // A short outage is a number of failed requests, not a time.
         // The network comes back once two requests were dropped, well within the retries.
         server.faults.networkDown()
         val run = coroutineScope {

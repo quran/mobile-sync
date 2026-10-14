@@ -19,7 +19,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 
-/** Catalog section 2.1: login, logout, account switches and relaunches. */
+/** Login, logout, account switches and relaunches. */
 class LifecycleScenariosTest {
 
     @Test
@@ -193,7 +193,7 @@ class LifecycleScenariosTest {
         val phone = device("phone", DeviceTimings(localChangeDelay = 50.milliseconds))
         phone.writeOneOfEach()
 
-        // The harness note for LIFE-11: wait past the short debounce, then check nothing was sent.
+        // Wait past the short debounce, then check nothing was sent.
         // A logged-out run gets empty headers without reaching the auth boundary, so nothing to await.
         delay(500)
 

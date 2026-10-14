@@ -7,7 +7,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** Catalog section 2.6: highlights, stored as memberships in `system:highlights:<color>` collections. */
+/** Highlights, stored as memberships in `system:highlights:<color>` collections. */
 class HighlightScenariosTest {
 
     @Test

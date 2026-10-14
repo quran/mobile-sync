@@ -22,8 +22,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import kotlin.time.Instant
 
-// Shared vocabulary for the P0 scenarios. Everything here reads public flows, return values, or
-// the fake server's state and request log; nothing reads engine tables or the sync token.
+// Everything here reads public flows, return values, or the fake server's state and request log;
+// nothing reads engine tables or the sync token.
 
 internal const val ALICE = "alice"
 internal const val BOB = "bob"

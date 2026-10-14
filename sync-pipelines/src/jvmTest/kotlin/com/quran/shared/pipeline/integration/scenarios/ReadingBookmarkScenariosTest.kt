@@ -11,7 +11,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 
-/** Catalog section 2.7: reading bookmarks, the three colored slots. */
+/** Reading bookmarks, the three colored slots. */
 class ReadingBookmarkScenariosTest {
 
     @Test

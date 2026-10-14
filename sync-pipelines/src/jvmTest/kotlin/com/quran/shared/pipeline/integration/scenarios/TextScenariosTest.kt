@@ -6,7 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * Catalog section 2.3: text handling. The fake's `htmlStrip` is a model of sanitize-html that has
+ * Text handling. The fake's `htmlStrip` is a model of sanitize-html that has
  * not been checked against the real library; expectations that depend on it are marked.
  */
 class TextScenariosTest {

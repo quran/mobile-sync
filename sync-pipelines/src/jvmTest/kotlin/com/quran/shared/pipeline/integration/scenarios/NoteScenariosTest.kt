@@ -11,7 +11,7 @@ import kotlin.test.assertEquals
 /** S7's signature: a note UPDATE carrying `ranges` gets 422. */
 private val NOTE_UPDATE_REJECTED = syncRejectedWith(422, carrying = mutation("NOTE", "UPDATE", "ranges"))
 
-/** Catalog section 2.2: notes. */
+/** Notes. */
 class NoteScenariosTest {
 
     @Test

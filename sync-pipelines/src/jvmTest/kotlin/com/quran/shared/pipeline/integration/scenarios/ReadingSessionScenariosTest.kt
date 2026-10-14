@@ -11,7 +11,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
-/** Catalog section 2.8: reading sessions, the reading history. */
+/** Reading sessions, the reading history. */
 class ReadingSessionScenariosTest {
 
     @Test

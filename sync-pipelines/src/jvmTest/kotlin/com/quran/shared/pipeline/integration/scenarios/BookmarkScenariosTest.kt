@@ -15,7 +15,7 @@ import kotlin.test.assertTrue
 /** S6's signature: the retried Favorites membership DELETE gets 404 "bookmark is not found". */
 private val FAVORITES_DELETE_REJECTED = syncRejectedWith(404, carrying = mutation("COLLECTION_BOOKMARK", "DELETE"))
 
-/** Catalog section 2.5: ayah bookmarks, Favorites and collection memberships. */
+/** Ayah bookmarks, Favorites and collection memberships. */
 class BookmarkScenariosTest {
 
     @Test

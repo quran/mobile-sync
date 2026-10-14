@@ -12,7 +12,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** Catalog section 2.9: importing legacy data and restoring backups. */
+/** Importing legacy data and restoring backups. */
 class ImportScenariosTest {
 
     @Test
