@@ -24,6 +24,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.publicvalue.multiplatform.oidc.OpenIdConnectClient
+import org.publicvalue.multiplatform.oidc.OpenIdConnectException
 import org.publicvalue.multiplatform.oidc.types.remote.AccessTokenResponse
 
 /**
@@ -137,7 +138,15 @@ class OidcAuthRepository(
         }
     }
 
-    override suspend fun refreshTokensIfNeeded(): Boolean =
+    override suspend fun refreshTokensIfNeeded(): Boolean = refreshTokens(force = false)
+
+    override suspend fun forceRefreshTokens(): Boolean = refreshTokens(force = true)
+
+    /**
+     * Refreshes the token when it is inside the expiry safety margin, or always when [force]d. A refused refresh
+     * token ends the session; a transient failure (network, a server error) keeps it and is thrown (S3).
+     */
+    private suspend fun refreshTokens(force: Boolean): Boolean =
         refreshMutex.withLock refreshLock@ {
             val refreshState = sessionMutex.withLock {
                 persistedSessionWriteMutex.withLock {
@@ -156,7 +165,7 @@ class OidcAuthRepository(
 
             val currentTime = currentTimeMillis()
             // If current time is before the safety window, no refresh needed.
-            if (currentTime < refreshState.expirationTime - REFRESH_SAFETY_MARGIN_MS) {
+            if (!force && currentTime < refreshState.expirationTime - REFRESH_SAFETY_MARGIN_MS) {
                 return@refreshLock true
             }
 
@@ -178,6 +187,10 @@ class OidcAuthRepository(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                if (e.isTransientRefreshFailure()) {
+                    logger.w(e) { "Token refresh failed for a transient reason; keeping the session" }
+                    throw e
+                }
                 logger.e(e) { "Token refresh failed, clearing session" }
                 // Critical: If refresh fails, session is invalid unless logout/login already moved the session on.
                 val invalidationResult = sessionMutex.withLock {
@@ -660,4 +673,16 @@ private fun Throwable.cancellationCauseOrNull(): CancellationException? {
         current = current.cause
     }
     return null
+}
+
+/**
+ * A refresh that failed without the authorization server refusing the refresh token: no network, a timeout, or a
+ * server error. Only a refusal (an OAuth error response such as `invalid_grant`) ends the session.
+ */
+internal fun Exception.isTransientRefreshFailure(): Boolean = when (this) {
+    is OpenIdConnectException.TechnicalFailure -> true
+    is OpenIdConnectException.UnsuccessfulTokenRequest ->
+        statusCode.value >= 500 || statusCode.value == 408 || statusCode.value == 429
+    is kotlinx.io.IOException -> true
+    else -> false
 }
