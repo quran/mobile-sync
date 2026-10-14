@@ -367,8 +367,8 @@ class NoteScenariosTest {
         }
     ) {
         val (phone) = signedIn("phone")
-        // The catalog makes them with two imports, but an import matches a note with the same body
-        // and range and skips it. Writing the note twice makes the same pair.
+        // An import skips a note with the same body and range, so writing the note twice makes the
+        // pair.
         phone.data.addNote("Written twice, word for word", 2, 255, 2, 255, at(0))
         phone.data.addNote("Written twice, word for word", 2, 255, 2, 255, at(60_000))
         assertEquals(2, phone.data.notes.first().size, "two identical pending notes")

@@ -23,8 +23,8 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
- * Catalog section 2.10, the sync protocol: GET paging, chained POST chunks, and what the client
- * does with what the server sends. [FailureScenariosTest] holds the section's injected failures.
+ * The sync protocol: GET paging, chained POST chunks, and what the client does with what the
+ * server sends. [FailureScenariosTest] holds the injected failures.
  */
 class ProtocolScenariosTest {
 
@@ -33,8 +33,8 @@ class ProtocolScenariosTest {
         // No retries, so each malformed answer ends its run, and the test can see what it left behind.
         val phone = device("phone", DeviceTimings(maximumRetries = 0))
         assertSucceeded(phone.login(ALICE))
-        // The harness note for ERR-15: more than 1000 rows, not a page cap, so the GET has a page 2
-        // that can break after page 1 arrived.
+        // More than 1000 rows, not a page cap, so the GET has a page 2 that can break after page 1
+        // arrived.
         val web = web(ALICE)
         repeat(1_050) {
             val verse = "2:${it % 286 + 1}"
@@ -69,8 +69,8 @@ class ProtocolScenariosTest {
 
     @Test
     fun `ERR-14 pagination includes the virtual Favorites slot`() = syncScenario {
-        // The harness note for ERR-14: page with more than 1000 rows, not a page cap. 995 notes come
-        // first, so the page boundary falls among the other types seeded after them.
+        // More than 1000 rows, not a page cap. 995 notes come first, so the page boundary falls
+        // among the other types seeded after them.
         val web = web(ALICE)
         repeat(995) {
             val verse = "2:${it % 286 + 1}"
@@ -103,7 +103,7 @@ class ProtocolScenariosTest {
     @Test
     fun `ERR-15 the head changes between pages`() = syncScenario {
         val (phone) = signedIn("phone")
-        // The harness note for ERR-15: more than 1000 rows, not a page cap, so there is a page 2.
+        // More than 1000 rows, not a page cap, so there is a page 2.
         val web = web(ALICE)
         repeat(1_050) {
             val verse = "2:${it % 286 + 1}"

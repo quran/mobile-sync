@@ -333,8 +333,8 @@ class BookmarkScenariosTest {
         val (phone) = signedIn("phone")
         phone.addToFavorites(2, 255)
         syncUntilQuiescent(phone)
-        // The harness note for ERR-14: page with more than 1000 rows, not a page cap. 999 changes
-        // come first, so the BOOKMARK DELETE ends page 1 and its Favorites membership DELETE starts page 2.
+        // More than 1000 rows, not a page cap. 999 changes come first, so the BOOKMARK DELETE ends
+        // page 1 and its Favorites membership DELETE starts page 2.
         val web = web(ALICE)
         repeat(999) {
             val verse = "2:${it % 286 + 1}"

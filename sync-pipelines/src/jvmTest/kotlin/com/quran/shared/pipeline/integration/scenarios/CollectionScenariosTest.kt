@@ -416,8 +416,8 @@ class CollectionScenariosTest {
         syncUntilQuiescent(phone)
         val favorites = phone.favoritesId()
 
-        // The catalog also covers highlight collections, but the public API never hands out a
-        // highlight collection's id: collectionsWithBookmarks hides them, and highlights carry no id.
+        // The public API never hands out a highlight collection's id: collectionsWithBookmarks
+        // hides them, and highlights carry no id.
         assertFailsWith<IllegalArgumentException> { phone.data.deleteCollection(favorites) }
         assertFailsWith<IllegalArgumentException> { phone.data.updateCollection(favorites, "Renamed") }
 

@@ -27,8 +27,8 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * Catalog section 2.10, injected failures: rejections, lost responses, and network outages.
- * [ProtocolScenariosTest] holds the section's paging and protocol cases.
+ * Injected failures: rejections, lost responses, and network outages. [ProtocolScenariosTest]
+ * holds the paging and protocol cases.
  */
 class FailureScenariosTest {
 
@@ -309,7 +309,7 @@ class FailureScenariosTest {
         phone.data.addCollection("Study")
         val run = phone.syncNow()
 
-        // The failure surfaces as OBS-02 defines it: the run ends Failed, carrying the 403.
+        // The run ends Failed, carrying the 403.
         val error = assertIs<SyncStatus.Failed>(run.status, "POST statuses ${run.postStatuses}").error
         assertEquals(403 to "ForbiddenError", error.httpStatus to error.serverCode)
         assertNotNull(server.state(ALICE).collectionNamed("Study"), "the collection, pushed in an earlier phase, synced")
