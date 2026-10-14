@@ -53,6 +53,7 @@ kotlin {
 
         jvmTest.dependencies {
             implementation(libs.sqldelight.sqlite.driver)
+            implementation(libs.kotlinx.serialization.json)
         }
 
     }
@@ -105,4 +106,15 @@ mavenPublishing {
             developerConnection.set(libs.versions.project.scm.developer.connection.get())
         }
     }
+}
+
+// The sync integration harness (jvmTest) shortens scheduler timings through an internal syncengine
+// seam, so the JVM test compilation is a friend of syncengine's JVM jar. Main code still sees only
+// syncengine's public API.
+tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compileTestKotlinJvm") {
+    val syncengineJvmJar = project(":syncengine").layout.buildDirectory
+        .file("libs/syncengine-jvm-${project.version}.jar")
+    compilerOptions.freeCompilerArgs.addAll(
+        syncengineJvmJar.map { listOf("-Xfriend-paths=${it.asFile.absolutePath}") }
+    )
 }
