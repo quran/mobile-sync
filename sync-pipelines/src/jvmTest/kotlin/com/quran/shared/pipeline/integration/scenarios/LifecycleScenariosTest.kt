@@ -276,6 +276,26 @@ class LifecycleScenariosTest {
     }
 
     @Test
+    fun `LIFE-08 variant, logout while the GET is in flight`() = syncScenario {
+        val phone = device("phone")
+        assertSucceeded(phone.login(ALICE))
+        phone.data.addNote("Pending at the logout", 1, 1, 1, 7)
+        web(ALICE).createNote("Written on the web before the logout", "3:18-3:18")
+        val head = server.head(ALICE)
+        val gate = server.faults.blockGet()
+
+        // The held GET is answered after the reset: nothing it carries may land, and nothing may be pushed.
+        phone.syncWhileHeld(gate) { withTimeout(10.seconds) { phone.logout() } }
+
+        assertEquals(EMPTY_SNAPSHOT, phone.snapshot())
+        assertEquals(head, server.head(ALICE), "a POST reached the server")
+        assertSucceeded(phone.login(ALICE))
+        syncUntilQuiescent(phone)
+        assertEquals(listOf("Written on the web before the logout"), phone.noteBodies())
+        assertConverged(ALICE, phone)
+    }
+
+    @Test
     fun `LIFE-10 an expired session then the same account keeps pending work`() = syncScenario {
         val phone = device("phone")
         assertSucceeded(phone.login(ALICE))

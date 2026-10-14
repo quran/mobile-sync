@@ -124,9 +124,19 @@ class ImportScenariosTest {
             readingSessions = listOf(ImportReadingSession(36, 1, at(130), at(130)))
         )
 
+        val pushedBefore = server.accepted("phone").size
+
         phone.data.importData(backup, deleteExisting = true)
         syncUntilQuiescent(phone, tablet)
 
+        // A restore deletes every synced item and uploads the backup as new, even the note in both sets (S14).
+        assertEquals(
+            listOf(
+                "CREATE COLLECTION", "CREATE COLLECTION_BOOKMARK", "CREATE NOTE", "CREATE NOTE", "CREATE READING_SESSION",
+                "DELETE COLLECTION", "DELETE NOTE", "DELETE NOTE", "DELETE READING_SESSION"
+            ),
+            server.accepted("phone").drop(pushedBefore).map { "${it.type} ${it.resource}" }.sorted()
+        )
         assertEquals(backup.asSnapshot(), phone.snapshot(), "the phone holds the backup")
         assertEquals(backup.asSnapshot(), UserDataSnapshot.of(server.state(ALICE)), "the server holds the backup")
         assertConverged(ALICE, phone, tablet)
@@ -250,6 +260,21 @@ class ImportScenariosTest {
         assertEquals(listOf("Bob's own reflection"), server.state(BOB).notes.map { it.body }, "legacy data reached the other account")
         assertEquals(listOf("Bob's own reflection"), phone.noteBodies())
         assertConverged(BOB, phone)
+    }
+
+    @Test
+    fun `IMP-11 an import during an in-flight sync is pushed by the next one`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.data.addNote("Pushed before the import", 3, 7, 3, 7)
+
+        phone.syncWhileHeld(server.faults.blockPost()) {
+            phone.data.importData(IMPORTED, deleteExisting = false, trackHistory = true)
+        }
+        syncUntilQuiescent(phone)
+
+        val expected = IMPORTED.asSnapshot().let { it.copy(notes = (it.notes + "Pushed before the import | 3:7-3:7").sorted()) }
+        assertEquals(expected, UserDataSnapshot.of(server.state(ALICE)))
+        assertConverged(ALICE, phone)
     }
 
     private companion object {
