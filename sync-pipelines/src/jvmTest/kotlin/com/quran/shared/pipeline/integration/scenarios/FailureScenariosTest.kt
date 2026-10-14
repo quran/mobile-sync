@@ -141,7 +141,7 @@ class FailureScenariosTest {
 
         assertSucceeded(
             phone.syncWhileHeld(gate) {
-                phone.data.updateNote(phone.note("Deleted on the web mid-sync").id, "Edited while the delete was applied", 2, 255, 2, 255)
+                phone.data.updateNote(phone.note("Deleted on the web mid-sync").id, "Edited while the delete was applied")
             }
         )
 

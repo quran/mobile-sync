@@ -1,29 +1,22 @@
 package com.quran.shared.persistence.repository.readingbookmark.repository
 
 import app.cash.sqldelight.coroutines.asFlow
-import app.cash.sqldelight.coroutines.mapToList
 import com.quran.shared.di.AppScope
-import com.quran.shared.mutations.LOCAL_MUTATION_ENTITY_FACET
-import com.quran.shared.mutations.LocalModelMutation
-import com.quran.shared.mutations.LocalMutationResource
-import com.quran.shared.mutations.RemoteModelMutation
-import com.quran.shared.persistence.QuranDatabase
-import com.quran.shared.persistence.input.LocalSyncReadingBookmark
-import com.quran.shared.persistence.input.RemoteReadingBookmark
-import com.quran.shared.persistence.model.DatabaseReadingBookmark
+import com.quran.shared.persistence.model.AyahReadingBookmark
+import com.quran.shared.persistence.model.EmptyReadingBookmark
+import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
-import com.quran.shared.persistence.model.SUPPORTED_MUSHAF_ID
-import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
-import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
+import com.quran.shared.persistence.model.toReadingBookmarkSlot
 import com.quran.shared.persistence.repository.readingbookmark.ReadingBookmarkStore
-import com.quran.shared.persistence.repository.readingbookmark.extension.toReadingBookmark
-import com.quran.shared.persistence.repository.readingbookmark.extension.toReadingBookmarkMutation
+import com.quran.shared.persistence.repository.readingbookmark.location
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.currentPlatformDateTime
-import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toEpochMillisecondsFromPlatform
 import com.quran.shared.persistence.util.toPlatform
+import com.quran.shared.syncv2.db.Reading_bookmark
+import com.quran.shared.syncv2.db.SyncV2Database
+import com.quran.shared.syncv2.types.ReadingLocation
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.Dispatchers
@@ -31,42 +24,35 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import kotlin.native.HiddenFromObjC
 import kotlin.time.Instant
 
 @Inject
 @SingleIn(AppScope::class)
+@HiddenFromObjC
 class ReadingBookmarksRepositoryImpl(
-    private val database: QuranDatabase
-) : ReadingBookmarksRepository, ReadingBookmarksSynchronizationRepository {
+    private val database: SyncV2Database
+) : ReadingBookmarksRepository {
 
-    private val queries = lazy { database.reading_bookmarksQueries }
     private val store = ReadingBookmarkStore(database)
 
     override suspend fun getReadingBookmarks(): List<ReadingBookmark> =
-        withContext(Dispatchers.IO) {
-            queries.value.getReadingBookmarks().executeAsList().map(DatabaseReadingBookmark::toReadingBookmark)
-        }
+        withContext(Dispatchers.IO) { store.all().mapNotNull { it.toReadingBookmark() } }
 
     override fun getReadingBookmarksFlow(): Flow<List<ReadingBookmark>> =
-        queries.value.getReadingBookmarks()
-            .asFlow()
-            .mapToList(Dispatchers.IO)
-            .map { rows -> rows.map(DatabaseReadingBookmark::toReadingBookmark) }
+        database.readingBookmarksQueries.all().asFlow().map {
+            withContext(Dispatchers.IO) { store.all().mapNotNull { row -> row.toReadingBookmark() } }
+        }
 
-    override suspend fun setAyahReadingBookmark(
-        slot: ReadingBookmarkSlot,
-        sura: Int,
-        ayah: Int
-    ): ReadingBookmark = setAyahReadingBookmark(slot, sura, ayah, currentPlatformDateTime())
+    override suspend fun setAyahReadingBookmark(slot: ReadingBookmarkSlot, sura: Int, ayah: Int): ReadingBookmark =
+        setAyahReadingBookmark(slot, sura, ayah, currentPlatformDateTime())
 
     override suspend fun setAyahReadingBookmark(
         slot: ReadingBookmarkSlot,
         sura: Int,
         ayah: Int,
         timestamp: PlatformDateTime
-    ): ReadingBookmark = withContext(Dispatchers.IO) {
-        store.setAyah(slot, sura, ayah, timestamp.toEpochMillisecondsFromPlatform()).toReadingBookmark()
-    }
+    ): ReadingBookmark = write { store.setLocation(slot, ReadingLocation.ayah(sura, ayah), timestamp.toEpochMillisecondsFromPlatform()) }
 
     override suspend fun setPageReadingBookmark(slot: ReadingBookmarkSlot, page: Int): ReadingBookmark =
         setPageReadingBookmark(slot, page, currentPlatformDateTime())
@@ -75,8 +61,8 @@ class ReadingBookmarksRepositoryImpl(
         slot: ReadingBookmarkSlot,
         page: Int,
         timestamp: PlatformDateTime
-    ): ReadingBookmark = withContext(Dispatchers.IO) {
-        store.setPage(slot, page, timestamp.toEpochMillisecondsFromPlatform()).toReadingBookmark()
+    ): ReadingBookmark = write {
+        store.setLocation(slot, ReadingLocation.page(page, PageReadingBookmark.MADANI_MUSHAF_ID), timestamp.toEpochMillisecondsFromPlatform())
     }
 
     override suspend fun renameReadingBookmark(slot: ReadingBookmarkSlot, name: String?): ReadingBookmark =
@@ -86,118 +72,32 @@ class ReadingBookmarksRepositoryImpl(
         slot: ReadingBookmarkSlot,
         name: String?,
         timestamp: PlatformDateTime
-    ): ReadingBookmark =
-        withContext(Dispatchers.IO) {
-            store.rename(slot, name, timestamp.toEpochMillisecondsFromPlatform()).toReadingBookmark()
-        }
+    ): ReadingBookmark = write { store.rename(slot, name, timestamp.toEpochMillisecondsFromPlatform()) }
 
     override suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot): ReadingBookmark =
         clearReadingBookmark(slot, currentPlatformDateTime())
 
     override suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot, timestamp: PlatformDateTime): ReadingBookmark =
-        withContext(Dispatchers.IO) {
-            store.clear(slot, timestamp.toEpochMillisecondsFromPlatform()).toReadingBookmark()
-        }
+        write { store.setLocation(slot, null, timestamp.toEpochMillisecondsFromPlatform()) }
 
-    override suspend fun fetchMutatedReadingBookmarks(): List<LocalModelMutation<LocalSyncReadingBookmark>> =
-        withContext(Dispatchers.IO) {
-            queries.value.getUnsyncedReadingBookmarks().executeAsList().map { it.toReadingBookmarkMutation() }
-        }
-
-    override suspend fun applyRemoteChanges(
-        updatesToPersist: List<RemoteModelMutation<RemoteReadingBookmark>>,
-        localMutationsToClear: List<LocalModelMutation<LocalSyncReadingBookmark>>,
-        writeBoundaryGuard: PersistenceWriteBoundaryGuard
-    ) = withContext(Dispatchers.IO) {
-        writeBoundaryGuard.checkWriteBoundary()
-        database.transaction {
-            updatesToPersist.forEach { remote ->
-                if (remote.ack == null) {
-                    persistRemote(remote)
-                } else {
-                    acknowledgeRemoteMutation(remote)
-                }
-            }
-            localMutationsToClear.forEach(::acknowledgeLocalMutation)
-        }
+    private suspend fun write(block: () -> Reading_bookmark): ReadingBookmark = withContext(Dispatchers.IO) {
+        database.transactionWithResult { block() }.toReadingBookmark() ?: error("Expected a reading bookmark slot 1 to 3.")
     }
+}
 
-    override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
-        buildRemoteResourceExistenceMap(remoteIDs) { chunk ->
-            queries.value.checkRemoteIDsExistence(chunk).executeAsList().mapNotNull { it.remote_id }
-        }
-
-    override suspend fun fetchReadingBookmarkByRemoteId(remoteId: String): RemoteReadingBookmark? =
-        withContext(Dispatchers.IO) {
-            queries.value.getReadingBookmarkByRemoteId(remoteId).executeAsOneOrNull()?.toRemoteInput()
-        }
-
-    private fun persistRemote(remote: RemoteModelMutation<RemoteReadingBookmark>) {
-        val model = remote.model
-        requireValidSlot(model.slot)
-        val updatedAt = model.lastUpdated.fromPlatform().toEpochMilliseconds()
-        val createdAt = model.createdAt?.fromPlatform()?.toEpochMilliseconds() ?: updatedAt
-        queries.value.persistRemoteReadingBookmark(
-            remote_id = remote.remoteID,
-            slot = model.slot.toLong(),
-            name = model.name,
-            bookmark_type = model.type,
-            sura = model.sura?.toLong(),
-            ayah = model.ayah?.toLong(),
-            page = model.page?.toLong(),
-            mushaf_id = model.type?.let { SUPPORTED_MUSHAF_ID },
-            created_at = createdAt,
-            modified_at = updatedAt
-        )
-    }
-
-    private fun acknowledgeLocalMutation(local: LocalModelMutation<LocalSyncReadingBookmark>) {
-        val ack = local.ack ?: return
-        if (ack.resource != LocalMutationResource.READING_BOOKMARK ||
-            ack.facet != LOCAL_MUTATION_ENTITY_FACET ||
-            ack.localID != local.localID
-        ) {
-            return
-        }
-        val remoteId = local.remoteID ?: return
-        queries.value.acknowledgeReadingBookmarkMutation(
-            local_id = local.localID.toLong(),
-            remote_id = remoteId,
-            pending_op = ack.observedPendingOp.name,
-            pending_version = ack.observedPendingVersion,
-            modified_at = local.model.lastUpdated.fromPlatform().toEpochMilliseconds()
-        )
-    }
-
-    private fun acknowledgeRemoteMutation(remote: RemoteModelMutation<RemoteReadingBookmark>) {
-        val ack = remote.ack ?: return
-        if (ack.resource != LocalMutationResource.READING_BOOKMARK ||
-            ack.facet != LOCAL_MUTATION_ENTITY_FACET
-        ) {
-            return
-        }
-        queries.value.acknowledgeReadingBookmarkMutation(
-            local_id = ack.localID.toLong(),
-            remote_id = remote.remoteID,
-            pending_op = ack.observedPendingOp.name,
-            pending_version = ack.observedPendingVersion,
-            modified_at = remote.model.lastUpdated.fromPlatform().toEpochMilliseconds()
-        )
-    }
-
-    private fun DatabaseReadingBookmark.toRemoteInput(): RemoteReadingBookmark =
-        RemoteReadingBookmark(
-            slot = slot.toInt(),
-            name = name,
-            type = bookmark_type,
-            sura = sura?.toInt(),
-            ayah = ayah?.toInt(),
-            page = page?.toInt(),
-            lastUpdated = Instant.fromEpochMilliseconds(modified_at).toPlatform(),
-            createdAt = Instant.fromEpochMilliseconds(created_at).toPlatform()
-        )
-
-    private fun requireValidSlot(slot: Int) {
-        require(slot in 1..3) { "Reading bookmark slot must be between 1 and 3: $slot" }
+/**
+ * A slot as the app shows it. A location the app has no model for (a surah or juz set on the web) shows as an empty
+ * slot; the row keeps it. Slots outside 1 to 3 are not shown.
+ */
+internal fun Reading_bookmark.toReadingBookmark(): ReadingBookmark? {
+    if (slot !in 1L..3L) return null
+    val lastUpdated = Instant.fromEpochMilliseconds(updated_at).toPlatform()
+    val slot = slot.toInt().toReadingBookmarkSlot()
+    val id = local_id.toString()
+    val location = location()
+    return when (location?.type) {
+        "ayah" -> AyahReadingBookmark(location.key, location.verse!!, lastUpdated, id, slot, name)
+        "page" -> PageReadingBookmark(location.key, lastUpdated, id, slot, name, location.mushafId)
+        else -> EmptyReadingBookmark(slot, name, lastUpdated, id)
     }
 }

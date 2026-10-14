@@ -1,36 +1,29 @@
-@file:OptIn(kotlin.time.ExperimentalTime::class)
-
 package com.quran.shared.persistence.repository
 
-import com.quran.shared.mutations.Mutation
-import com.quran.shared.mutations.RemoteModelMutation
-import com.quran.shared.persistence.QuranDatabase
-import com.quran.shared.persistence.TestDatabaseDriver
-import com.quran.shared.persistence.createQuranDatabase
-import com.quran.shared.persistence.input.RemoteReadingBookmark
+import com.quran.shared.persistence.MobileSyncDatabase
+import com.quran.shared.persistence.at
+import com.quran.shared.persistence.createTestDatabase
 import com.quran.shared.persistence.model.AyahReadingBookmark
 import com.quran.shared.persistence.model.EmptyReadingBookmark
 import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksRepositoryImpl
-import com.quran.shared.persistence.util.toPlatform
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNull
-import kotlin.time.Instant
 
 class ReadingBookmarksRepositoryTest {
-    private lateinit var database: QuranDatabase
+    private lateinit var database: MobileSyncDatabase
     private lateinit var repository: ReadingBookmarksRepositoryImpl
 
     @BeforeTest
     fun setup() {
-        database = createQuranDatabase(TestDatabaseDriver().createDriver())
-        repository = ReadingBookmarksRepositoryImpl(database)
+        database = createTestDatabase()
+        repository = ReadingBookmarksRepositoryImpl(database.synced)
     }
 
     @Test
@@ -45,140 +38,129 @@ class ReadingBookmarksRepositoryTest {
         val empty = assertIs<EmptyReadingBookmark>(bookmarks[2])
 
         assertEquals(ReadingBookmarkSlot.TEAL, ayah.slot)
-        assertEquals(255, ayah.ayah)
+        assertEquals(2 to 255, ayah.sura to ayah.ayah)
         assertEquals(ReadingBookmarkSlot.ORANGE, page.slot)
         assertEquals(42, page.page)
+        assertEquals(ReadingBookmarkSlot.RED, empty.slot)
         assertEquals("Resume", empty.name)
-        assertEquals(1L, database.reading_bookmarksQueries.getReadingBookmarkForSlot(1).executeAsOne().mushaf_id)
-        assertEquals(1L, database.reading_bookmarksQueries.getReadingBookmarkForSlot(2).executeAsOne().mushaf_id)
-        assertEquals(0L, database.bookmarksQueries.countAll().executeAsOne())
+        assertEquals(listOf("ayah", "page", null), rows().map { it.location_type })
+        assertEquals(emptyList(), database.synced.collectionsQueries.collectionAyahsAll().executeAsList())
     }
 
     @Test
-    fun `clearing a slot produces a synced empty slot without deleting its identity`() = runTest {
-        repository.setPageReadingBookmark(slot = ReadingBookmarkSlot.ORANGE, page = 88)
-        val before = repository.fetchMutatedReadingBookmarks().single()
-        val rowBefore = database.reading_bookmarksQueries.getReadingBookmarkForSlot(2).executeAsOne()
-        database.reading_bookmarksQueries.persistRemoteReadingBookmark(
-            remote_id = "remote-slot-2",
-            slot = 2,
-            name = rowBefore.name,
-            bookmark_type = rowBefore.bookmark_type,
-            sura = rowBefore.sura,
-            ayah = rowBefore.ayah,
-            page = rowBefore.page,
-            mushaf_id = rowBefore.mushaf_id,
-            created_at = rowBefore.created_at,
-            modified_at = rowBefore.modified_at
-        )
+    fun `a slot keeps one row and its id across writes`() = runTest {
+        val first = repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 1, at(100))
 
-        val cleared = assertIs<EmptyReadingBookmark>(repository.clearReadingBookmark(ReadingBookmarkSlot.ORANGE))
-        val mutation = repository.fetchMutatedReadingBookmarks().single()
+        val second = repository.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 2, 255, at(200))
 
-        assertEquals(before.localID, cleared.id)
-        assertEquals(Mutation.MODIFIED, mutation.mutation)
-        assertEquals("remote-slot-2", mutation.remoteID)
-        assertNull(mutation.model.type)
-        assertNull(database.reading_bookmarksQueries.getReadingBookmarkForSlot(2).executeAsOne().mushaf_id)
+        assertEquals(first.id, second.id)
+        assertEquals(1, rows().size)
+        assertEquals(100L, rows().single().created_at)
     }
 
     @Test
-    fun `remote reading bookmark persists in its slot`() = runTest {
-        repository.applyRemoteChanges(
-            updatesToPersist = listOf(
-                RemoteModelMutation(
-                    model = RemoteReadingBookmark(
-                        slot = 3,
-                        name = "Study",
-                        type = "AYAH",
-                        sura = 18,
-                        ayah = 10,
-                        page = null,
-                        lastUpdated = Instant.fromEpochMilliseconds(200).toPlatform(),
-                        createdAt = Instant.fromEpochMilliseconds(100).toPlatform()
-                    ),
-                    remoteID = "remote-slot-3",
-                    mutation = Mutation.CREATED
-                )
-            ),
-            localMutationsToClear = emptyList(),
-            writeBoundaryGuard = PersistenceWriteBoundaryGuard.Allow
-        )
+    fun `clearing a slot keeps its row id and name`() = runTest {
+        repository.setPageReadingBookmark(slot = ReadingBookmarkSlot.ORANGE, page = 88, timestamp = at(100))
+        val named = repository.renameReadingBookmark(ReadingBookmarkSlot.ORANGE, "Study", at(150))
 
-        val bookmark = assertIs<AyahReadingBookmark>(repository.getReadingBookmarks().single())
-        assertEquals(ReadingBookmarkSlot.RED, bookmark.slot)
-        assertEquals("Study", bookmark.name)
-        assertEquals(1L, database.reading_bookmarksQueries.getReadingBookmarkForSlot(3).executeAsOne().mushaf_id)
-        assertEquals(emptyList(), repository.fetchMutatedReadingBookmarks())
+        val cleared = assertIs<EmptyReadingBookmark>(repository.clearReadingBookmark(ReadingBookmarkSlot.ORANGE, at(200)))
+
+        val row = rows().single()
+        assertEquals(named.id, cleared.id)
+        assertEquals("Study", cleared.name)
+        assertNull(row.location_type)
+        assertNull(row.location_key)
+        assertNull(row.location_verse)
+        assertNull(row.mushaf_id)
     }
 
     @Test
-    fun `remote slot outside one through three is rejected`() = runTest {
-        assertFailsWith<IllegalArgumentException> {
-            repository.applyRemoteChanges(
-                updatesToPersist = listOf(
-                    RemoteModelMutation(
-                        model = RemoteReadingBookmark(
-                            slot = 4,
-                            name = null,
-                            type = "PAGE",
-                            sura = null,
-                            ayah = null,
-                            page = 1,
-                            lastUpdated = Instant.fromEpochMilliseconds(100).toPlatform(),
-                            createdAt = null
-                        ),
-                        remoteID = "remote-slot-4",
-                        mutation = Mutation.CREATED
-                    )
-                ),
-                localMutationsToClear = emptyList(),
-                writeBoundaryGuard = PersistenceWriteBoundaryGuard.Allow
-            )
-        }
+    fun `a write keeps the slot's server metadata`() = runTest {
+        database.synced.readingBookmarksQueries.insert(1, "Daily", "page", 88, null, 5, METADATA, 50, 100)
+
+        repository.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 2, 255, at(200))
+        repository.clearReadingBookmark(ReadingBookmarkSlot.TEAL, at(300))
+
+        assertEquals(METADATA, rows().single().metadata)
     }
 
     @Test
     fun `explicit timestamps are stored for every reading bookmark mutation`() = runTest {
-        repository.setAyahReadingBookmark(
-            slot = ReadingBookmarkSlot.TEAL,
-            sura = 2,
-            ayah = 255,
-            timestamp = Instant.fromEpochMilliseconds(100).toPlatform()
-        )
-        assertEquals(100L, database.reading_bookmarksQueries.getReadingBookmarkForSlot(1).executeAsOne().modified_at)
+        repository.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 2, 255, at(100))
+        assertEquals(100L, slotRow(1).updated_at)
 
-        repository.setPageReadingBookmark(
-            slot = ReadingBookmarkSlot.ORANGE,
-            page = 42,
-            timestamp = Instant.fromEpochMilliseconds(200).toPlatform()
-        )
-        assertEquals(200L, database.reading_bookmarksQueries.getReadingBookmarkForSlot(2).executeAsOne().modified_at)
+        repository.setPageReadingBookmark(ReadingBookmarkSlot.ORANGE, 42, at(200))
+        assertEquals(200L, slotRow(2).updated_at)
 
-        repository.renameReadingBookmark(
-            slot = ReadingBookmarkSlot.TEAL,
-            name = "Resume",
-            timestamp = Instant.fromEpochMilliseconds(300).toPlatform()
-        )
-        assertEquals(300L, database.reading_bookmarksQueries.getReadingBookmarkForSlot(1).executeAsOne().modified_at)
+        repository.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "Resume", at(300))
+        assertEquals(300L, slotRow(1).updated_at)
 
-        repository.clearReadingBookmark(
-            slot = ReadingBookmarkSlot.ORANGE,
-            timestamp = Instant.fromEpochMilliseconds(400).toPlatform()
-        )
-        assertEquals(400L, database.reading_bookmarksQueries.getReadingBookmarkForSlot(2).executeAsOne().modified_at)
+        repository.clearReadingBookmark(ReadingBookmarkSlot.ORANGE, at(400))
+        assertEquals(400L, slotRow(2).updated_at)
     }
 
     @Test
-    fun `storage accepts future positive slots`() {
-        database.reading_bookmarksQueries.setPageReadingBookmark(
-            slot = 5,
-            page = 42,
-            mushaf_id = 1,
-            timestamp = 100
-        )
+    fun `names are trimmed and an empty name is stored as null`() = runTest {
+        val trimmed = repository.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "  Daily \n", at(100))
+        val empty = repository.renameReadingBookmark(ReadingBookmarkSlot.ORANGE, " 　", at(100))
 
-        assertEquals(5L, database.reading_bookmarksQueries.getReadingBookmarkForSlot(5).executeAsOne().slot)
+        assertEquals("Daily", trimmed.name)
+        assertNull(empty.name)
+        assertEquals(listOf("Daily", null), rows().map { it.name })
     }
 
+    @Test
+    fun `a page bookmark set here uses the Madani mushaf`() = runTest {
+        val page = assertIs<PageReadingBookmark>(repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 42, at(100)))
+
+        assertEquals(PageReadingBookmark.MADANI_MUSHAF_ID, page.mushafId)
+        assertEquals(5L, slotRow(1).mushaf_id)
+    }
+
+    @Test
+    fun `a page bookmark from another mushaf shows its mushaf`() = runTest {
+        database.synced.readingBookmarksQueries.insert(2, null, "page", 300, null, 6, null, 50, 100)
+
+        val page = assertIs<PageReadingBookmark>(repository.getReadingBookmarks().single())
+
+        assertEquals(300, page.page)
+        assertEquals(6, page.mushafId)
+    }
+
+    @Test
+    fun `a surah location set on the web shows as an empty slot and is kept`() = runTest {
+        database.synced.readingBookmarksQueries.insert(3, "Kahf", "surah", 18, null, 5, null, 50, 100)
+
+        val empty = assertIs<EmptyReadingBookmark>(repository.getReadingBookmarks().single())
+
+        assertEquals(ReadingBookmarkSlot.RED, empty.slot)
+        assertEquals("Kahf", empty.name)
+        assertEquals("surah", slotRow(3).location_type)
+    }
+
+    @Test
+    fun `slots outside one through three are stored but not shown`() = runTest {
+        database.synced.readingBookmarksQueries.insert(5, null, "page", 42, null, 5, null, 50, 100)
+        repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 1, at(100))
+
+        assertEquals(listOf(ReadingBookmarkSlot.TEAL), repository.getReadingBookmarks().map { it.slot })
+        assertEquals(5L, slotRow(5).slot)
+    }
+
+    @Test
+    fun `reading bookmarks flow emits the slots`() = runTest {
+        repository.setAyahReadingBookmark(ReadingBookmarkSlot.ORANGE, 2, 255, at(100))
+
+        val bookmark = assertIs<AyahReadingBookmark>(repository.getReadingBookmarksFlow().first().single())
+
+        assertEquals(ReadingBookmarkSlot.ORANGE, bookmark.slot)
+    }
+
+    private fun rows() = database.synced.readingBookmarksQueries.all().executeAsList()
+
+    private fun slotRow(slot: Long) = database.synced.readingBookmarksQueries.bySlot(slot).executeAsOne()
+
+    private companion object {
+        const val METADATA = """{"color":"teal"}"""
+    }
 }

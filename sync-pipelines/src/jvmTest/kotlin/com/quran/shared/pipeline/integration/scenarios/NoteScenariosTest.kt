@@ -39,7 +39,7 @@ class NoteScenariosTest {
         phone.data.addNote("First version of it", 2, 255, 2, 255)
         syncUntilQuiescent(phone, tablet)
 
-        phone.data.updateNote(phone.note("First version of it").id, "Second version of it", 2, 255, 2, 255)
+        phone.data.updateNote(phone.note("First version of it").id, "Second version of it")
 
         knownIssue("S7", "Editing a synced note sends ranges in the UPDATE and gets 422 forever", expect = NOTE_UPDATE_REJECTED) {
             assertSucceeded(phone.syncNow())
@@ -55,7 +55,7 @@ class NoteScenariosTest {
         phone.data.addNote("First body of it", 2, 255, 2, 255)
         assertSucceeded(phone.syncNow())
 
-        phone.data.updateNote(phone.note("First body of it").id, "Edited body of it", 2, 255, 2, 255)
+        phone.data.updateNote(phone.note("First body of it").id, "Edited body of it")
 
         knownIssue(
             "The echo reverts the edit (S2); once it is pushed, its UPDATE gets 422 (S7)",
@@ -126,7 +126,7 @@ class NoteScenariosTest {
         phone.data.addNote("A note to move elsewhere", 2, 255, 2, 255)
         syncUntilQuiescent(phone)
 
-        phone.data.updateNote(phone.note("A note to move elsewhere").id, "A note to move elsewhere", 3, 18, 3, 18)
+        phone.data.updateNote(phone.note("A note to move elsewhere").id, "A note to move elsewhere")
 
         knownIssue(
             "The range edit's UPDATE gets 422 (S7); once accepted without ranges, the server keeps the old range (S4)",
@@ -247,8 +247,8 @@ class NoteScenariosTest {
         phone.data.addNote("The original body", 2, 255, 2, 255, at(0))
         syncUntilQuiescent(phone, tablet)
 
-        phone.data.updateNote(phone.note("The original body").id, "The phone's older edit", 2, 255, 2, 255, at(1_000))
-        tablet.data.updateNote(tablet.note("The original body").id, "The tablet's newer edit", 2, 255, 2, 255, at(2_000))
+        phone.data.updateNote(phone.note("The original body").id, "The phone's older edit", at(1_000))
+        tablet.data.updateNote(tablet.note("The original body").id, "The tablet's newer edit", at(2_000))
 
         knownIssue(
             "The phone's UPDATE gets 422 (S7); once it is accepted, remote-wins keeps the older edit (S17)",
@@ -272,7 +272,7 @@ class NoteScenariosTest {
         val original = web.noteId("Written on the phone")!!
 
         web.deleteNote(original)
-        phone.data.updateNote(phone.note("Written on the phone").id, "Edited after the web deleted it", 2, 255, 2, 255)
+        phone.data.updateNote(phone.note("Written on the phone").id, "Edited after the web deleted it")
 
         knownIssue(
             "S15",
@@ -324,7 +324,7 @@ class NoteScenariosTest {
             assertSucceeded(phone.syncNow())
             assertConverged(ALICE, phone)
             val note = phone.note("A note on two passages")
-            phone.data.updateNote(note.id, "An edited note on two passages", note.startSura, note.startAyah, note.endSura, note.endAyah)
+            phone.data.updateNote(note.id, "An edited note on two passages")
             assertSucceeded(phone.syncNow())
             assertEquals(listOf("2:255-2:256", "3:18-3:18"), server.state(ALICE).notes.single().ranges)
             assertConverged(ALICE, phone)
@@ -345,7 +345,7 @@ class NoteScenariosTest {
         phone.data.addNote("Written before the loss", 2, 255, 2, 255)
         assertEquals(listOf(504), phone.syncNow().postStatuses, "the fault fired")
 
-        phone.data.updateNote(phone.note("Written before the loss").id, "Edited after the loss", 2, 255, 2, 255)
+        phone.data.updateNote(phone.note("Written before the loss").id, "Edited after the loss")
 
         knownIssue(
             "A lost response plus an edit duplicates the note (S12); once linked, the edit's UPDATE gets 422 (S7)",

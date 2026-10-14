@@ -15,22 +15,8 @@ import com.quran.shared.auth.service.AuthSessionPublicationGuard
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.auth.di.AuthModule
 import com.quran.shared.di.AppScope
-import com.quran.shared.mutations.LocalModelMutation
-import com.quran.shared.mutations.LocalMutationAck
-import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.PersistenceImportResult
-import com.quran.shared.persistence.input.LocalSyncCollection
-import com.quran.shared.persistence.input.LocalSyncCollectionAyahBookmark
-import com.quran.shared.persistence.input.LocalSyncNote
-import com.quran.shared.persistence.input.LocalSyncReadingSession
-import com.quran.shared.persistence.input.LocalSyncReadingBookmark
-import com.quran.shared.persistence.input.RemoteBookmark
-import com.quran.shared.persistence.input.RemoteCollection
-import com.quran.shared.persistence.input.RemoteCollectionBookmark
-import com.quran.shared.persistence.input.RemoteNote
-import com.quran.shared.persistence.input.RemoteReadingSession
-import com.quran.shared.persistence.input.RemoteReadingBookmark
 import com.quran.shared.persistence.di.PersistenceModule
 import com.quran.shared.persistence.model.AyahBookmark
 import com.quran.shared.persistence.model.AyahHighlight
@@ -44,26 +30,20 @@ import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.persistence.model.ReadingSession
-import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
 import com.quran.shared.persistence.repository.PersistenceResetRepository
 import com.quran.shared.persistence.model.BookmarkCollectionsReplacementResult
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepository
-import com.quran.shared.persistence.repository.bookmark.repository.BookmarksSynchronizationRepository
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepository
-import com.quran.shared.persistence.repository.collection.repository.CollectionsSynchronizationRepository
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepository
-import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksSynchronizationRepository
 import com.quran.shared.persistence.repository.importdata.PersistenceImportRepository
 import com.quran.shared.persistence.repository.note.repository.NotesRepository
-import com.quran.shared.persistence.repository.note.repository.NotesSynchronizationRepository
 import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksRepository
-import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksSynchronizationRepository
 import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepository
-import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsSynchronizationRepository
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.toPlatform
 import com.quran.shared.syncengine.SynchronizationClient
 import com.quran.shared.syncengine.SynchronizationEnvironment
+import com.quran.shared.syncv2.db.SyncV2Database
 import com.russhwolf.settings.MapSettings
 import com.russhwolf.settings.coroutines.toSuspendSettings
 import com.quran.shared.pipeline.storage.MobileSyncStorageModule
@@ -200,7 +180,6 @@ class QuranDataServiceLifecycleTest {
                 )
             )
         )
-        fixture.tokenStore.updateLastModificationDate(77L)
         advanceUntilIdle()
 
         val result = fixture.service.logout()
@@ -213,7 +192,6 @@ class QuranDataServiceLifecycleTest {
         )
         assertEquals(null, fixture.authRepository.getAccessToken())
         assertEquals(1, fixture.resetRepository.deleteCount)
-        assertEquals(0L, fixture.tokenStore.localLastModificationDate())
         assertEquals(
             listOf(RemoteLogoutMode.TOKEN_REVOCATION_ONLY),
             fixture.authRepository.remoteLogoutModes
@@ -267,7 +245,6 @@ class QuranDataServiceLifecycleTest {
         advanceUntilIdle()
 
         assertEquals(1, fixture.resetRepository.deleteCount)
-        assertEquals(0L, fixture.tokenStore.localLastModificationDate())
         fixture.clearAndJoin()
     }
 
@@ -335,11 +312,9 @@ class QuranDataServiceLifecycleTest {
                 onAttemptRemoteLogout = {
                     assertEquals(null, fixture.authRepository.getAccessToken())
                     assertEquals(1, fixture.resetRepository.deleteCount)
-                    assertEquals(0L, fixture.tokenStore.localLastModificationDate())
                 }
             )
         )
-        fixture.tokenStore.updateLastModificationDate(77L)
         advanceUntilIdle()
 
         fixture.service.logout()
@@ -358,7 +333,6 @@ class QuranDataServiceLifecycleTest {
             )
         )
         val authFacade = SyncAuthService(fixture.authService, fixture.service, fixture.lifecycleCoordinator)
-        fixture.tokenStore.updateLastModificationDate(77L)
         advanceUntilIdle()
 
         val result = authFacade.logout()
@@ -366,7 +340,6 @@ class QuranDataServiceLifecycleTest {
         assertEquals(emptyList(), result.warnings)
         assertEquals(null, fixture.authRepository.getAccessToken())
         assertEquals(1, fixture.resetRepository.deleteCount)
-        assertEquals(0L, fixture.tokenStore.localLastModificationDate())
         fixture.clearAndJoin()
     }
 
@@ -435,7 +408,6 @@ class QuranDataServiceLifecycleTest {
                 remoteLogoutException = CancellationException("remote logout cancelled")
             )
         )
-        fixture.tokenStore.updateLastModificationDate(77L)
         advanceUntilIdle()
 
         assertFailsWith<CancellationException> {
@@ -444,7 +416,6 @@ class QuranDataServiceLifecycleTest {
 
         assertEquals(null, fixture.authRepository.getAccessToken())
         assertEquals(1, fixture.resetRepository.deleteCount)
-        assertEquals(0L, fixture.tokenStore.localLastModificationDate())
         fixture.clearAndJoin()
     }
 
@@ -458,7 +429,6 @@ class QuranDataServiceLifecycleTest {
                 throwOnLogoutTokenCapture = true
             )
         )
-        fixture.tokenStore.updateLastModificationDate(77L)
         advanceUntilIdle()
 
         val result = fixture.service.logout()
@@ -471,7 +441,6 @@ class QuranDataServiceLifecycleTest {
         )
         assertEquals(null, fixture.authRepository.getAccessToken())
         assertEquals(1, fixture.resetRepository.deleteCount)
-        assertEquals(0L, fixture.tokenStore.localLastModificationDate())
         fixture.clearAndJoin()
     }
 
@@ -492,7 +461,6 @@ class QuranDataServiceLifecycleTest {
 
         assertEquals(SessionLifecycleState(epoch = 1L, resetInProgress = false), lifecycleStore.snapshot())
         assertEquals(1, fixture.resetRepository.deleteCount)
-        assertEquals(0L, fixture.tokenStore.localLastModificationDate())
         fixture.clearAndJoin()
     }
 
@@ -888,7 +856,6 @@ class QuranDataServiceLifecycleTest {
                 throwOnClearLocalSession = true
             )
         )
-        fixture.tokenStore.updateLastModificationDate(77L)
         advanceUntilIdle()
 
         val error = assertFailsWith<IllegalStateException> {
@@ -898,7 +865,6 @@ class QuranDataServiceLifecycleTest {
         assertEquals("local session clear failed", error.message)
         assertEquals(true, fixture.lifecycleStore.snapshot().resetInProgress)
         assertEquals(0, fixture.resetRepository.deleteCount)
-        assertEquals(77L, fixture.tokenStore.localLastModificationDate())
         assertEquals(0, fixture.authRepository.remoteLogoutAttemptCount)
         assertEquals("access-token", fixture.authRepository.getAccessToken())
         assertFailsWith<SessionResetInProgressException> {
@@ -1014,7 +980,6 @@ private class QuranDataServiceFixture(
         SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings()),
     useRecordingSyncClient: Boolean = false
 ) {
-    val tokenStore = SyncSettingsLocalModificationDateStore(MapSettings().toSuspendSettings())
     val lifecycleCoordinator = SessionLifecycleCoordinator(lifecycleStore)
     val bookmarksRepository = ServiceBookmarksRepository()
     private val readingBookmarksRepository = ServiceReadingBookmarksRepository()
@@ -1024,6 +989,7 @@ private class QuranDataServiceFixture(
     val readingSessionsRepository = ServiceReadingSessionsRepository()
     private val importRepository = ServiceImportRepository()
     val syncClient = ServiceSynchronizationClient()
+    private val database = inMemoryMobileSyncDatabase()
     val authService = AuthService.createWithSessionPublicationGuard(
         authRepository = authRepository,
         sessionPublicationGuard = AuthSessionPublicationGuard {
@@ -1033,7 +999,6 @@ private class QuranDataServiceFixture(
     private val pipeline = SyncEnginePipeline(
         bookmarksRepository = bookmarksRepository,
         readingBookmarksRepository = readingBookmarksRepository,
-        readingBookmarksSynchronizationRepository = readingBookmarksRepository,
         collectionsRepository = collectionsRepository,
         collectionBookmarksRepository = collectionBookmarksRepository,
         notesRepository = notesRepository,
@@ -1056,8 +1021,8 @@ private class QuranDataServiceFixture(
             environment = SynchronizationEnvironment("https://example.invalid"),
             persistenceResetRepository = resetRepository,
             persistenceImportRepository = importRepository,
-            syncLocalModificationDateStore = tokenStore,
-            sessionLifecycleCoordinator = lifecycleCoordinator
+            sessionLifecycleCoordinator = lifecycleCoordinator,
+            database = database.synced
         )
     }
 
@@ -1093,8 +1058,8 @@ internal interface QuranDataServiceTestGraph {
             @Provides environment: SynchronizationEnvironment,
             @Provides persistenceResetRepository: PersistenceResetRepository,
             @Provides persistenceImportRepository: PersistenceImportRepository,
-            @Provides syncLocalModificationDateStore: SyncLocalModificationDateStore,
-            @Provides sessionLifecycleCoordinator: SessionLifecycleCoordinator
+            @Provides sessionLifecycleCoordinator: SessionLifecycleCoordinator,
+            @Provides database: SyncV2Database
         ): QuranDataServiceTestGraph
     }
 }
@@ -1105,7 +1070,7 @@ private class ServiceSynchronizationClientBindings(
 ) {
     @Provides
     fun provideQuranDataServiceSynchronizationClientFactory(): QuranDataServiceSynchronizationClientFactory =
-        QuranDataServiceSynchronizationClientFactory { _, _, _, _, _, _, _ -> syncClient }
+        QuranDataServiceSynchronizationClientFactory { _, _, _, _ -> syncClient }
 }
 
 private class ServiceAuthRepository(
@@ -1294,7 +1259,7 @@ private data class BookmarkAyahCollectionsReplaceCall(
     val timestamp: PlatformDateTime? = null
 )
 
-private class ServiceBookmarksRepository : BookmarksRepository, BookmarksSynchronizationRepository {
+private class ServiceBookmarksRepository : BookmarksRepository {
     val replaceAyahCalls = mutableListOf<BookmarkAyahCollectionsReplaceCall>()
     var replaceAyahResultChanged = true
 
@@ -1323,22 +1288,10 @@ private class ServiceBookmarksRepository : BookmarksRepository, BookmarksSynchro
         )
     }
 
-    override suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<RemoteBookmark>> = emptyList()
-    override suspend fun markMutatedBookmarksInFlight(acks: List<LocalMutationAck>): List<LocalMutationAck> = emptyList()
-    override suspend fun rollbackMutatedBookmarksInFlight(acks: List<LocalMutationAck>) = Unit
-    override suspend fun applyRemoteChanges(
-        updatesToPersist: List<RemoteModelMutation<RemoteBookmark>>,
-        localMutationsToClear: List<LocalModelMutation<RemoteBookmark>>,
-        writeBoundaryGuard: PersistenceWriteBoundaryGuard
-    ) = writeBoundaryGuard.checkWriteBoundary()
-    override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
-        remoteIDs.associateWith { false }
-    override suspend fun fetchBookmarkByRemoteId(remoteId: String): RemoteBookmark? = null
 }
 
 private class ServiceReadingBookmarksRepository :
-    ReadingBookmarksRepository,
-    ReadingBookmarksSynchronizationRepository {
+    ReadingBookmarksRepository {
     override suspend fun getReadingBookmarks(): List<ReadingBookmark> = emptyList()
     override fun getReadingBookmarksFlow(): Flow<List<ReadingBookmark>> = MutableStateFlow(emptyList())
     override suspend fun setAyahReadingBookmark(
@@ -1374,15 +1327,6 @@ private class ServiceReadingBookmarksRepository :
         timestamp: PlatformDateTime
     ): ReadingBookmark =
         EmptyReadingBookmark(slot, null, timestamp, "reading-$slot")
-    override suspend fun fetchMutatedReadingBookmarks(): List<LocalModelMutation<LocalSyncReadingBookmark>> = emptyList()
-    override suspend fun applyRemoteChanges(
-        updatesToPersist: List<RemoteModelMutation<RemoteReadingBookmark>>,
-        localMutationsToClear: List<LocalModelMutation<LocalSyncReadingBookmark>>,
-        writeBoundaryGuard: PersistenceWriteBoundaryGuard
-    ) = writeBoundaryGuard.checkWriteBoundary()
-    override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
-        remoteIDs.associateWith { false }
-    override suspend fun fetchReadingBookmarkByRemoteId(remoteId: String): RemoteReadingBookmark? = null
 }
 
 private data class CollectionUpdateCall(
@@ -1418,7 +1362,7 @@ private data class HighlightDeleteCall(
     val timestamp: PlatformDateTime? = null
 )
 
-private class ServiceCollectionsRepository : CollectionsRepository, CollectionsSynchronizationRepository {
+private class ServiceCollectionsRepository : CollectionsRepository {
     val addCalls = mutableListOf<CollectionAddCall>()
     val updateCalls = mutableListOf<CollectionUpdateCall>()
     val deleteCalls = mutableListOf<CollectionDeleteCall>()
@@ -1454,19 +1398,10 @@ private class ServiceCollectionsRepository : CollectionsRepository, CollectionsS
         return deleteResult
     }
     override fun getCollectionsFlow(): Flow<List<Collection>> = collections
-    override suspend fun fetchMutatedCollections(): List<LocalModelMutation<LocalSyncCollection>> = emptyList()
-    override suspend fun applyRemoteChanges(
-        updatesToPersist: List<RemoteModelMutation<RemoteCollection>>,
-        localMutationsToClear: List<LocalModelMutation<LocalSyncCollection>>,
-        writeBoundaryGuard: PersistenceWriteBoundaryGuard
-    ) = writeBoundaryGuard.checkWriteBoundary()
-    override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
-        remoteIDs.associateWith { false }
 }
 
 private class ServiceCollectionBookmarksRepository :
-    CollectionBookmarksRepository,
-    CollectionBookmarksSynchronizationRepository {
+    CollectionBookmarksRepository {
     val flowRequests = mutableListOf<String>()
     val setHighlightCalls = mutableListOf<HighlightSetCall>()
     val deleteHighlightCalls = mutableListOf<HighlightDeleteCall>()
@@ -1525,19 +1460,6 @@ private class ServiceCollectionBookmarksRepository :
         flowRequests += collectionId
         return bookmarksFlow(collectionId)
     }
-    override suspend fun fetchMutatedCollectionBookmarks(): List<LocalModelMutation<LocalSyncCollectionAyahBookmark>> =
-        emptyList()
-    override suspend fun markMutatedCollectionBookmarksInFlight(acks: List<LocalMutationAck>): List<LocalMutationAck> =
-        emptyList()
-    override suspend fun rollbackMutatedCollectionBookmarksInFlight(acks: List<LocalMutationAck>) = Unit
-    override suspend fun applyRemoteChanges(
-        updatesToPersist: List<RemoteModelMutation<RemoteCollectionBookmark>>,
-        localMutationsToClear: List<LocalModelMutation<LocalSyncCollectionAyahBookmark>>,
-        writeBoundaryGuard: PersistenceWriteBoundaryGuard
-    ) = writeBoundaryGuard.checkWriteBoundary()
-    override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
-        remoteIDs.associateWith { false }
-    override suspend fun fetchCollectionBookmarkByRemoteId(remoteId: String): LocalSyncCollectionAyahBookmark? = null
 
     private fun bookmarksFlow(collectionId: String): MutableStateFlow<List<CollectionAyahBookmark>> =
         bookmarksByCollectionId.getOrPut(collectionId) { MutableStateFlow(emptyList()) }
@@ -1547,7 +1469,7 @@ private data class NoteDeleteCall(
     val id: String
 )
 
-private class ServiceNotesRepository : NotesRepository, NotesSynchronizationRepository {
+private class ServiceNotesRepository : NotesRepository {
     val deleteCalls = mutableListOf<NoteDeleteCall>()
     var deleteResult = true
 
@@ -1562,36 +1484,17 @@ private class ServiceNotesRepository : NotesRepository, NotesSynchronizationRepo
         endAyah: Int,
         timestamp: com.quran.shared.persistence.util.PlatformDateTime
     ): Note = addNote(body, startSura, startAyah, endSura, endAyah)
+    override suspend fun updateNote(id: String, body: String): Note = addNote(body, 1, 1, 1, 1)
     override suspend fun updateNote(
         id: String,
         body: String,
-        startSura: Int,
-        startAyah: Int,
-        endSura: Int,
-        endAyah: Int
-    ): Note = addNote(body, startSura, startAyah, endSura, endAyah)
-    override suspend fun updateNote(
-        id: String,
-        body: String,
-        startSura: Int,
-        startAyah: Int,
-        endSura: Int,
-        endAyah: Int,
         timestamp: com.quran.shared.persistence.util.PlatformDateTime
-    ): Note = addNote(body, startSura, startAyah, endSura, endAyah)
+    ): Note = addNote(body, 1, 1, 1, 1)
     override suspend fun deleteNote(id: String): Boolean {
         deleteCalls += NoteDeleteCall(id)
         return deleteResult
     }
     override fun getNotesFlow(): Flow<List<Note>> = MutableStateFlow(emptyList())
-    override suspend fun fetchMutatedNotes(lastModified: Long): List<LocalModelMutation<LocalSyncNote>> = emptyList()
-    override suspend fun applyRemoteChanges(
-        updatesToPersist: List<RemoteModelMutation<RemoteNote>>,
-        localMutationsToClear: List<LocalModelMutation<LocalSyncNote>>,
-        writeBoundaryGuard: PersistenceWriteBoundaryGuard
-    ) = writeBoundaryGuard.checkWriteBoundary()
-    override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
-        remoteIDs.associateWith { false }
 }
 
 private data class ReadingSessionDeleteCall(
@@ -1599,7 +1502,7 @@ private data class ReadingSessionDeleteCall(
     val ayah: Int
 )
 
-private class ServiceReadingSessionsRepository : ReadingSessionsRepository, ReadingSessionsSynchronizationRepository {
+private class ServiceReadingSessionsRepository : ReadingSessionsRepository {
     val deleteCalls = mutableListOf<ReadingSessionDeleteCall>()
     var deleteResult = true
 
@@ -1624,20 +1527,6 @@ private class ServiceReadingSessionsRepository : ReadingSessionsRepository, Read
         deleteCalls += ReadingSessionDeleteCall(sura, ayah)
         return deleteResult
     }
-    override suspend fun fetchMutatedReadingSessions(): List<LocalModelMutation<LocalSyncReadingSession>> = emptyList()
-    override suspend fun applyRemoteChanges(
-        updatesToPersist: List<RemoteModelMutation<RemoteReadingSession>>,
-        localMutationIdsToClear: List<String>,
-        writeBoundaryGuard: PersistenceWriteBoundaryGuard
-    ) = writeBoundaryGuard.checkWriteBoundary()
-    override suspend fun applyRemoteChangesForMutations(
-        updatesToPersist: List<RemoteModelMutation<RemoteReadingSession>>,
-        localMutationsToClear: List<LocalModelMutation<LocalSyncReadingSession>>,
-        writeBoundaryGuard: PersistenceWriteBoundaryGuard
-    ) = writeBoundaryGuard.checkWriteBoundary()
-    override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> =
-        remoteIDs.associateWith { false }
-    override suspend fun fetchReadingSessionByRemoteId(remoteId: String): ReadingSession? = null
 }
 
 private fun bookmarkLink(

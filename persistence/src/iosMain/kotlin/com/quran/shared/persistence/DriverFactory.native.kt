@@ -57,7 +57,11 @@ actual class DriverFactory internal constructor(
     }
 
     private fun openCheckedDriver(): SqlDriver {
-        val driver = NativeSqliteDriver(QuranDatabase.Schema, name, onConfiguration = onConfiguration)
+        val driver = NativeSqliteDriver(MobileSyncSchema, name, onConfiguration = { configuration ->
+            onConfiguration(
+                configuration.copy(extendedConfig = configuration.extendedConfig.copy(foreignKeyConstraints = true))
+            )
+        })
         try {
             // Opening is lazy; the first statement opens the file and runs schema creation.
             val problems = driver.executeQuery(

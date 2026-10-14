@@ -9,8 +9,10 @@ plugins {
 }
 
 kotlin {
-    iosArm64()
-    iosSimulatorArm64()
+    // The common tests open an in-memory SQLite database, so the iOS test binaries link SQLite.
+    listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
+        target.binaries.all { linkerOpts("-lsqlite3") }
+    }
 
 
     jvm()
@@ -43,6 +45,7 @@ kotlin {
             api(projects.persistence)
             api(projects.mutationsDefinitions)
             api(projects.auth)
+            implementation(projects.syncV2)
         }
 
         commonTest.dependencies {
@@ -54,6 +57,15 @@ kotlin {
         jvmTest.dependencies {
             implementation(libs.sqldelight.sqlite.driver)
             implementation(libs.kotlinx.serialization.json)
+        }
+
+        // The common tests open an in-memory database on each platform's own SQLite driver.
+        getByName("androidHostTest").dependencies {
+            implementation(libs.sqldelight.sqlite.driver)
+        }
+
+        iosTest.dependencies {
+            implementation(libs.sqldelight.native.driver)
         }
 
     }

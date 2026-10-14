@@ -2,56 +2,36 @@ package com.quran.shared.persistence.repository.bookmark.repository
 
 import co.touchlab.kermit.Logger
 import com.quran.shared.di.AppScope
-import com.quran.shared.mutations.LOCAL_MUTATION_BOOKMARK_ENTITY_FACET
-import com.quran.shared.mutations.LocalModelMutation
-import com.quran.shared.mutations.LocalMutationAck
-import com.quran.shared.mutations.LocalMutationResource
-import com.quran.shared.mutations.Mutation
-import com.quran.shared.mutations.RemoteModelMutation
-import com.quran.shared.persistence.QuranDatabase
-import com.quran.shared.persistence.input.RemoteBookmark
 import com.quran.shared.persistence.model.BookmarkCollectionsReplacementResult
-import com.quran.shared.persistence.model.DatabaseBookmark
-import com.quran.shared.persistence.model.DatabaseUnsyncedBookmark
-import com.quran.shared.persistence.model.highlightColorForCollectionName
-import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
-import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
-import com.quran.shared.persistence.repository.bookmark.AyahBookmarkStore
-import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
-import com.quran.shared.persistence.repository.bookmark.activeSavedCollectionIdsForBookmark
-import com.quran.shared.persistence.repository.bookmark.extension.toAyahBookmark
+import com.quran.shared.persistence.repository.collection.CollectionStore
+import com.quran.shared.persistence.repository.collection.isHighlight
+import com.quran.shared.persistence.repository.collectionbookmark.AyahBookmarkDates
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.currentPlatformDateTime
-import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toEpochMillisecondsFromPlatform
-import com.quran.shared.persistence.util.toPlatform
+import com.quran.shared.syncv2.db.SyncV2Database
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
-import kotlin.time.Instant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
+import kotlin.native.HiddenFromObjC
 
 @Inject
 @SingleIn(AppScope::class)
+@HiddenFromObjC
 class BookmarksRepositoryImpl(
-    private val database: QuranDatabase,
-    private val reconciler: BookmarkDependencyReconciler = BookmarkDependencyReconciler(database)
-) : BookmarksRepository, BookmarksSynchronizationRepository {
+    private val database: SyncV2Database
+) : BookmarksRepository {
 
     private val logger = Logger.withTag("BookmarksRepository")
-    private val bookmarkQueries = lazy { database.bookmarksQueries }
-    private val bookmarkCollectionQueries = lazy { database.bookmark_collectionsQueries }
-    private val collectionQueries = lazy { database.collectionsQueries }
-    private val ayahBookmarkStore = AyahBookmarkStore(database)
+    private val store = CollectionStore(database)
 
     override suspend fun replaceAyahBookmarkCollections(
         sura: Int,
         ayah: Int,
         collectionIds: List<String>
-    ): BookmarkCollectionsReplacementResult {
-        return replaceAyahBookmarkCollections(sura, ayah, collectionIds, currentPlatformDateTime())
-    }
+    ): BookmarkCollectionsReplacementResult = replaceAyahBookmarkCollections(sura, ayah, collectionIds, currentPlatformDateTime())
 
     override suspend fun replaceAyahBookmarkCollections(
         sura: Int,
@@ -59,360 +39,26 @@ class BookmarksRepositoryImpl(
         collectionIds: List<String>,
         timestamp: PlatformDateTime
     ): BookmarkCollectionsReplacementResult {
-        val timestampMillis = timestamp.toEpochMillisecondsFromPlatform()
-        val desiredCollectionIds = collectionIds
-            .map(String::trim)
-            .filter(String::isNotEmpty)
-            .toSet()
+        val at = timestamp.toEpochMillisecondsFromPlatform()
+        val requested = collectionIds.map(String::trim).filter(String::isNotEmpty).toSet()
         logger.i { "Replacing ayah bookmark collection memberships for $sura:$ayah" }
         return withContext(Dispatchers.IO) {
-            var result: BookmarkCollectionsReplacementResult? = null
-            database.transaction {
-                val desiredSavedCollectionIds = resolveSavedCollectionIds(desiredCollectionIds)
-                val existingBookmark = ayahBookmarkStore.get(sura, ayah)
-                var bookmark = existingBookmark
-                val hadActiveBookmark = bookmark?.deleted == 0L
-
-                if (bookmark == null || bookmark.deleted == 1L) {
-                    if (desiredSavedCollectionIds.isEmpty()) {
-                        result = BookmarkCollectionsReplacementResult(bookmark = null, changed = false)
-                        return@transaction
-                    }
-                    bookmark = ayahBookmarkStore.resolve(
-                        sura = sura,
-                        ayah = ayah,
-                        createdAt = timestampMillis,
-                        modifiedAt = timestampMillis,
-                        existing = existingBookmark
-                    ).bookmark
-                }
-
-                val currentSavedCollectionIds = database.activeSavedCollectionIdsForBookmark(bookmark.local_id)
-                // A highlight can create the row before it becomes an app-facing saved bookmark.
-                // Preserve that creation time while stamping the first save.
-                if (hadActiveBookmark &&
-                    currentSavedCollectionIds.isEmpty() &&
-                    desiredSavedCollectionIds.isNotEmpty()
-                ) {
-                    bookmarkQueries.value.touchBookmarkForFirstSavedMembership(
-                        local_id = bookmark.local_id,
-                        modified_at = timestampMillis
-                    )
-                }
-                val changed = replaceBookmarkCollectionsInTransaction(
-                    bookmark = bookmark,
-                    currentCollectionIds = currentSavedCollectionIds,
-                    desiredCollectionIds = desiredSavedCollectionIds,
-                    timestampMillis = timestampMillis
-                )
-                val replacedBookmark = if (desiredSavedCollectionIds.isEmpty()) {
-                    null
-                } else {
-                    bookmarkQueries.value
-                        .getBookmarkByLocalId(bookmark.local_id)
-                        .executeAsOne()
-                        .toAyahBookmark()
-                }
-                result = BookmarkCollectionsReplacementResult(replacedBookmark, changed)
-            }
-            requireNotNull(result)
-        }
-    }
-
-    private fun replaceBookmarkCollectionsInTransaction(
-        bookmark: DatabaseBookmark,
-        currentCollectionIds: Set<Long>,
-        desiredCollectionIds: Set<Long>,
-        timestampMillis: Long
-    ): Boolean {
-        if (currentCollectionIds == desiredCollectionIds) {
-            return false
-        }
-
-        (desiredCollectionIds - currentCollectionIds).forEach { collectionLocalId ->
-            bookmarkCollectionQueries.value.addBookmarkToCollection(
-                bookmark_local_id = bookmark.local_id,
-                collection_local_id = collectionLocalId,
-                timestamp = timestampMillis
-            )
-        }
-        (currentCollectionIds - desiredCollectionIds).forEach { collectionLocalId ->
-            bookmarkCollectionQueries.value.markBookmarkCollectionDeleted(
-                bookmark_local_id = bookmark.local_id,
-                collection_local_id = collectionLocalId,
-                timestamp = timestampMillis
-            )
-        }
-        reconciler.reconcile(timestampMillis)
-        return true
-    }
-
-    private fun resolveSavedCollectionIds(collectionIds: Set<String>): Set<Long> {
-        return collectionIds.mapNotNull { collectionLocalId ->
-            val collection = collectionQueries.value
-                .getCollectionByLocalId(collectionLocalId.toLong())
-                .executeAsOneOrNull()
-            require(collection?.deleted == 0L) { "Collection not found for localId=$collectionLocalId." }
-            collection.local_id.takeUnless { highlightColorForCollectionName(collection.name.value) != null }
-        }.toSet()
-    }
-
-    override suspend fun fetchMutatedBookmarks(): List<LocalModelMutation<RemoteBookmark>> {
-        return withContext(Dispatchers.IO) {
-            bookmarkQueries.value.getUnsyncedBookmarkRows()
-                .executeAsList()
-                .mapNotNull { row -> row.toRemoteBookmarkMutation() }
-        }
-    }
-
-    override suspend fun markMutatedBookmarksInFlight(acks: List<LocalMutationAck>): List<LocalMutationAck> {
-        return emptyList()
-    }
-
-    override suspend fun rollbackMutatedBookmarksInFlight(acks: List<LocalMutationAck>) {
-        return
-    }
-
-    override suspend fun applyRemoteChanges(
-        updatesToPersist: List<RemoteModelMutation<RemoteBookmark>>,
-        localMutationsToClear: List<LocalModelMutation<RemoteBookmark>>,
-        writeBoundaryGuard: PersistenceWriteBoundaryGuard
-    ) {
-        logger.i {
-            "Applying remote bookmark changes with ${updatesToPersist.size} updates to persist and " +
-                "${localMutationsToClear.size} local mutations to clear"
-        }
-        return withContext(Dispatchers.IO) {
-            writeBoundaryGuard.checkWriteBoundary()
-            database.transaction {
-                updatesToPersist.forEach { remote ->
-                    when (remote.mutation) {
-                        Mutation.CREATED, Mutation.MODIFIED -> {
-                            attachRemoteIdForCreatedAck(remote)
-                            if (!remote.isPushedBookmarkAck()) {
-                                applyRemoteBookmarkUpsert(remote)
-                            }
-                        }
-                        Mutation.DELETED -> {
-                            if (!remote.isPushedBookmarkAck()) {
-                                applyRemoteBookmarkDeletion(remote)
-                            }
-                        }
-                    }
-                }
-
-                localMutationsToClear.forEach { local ->
-                    clearLocalBookmarkMutation(local)
-                }
-                reconciler.reconcile()
+            database.transactionWithResult {
+                val desired = requested.mapNotNull { id ->
+                    val collection = requireNotNull(id.toLongOrNull()?.let(store::get)) { "Collection not found for localId=$id." }
+                    // Highlights are kept as they are, whatever the request says.
+                    collection.local_id.takeUnless { collection.isHighlight }
+                }.toSet()
+                val highlights = store.highlightCollections().values.map { it.local_id }.toSet()
+                val current = store.membershipsOf(sura, ayah).map { it.collection_local_id }.filter { it !in highlights }.toSet()
+                // A verse moved between saved collections keeps its bookmark date: new memberships take the earliest
+                // current one's, so only the first save dates the bookmark.
+                val savedAt = store.membershipsOf(sura, ayah).filter { it.collection_local_id in current }.minOfOrNull { it.created_at } ?: at
+                (desired - current).forEach { store.addVerse(it, sura, ayah, savedAt) }
+                (current - desired).forEach { store.removeVerse(it, sura, ayah) }
+                val bookmark = if (desired.isEmpty()) null else AyahBookmarkDates(store.allVerses(), highlights).ayahBookmark(sura, ayah)
+                BookmarkCollectionsReplacementResult(bookmark, changed = desired != current)
             }
         }
-    }
-
-    override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> {
-        return buildRemoteResourceExistenceMap(remoteIDs) { chunk ->
-            bookmarkQueries.value.checkRemoteIDsExistence(chunk)
-                .executeAsList()
-                .mapNotNull { it.remote_id }
-        }
-    }
-
-    override suspend fun fetchBookmarkByRemoteId(remoteId: String): RemoteBookmark? {
-        return withContext(Dispatchers.IO) {
-            bookmarkQueries.value.getBookmarkByRemoteId(remoteId)
-                .executeAsOneOrNull()
-                ?.toRemoteBookmark()
-        }
-    }
-
-    private fun clearLocalBookmarkMutation(local: LocalModelMutation<RemoteBookmark>) {
-        val localId = local.localID.toLongOrNull() ?: return
-        val ack = local.ack ?: return
-        if (ack.localID != local.localID || ack.resource != LocalMutationResource.BOOKMARK) {
-            return
-        }
-        val remoteTimestamp = local.model.lastUpdated.fromPlatform().toEpochMilliseconds()
-        val remoteIdToBackfill = remoteIdBackfillFor(localId, local.remoteID)
-        when (ack.facet) {
-            LOCAL_MUTATION_BOOKMARK_ENTITY_FACET -> {
-                val current = bookmarkQueries.value.getBookmarkByLocalId(localId).executeAsOneOrNull() ?: return
-                if (ack.observedPendingOp == Mutation.DELETED &&
-                    current.deleted == 1L &&
-                    current.bookmark_pending_op == ack.observedPendingOp.name &&
-                    current.bookmark_pending_version == ack.observedPendingVersion &&
-                    current.remote_id == local.remoteID
-                ) {
-                    bookmarkQueries.value.clearBookmarkDeletePending(
-                        local_id = localId,
-                        remote_id = remoteIdToBackfill,
-                        modified_at = remoteTimestamp,
-                        pending_op = ack.observedPendingOp.name,
-                        pending_version = ack.observedPendingVersion
-                    )
-                    reconciler.pruneBookmarkIfOrphan(localId)
-                    return
-                }
-                bookmarkQueries.value.clearBookmarkPending(
-                    local_id = localId,
-                    remote_id = remoteIdToBackfill,
-                    modified_at = remoteTimestamp,
-                    pending_op = ack.observedPendingOp.name,
-                    pending_version = ack.observedPendingVersion
-                )
-            }
-            else -> {
-                return
-            }
-        }
-    }
-
-    private fun RemoteModelMutation<RemoteBookmark>.isPushedBookmarkAck(): Boolean {
-        return ack?.resource == LocalMutationResource.BOOKMARK
-    }
-
-    private fun attachRemoteIdForCreatedAck(remote: RemoteModelMutation<RemoteBookmark>) {
-        val ack = remote.ack ?: return
-        if (ack.resource != LocalMutationResource.BOOKMARK ||
-            ack.observedPendingOp != Mutation.CREATED
-        ) {
-            return
-        }
-        val localId = ack.localID.toLongOrNull() ?: return
-        val row = bookmarkQueries.value.getBookmarkByLocalId(localId).executeAsOneOrNull() ?: return
-        if (!row.matches(remote.model)) {
-            return
-        }
-        val owner = bookmarkQueries.value.getBookmarkByRemoteId(remote.remoteID).executeAsOneOrNull()
-        if (owner != null && owner.local_id != localId) {
-            return
-        }
-        bookmarkQueries.value.attachRemoteBookmarkIdByLocalId(
-            local_id = localId,
-            remote_id = remote.remoteID,
-            modified_at = remote.model.lastUpdated.fromPlatform().toEpochMilliseconds()
-        )
-    }
-
-    private fun remoteIdBackfillFor(localId: Long, remoteId: String?): String? {
-        remoteId ?: return null
-        val owner = bookmarkQueries.value.getBookmarkByRemoteId(remoteId).executeAsOneOrNull()
-        return if (owner == null || owner.local_id == localId) {
-            remoteId
-        } else {
-            null
-        }
-    }
-
-    private fun applyRemoteBookmarkUpsert(remote: RemoteModelMutation<RemoteBookmark>) {
-        val updatedAt = remote.model.lastUpdated.fromPlatform().toEpochMilliseconds()
-        val createdAt = remote.model.createdAt?.fromPlatform()?.toEpochMilliseconds() ?: updatedAt
-        // Backend bookmark IDs are stable canonical row IDs and are not reused or moved between locations.
-        val existingByRemoteId = bookmarkQueries.value.getBookmarkByRemoteId(remote.remoteID).executeAsOneOrNull()
-        if (existingByRemoteId != null && !existingByRemoteId.matches(remote.model)) {
-            logger.w {
-                "Skipping remote bookmark ${remote.remoteID}; existing row is a different location."
-            }
-            return
-        }
-        val existingAtLocation = getBookmarkAtLocation(remote.model)
-        if (existingAtLocation?.remote_id != null &&
-            existingAtLocation.remote_id != remote.remoteID
-        ) {
-            logger.w {
-                "Skipping remote bookmark ${remote.remoteID}; location already belongs to ${existingAtLocation.remote_id}."
-            }
-            return
-        }
-        when (val model = remote.model) {
-            is RemoteBookmark.Ayah -> {
-                bookmarkQueries.value.upsertAyahBookmark(
-                    remote_id = remote.remoteID,
-                    sura = model.sura.toLong(),
-                    ayah = model.ayah.toLong(),
-                    created_at = createdAt,
-                    modified_at = updatedAt
-                )
-            }
-        }
-    }
-
-    private fun getBookmarkAtLocation(bookmark: RemoteBookmark): DatabaseBookmark? {
-        return when (bookmark) {
-            is RemoteBookmark.Ayah -> bookmarkQueries.value
-                .getBookmarkForAyah(bookmark.sura.toLong(), bookmark.ayah.toLong())
-                .executeAsOneOrNull()
-        }
-    }
-
-    private fun DatabaseBookmark.matches(bookmark: RemoteBookmark): Boolean {
-        return when (bookmark) {
-            is RemoteBookmark.Ayah ->
-                sura == bookmark.sura.toLong() &&
-                    ayah == bookmark.ayah.toLong()
-        }
-    }
-
-    private fun applyRemoteBookmarkDeletion(remote: RemoteModelMutation<RemoteBookmark>) {
-        val row = bookmarkQueries.value.getBookmarkByRemoteId(remote.remoteID).executeAsOneOrNull()
-        if (row == null) {
-            bookmarkQueries.value.hardDeleteBookmarkByRemoteId(remote_id = remote.remoteID)
-            return
-        }
-
-        val updatedAt = remote.model.lastUpdated.fromPlatform().toEpochMilliseconds()
-        bookmarkCollectionQueries.value.markBookmarkCollectionsDeletedForBookmark(
-            bookmark_local_id = row.local_id,
-            timestamp = updatedAt
-        )
-        bookmarkQueries.value.applyRemoteBookmarkDeletedByLocalId(
-            local_id = row.local_id,
-            modified_at = updatedAt
-        )
-        reconciler.pruneBookmarkIfOrphan(row.local_id)
-    }
-
-    private fun DatabaseUnsyncedBookmark.toRemoteBookmarkMutation(): LocalModelMutation<RemoteBookmark>? {
-        val model = RemoteBookmark.Ayah(
-            sura = sura.toInt(),
-            ayah = ayah.toInt(),
-            lastUpdated = Instant.fromEpochMilliseconds(
-                if (deleted == 1L || bookmark_pending_op == "DELETED") modified_at else bookmark_modified_at
-            ).toPlatform(),
-            createdAt = Instant.fromEpochMilliseconds(created_at).toPlatform()
-        )
-        val pendingOp = when (bookmark_pending_op) {
-            "DELETED" -> Mutation.DELETED
-            "MODIFIED" -> Mutation.MODIFIED
-            "CREATED" -> Mutation.CREATED
-            else -> return null
-        }
-        return LocalModelMutation(
-            mutation = pendingOp,
-            model = model,
-            remoteID = remote_id,
-            localID = local_id.toString(),
-            ack = LocalMutationAck(
-                localID = local_id.toString(),
-                resource = LocalMutationResource.BOOKMARK,
-                facet = LOCAL_MUTATION_BOOKMARK_ENTITY_FACET,
-                observedPendingOp = pendingOp,
-                observedPendingVersion = bookmark_pending_version
-            )
-        )
-    }
-
-    private fun DatabaseBookmark.toRemoteBookmark(): RemoteBookmark {
-        val createdAt = Instant.fromEpochMilliseconds(created_at).toPlatform()
-        val updatedAt = Instant.fromEpochMilliseconds(
-            if (deleted == 1L || bookmark_pending_op == "DELETED") {
-                modified_at
-            } else bookmark_modified_at
-        ).toPlatform()
-        return RemoteBookmark.Ayah(
-            sura = sura.toInt(),
-            ayah = ayah.toInt(),
-            lastUpdated = updatedAt,
-            createdAt = createdAt
-        )
     }
 }

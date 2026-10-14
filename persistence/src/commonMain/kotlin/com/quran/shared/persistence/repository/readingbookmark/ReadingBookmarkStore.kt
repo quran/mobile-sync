@@ -1,67 +1,54 @@
 package com.quran.shared.persistence.repository.readingbookmark
 
-import com.quran.shared.persistence.QuranDatabase
-import com.quran.shared.persistence.model.DatabaseReadingBookmark
+import com.quran.shared.mutations.trimLikeServer
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
-import com.quran.shared.persistence.model.SUPPORTED_MUSHAF_ID
 import com.quran.shared.persistence.model.toStorageValue
+import com.quran.shared.syncv2.db.Reading_bookmark
+import com.quran.shared.syncv2.db.SyncV2Database
+import com.quran.shared.syncv2.types.ReadingLocation
 
-/** Transaction-scoped access to persisted reading bookmarks. */
-internal class ReadingBookmarkStore(
-    private val database: QuranDatabase
-) {
-    private val queries = database.reading_bookmarksQueries
+/**
+ * The one write path for reading bookmarks: one row per slot, which a clear keeps (with its name and the server's
+ * metadata). Names are stored trimmed like the server, an empty one as null. Callers run writes in a transaction.
+ */
+internal class ReadingBookmarkStore(private val database: SyncV2Database) {
+    private val queries get() = database.readingBookmarksQueries
 
-    fun setAyah(
-        slot: ReadingBookmarkSlot,
-        sura: Int,
-        ayah: Int,
-        timestampMillis: Long
-    ): DatabaseReadingBookmark {
-        val slotValue = slot.toStorageValue().toLong()
-        queries.setAyahReadingBookmark(
-            slot = slotValue,
-            sura = sura.toLong(),
-            ayah = ayah.toLong(),
-            mushaf_id = SUPPORTED_MUSHAF_ID,
-            timestamp = timestampMillis
-        )
-        return requireSlot(slotValue)
-    }
+    fun all(): List<Reading_bookmark> = queries.all().executeAsList()
 
-    fun setPage(
-        slot: ReadingBookmarkSlot,
-        page: Int,
-        timestampMillis: Long
-    ): DatabaseReadingBookmark {
-        val slotValue = slot.toStorageValue().toLong()
-        queries.setPageReadingBookmark(
-            slot = slotValue,
-            page = page.toLong(),
-            mushaf_id = SUPPORTED_MUSHAF_ID,
-            timestamp = timestampMillis
-        )
-        return requireSlot(slotValue)
-    }
+    fun get(slot: ReadingBookmarkSlot): Reading_bookmark? = queries.bySlot(slot.storage).executeAsOneOrNull()
 
-    fun rename(
-        slot: ReadingBookmarkSlot,
-        name: String?,
-        timestampMillis: Long
-    ): DatabaseReadingBookmark {
-        val slotValue = slot.toStorageValue().toLong()
-        queries.renameReadingBookmark(slotValue, name, timestampMillis)
-        return requireSlot(slotValue)
-    }
+    fun setLocation(slot: ReadingBookmarkSlot, location: ReadingLocation?, at: Long): Reading_bookmark =
+        write(slot, at) { it.copy(location = location) }
 
-    fun clear(slot: ReadingBookmarkSlot, timestampMillis: Long): DatabaseReadingBookmark {
-        val slotValue = slot.toStorageValue().toLong()
-        queries.clearReadingBookmark(slotValue, timestampMillis)
-        return requireSlot(slotValue)
-    }
+    fun rename(slot: ReadingBookmarkSlot, name: String?, at: Long): Reading_bookmark =
+        write(slot, at) { it.copy(name = name?.trimLikeServer()?.ifEmpty { null }) }
 
-    private fun requireSlot(slot: Long): DatabaseReadingBookmark =
-        requireNotNull(queries.getReadingBookmarkForSlot(slot).executeAsOneOrNull()) {
-            "Expected reading bookmark for slot=$slot after mutation."
+    private fun write(slot: ReadingBookmarkSlot, at: Long, change: (Fields) -> Fields): Reading_bookmark {
+        val existing = get(slot)
+        val next = change(existing?.fields() ?: Fields(name = null, location = null))
+        val location = next.location
+        if (existing == null) {
+            queries.insert(
+                slot.storage, next.name, location?.type, location?.key?.toLong(), location?.verse?.toLong(),
+                location?.mushafId?.toLong(), null, at, at
+            )
+        } else {
+            queries.update(
+                slot.storage, next.name, location?.type, location?.key?.toLong(), location?.verse?.toLong(),
+                location?.mushafId?.toLong(), existing.metadata, existing.created_at, at, existing.local_id
+            )
         }
+        return requireNotNull(get(slot)) { "Expected reading bookmark for slot=$slot after mutation." }
+    }
+
+    private data class Fields(val name: String?, val location: ReadingLocation?)
+
+    private fun Reading_bookmark.fields() = Fields(name, location())
+
+    private val ReadingBookmarkSlot.storage: Long get() = toStorageValue().toLong()
+}
+
+internal fun Reading_bookmark.location(): ReadingLocation? = location_type?.let { type ->
+    ReadingLocation.of(type, location_key!!.toInt(), location_verse?.toInt(), mushaf_id?.toInt() ?: ReadingLocation.STANDARD)
 }

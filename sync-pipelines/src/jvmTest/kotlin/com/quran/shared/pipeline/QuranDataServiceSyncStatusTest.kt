@@ -2,16 +2,16 @@
 
 package com.quran.shared.pipeline
 
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import app.cash.sqldelight.db.SqlDriver
 import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.auth.repository.AuthRepository
 import com.quran.shared.auth.repository.LogoutTokenMaterial
 import com.quran.shared.auth.repository.RemoteLogoutFailure
 import com.quran.shared.auth.repository.RemoteLogoutMode
 import com.quran.shared.auth.service.AuthService
-import com.quran.shared.persistence.QuranDatabase
-import com.quran.shared.persistence.createQuranDatabase
+import com.quran.shared.persistence.MobileSyncDatabase
 import com.quran.shared.persistence.repository.PersistenceResetRepositoryImpl
+import com.quran.shared.pipeline.sync.SyncClient
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepositoryImpl
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepositoryImpl
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepositoryImpl
@@ -49,38 +49,36 @@ import kotlin.test.assertIs
 class QuranDataServiceSyncStatusTest {
     private val dispatcher = StandardTestDispatcher()
     private val events = SyncRunEvents()
-    private lateinit var driver: JdbcSqliteDriver
+    private lateinit var driver: SqlDriver
     private lateinit var authService: AuthService
     private lateinit var service: QuranDataService
 
     @BeforeTest
     fun setUp() {
         Dispatchers.setMain(dispatcher)
-        driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        QuranDatabase.Schema.create(driver)
-        val database = createQuranDatabase(driver)
+        val database = inMemoryMobileSyncDatabase()
+        driver = database.driver
+        val synced = database.synced
         authService = AuthService(SignedOutAuthRepository())
-        val readingBookmarks = ReadingBookmarksRepositoryImpl(database)
         val pipeline = SyncEnginePipeline(
-            bookmarksRepository = BookmarksRepositoryImpl(database),
-            readingBookmarksRepository = readingBookmarks,
-            readingBookmarksSynchronizationRepository = readingBookmarks,
-            collectionsRepository = CollectionsRepositoryImpl(database),
-            collectionBookmarksRepository = CollectionBookmarksRepositoryImpl(database),
-            notesRepository = NotesRepositoryImpl(database),
-            readingSessionsRepository = ReadingSessionsRepositoryImpl(database)
+            bookmarksRepository = BookmarksRepositoryImpl(synced),
+            readingBookmarksRepository = ReadingBookmarksRepositoryImpl(synced),
+            collectionsRepository = CollectionsRepositoryImpl(synced),
+            collectionBookmarksRepository = CollectionBookmarksRepositoryImpl(synced),
+            notesRepository = NotesRepositoryImpl(synced),
+            readingSessionsRepository = ReadingSessionsRepositoryImpl(synced)
         )
-        service = createDynamicGraphFactory<QuranDataServiceTestGraph.Factory>(RecordingSyncBindings(events))
+        service = createDynamicGraphFactory<QuranDataServiceTestGraph.Factory>(RecordingSyncBindings(events, database))
             .create(
                 authService = authService,
                 pipeline = pipeline,
                 environment = SynchronizationEnvironment("https://example.invalid"),
-                persistenceResetRepository = PersistenceResetRepositoryImpl(database),
-                persistenceImportRepository = PersistenceImportRepositoryImpl(database),
-                syncLocalModificationDateStore = SyncSettingsLocalModificationDateStore(MapSettings().toSuspendSettings()),
+                persistenceResetRepository = PersistenceResetRepositoryImpl(database.quran, synced),
+                persistenceImportRepository = PersistenceImportRepositoryImpl(database.quran, synced),
                 sessionLifecycleCoordinator = SessionLifecycleCoordinator(
                     SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings())
-                )
+                ),
+                database = synced
             ).quranDataService
     }
 
@@ -149,12 +147,12 @@ private val serverError = SyncError(
 )
 
 @BindingContainer
-private class RecordingSyncBindings(private val events: SyncRunEvents) {
+private class RecordingSyncBindings(private val events: SyncRunEvents, private val database: MobileSyncDatabase) {
     @Provides
     fun synchronizationClientFactory(): QuranDataServiceSynchronizationClientFactory =
-        QuranDataServiceSynchronizationClientFactory { pipeline, environment, dates, auth, gate, callback, observer ->
+        QuranDataServiceSynchronizationClientFactory { environment, account, gate, observer ->
             events.service = observer
-            pipeline.setup(environment, dates, auth, gate, callback, events)
+            SyncClient.create(database.synced, environment, account, gate, events)
         }
 }
 

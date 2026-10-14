@@ -37,7 +37,7 @@ class ObservabilityScenariosTest {
             assertFailsWith<TextLengthLimitException> { phone.data.addNote("short", 1, 1, 1, 1) },
             assertFailsWith<TextLengthLimitException> { phone.data.addNote("x".repeat(10_001), 1, 1, 1, 1) },
             assertFailsWith<TextLengthLimitException> {
-                phone.data.updateNote(phone.note("A note to edit later").id, "<".repeat(2_501), 2, 255, 2, 255)
+                phone.data.updateNote(phone.note("A note to edit later").id, "<".repeat(2_501))
             },
             assertFailsWith<TextLengthLimitException> { phone.data.addCollection(" ") },
             assertFailsWith<TextLengthLimitException> { phone.data.updateCollection(study.id, "y".repeat(256)) }

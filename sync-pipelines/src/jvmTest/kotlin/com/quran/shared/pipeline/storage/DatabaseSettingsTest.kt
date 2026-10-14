@@ -2,10 +2,8 @@ package com.quran.shared.pipeline.storage
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.quran.shared.persistence.QuranDatabase
-import com.quran.shared.persistence.createQuranDatabase
 import com.quran.shared.persistence.repository.keyvalue.KeyValueRepositoryImpl
 import com.quran.shared.pipeline.SettingsSessionLifecycleStateStore
-import com.quran.shared.pipeline.SyncSettingsLocalModificationDateStore
 import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -23,7 +21,7 @@ class DatabaseSettingsTest {
     fun setup() {
         driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         QuranDatabase.Schema.create(driver)
-        database = createQuranDatabase(driver)
+        database = QuranDatabase(driver)
     }
 
     @AfterTest
@@ -79,11 +77,9 @@ class DatabaseSettingsTest {
     }
 
     @Test
-    fun `sync metadata stores persist in the database`() = runTest {
-        SyncSettingsLocalModificationDateStore(newSettings()).updateLastModificationDate(1234L)
+    fun `session lifecycle state persists in the database`() = runTest {
         val resetState = SettingsSessionLifecycleStateStore(newSettings()).beginReset()
 
-        assertEquals(1234L, SyncSettingsLocalModificationDateStore(newSettings()).localLastModificationDate())
         assertEquals(resetState, SettingsSessionLifecycleStateStore(newSettings()).snapshot())
     }
 }

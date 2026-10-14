@@ -117,6 +117,20 @@ class FakeAuthRepository(private val device: String, private val server: FakeSyn
         return accessToken() != null
     }
 
+    /** Like OidcAuthRepository after a 401: a new token from [server], or the end of a session [expireSession] doomed. */
+    override suspend fun forceRefreshTokens(): Boolean {
+        val account = account
+        if (accessToken() == null || account == null) return false
+        if (expireOnNextRefresh) {
+            expireOnNextRefresh = false
+            clearLocalSession()
+            return false
+        }
+        tokenStore.saveTokens(server.issueToken(account, device), null, null)
+        refreshCount.update { it + 1 }
+        return true
+    }
+
     override suspend fun logout() = clearLocalSession()
 
     override suspend fun captureLogoutTokenMaterial(): LogoutTokenMaterial {

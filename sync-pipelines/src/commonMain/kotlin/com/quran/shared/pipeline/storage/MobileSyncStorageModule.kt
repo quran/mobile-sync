@@ -5,8 +5,6 @@ import com.quran.shared.auth.service.AuthService
 import com.quran.shared.auth.service.AuthSessionPublicationGuard
 import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.repository.keyvalue.KeyValueRepository
-import com.quran.shared.pipeline.SyncLocalModificationDateStore
-import com.quran.shared.pipeline.SyncSettingsLocalModificationDateStore
 import com.quran.shared.pipeline.SessionLifecycleStateStore
 import com.quran.shared.pipeline.SettingsSessionLifecycleStateStore
 import com.russhwolf.settings.coroutines.SuspendSettings
@@ -22,11 +20,6 @@ import org.publicvalue.multiplatform.oidc.tokenstore.TokenStore
 @BindingContainer
 @HiddenFromObjC
 abstract class MobileSyncStorageModule {
-
-    @Binds
-    abstract fun bindSyncLocalModificationDateStore(
-        impl: SyncSettingsLocalModificationDateStore
-    ): SyncLocalModificationDateStore
 
     @Binds
     abstract fun bindSessionLifecycleStateStore(

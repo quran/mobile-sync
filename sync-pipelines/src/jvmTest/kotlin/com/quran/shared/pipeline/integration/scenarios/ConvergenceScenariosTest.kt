@@ -144,11 +144,11 @@ class ConvergenceScenariosTest {
         // Round 2: edits, a rename, an unbookmark, a color change, and a concurrent edit and delete.
         // Only d1 changes a color: concurrent color changes leave two colors on the server (S24,
         // pinned by HL-07), which would add a fourth issue to this pin.
-        d1.data.updateNote(d1.note("First device note").id, "First device note, edited", 1, 1, 1, 7)
+        d1.data.updateNote(d1.note("First device note").id, "First device note, edited")
         d1.data.setHighlight(5, 3, AyahHighlightColor.GREEN)
         d2.data.updateCollection(d2.collectionId("Study"), "Studies")
         d2.data.deleteNote(d2.note("Third device note").id)
-        d3.data.updateNote(d3.note("Third device note").id, "Third device note, edited", 36, 1, 36, 1)
+        d3.data.updateNote(d3.note("Third device note").id, "Third device note, edited")
         d3.removeFromFavorites(2, 3)
         d3.data.addCollection("Fresh")
 
@@ -264,7 +264,7 @@ class ConvergenceScenariosTest {
         phone.data.addNote("Sent before the edit", 2, 255, 2, 255)
 
         phone.syncWhileHeld(gate) {
-            phone.data.updateNote(phone.note("Sent before the edit").id, "Edited while the create was in flight", 2, 255, 2, 255)
+            phone.data.updateNote(phone.note("Sent before the edit").id, "Edited while the create was in flight")
         }
 
         // The catalog predicted S7. The edit survives the ACK, but the next GET echoes the phone's

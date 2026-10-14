@@ -1,118 +1,109 @@
 package com.quran.shared.persistence.repository.collection
 
-import com.quran.shared.persistence.QuranDatabase
-import com.quran.shared.persistence.TextLengthField
+import com.quran.shared.mutations.collectionNameKey
+import com.quran.shared.mutations.trimLikeServer
 import com.quran.shared.persistence.model.AyahHighlightColor
-import com.quran.shared.persistence.model.CollectionName
-import com.quran.shared.persistence.model.DatabaseCollection
 import com.quran.shared.persistence.model.highlightColorForCollectionName
-import com.quran.shared.persistence.model.isSystemCollectionName
-import com.quran.shared.persistence.requireServerTextLength
+import com.quran.shared.syncv2.db.Collection_ayah
+import com.quran.shared.syncv2.db.SyncV2Database
+import com.quran.shared.syncv2.types.CollectionsType
+import com.quran.shared.syncv2.db.Collection as CollectionRow
 
-/** Transaction-scoped access to persisted collections. */
-internal class CollectionStore(
-    private val database: QuranDatabase
-) {
-    private val queries = database.collectionsQueries
+/**
+ * The one write path for collections and the verses in them (Favorites, highlights and the user's collections), so
+ * every local write keeps the same rules: names trimmed like the server, one row per (collection, verse), and one
+ * highlight color per verse. Callers run writes in a transaction.
+ */
+internal class CollectionStore(private val database: SyncV2Database) {
+    private val queries get() = database.collectionsQueries
 
-    fun activeCollections(): List<DatabaseCollection> = queries.getCollections().executeAsList()
+    fun all(): List<CollectionRow> = queries.collectionsAll().executeAsList()
 
-    fun activeHighlightCollections(): List<Pair<AyahHighlightColor, DatabaseCollection>> =
-        activeCollections().mapNotNull { collection ->
-            highlightColorForCollectionName(collection.name.value)?.let { it to collection }
-        }
+    fun get(localId: Long): CollectionRow? = queries.collectionGet(localId).executeAsOneOrNull()
 
-    fun requireDefault(): DatabaseCollection =
-        requireNotNull(queries.getDefaultCollection().executeAsOneOrNull()) {
-            "Default collection is missing."
-        }
+    fun byName(name: String): CollectionRow? = queries.collectionByKey(collectionNameKey(name)).executeAsOneOrNull()
 
-    fun add(name: String, timestampMillis: Long): DatabaseCollection {
-        require(!isSystemCollectionName(name)) {
-            "System collection name is reserved: $name."
-        }
-        requireServerTextLength(TextLengthField.COLLECTION_NAME, name)
-        val collectionName = CollectionName.of(name)
-        queries.addNewCollection(
-            name = collectionName,
-            name_key = collectionName.key,
-            timestamp = timestampMillis,
-            is_system = 0L
-        )
-        return requireUserCollection(collectionName, "after insert")
+    fun favorites(): CollectionRow = queries.collectionDefault().executeAsOne()
+
+    /** Adds a user collection; the name is stored trimmed like the server. */
+    fun insertUser(name: String, createdAt: Long, updatedAt: Long = createdAt): Long {
+        val trimmed = name.trimLikeServer()
+        queries.collectionInsert(trimmed, collectionNameKey(trimmed), 0, 0, 0, createdAt, updatedAt)
+        return queries.lastInsertId().executeAsOne()
     }
 
-    fun insertImported(
-        name: String,
-        createdAt: Long,
-        modifiedAt: Long
-    ): DatabaseCollection {
-        val collectionName = CollectionName.of(name)
-        queries.insertImportedCollection(
-            name = collectionName,
-            name_key = collectionName.key,
-            created_at = createdAt,
-            modified_at = modifiedAt
-        )
-        return requireUserCollection(collectionName, "after import")
+    fun rename(row: CollectionRow, name: String, updatedAt: Long) {
+        val trimmed = name.trimLikeServer()
+        queries.collectionUpdate(trimmed, collectionNameKey(trimmed), row.is_system, row.is_read_only, updatedAt, row.local_id)
     }
 
-    fun getOrCreateActiveHighlight(
-        color: AyahHighlightColor,
-        timestampMillis: Long,
-        knownCollections: List<Pair<AyahHighlightColor, DatabaseCollection>> = activeHighlightCollections()
-    ): HighlightCollectionResolution {
-        val collection = knownCollections.firstOrNull { it.first == color }?.second
-            ?: createHighlight(color, timestampMillis)
-        return activateHighlight(collection, timestampMillis)
+    /** Deletes the collection and the verses in it. */
+    fun delete(localId: Long) {
+        queries.collectionAyahsDeleteIn(localId)
+        queries.collectionDelete(localId)
     }
 
-    private fun createHighlight(
-        color: AyahHighlightColor,
-        timestampMillis: Long
-    ): DatabaseCollection {
-        val collectionName = CollectionName.of(color.collectionName)
-        queries.addNewCollection(
-            name = collectionName,
-            name_key = collectionName.key,
-            timestamp = timestampMillis,
-            is_system = 1L
-        )
-        return requireNotNull(queries.getCollectionByName(collectionName.key).executeAsOneOrNull()) {
-            "Expected highlight collection ${color.collectionName} after insert."
-        }
+    fun highlightCollections(): Map<AyahHighlightColor, CollectionRow> =
+        all().mapNotNull { row -> highlightColorForCollectionName(row.name)?.let { it to row } }.toMap()
+
+    /**
+     * The highlight collection for [color], created when missing. It is a system collection, as the server's GET
+     * reports it; the client may create it, but never rename or delete it.
+     */
+    fun highlightCollection(color: AyahHighlightColor, at: Long): CollectionRow {
+        byName(color.collectionName)?.let { return it }
+        val state = CollectionsType.collectionState(color.collectionName, at, system = true)
+        val localId = CollectionsType(database).insert(state)
+        return requireNotNull(get(localId)) { "Expected highlight collection ${color.collectionName} after insert." }
     }
 
-    private fun activateHighlight(
-        collection: DatabaseCollection,
-        timestampMillis: Long
-    ): HighlightCollectionResolution {
-        val changed = collection.remote_id == null && collection.pending_version == 0L
-        if (changed) {
-            queries.addNewCollection(
-                name = collection.name,
-                name_key = collection.name_key,
-                timestamp = timestampMillis,
-                is_system = 1L
-            )
-        }
-        queries.keepEarliestUnsyncedCreatedAt(timestamp = timestampMillis, local_id = collection.local_id)
-        val active = requireNotNull(queries.getCollectionByLocalId(collection.local_id).executeAsOneOrNull()) {
-            "Expected active highlight collection ${collection.name.value}."
-        }
-        return HighlightCollectionResolution(active, changed)
+    fun versesIn(collectionLocalId: Long): List<Collection_ayah> = queries.collectionAyahsIn(collectionLocalId).executeAsList()
+
+    fun allVerses(): List<Collection_ayah> = queries.collectionAyahsAll().executeAsList()
+
+    /** Every collection [sura]:[ayah] is in. */
+    fun membershipsOf(sura: Int, ayah: Int): List<Collection_ayah> =
+        queries.collectionAyahsAt(sura.toLong(), ayah.toLong()).executeAsList()
+
+    fun membership(collectionLocalId: Long, sura: Int, ayah: Int): Collection_ayah? =
+        queries.collectionAyahFind(collectionLocalId, sura.toLong(), ayah.toLong()).executeAsOneOrNull()
+
+    /** Adds the verse to the collection, dated [at]; returns false when it was already there. */
+    fun addVerse(collectionLocalId: Long, sura: Int, ayah: Int, at: Long): Boolean {
+        if (membership(collectionLocalId, sura, ayah) != null) return false
+        queries.collectionAyahInsert(collectionLocalId, sura.toLong(), ayah.toLong(), at)
+        return true
     }
 
-    private fun requireUserCollection(name: CollectionName, operation: String): DatabaseCollection {
-        val collection = requireNotNull(queries.getCollectionByName(name.key).executeAsOneOrNull()) {
-            "Expected collection for name=${name.value} $operation."
-        }
-        require(collection.is_system == 0L) { "System collection name is reserved: ${name.value}." }
-        return collection
+    /** Removes the verse from the collection; returns false when it was not there. */
+    fun removeVerse(collectionLocalId: Long, sura: Int, ayah: Int): Boolean {
+        val membership = membership(collectionLocalId, sura, ayah) ?: return false
+        queries.collectionAyahDelete(membership.local_id)
+        return true
     }
+
+    /**
+     * Highlights the verse in [color] and removes its other colors: one color per verse. Returns the membership,
+     * which keeps its date when the verse already had this color.
+     */
+    fun setHighlight(sura: Int, ayah: Int, color: AyahHighlightColor, at: Long): Collection_ayah {
+        val target = highlightCollection(color, at)
+        highlightCollections().values.filter { it.local_id != target.local_id }
+            .forEach { removeVerse(it.local_id, sura, ayah) }
+        addVerse(target.local_id, sura, ayah, at)
+        return requireNotNull(membership(target.local_id, sura, ayah))
+    }
+
+    /** The highlight colors the verse has (one, unless a sync has yet to settle a concurrent change). */
+    fun highlightColorsOf(sura: Int, ayah: Int): Set<AyahHighlightColor> {
+        val colors = highlightCollections().entries.associate { (color, row) -> row.local_id to color }
+        return membershipsOf(sura, ayah).mapNotNull { colors[it.collection_local_id] }.toSet()
+    }
+
+    /** Removes every highlight color of the verse; returns whether it had one. */
+    fun clearHighlights(sura: Int, ayah: Int): Boolean =
+        highlightCollections().values.map { removeVerse(it.local_id, sura, ayah) }.any { it }
 }
 
-internal data class HighlightCollectionResolution(
-    val collection: DatabaseCollection,
-    val changed: Boolean
-)
+/** Highlight collections (`system:highlights:<color>`), which the app changes only through the highlight API. */
+internal val CollectionRow.isHighlight: Boolean get() = highlightColorForCollectionName(name) != null

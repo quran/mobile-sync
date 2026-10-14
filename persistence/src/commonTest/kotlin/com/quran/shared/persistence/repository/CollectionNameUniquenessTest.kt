@@ -1,66 +1,56 @@
 package com.quran.shared.persistence.repository
 
-import app.cash.sqldelight.db.SqlDriver
-import com.quran.shared.persistence.QuranDatabase
-import com.quran.shared.persistence.TestDatabaseDriver
-import com.quran.shared.persistence.createQuranDatabase
+import com.quran.shared.persistence.DuplicateCollectionNameException
+import com.quran.shared.persistence.at
+import com.quran.shared.persistence.createTestDatabase
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepositoryImpl
-import com.quran.shared.persistence.util.toPlatform
 import kotlinx.coroutines.test.runTest
-import kotlin.test.AfterTest
-import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFails
-import kotlin.time.Instant
+import kotlin.test.assertNotEquals
 
 class CollectionNameUniquenessTest {
-    private lateinit var driver: SqlDriver
-    private lateinit var database: QuranDatabase
-    private lateinit var repository: CollectionsRepositoryImpl
-
-    @BeforeTest
-    fun setup() {
-        driver = TestDatabaseDriver().createDriver()
-        database = createQuranDatabase(driver)
-        database.collectionsQueries.deleteAll()
-        repository = CollectionsRepositoryImpl(database)
-    }
-
-    @AfterTest
-    fun tearDown() {
-        driver.close()
-    }
+    private val repository = CollectionsRepositoryImpl(createTestDatabase().synced)
 
     @Test
     fun `adding a case or whitespace variant returns the existing collection`() = runTest {
         val study = repository.addCollection("Study", at(1_000L))
 
         val lowercase = repository.addCollection("study", at(2_000L))
-        val padded = repository.addCollection("\uFEFF study\u3000", at(3_000L))
+        val padded = repository.addCollection("﻿ study　", at(3_000L))
 
-        assertEquals(study.id, lowercase.id)
-        assertEquals(study.id, padded.id)
-        assertEquals(listOf("Study"), repository.getAllCollections().map { it.name })
+        assertEquals(study, lowercase)
+        assertEquals(study, padded)
+        assertEquals(listOf("Study"), userCollectionNames())
     }
 
     @Test
-    fun `collection names are trimmed on save`() = runTest {
+    fun `collection names are trimmed on add`() = runTest {
         val added = repository.addCollection("  Study  ", at(1_000L))
-        repository.addCollection("Other", at(1_000L)).also { repository.updateCollection(it.id, " Notes ", at(2_000L)) }
 
         assertEquals("Study", added.name)
-        assertEquals(setOf("Study", "Notes"), repository.getAllCollections().map { it.name }.toSet())
+        assertEquals(listOf("Study"), userCollectionNames())
     }
 
     @Test
-    fun `renaming onto a case variant of another collection is rejected`() = runTest {
+    fun `collection names are trimmed on rename`() = runTest {
+        val other = repository.addCollection("Other", at(1_000L))
+
+        val renamed = repository.updateCollection(other.id, " Notes ", at(2_000L))
+
+        assertEquals("Notes", renamed.name)
+        assertEquals(listOf("Notes"), userCollectionNames())
+    }
+
+    @Test
+    fun `renaming onto a case variant of another collection throws a duplicate name error`() = runTest {
         repository.addCollection("Study", at(1_000L))
         val other = repository.addCollection("Other", at(1_000L))
 
-        assertFails { repository.updateCollection(other.id, "STUDY", at(2_000L)) }
+        val error = runCatching { repository.updateCollection(other.id, " STUDY ", at(2_000L)) }.exceptionOrNull()
 
-        assertEquals(setOf("Study", "Other"), repository.getAllCollections().map { it.name }.toSet())
+        assertEquals("Study", (error as DuplicateCollectionNameException).name)
+        assertEquals(setOf("Study", "Other"), userCollectionNames().toSet())
     }
 
     @Test
@@ -69,8 +59,19 @@ class CollectionNameUniquenessTest {
 
         repository.updateCollection(study.id, "STUDY", at(2_000L))
 
-        assertEquals(listOf("STUDY"), repository.getAllCollections().map { it.name })
+        assertEquals(listOf("STUDY"), userCollectionNames())
     }
 
-    private fun at(milliseconds: Long) = Instant.fromEpochMilliseconds(milliseconds).toPlatform()
+    @Test
+    fun `a renamed collection frees its old name`() = runTest {
+        val study = repository.addCollection("Study", at(1_000L))
+        repository.updateCollection(study.id, "Review", at(2_000L))
+
+        val added = repository.addCollection("Study", at(3_000L))
+
+        assertEquals(setOf("Review", "Study"), userCollectionNames().toSet())
+        assertNotEquals(study.id, added.id)
+    }
+
+    private suspend fun userCollectionNames() = repository.getAllCollections().filterNot { it.isSystem }.map { it.name }
 }

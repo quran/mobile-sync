@@ -1,8 +1,7 @@
 package com.quran.shared.persistence.repository
 
-import com.quran.shared.persistence.QuranDatabase
-import com.quran.shared.persistence.TestDatabaseDriver
-import com.quran.shared.persistence.createQuranDatabase
+import com.quran.shared.persistence.MobileSyncDatabase
+import com.quran.shared.persistence.createTestDatabase
 import com.quran.shared.persistence.repository.keyvalue.KeyValueRepositoryImpl
 import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
@@ -11,13 +10,13 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class KeyValueRepositoryTest {
-    private lateinit var database: QuranDatabase
+    private lateinit var database: MobileSyncDatabase
     private lateinit var repository: KeyValueRepositoryImpl
 
     @BeforeTest
     fun setup() {
-        database = createQuranDatabase(TestDatabaseDriver().createDriver())
-        repository = KeyValueRepositoryImpl(database)
+        database = createTestDatabase()
+        repository = KeyValueRepositoryImpl(database.quran)
     }
 
     @Test
@@ -54,7 +53,7 @@ class KeyValueRepositoryTest {
     fun `values survive user data reset`() = runTest {
         repository.put("com.quran.sync.reset_in_progress", "true")
 
-        PersistenceResetRepositoryImpl(database).deleteAllData()
+        PersistenceResetRepositoryImpl(database.quran, database.synced).deleteAllData()
 
         assertEquals("true", repository.get("com.quran.sync.reset_in_progress"))
     }
