@@ -1,0 +1,114 @@
+-- Plain domain tables: no sync columns. Local ids may be negative (see SyncType).
+
+CREATE TABLE collection(
+  local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  -- lower(trim(name)) like the server; NULL for Favorites so a user collection may share its name.
+  name_key TEXT,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  is_system INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX collection_name_key_idx ON collection(name_key);
+
+collectionsAll:
+SELECT * FROM collection ORDER BY local_id;
+
+collectionGet:
+SELECT * FROM collection WHERE local_id = ?;
+
+collectionByKey:
+SELECT * FROM collection WHERE name_key = ?;
+
+collectionDefault:
+SELECT * FROM collection WHERE is_default = 1;
+
+collectionInsert:
+INSERT INTO collection(name, name_key, is_default, is_system, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?);
+
+collectionInsertWithId:
+INSERT INTO collection(local_id, name, name_key, is_default, is_system, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?);
+
+collectionUpdate:
+UPDATE collection SET name = ?, name_key = ?, is_system = ?, updated_at = ? WHERE local_id = ?;
+
+collectionPark:
+UPDATE collection SET name_key = ? WHERE local_id = ?;
+
+collectionDelete:
+DELETE FROM collection WHERE local_id = ?;
+
+collectionsDeleteAll:
+DELETE FROM collection;
+
+CREATE TABLE collection_ayah(
+  local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  collection_local_id INTEGER NOT NULL REFERENCES collection(local_id) ON DELETE CASCADE,
+  sura INTEGER NOT NULL,
+  ayah INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX collection_ayah_idx ON collection_ayah(collection_local_id, sura, ayah);
+
+collectionAyahsAll:
+SELECT * FROM collection_ayah ORDER BY local_id;
+
+collectionAyahGet:
+SELECT * FROM collection_ayah WHERE local_id = ?;
+
+collectionAyahsIn:
+SELECT * FROM collection_ayah WHERE collection_local_id = ? ORDER BY sura, ayah;
+
+collectionAyahFind:
+SELECT * FROM collection_ayah WHERE collection_local_id = ? AND sura = ? AND ayah = ?;
+
+collectionAyahInsert:
+INSERT INTO collection_ayah(collection_local_id, sura, ayah, created_at) VALUES (?, ?, ?, ?);
+
+collectionAyahInsertWithId:
+INSERT INTO collection_ayah(local_id, collection_local_id, sura, ayah, created_at) VALUES (?, ?, ?, ?, ?);
+
+-- Highlights: verses in the `system:highlights:<color>` collections (one color per verse; see CollectionAyahsType.prune).
+highlightAyahs:
+SELECT collection_ayah.local_id, collection_ayah.sura, collection_ayah.ayah, collection_ayah.created_at, collection.name_key
+FROM collection_ayah JOIN collection ON collection.local_id = collection_ayah.collection_local_id
+WHERE collection.name_key LIKE 'system:highlights:%'
+ORDER BY collection_ayah.sura, collection_ayah.ayah;
+
+collectionAyahUpdate:
+UPDATE collection_ayah SET collection_local_id = ?, sura = ?, ayah = ?, created_at = ? WHERE local_id = ?;
+
+collectionAyahPark:
+UPDATE collection_ayah SET ayah = CASE WHEN local_id >= 0 THEN -2 * local_id - 1 ELSE 2 * local_id END WHERE local_id = ?;
+
+collectionAyahsDeleteIn:
+DELETE FROM collection_ayah WHERE collection_local_id = ?;
+
+collectionAyahDelete:
+DELETE FROM collection_ayah WHERE local_id = ?;
+
+collectionAyahsDeleteAll:
+DELETE FROM collection_ayah;
+
+-- Owned by the verse-in-collection sync type: which verse each server ayah bookmark id is. GET memberships carry
+-- only {collectionId, bookmarkId}; this is filled from GET BOOKMARK entries and from composite POST resource ids.
+CREATE TABLE remote_ayah_bookmark(
+  bookmark_id TEXT NOT NULL PRIMARY KEY,
+  sura INTEGER NOT NULL,
+  ayah INTEGER NOT NULL
+);
+
+remoteAyahBookmarkPut:
+INSERT OR REPLACE INTO remote_ayah_bookmark(bookmark_id, sura, ayah) VALUES (?, ?, ?);
+
+remoteAyahBookmarkGet:
+SELECT * FROM remote_ayah_bookmark WHERE bookmark_id = ?;
+
+remoteAyahBookmarksDeleteAll:
+DELETE FROM remote_ayah_bookmark;
+
+lastInsertId:
+SELECT last_insert_rowid();

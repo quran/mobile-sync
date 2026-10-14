@@ -1,0 +1,37 @@
+-- Plain domain table: no sync columns. Local ids may be negative (see SyncType).
+
+CREATE TABLE reading_session(
+  local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  sura INTEGER NOT NULL,
+  ayah INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX reading_session_verse_idx ON reading_session(sura, ayah);
+
+all:
+SELECT * FROM reading_session ORDER BY updated_at DESC, sura, ayah;
+
+at:
+SELECT * FROM reading_session WHERE sura = ? AND ayah = ?;
+
+insert:
+INSERT INTO reading_session(sura, ayah, created_at, updated_at) VALUES (?, ?, ?, ?);
+
+insertWithId:
+INSERT INTO reading_session(local_id, sura, ayah, created_at, updated_at) VALUES (?, ?, ?, ?, ?);
+
+update:
+UPDATE reading_session SET sura = ?, ayah = ?, updated_at = ? WHERE local_id = ?;
+
+-- Parked keys are never real and never shared: below 0 and one per local id, negative ids of restored tombstones
+-- included (odd for ids >= 0, even for ids < 0).
+park:
+UPDATE reading_session SET ayah = CASE WHEN local_id >= 0 THEN -2 * local_id - 1 ELSE 2 * local_id END WHERE local_id = ?;
+
+delete:
+DELETE FROM reading_session WHERE local_id = ?;
+
+lastInsertId:
+SELECT last_insert_rowid();

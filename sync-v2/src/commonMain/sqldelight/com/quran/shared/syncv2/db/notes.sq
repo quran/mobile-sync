@@ -1,0 +1,65 @@
+-- Plain domain tables: no sync columns. Local ids may be negative (see SyncType).
+-- A note keeps every range it was created with, in order; ranges are immutable, as on the server.
+-- created_at is unique among this device's own notes (NotesRepository nudges it by 1 ms): with the ranges it is the
+-- identity a lost CREATE is recognised by, since notes have no natural key.
+-- archived_at: archived on QuranReflect (a 30-day trash). The row stays and syncs; app-facing queries hide it.
+
+CREATE TABLE note(
+  local_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  body TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  archived_at INTEGER
+);
+
+CREATE INDEX note_created_idx ON note(created_at);
+
+CREATE TABLE note_range(
+  note_local_id INTEGER NOT NULL REFERENCES note(local_id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  start_sura INTEGER NOT NULL,
+  start_ayah INTEGER NOT NULL,
+  end_sura INTEGER NOT NULL,
+  end_ayah INTEGER NOT NULL,
+  PRIMARY KEY (note_local_id, position)
+);
+
+CREATE INDEX note_range_start_idx ON note_range(start_sura, start_ayah);
+
+all:
+SELECT * FROM note ORDER BY local_id;
+
+allRanges:
+SELECT * FROM note_range ORDER BY note_local_id, position;
+
+rangesOf:
+SELECT * FROM note_range WHERE note_local_id = ? ORDER BY position;
+
+-- The smallest created_at at or after the given one that no note has: the given one, or one past a taken one.
+freeCreatedAt:
+SELECT min(candidate) AS free FROM (
+  SELECT CAST(:at AS INTEGER) AS candidate
+  UNION ALL
+  SELECT created_at + 1 FROM note WHERE created_at >= :at
+) WHERE candidate NOT IN (SELECT created_at FROM note);
+
+insert:
+INSERT INTO note(body, created_at, updated_at, archived_at) VALUES (?, ?, ?, ?);
+
+insertWithId:
+INSERT INTO note(local_id, body, created_at, updated_at, archived_at) VALUES (?, ?, ?, ?, ?);
+
+insertRange:
+INSERT INTO note_range(note_local_id, position, start_sura, start_ayah, end_sura, end_ayah) VALUES (?, ?, ?, ?, ?, ?);
+
+update:
+UPDATE note SET body = ?, created_at = ?, updated_at = ?, archived_at = ? WHERE local_id = ?;
+
+deleteRanges:
+DELETE FROM note_range WHERE note_local_id = ?;
+
+delete:
+DELETE FROM note WHERE local_id = ?;
+
+lastInsertId:
+SELECT last_insert_rowid();
