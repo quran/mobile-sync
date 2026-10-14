@@ -7,10 +7,12 @@ import com.quran.shared.pipeline.integration.SyncRun
 import com.quran.shared.pipeline.integration.SyncScenario
 import com.quran.shared.pipeline.integration.UserDataSnapshot
 import com.quran.shared.pipeline.integration.assertSucceeded
+import com.quran.shared.pipeline.integration.mutation
 import com.quran.shared.pipeline.integration.server.FakeSyncServer
 import com.quran.shared.pipeline.integration.server.RequestRecord
 import com.quran.shared.pipeline.integration.server.ServerSession
 import com.quran.shared.pipeline.integration.server.ServerState
+import com.quran.shared.pipeline.integration.syncRejectedWith
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -125,6 +127,12 @@ internal fun RequestRecord.responseHead(): Long =
 // endregion
 
 // region Known-issue pins
+/** S7's signature: a note UPDATE carrying `ranges` gets 422. */
+internal val NOTE_UPDATE_REJECTED = syncRejectedWith(422, carrying = mutation("NOTE", "UPDATE", "ranges"))
+
+/** A Favorites membership DELETE gets 404 "bookmark is not found": the signature of both S6 and S23. */
+internal val FAVORITES_DELETE_404 = syncRejectedWith(404, carrying = mutation("COLLECTION_BOOKMARK", "DELETE"))
+
 /** Accepts a failure whose message contains every fragment. */
 internal fun failureMentions(vararg fragments: String): (AssertionError) -> Boolean = { failure ->
     fragments.all { it in failure.message.orEmpty() }

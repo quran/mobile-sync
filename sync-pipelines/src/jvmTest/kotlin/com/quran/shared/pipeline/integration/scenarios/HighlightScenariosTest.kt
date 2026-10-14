@@ -2,7 +2,9 @@ package com.quran.shared.pipeline.integration.scenarios
 
 import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.pipeline.integration.assertSucceeded
+import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.syncScenario
+import kotlinx.coroutines.flow.first
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -102,5 +104,49 @@ class HighlightScenariosTest {
         assertEquals(setOf("3:18", "4:1", "5:3"), state.versesIn(state.collectionNamed(HIGHLIGHTS_PINK)!!.id))
         assertEquals(listOf("2:255 blue", "3:18 pink", "4:1 pink", "5:3 pink"), phone.highlightList())
         assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `HL-04 highlight collections are hidden from the collections list`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+        phone.data.setHighlight(2, 255, AyahHighlightColor.BLUE)
+        phone.data.setHighlight(3, 18, AyahHighlightColor.GREEN)
+        phone.data.addAyahBookmarkToCollection(phone.data.addCollection("Study").id, 4, 1)
+        phone.addToFavorites(1, 1)
+        assertSucceeded(phone.syncNow())
+
+        assertSucceeded(tablet.syncNow())
+
+        val listed = tablet.data.collectionsWithBookmarks.first().map { it.collection }
+        assertTrue(listed.first().isDefault, "Favorites is first: ${listed.map { it.name }}")
+        assertEquals(listOf("Study"), listed.drop(1).map { it.name })
+        assertEquals(listOf("2:255 blue", "3:18 green"), tablet.highlightList())
+        assertConverged(ALICE, phone, tablet)
+    }
+
+    @Test
+    fun `HL-07 concurrent color changes converge on one color`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+        phone.data.setHighlight(2, 255, AyahHighlightColor.BLUE, at(0))
+        syncUntilQuiescent(phone, tablet)
+
+        phone.data.setHighlight(2, 255, AyahHighlightColor.GREEN, at(1_000))
+        tablet.data.setHighlight(2, 255, AyahHighlightColor.YELLOW, at(2_000))
+        repeat(2) { syncAll(phone, tablet).forEach(::assertSucceeded) }
+        syncUntilQuiescent(phone, tablet)
+
+        // The catalog left this unknown. Both devices show yellow, because the flow shows one color
+        // per verse, but the tablet stores the phone's green next to its yellow and the server keeps both.
+        listOf(phone, tablet).forEach { assertEquals(listOf("2:255 yellow"), it.highlightList(), it.name) }
+        knownIssue(
+            "S24",
+            "Concurrent highlight color changes leave the verse in two color collections",
+            expect = failureMentions("one color on the server", "but was:<[system:highlights:green, system:highlights:yellow]>")
+        ) {
+            val state = server.state(ALICE)
+            val colors = state.collections.filter { "2:255" in state.versesIn(it.id) }.map { it.name }.sorted()
+            assertEquals(listOf("system:highlights:yellow"), colors, "one color on the server, the newest")
+            assertConverged(ALICE, phone, tablet)
+        }
     }
 }

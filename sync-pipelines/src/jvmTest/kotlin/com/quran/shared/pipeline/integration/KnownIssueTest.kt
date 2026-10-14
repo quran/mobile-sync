@@ -90,4 +90,29 @@ class KnownIssueTest {
         assertFalse(syncRejectedWith(422, carrying = mutation("NOTE", "CREATE"))(failure))
         assertFalse(syncRejectedWith(404, carrying = mutation("NOTE", "UPDATE"))(failure))
     }
+
+    @Test
+    fun `several issues pin a failure, and the one that matched is reported`() = runBlocking {
+        knownIssue(
+            "Example issues",
+            "S2" to { it.message == "echo" },
+            "S7" to { it.message == "422" }
+        ) { throw AssertionError("422") }
+    }
+
+    @Test
+    fun `several issues all appear fixed when the block passes`() {
+        val failure = assertFailsWith<AssertionError> {
+            runBlocking { knownIssue("Example issues", "S2" to { true }, "S7" to { true }) { } }
+        }
+        assertEquals("S2, S7 appear fixed; remove knownIssue", failure.message)
+    }
+
+    @Test
+    fun `a failure none of several issues explains is an error`() {
+        val failure = assertFailsWith<AssertionError> {
+            runBlocking { knownIssue("Example issues", "S2" to { false }, "S7" to { false }) { throw AssertionError("other") } }
+        }
+        assertTrue(failure.message!!.startsWith("Known issue S2, S7 (Example issues) failed, but not the way any of them does"))
+    }
 }
