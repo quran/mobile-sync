@@ -13,6 +13,7 @@ import com.quran.shared.pipeline.integration.awaitUntil
 import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.server.CollectionRules
+import com.quran.shared.pipeline.integration.syncRejectedWith
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -294,8 +295,11 @@ class LifecycleScenariosTest {
     }
 
     @Test
-    fun `LIFE-14 an access token expiring mid-session is refreshed`() = syncScenario {
-        // Slow retries leave time to refresh the token between the 401 and the next attempt.
+    fun `LIFE-14 retries re-read the token store after a 401`() = syncScenario {
+        // The catalog's LIFE-14 has the test rotate the token after the 401. The client has no
+        // refresh triggered by a 401, so this proves only that each retry reads the token store
+        // again. The variants below leave recovery to the client's own refresh path.
+        // Slow retries leave time to rotate the token between the 401 and the next attempt.
         val phone = device("phone", DeviceTimings(retryBaseDelay = 100.milliseconds))
         assertSucceeded(phone.login(ALICE))
         server.expireTokens(ALICE)
@@ -313,6 +317,42 @@ class LifecycleScenariosTest {
         assertEquals(listOf(200), run.postStatuses.filter { it != 401 }, "POST statuses ${run.postStatuses}")
         assertEquals(listOf("Written after the token expired"), server.state(ALICE).notes.map { it.body })
         assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `LIFE-14 variant, a token past its local expiry is refreshed before the sync`() = syncScenario {
+        val phone = device("phone")
+        assertSucceeded(phone.login(ALICE))
+        server.expireTokens(ALICE)
+        phone.auth.expireLocally()
+        phone.data.addNote("Written after the token expired", 1, 1, 1, 7)
+
+        val run = phone.syncNow()
+
+        assertSucceeded(run)
+        assertEquals(1, phone.auth.refreshes.value, "the client refreshed the token")
+        assertEquals(emptyList(), run.requests.filter { it.status == 401 }, "no request used the expired token")
+        assertEquals(listOf("Written after the token expired"), server.state(ALICE).notes.map { it.body })
+        assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `LIFE-14 variant, a token the server rejects before its local expiry`() = syncScenario {
+        val phone = device("phone")
+        assertSucceeded(phone.login(ALICE))
+        // The server revokes the token, or a skewed device clock still thinks it is valid.
+        server.expireTokens(ALICE)
+        phone.data.addNote("Written after the server revoked the token", 1, 1, 1, 7)
+
+        knownIssue(
+            "S25",
+            "A token the server rejects before its local expiry fails every sync with 401",
+            expect = syncRejectedWith(401)
+        ) {
+            assertSucceeded(phone.syncNow())
+            assertEquals(listOf("Written after the server revoked the token"), server.state(ALICE).notes.map { it.body })
+        }
+        assertEquals(0, phone.auth.refreshes.value, "the client never refreshed the token")
     }
 
     @Test
