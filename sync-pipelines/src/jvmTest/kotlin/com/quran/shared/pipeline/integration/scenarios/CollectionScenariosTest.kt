@@ -100,7 +100,7 @@ class CollectionScenariosTest {
         repeat(2) { phone.data.deleteCollection(phone.data.addCollection("Study").id) }
         web(ALICE).createCollection("study")
 
-        // S1: a create deleted before it was sent leaves no tombstone, so nothing can bind the web's create.
+        // A create deleted before it was sent leaves no tombstone, so nothing can bind the web's create.
         assertSucceeded(phone.syncNow())
         assertSucceeded(phone.syncNow())
         assertEquals(listOf("study"), server.state(ALICE).collections.map { it.name }, "the web's study on the server")
@@ -215,7 +215,7 @@ class CollectionScenariosTest {
 
         val failure = assertFails { phone.data.updateCollection(study.id, "memorize") }
 
-        // S16: a typed error, in the API's validation family (IllegalArgumentException), like
+        // A typed error, in the API's validation family (IllegalArgumentException), like
         // TextLengthLimitException and the reserved-name checks.
         assertTrue(failure is IllegalArgumentException, "a typed duplicate-name error, not ${failure::class.qualifiedName}")
         assertEquals("Memorize", assertIs<DuplicateCollectionNameException>(failure).name)
@@ -277,7 +277,7 @@ class CollectionScenariosTest {
         syncUntilQuiescent(phone)
 
         assertEquals(listOf("Memorize"), phone.collectionNames(), "the remote rename brings the collection back")
-        // S26: the remote rename restores the collection with the verses its local delete removed.
+        // The remote rename restores the collection with the verses its local delete removed.
         assertEquals(listOf("2:255"), phone.versesIn("Memorize"), "the phone's Memorize")
         assertEquals(setOf("2:255"), server.state(ALICE).versesIn(study), "the server keeps the membership")
         assertConverged(ALICE, phone)

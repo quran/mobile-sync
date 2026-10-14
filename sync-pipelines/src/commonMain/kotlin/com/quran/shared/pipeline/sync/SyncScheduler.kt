@@ -52,7 +52,7 @@ internal sealed interface AttemptOutcome {
  * immediate trigger (a user's "sync now") during a run runs right after it; one while a retry waits replaces the retry
  * with an immediate run. An app start during a run or a pending retry is dropped. A failed attempt is retried with exponential backoff, up to
  * the configured number of retries, unless it is not retryable or asks for a longer backoff. After every run, whatever
- * its outcome, the next one is scheduled after the periodic interval, so sync never stops after its retries run out (S21).
+ * its outcome, the next one is scheduled after the periodic interval, so sync never stops after its retries run out.
  */
 internal class SyncScheduler(
     private val timings: SchedulerTimings,

@@ -91,7 +91,7 @@ class ReadingSessionScenariosTest {
     fun `RS-09 a pruned never-synced session doesn't delete another device's session`() = syncScenario {
         val (phone, tablet) = signedIn("phone", "tablet")
         // The tablet's visit is newer than every phone session, so the newest-20 prune, which every device runs
-        // the same way, keeps it: only a tombstone of the phone's pruned visit could delete it (S1).
+        // the same way, keeps it: only a tombstone of the phone's pruned visit could delete it.
         tablet.data.addReadingSession(18, 1, at(5_000))
         assertSucceeded(tablet.syncNow())
         phone.data.addReadingSession(18, 1, at(10))
@@ -250,8 +250,8 @@ class ReadingSessionScenariosTest {
         phone.data.addReadingSession(3, 7, Instant.fromEpochMilliseconds(System.currentTimeMillis() + 60_000))
         web.moveReadingSession(web.sessionId(2, 255)!!, 3, 7)
 
-        // The revisit beats the remote DELETE as a CREATE (S8), and the move onto the phone's 3:7 applies
-        // without hitting the unique position index (S19).
+        // The revisit beats the remote DELETE as a CREATE, and the move onto the phone's 3:7 applies
+        // without hitting the unique position index.
         assertSucceeded(phone.syncNow())
         syncUntilQuiescent(phone)
         assertEquals(listOf("3:7"), phone.sessionVerses())

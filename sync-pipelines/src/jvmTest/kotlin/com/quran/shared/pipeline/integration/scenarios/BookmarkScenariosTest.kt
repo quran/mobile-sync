@@ -261,7 +261,7 @@ class BookmarkScenariosTest {
 
         web(ALICE).removeFromFavorites(2, 255)
 
-        // S23: the remote BOOKMARK and membership DELETEs only remove the verse locally; nothing is pushed back.
+        // The remote BOOKMARK and membership DELETEs only remove the verse locally; nothing is pushed back.
         val runs = listOf(phone.syncNow(), phone.syncNow())
         runs.forEach(::assertSucceeded)
         assertNull(server.state(ALICE).bookmarkAt(2, 255))
@@ -347,7 +347,7 @@ class BookmarkScenariosTest {
         web.deleteCollection(web.collectionId("Study")!!)
         phone.data.addAyahBookmarkToCollection(phone.collectionId("Study"), 2, 255)
 
-        // Edit beats delete (S15): the added verse recreates the collection.
+        // Edit beats delete: the added verse recreates the collection.
         assertSucceeded(phone.syncNow())
         syncUntilQuiescent(phone)
         assertEquals(listOf("2:255"), phone.versesIn("Study"), "the edit beats the delete")

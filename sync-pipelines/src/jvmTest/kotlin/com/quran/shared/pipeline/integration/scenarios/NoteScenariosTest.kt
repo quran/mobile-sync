@@ -105,7 +105,7 @@ class NoteScenariosTest {
     }
 
     /**
-     * Ranges are immutable, as on the server (S4): `updateNote` takes only the body, so an edit can't move a note,
+     * Ranges are immutable, as on the server: `updateNote` takes only the body, so an edit can't move a note,
      * and device and server never disagree on its range.
      */
     @Test
@@ -270,8 +270,7 @@ class NoteScenariosTest {
         val (phone) = signedIn("phone")
         web(ALICE).createNote("A note on two passages", "2:255-2:256", "3:18-3:18")
 
-        // The device keeps every range (note_range), but the public note model holds one, so it shows the first
-        // one only (S4's iOS part, step 5: the model gets the ranges).
+        // The device keeps every range (note_range); the public model holds only the first.
         knownIssue(
             "S4",
             "The public note model shows only a note's first range",

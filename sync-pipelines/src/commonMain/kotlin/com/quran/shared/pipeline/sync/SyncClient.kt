@@ -44,7 +44,7 @@ internal class SignedOutException : IllegalStateException("No session")
  * [SyncRunObserver.syncStarted] once signed in (again for each retry), then exactly one of succeeded, skipped (no
  * session, a logout or reset) or failed (when it won't be retried).
  *
- * - A 401 forces one token refresh and runs again; a refused refresh ends the session (S25).
+ * - A 401 forces one token refresh and runs again; a refused refresh ends the session.
  * - A failure that asks for a push backoff (a 403 that may be the token's scope) stops pushing for that long; the
  *   periodic and other automatic runs still pull. A "sync now" pushes anyway.
  */

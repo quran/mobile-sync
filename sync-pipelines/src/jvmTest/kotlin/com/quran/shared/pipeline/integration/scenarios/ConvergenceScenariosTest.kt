@@ -63,7 +63,7 @@ class ConvergenceScenariosTest {
         assertEquals(0, second.posts)
         assertConverged(ALICE, phone)
 
-        // The server trims reading bookmark names; the client trims them the same way before pushing (S13).
+        // The server trims reading bookmark names; the client trims them the same way before pushing.
         phone.data.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "  Juz 30  ")
         assertSucceeded(phone.syncNow())
         assertEquals(listOf("Juz 30"), server.state(ALICE).readingBookmarks.map { it.name })
@@ -134,7 +134,7 @@ class ConvergenceScenariosTest {
         assertConverged(ALICE, d1, d2, d3)
 
         // Round 2: edits, a rename, an unbookmark, a color change, and a concurrent edit and delete.
-        // Only d1 changes a color; concurrent color changes are HL-07's (S24).
+        // Only d1 changes a color; concurrent color changes are HL-07's.
         d1.data.updateNote(d1.note("First device note").id, "First device note, edited")
         d1.data.setHighlight(5, 3, AyahHighlightColor.GREEN)
         d2.data.updateCollection(d2.collectionId("Study"), "Studies")
@@ -143,7 +143,7 @@ class ConvergenceScenariosTest {
         d3.removeFromFavorites(2, 3)
         d3.data.addCollection("Fresh")
 
-        // d3 syncs first, then renames right after its push: the echo must not revert it (S2).
+        // d3 syncs first, then renames right after its push: the echo must not revert it.
         assertSucceeded(d3.syncNow())
         d3.data.updateCollection(d3.collectionId("Fresh"), "Renamed fresh")
         syncRounds(d1, d2, d3)
@@ -250,7 +250,7 @@ class ConvergenceScenariosTest {
             phone.data.updateNote(phone.note("Sent before the edit").id, "Edited while the create was in flight")
         }
 
-        // The echo of the phone's own CREATE must not revert the edit made while it was in flight (S2).
+        // The echo of the phone's own CREATE must not revert the edit made while it was in flight.
         assertSucceeded(phone.syncNow())
         syncUntilQuiescent(phone)
         assertEquals(listOf("Edited while the create was in flight"), phone.noteBodies(), "the latest edit on the phone")

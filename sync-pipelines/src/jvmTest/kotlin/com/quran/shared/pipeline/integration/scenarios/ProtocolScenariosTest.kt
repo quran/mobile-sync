@@ -202,7 +202,7 @@ class ProtocolScenariosTest {
             after.copy(readingBookmarks = emptyList()),
             "after the vanished entries"
         )
-        // S27: a READING_BOOKMARK entry without a slot is skipped, never read as a cleared slot.
+        // A READING_BOOKMARK entry without a slot is skipped, never read as a cleared slot.
         assertEquals(before.readingBookmarks, after.readingBookmarks, "slot 1 unchanged")
 
 

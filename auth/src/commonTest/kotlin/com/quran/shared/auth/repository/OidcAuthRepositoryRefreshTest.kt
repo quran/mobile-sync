@@ -17,7 +17,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** S3 and S25: a forced refresh after a 401, and a refresh that fails for a transient reason. */
+/** A forced refresh after a 401, and a refresh that fails for a transient reason. */
 class OidcAuthRepositoryRefreshTest {
 
     @Test

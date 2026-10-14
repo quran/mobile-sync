@@ -121,11 +121,9 @@ class FailureScenariosTest {
     }
 
     /**
-     * S10: the old engine applied a GET's remote delete after its POST, so a row edited during the POST skipped the
-     * delete and pushed an UPDATE that got 404 forever. The new engine merges the delete, with the token, before it
-     * pushes: by the time the POST is in flight the row is gone, so there is no stale row to edit and no 404. An edit
-     * made while the GET is held, before the merge commits, is the catalog's race: edit beats delete, so R is recreated
-     * with the edit.
+     * A GET's remote delete is merged, with the token, before the push: by the time the POST is in flight the row is
+     * gone, so there is no stale row to edit and no 404. An edit made while the GET is held, before the merge commits,
+     * wins: edit beats delete, so R is recreated with the edit.
      */
     @Test
     fun `ERR-06 a 404 after a remote delete raced a local edit`() = syncScenario {
@@ -146,7 +144,7 @@ class FailureScenariosTest {
         assertEquals(emptyList(), server.state(ALICE).notes)
         assertConverged(ALICE, phone)
 
-        // The catalog's race, before the merge commits: the edit lands while the GET carrying the delete is held.
+        // Before the merge commits, the edit lands while the GET carrying the delete is held.
         // Edit beats delete, so R is recreated with the edit.
         phone.data.addNote("Deleted on the web while the GET is held", 3, 18, 3, 18)
         syncUntilQuiescent(phone)

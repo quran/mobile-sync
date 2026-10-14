@@ -134,7 +134,7 @@ class HighlightScenariosTest {
         repeat(2) { syncAll(phone, tablet).forEach(::assertSucceeded) }
         syncUntilQuiescent(phone, tablet)
 
-        // S24: one color per verse on remote changes too, so the server ends with one color as well.
+        // One color per verse on remote changes too, so the server ends with one color as well.
         listOf(phone, tablet).forEach { assertEquals(listOf("2:255 yellow"), it.highlightList(), it.name) }
         val state = server.state(ALICE)
         val colors = state.collections.filter { "2:255" in state.versesIn(it.id) }.map { it.name }.sorted()

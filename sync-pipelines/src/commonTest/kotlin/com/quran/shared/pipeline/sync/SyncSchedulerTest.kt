@@ -19,7 +19,7 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
-/** [SyncScheduler] on virtual time: when runs start, how failures are retried, and that sync never stops (S21). */
+/** [SyncScheduler] on virtual time: when runs start, how failures are retried, and that sync never stops. */
 class SyncSchedulerTest {
     private val timings = SchedulerTimings(
         standardInterval = 30.minutes,

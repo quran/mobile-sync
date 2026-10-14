@@ -62,7 +62,7 @@ class ObservabilityScenariosTest {
     @Test
     fun `OBS-02 a permanently failing sync is reported once through the public API`() = syncScenario {
         val (phone) = signedIn("phone")
-        // One rejected mutation no longer fails a run (it is held, S11); a POST that always fails still does.
+        // A rejected mutation is held and doesn't fail the run; a POST that always fails still does.
         server.faults.failRequests(times = ServerFaults.ALWAYS, status = 503, code = "ServiceUnavailableError")
         phone.data.addNote("Rejected on every attempt", 2, 255, 2, 255)
         phone.data.addCollection("Study")

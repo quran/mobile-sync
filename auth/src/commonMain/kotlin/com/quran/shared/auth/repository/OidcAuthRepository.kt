@@ -144,7 +144,7 @@ class OidcAuthRepository(
 
     /**
      * Refreshes the token when it is inside the expiry safety margin, or always when [force]d. A refused refresh
-     * token ends the session; a transient failure (network, a server error) keeps it and is thrown (S3).
+     * token ends the session; a transient failure (network, a server error) keeps it and is thrown.
      */
     private suspend fun refreshTokens(force: Boolean): Boolean =
         refreshMutex.withLock refreshLock@ {

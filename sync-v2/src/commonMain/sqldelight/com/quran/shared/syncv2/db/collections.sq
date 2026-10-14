@@ -19,7 +19,7 @@ CREATE UNIQUE INDEX collection_name_key_idx ON collection(name_key);
 collectionsAll:
 SELECT * FROM collection ORDER BY local_id;
 
--- App-facing: newest first, as the collection list has always been ordered.
+-- App-facing: newest first.
 collectionsNewestFirst:
 SELECT * FROM collection ORDER BY created_at DESC, local_id DESC;
 

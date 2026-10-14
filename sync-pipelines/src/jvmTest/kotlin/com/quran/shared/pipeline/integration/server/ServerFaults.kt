@@ -65,9 +65,7 @@ class ServerFaults internal constructor() {
 
     /**
      * Serves at most this many entries per GET page, whatever `limit` the client asked for. The
-     * real server honours the client's limit up to 1000. Today's client derives the page count
-     * from its own 1000 limit, so a cap below that makes it skip pages; use it only for engines that
-     * page by `hasMore` or `limit`.
+     * real server honours the client's limit up to 1000.
      */
     @Volatile var pageSizeCap: Int? = null
 

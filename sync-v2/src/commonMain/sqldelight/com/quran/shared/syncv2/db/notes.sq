@@ -1,6 +1,6 @@
 -- Plain domain tables: no sync columns. Local ids may be negative (see SyncType).
 -- A note keeps every range it was created with, in order; ranges are immutable, as on the server.
--- created_at is unique among this device's own notes (NotesRepository nudges it by 1 ms): with the ranges it is the
+-- created_at is unique among this device's own notes (every local write nudges it by 1 ms): with the ranges it is the
 -- identity a lost CREATE is recognised by, since notes have no natural key.
 -- archived_at: archived on QuranReflect (a 30-day trash). The row stays and syncs; app-facing queries hide it.
 
