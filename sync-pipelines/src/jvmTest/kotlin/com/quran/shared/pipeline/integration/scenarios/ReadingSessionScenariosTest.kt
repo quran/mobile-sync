@@ -212,9 +212,11 @@ class ReadingSessionScenariosTest {
         phone.data.addReadingSession(18, 1)
         syncUntilQuiescent(phone, tablet)
 
+        // Deletes take no timestamp. Setting the server's clock back keeps the phone's later delete
+        // newer than the tablet's, even within one millisecond.
+        server.clock.offsetMillis = -60_000
         tablet.data.deleteReadingSession(2, 255)
         assertSucceeded(tablet.syncNow())
-        // Deletes take no timestamp, so the phone's delete is the later one by the wall clock.
         phone.data.deleteReadingSession(2, 255)
 
         knownIssue(
