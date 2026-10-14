@@ -7,6 +7,7 @@ import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.pipeline.integration.SyncDevice
 import com.quran.shared.pipeline.integration.SyncScenario
 import com.quran.shared.pipeline.integration.assertSucceeded
+import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.flow.first
 import kotlin.test.Test
@@ -173,6 +174,20 @@ class TextScenariosTest {
         assertEquals(listOf("STRASSE", "Straße", "ÉTUDE"), names)
         assertTrue(server.requests.count { it.status == 409 } <= 1, "409 statuses: ${server.requests.count { it.status == 409 }}")
         listOf(phone, tablet).forEach { assertEquals(names, it.collectionNames(), it.name) }
+        assertConverged(ALICE, phone, tablet)
+    }
+
+    /** TXT-09 the other way: the phone's spelling is newer, so linking keeps it and renames the server's. */
+    @Test
+    fun `TXT-09 variant, a newer local spelling wins the link`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+        web(ALICE).createCollection("ÉTUDE", ClientTimes(T0, T0))
+
+        phone.data.addCollection("étude", at(5_000))
+        syncUntilQuiescent(phone, tablet)
+
+        assertEquals(listOf("étude"), server.state(ALICE).collections.map { it.name })
+        listOf(phone, tablet).forEach { assertEquals(listOf("étude"), it.collectionNames(), it.name) }
         assertConverged(ALICE, phone, tablet)
     }
 
