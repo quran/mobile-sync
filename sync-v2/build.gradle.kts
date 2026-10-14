@@ -7,8 +7,7 @@ plugins {
     alias(libs.plugins.sqldelight)
 }
 
-// The generic, git-like sync engine. It sits alongside `syncengine` and is not wired into QuranDataService yet,
-// so `umbrella` doesn't export it.
+// The generic, git-like sync engine. Only `sync-pipelines` uses it, so `umbrella` doesn't export it.
 kotlin {
     applyDefaultHierarchyTemplate()
 
