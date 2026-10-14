@@ -16,6 +16,7 @@ import io.ktor.client.HttpClient
 import kotlinx.coroutines.currentCoroutineContext
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
+import kotlin.native.HiddenFromObjC
 
 interface LocalDataFetcher<Model> {
     /**
@@ -143,6 +144,30 @@ suspend fun checkCurrentSyncWriteBoundary() {
 
 class SyncOperationInvalidatedException(message: String) : Exception(message)
 
+/**
+ * Observes sync runs. A run spans its first attempt and every retry, and ends with exactly one of
+ * [syncSucceeded], [syncSkipped], or [syncFailed], unless it is cancelled.
+ *
+ * Calls arrive on background threads.
+ */
+@HiddenFromObjC
+interface SyncRunObserver {
+    /** A signed-in run is contacting the server. Retries report it again. */
+    fun syncStarted() {}
+
+    /** The run synced every resource. */
+    fun syncSucceeded() {}
+
+    /**
+     * The run ended without a result: no one is signed in, or a logout or reset stopped it or
+     * began while it ran.
+     */
+    fun syncSkipped() {}
+
+    /** The run failed and has no retries left. */
+    fun syncFailed(error: SyncError) {}
+}
+
 interface SynchronizationClient {
     fun localDataUpdated()
     fun applicationStarted()
@@ -154,6 +179,8 @@ interface SynchronizationClient {
 data class SynchronizationEnvironment(val endPointURL: String)
 
 object SynchronizationClientBuilder {
+    // Hidden because SyncRunObserver is; apps get their client through QuranDataService.
+    @HiddenFromObjC
     fun build(
         environment: SynchronizationEnvironment,
         authFetcher: AuthenticationDataFetcher,
@@ -165,6 +192,7 @@ object SynchronizationClientBuilder {
         readingSessionsConfigurations: ReadingSessionsSynchronizationConfigurations? = null,
         syncCompletionFinalizer: SyncCompletionFinalizer = SyncCompletionFinalizer { },
         syncLifecycleGate: SyncLifecycleGate = object : SyncLifecycleGate {},
+        syncRunObserver: SyncRunObserver = object : SyncRunObserver {},
         httpClient: HttpClient? = null
     ): SynchronizationClient {
         val adapters = buildList {
@@ -181,7 +209,8 @@ object SynchronizationClientBuilder {
             adapters,
             authFetcher,
             syncCompletionFinalizer,
-            syncLifecycleGate
+            syncLifecycleGate,
+            syncRunObserver
         )
     }
 }

@@ -40,6 +40,7 @@ import com.quran.shared.syncengine.ReadingBookmarksSynchronizationConfigurations
 import com.quran.shared.syncengine.ResultNotifier
 import com.quran.shared.syncengine.SyncCompletionFinalizer
 import com.quran.shared.syncengine.SyncLifecycleGate
+import com.quran.shared.syncengine.SyncRunObserver
 import com.quran.shared.syncengine.SynchronizationClient
 import com.quran.shared.syncengine.SynchronizationClientBuilder
 import com.quran.shared.syncengine.SynchronizationEnvironment
@@ -119,7 +120,8 @@ class SyncEnginePipeline(
         localModificationDateFetcher: LocalModificationDateFetcher,
         authenticationDataFetcher: AuthenticationDataFetcher,
         syncLifecycleGate: SyncLifecycleGate,
-        callback: SyncEngineCallback
+        callback: SyncEngineCallback,
+        syncRunObserver: SyncRunObserver
     ): SynchronizationClient {
         val writeBoundaryGuard = CurrentSyncWriteBoundaryGuard
 
@@ -175,6 +177,7 @@ class SyncEnginePipeline(
             readingBookmarksConfigurations = readingBookmarksConf,
             readingSessionsConfigurations = readingSessionsConf,
             syncLifecycleGate = syncLifecycleGate,
+            syncRunObserver = syncRunObserver,
             syncCompletionFinalizer = SyncCompletionFinalizer { token ->
                 callback.synchronizationDone(token)
             }

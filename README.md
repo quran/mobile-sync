@@ -194,6 +194,9 @@ graph.authService.login()
 As on Android, the optional `MobileSyncLogging.configure(sink:minSeverity:)` call must come before
 `SharedDependencyGraph.doInit`, because HTTP clients read the severity when they are created.
 
+Kotlin default arguments are not exported to Swift, so pass every argument, such as
+`triggerSync(immediately: false)`.
+
 ```swift
 import Shared
 
@@ -258,9 +261,9 @@ backup is enabled.
 ### 3. Use managed services
 
 Core API examples:
-- Observe: `authState`, `bookmarks`, `collectionsWithBookmarks`, `notes`
+- Observe: `authState`, `syncStatus`, `bookmarks`, `collectionsWithBookmarks`, `notes`
 - Mutations: `addBookmark`, `deleteBookmark`, `addCollection`, `deleteCollection`, `addNote`, `deleteNote`
-- Trigger sync: `triggerSync()`
+- Trigger sync: `triggerSync()` after a burst of edits, or `triggerSync(immediately = true)` for a user's "Sync now"
 - Auth: use `SyncAuthService.login()`, `loginWithReauthentication()`, `logout()`, and `clearError()`
 
 Import local data through `QuranDataService.importData(PersistenceImportData(...))`.

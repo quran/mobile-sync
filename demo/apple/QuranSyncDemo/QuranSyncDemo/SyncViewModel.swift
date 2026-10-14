@@ -105,7 +105,7 @@ class SyncViewModel: ObservableObject {
     }
 
     func triggerSync() {
-        quranDataService.triggerSync()
+        quranDataService.triggerSync(immediately: false)
     }
 
     func addCollection(name: String) async {

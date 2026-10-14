@@ -41,6 +41,10 @@ kotlin {
         }
     }
 
+    sourceSets.all {
+        languageSettings.optIn("kotlin.experimental.ExperimentalObjCRefinement")
+    }
+
     // don't show warnings for expect/actual classes
     targets.configureEach {
         compilations.configureEach {

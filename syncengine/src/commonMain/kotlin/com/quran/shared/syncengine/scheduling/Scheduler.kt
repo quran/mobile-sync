@@ -47,7 +47,7 @@ data class FailureRetryingConfig(
     val maximumRetries: Int
 )
 
-private val DefaultTimings = SchedulerTimings(
+internal val DefaultTimings = SchedulerTimings(
     standardInterval = 30.minutes,
     appRefreshInterval = 30.seconds,
     localDataModifiedInterval = 5.seconds,
@@ -75,13 +75,18 @@ internal var schedulerAfterCommandDrainSnapshotHook: (() -> Unit)? = null
 internal var schedulerBeforeCommandDrainReleaseHook: (() -> Unit)? = null
 
 private class SchedulerAttemptContext(
-    val attempt: Int
+    val attempt: Int,
+    val isFinal: Boolean
 ) : AbstractCoroutineContextElement(SchedulerAttemptContext) {
     companion object Key : CoroutineContext.Key<SchedulerAttemptContext>
 }
 
 internal suspend fun currentSchedulerAttempt(): Int =
     currentCoroutineContext()[SchedulerAttemptContext]?.attempt ?: 0
+
+/** Whether the scheduler gives up, instead of retrying, if the current attempt fails. */
+internal suspend fun isFinalSchedulerAttempt(): Boolean =
+    currentCoroutineContext()[SchedulerAttemptContext]?.isFinal ?: true
 
 /**
  * A scheduler that manages the execution of a task function with configurable timing and retry logic.
@@ -308,7 +313,9 @@ class Scheduler(
 
         logger.d { "Executing task function, state: WaitingForReply" }
         try {
-            withContext(SchedulerAttemptContext(startingState.getRetryCount())) {
+            val attempt = startingState.getRetryCount()
+            val isFinal = attempt >= timings.failureRetryingConfig.maximumRetries
+            withContext(SchedulerAttemptContext(attempt, isFinal)) {
                 taskFunction()
             }
 
@@ -464,9 +471,18 @@ private fun SchedulerState.currentlyScheduled(): Boolean =
 fun createScheduler(
     taskFunction: suspend () -> Unit,
     reachedMaximumFailureRetries: suspend (Exception) -> Unit
+): Scheduler = createScheduler(DefaultTimings, taskFunction, reachedMaximumFailureRetries)
+
+/**
+ * Tests use it to shorten trigger delays and retries.
+ */
+internal fun createScheduler(
+    timings: SchedulerTimings,
+    taskFunction: suspend () -> Unit,
+    reachedMaximumFailureRetries: suspend (Exception) -> Unit
 ): Scheduler {
     return Scheduler(
-        timings = DefaultTimings,
+        timings = timings,
         taskFunction = taskFunction,
         reachedMaximumFailureRetries = reachedMaximumFailureRetries
     )

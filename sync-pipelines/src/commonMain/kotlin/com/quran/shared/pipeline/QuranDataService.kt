@@ -35,6 +35,7 @@ import com.quran.shared.persistence.util.toPlatform
 import com.quran.shared.syncengine.AuthenticationDataFetcher
 import com.quran.shared.syncengine.LocalModificationDateFetcher
 import com.quran.shared.syncengine.SyncLifecycleGate
+import com.quran.shared.syncengine.SyncRunObserver
 import com.quran.shared.syncengine.SynchronizationClient
 import com.quran.shared.syncengine.SynchronizationEnvironment
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
@@ -78,6 +79,7 @@ internal fun interface QuranDataServiceSynchronizationClientFactory {
      * @param authenticationDataFetcher supplies fresh authentication headers for sync requests.
      * @param syncLifecycleGate guards sync work during managed session resets.
      * @param callback receives sync completion and error events.
+     * @param syncRunObserver receives the start and outcome of each sync run.
      * @return the synchronization client used for app-start, local-mutation, and immediate sync triggers.
      */
     fun create(
@@ -86,7 +88,8 @@ internal fun interface QuranDataServiceSynchronizationClientFactory {
         localModificationDateFetcher: LocalModificationDateFetcher,
         authenticationDataFetcher: AuthenticationDataFetcher,
         syncLifecycleGate: SyncLifecycleGate,
-        callback: SyncEngineCallback
+        callback: SyncEngineCallback,
+        syncRunObserver: SyncRunObserver
     ): SynchronizationClient
 }
 
@@ -103,14 +106,16 @@ internal class DefaultQuranDataServiceSynchronizationClientFactory() :
         localModificationDateFetcher: LocalModificationDateFetcher,
         authenticationDataFetcher: AuthenticationDataFetcher,
         syncLifecycleGate: SyncLifecycleGate,
-        callback: SyncEngineCallback
+        callback: SyncEngineCallback,
+        syncRunObserver: SyncRunObserver
     ): SynchronizationClient =
         pipeline.setup(
             environment = environment,
             localModificationDateFetcher = localModificationDateFetcher,
             authenticationDataFetcher = authenticationDataFetcher,
             syncLifecycleGate = syncLifecycleGate,
-            callback = callback
+            callback = callback,
+            syncRunObserver = syncRunObserver
         )
 }
 
@@ -136,6 +141,7 @@ class QuranDataService internal constructor(
 ) {
     private val serviceJob: Job = SupervisorJob()
     private val scope = CoroutineScope(Dispatchers.Main + serviceJob)
+    private val syncStatusTracker = SyncStatusTracker()
     private val syncClient: SynchronizationClient
     private val initializationMutex = Mutex()
     private var initializationAttempt: Deferred<Unit>? = null
@@ -209,6 +215,13 @@ class QuranDataService internal constructor(
 
     @NativeCoroutinesState
     val authState: StateFlow<AuthState> get() = authService.authState
+
+    /**
+     * The state of the latest sync run. See [SyncStatus] for how retries, sign-out, and resets
+     * are reported.
+     */
+    @NativeCoroutinesState
+    val syncStatus: StateFlow<SyncStatus> get() = syncStatusTracker.status
 
     // Cast the synchronization repository to the transactional repository.
     // This keeps QuranDataService as the single app-facing data entry point.
@@ -285,7 +298,8 @@ class QuranDataService internal constructor(
             localModificationDateFetcher = syncLocalModificationDateStore,
             authenticationDataFetcher = authFetcher,
             syncLifecycleGate = sessionLifecycleCoordinator,
-            callback = SettingsSyncEngineCallback(syncLocalModificationDateStore, CurrentSyncWriteBoundaryGuard)
+            callback = SettingsSyncEngineCallback(syncLocalModificationDateStore, CurrentSyncWriteBoundaryGuard),
+            syncRunObserver = syncStatusTracker
         )
 
         scope.launch {
@@ -347,12 +361,23 @@ class QuranDataService internal constructor(
         }
     }
 
-    fun triggerSync() {
+    /**
+     * Schedules a sync.
+     *
+     * @param immediately `false` waits a few seconds so a burst of local edits syncs once. `true`
+     *   starts right away, such as for a user's "Sync now". An immediate request made while a sync
+     *   is running or waiting to retry is dropped; [syncStatus] reports that sync's outcome.
+     */
+    fun triggerSync(immediately: Boolean = false) {
         if (!sessionLifecycleCoordinator.canStartSync()) {
             Logger.d { "Sync trigger skipped because session is resetting" }
             return
         }
-        syncClient.localDataUpdated()
+        if (immediately) {
+            syncClient.triggerSyncImmediately()
+        } else {
+            syncClient.localDataUpdated()
+        }
     }
 
     private suspend fun resetLocalAuthDataAndToken() {
@@ -361,6 +386,7 @@ class QuranDataService internal constructor(
     }
 
     private suspend fun resetLocalDataAndSyncToken() {
+        syncStatusTracker.reset()
         persistenceResetRepository.deleteAllData()
         syncLocalModificationDateStore.updateLastModificationDate(0L)
     }
