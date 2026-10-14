@@ -1,11 +1,9 @@
 package com.quran.shared.pipeline.integration.scenarios
 
 import com.quran.shared.pipeline.integration.DeviceTimings
-import com.quran.shared.pipeline.integration.KnownDuplicates
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.server.ClientTimes
-import com.quran.shared.pipeline.integration.server.ServerDuplicate
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.JsonElement
@@ -41,12 +39,10 @@ class NoteScenariosTest {
 
         phone.data.updateNote(phone.note("First version of it").id, "Second version of it")
 
-        knownIssue("S7", "Editing a synced note sends ranges in the UPDATE and gets 422 forever", expect = NOTE_UPDATE_REJECTED) {
-            assertSucceeded(phone.syncNow())
-            assertEquals(listOf("Second version of it"), server.state(ALICE).notes.map { it.body })
-            assertSucceeded(tablet.syncNow())
-            assertEquals(listOf("Second version of it"), tablet.noteBodies())
-        }
+        assertSucceeded(phone.syncNow())
+        assertEquals(listOf("Second version of it"), server.state(ALICE).notes.map { it.body })
+        assertSucceeded(tablet.syncNow())
+        assertEquals(listOf("Second version of it"), tablet.noteBodies())
     }
 
     @Test
@@ -57,15 +53,9 @@ class NoteScenariosTest {
 
         phone.data.updateNote(phone.note("First body of it").id, "Edited body of it")
 
-        knownIssue(
-            "The echo reverts the edit (S2); once it is pushed, its UPDATE gets 422 (S7)",
-            "S2" to failureMentions("local body", "First body of it"),
-            "S7" to NOTE_UPDATE_REJECTED
-        ) {
-            assertSucceeded(phone.syncNow())
-            assertEquals(listOf("Edited body of it"), phone.noteBodies(), "local body")
-            assertEquals(listOf("Edited body of it"), server.state(ALICE).notes.map { it.body }, "server body")
-        }
+        assertSucceeded(phone.syncNow())
+        assertEquals(listOf("Edited body of it"), phone.noteBodies(), "local body")
+        assertEquals(listOf("Edited body of it"), server.state(ALICE).notes.map { it.body }, "server body")
     }
 
     @Test
@@ -91,17 +81,11 @@ class NoteScenariosTest {
         tablet.data.addNote("Reflect daily", 2, 255, 2, 255, at(10_000))
         assertSucceeded(tablet.syncNow())
 
-        knownIssue(
-            "S1",
-            "A never-sent note tombstone binds another device's identical note and deletes it",
-            expect = failureMentions("tablet's note on the server")
-        ) {
-            assertSucceeded(phone.syncNow())
-            assertSucceeded(phone.syncNow())
-            assertEquals(listOf("Reflect daily"), server.state(ALICE).notes.map { it.body }, "tablet's note on the server")
-            assertSucceeded(tablet.syncNow())
-            assertEquals(listOf("Reflect daily"), tablet.noteBodies(), "tablet's note on the tablet")
-        }
+        assertSucceeded(phone.syncNow())
+        assertSucceeded(phone.syncNow())
+        assertEquals(listOf("Reflect daily"), server.state(ALICE).notes.map { it.body }, "tablet's note on the server")
+        assertSucceeded(tablet.syncNow())
+        assertEquals(listOf("Reflect daily"), tablet.noteBodies(), "tablet's note on the tablet")
     }
 
     @Test
@@ -120,29 +104,21 @@ class NoteScenariosTest {
         assertConverged(ALICE, phone)
     }
 
+    /**
+     * Ranges are immutable, as on the server (S4): `updateNote` takes only the body, so an edit can't move a note,
+     * and device and server never disagree on its range.
+     */
     @Test
     fun `NOTE-13 a range edit never leaves device and server disagreeing`() = syncScenario {
         val (phone) = signedIn("phone")
         phone.data.addNote("A note to move elsewhere", 2, 255, 2, 255)
         syncUntilQuiescent(phone)
 
-        phone.data.updateNote(phone.note("A note to move elsewhere").id, "A note to move elsewhere")
+        phone.data.updateNote(phone.note("A note to move elsewhere").id, "A note that stays where it is")
 
-        knownIssue(
-            "The range edit's UPDATE gets 422 (S7); once accepted without ranges, the server keeps the old range (S4)",
-            "S7" to NOTE_UPDATE_REJECTED,
-            // Either the phone keeps 3:18 while the server keeps 2:255, or the echo reverts the phone too.
-            "S4" to { failure ->
-                failureMentions(
-                    "expected:<UserDataSnapshot(notes=[A note to move elsewhere | 2:255-2:255]",
-                    "but was:<UserDataSnapshot(notes=[A note to move elsewhere | 3:18-3:18]"
-                )(failure) || failureMentions("the agreed range", "but was:<[2:255-2:255]>")(failure)
-            }
-        ) {
-            repeat(2) { assertSucceeded(phone.syncNow()) }
-            assertConverged(ALICE, phone)
-            assertEquals(listOf("3:18-3:18"), server.state(ALICE).notes.single().ranges, "the agreed range")
-        }
+        repeat(2) { assertSucceeded(phone.syncNow()) }
+        assertConverged(ALICE, phone)
+        assertEquals(listOf("2:255-2:255"), server.state(ALICE).notes.single().ranges, "the agreed range")
     }
 
     @Test
@@ -159,13 +135,7 @@ class NoteScenariosTest {
         assertEquals(0, run.posts)
         assertNotNull(server.state(ALICE).notes.single().archivedAt, "archived, not deleted, on the server")
         // The public Note has no archived state, so of the two product decisions only "hidden" is expressible.
-        knownIssue(
-            "S13",
-            "A note archived on QuranReflect shows as active",
-            expect = failureMentions("archived note on the phone", "but was:<[Archived on QuranReflect]>")
-        ) {
-            assertEquals(emptyList(), phone.noteBodies(), "archived note on the phone")
-        }
+        assertEquals(emptyList(), phone.noteBodies(), "archived note on the phone")
     }
 
     @Test
@@ -250,17 +220,11 @@ class NoteScenariosTest {
         phone.data.updateNote(phone.note("The original body").id, "The phone's older edit", at(1_000))
         tablet.data.updateNote(tablet.note("The original body").id, "The tablet's newer edit", at(2_000))
 
-        knownIssue(
-            "The phone's UPDATE gets 422 (S7); once it is accepted, remote-wins keeps the older edit (S17)",
-            "S7" to NOTE_UPDATE_REJECTED,
-            "S17" to failureMentions("newest edit", "but was:<[The phone's older edit]>")
-        ) {
-            assertSucceeded(phone.syncNow())
-            assertSucceeded(tablet.syncNow())
-            syncUntilQuiescent(phone, tablet)
-            assertEquals(listOf("The tablet's newer edit"), server.state(ALICE).notes.map { it.body }, "newest edit")
-            assertConverged(ALICE, phone, tablet)
-        }
+        assertSucceeded(phone.syncNow())
+        assertSucceeded(tablet.syncNow())
+        syncUntilQuiescent(phone, tablet)
+        assertEquals(listOf("The tablet's newer edit"), server.state(ALICE).notes.map { it.body }, "newest edit")
+        assertConverged(ALICE, phone, tablet)
     }
 
     @Test
@@ -274,20 +238,14 @@ class NoteScenariosTest {
         web.deleteNote(original)
         phone.data.updateNote(phone.note("Written on the phone").id, "Edited after the web deleted it")
 
-        knownIssue(
-            "S15",
-            "A remote delete beats a local note edit",
-            expect = failureMentions("the edit on the phone", "expected:<[Edited after the web deleted it]> but was:<[]>")
-        ) {
-            assertSucceeded(phone.syncNow())
-            assertEquals(listOf("Edited after the web deleted it"), phone.noteBodies(), "the edit on the phone")
-            syncUntilQuiescent(phone)
-            val note = server.state(ALICE).notes.single()
-            assertEquals("Edited after the web deleted it", note.body)
-            assertEquals(listOf("2:255-2:255"), note.ranges)
-            assertTrue(note.id != original, "the note was recreated with a new id")
-            assertConverged(ALICE, phone)
-        }
+        assertSucceeded(phone.syncNow())
+        assertEquals(listOf("Edited after the web deleted it"), phone.noteBodies(), "the edit on the phone")
+        syncUntilQuiescent(phone)
+        val note = server.state(ALICE).notes.single()
+        assertEquals("Edited after the web deleted it", note.body)
+        assertEquals(listOf("2:255-2:255"), note.ranges)
+        assertTrue(note.id != original, "the note was recreated with a new id")
+        assertConverged(ALICE, phone)
     }
 
     @Test
@@ -312,14 +270,15 @@ class NoteScenariosTest {
         val (phone) = signedIn("phone")
         web(ALICE).createNote("A note on two passages", "2:255-2:256", "3:18-3:18")
 
-        // The public note model holds one range, so the device shows the first one only (S4).
+        // The device keeps every range (note_range), but the public note model holds one, so it shows the first
+        // one only (S4's iOS part, step 5: the model gets the ranges).
         knownIssue(
-            "Extra note ranges are dropped (S4); once kept, editing the body gets 422 (S7)",
-            "S4" to failureMentions(
+            "S4",
+            "The public note model shows only a note's first range",
+            expect = failureMentions(
                 "expected:<UserDataSnapshot(notes=[A note on two passages | 2:255-2:256,3:18-3:18]",
                 "but was:<UserDataSnapshot(notes=[A note on two passages | 2:255-2:256]"
-            ),
-            "S7" to NOTE_UPDATE_REJECTED
+            )
         ) {
             assertSucceeded(phone.syncNow())
             assertConverged(ALICE, phone)
@@ -332,12 +291,7 @@ class NoteScenariosTest {
     }
 
     @Test
-    fun `NOTE-17 a lost response plus a local edit doesn't duplicate`() = syncScenario(
-        knownDuplicates = KnownDuplicates("S12", "A lost POST response plus a later local edit duplicates notes") {
-            // The committed CREATE and the edit's new CREATE, both created when the note was written.
-            it.kind == ServerDuplicate.Kind.NOTE && it.key.endsWith(" on [2:255-2:255]") && it.ids.size == 2
-        }
-    ) {
+    fun `NOTE-17 a lost response plus a local edit doesn't duplicate`() = syncScenario {
         // No retries, so the run ends at the lost response and the edit lands before the next one.
         val phone = device("phone", DeviceTimings(maximumRetries = 0))
         assertSucceeded(phone.login(ALICE))
@@ -347,25 +301,13 @@ class NoteScenariosTest {
 
         phone.data.updateNote(phone.note("Written before the loss").id, "Edited after the loss")
 
-        knownIssue(
-            "A lost response plus an edit duplicates the note (S12); once linked, the edit's UPDATE gets 422 (S7)",
-            "S12" to failureMentions("notes on the phone", "but was:<[Edited after the loss, Written before the loss]>"),
-            "S7" to NOTE_UPDATE_REJECTED
-        ) {
-            syncUntilQuiescent(phone)
-            assertEquals(listOf("Edited after the loss"), phone.noteBodies(), "notes on the phone")
-            assertEquals(listOf("Edited after the loss"), server.state(ALICE).notes.map { it.body }, "notes on the server")
-        }
+        syncUntilQuiescent(phone)
+        assertEquals(listOf("Edited after the loss"), phone.noteBodies(), "notes on the phone")
+        assertEquals(listOf("Edited after the loss"), server.state(ALICE).notes.map { it.body }, "notes on the server")
     }
 
     @Test
-    fun `NOTE-18 two identical pending notes plus a lost response`() = syncScenario(
-        knownDuplicates = KnownDuplicates("S12", "Two identical pending notes plus a lost response duplicate on the server") {
-            // Each of the two notes, pushed again after the lost response.
-            it.kind == ServerDuplicate.Kind.NOTE && it.ids.size == 2 &&
-                it.key in setOf("created at $T0 on [2:255-2:255]", "created at ${T0 + 60_000} on [2:255-2:255]")
-        }
-    ) {
+    fun `NOTE-18 two identical pending notes plus a lost response`() = syncScenario {
         val (phone) = signedIn("phone")
         // An import skips a note with the same body and range, so writing the note twice makes the
         // pair.
@@ -374,14 +316,8 @@ class NoteScenariosTest {
         assertEquals(2, phone.data.notes.first().size, "two identical pending notes")
         server.faults.loseResponse { it.carries("NOTE") }
 
-        knownIssue(
-            "S12",
-            "Two identical pending notes plus a lost response duplicate on the server",
-            expect = failureMentions("server notes", "expected:<2> but was:<")
-        ) {
-            syncUntilQuiescent(phone)
-            assertEquals(2, server.state(ALICE).notes.size, "server notes")
-            assertConverged(ALICE, phone)
-        }
+        syncUntilQuiescent(phone)
+        assertEquals(2, server.state(ALICE).notes.size, "server notes")
+        assertConverged(ALICE, phone)
     }
 }
