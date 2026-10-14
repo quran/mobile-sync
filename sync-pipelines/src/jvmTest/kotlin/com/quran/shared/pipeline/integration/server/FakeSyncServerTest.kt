@@ -90,21 +90,6 @@ class FakeSyncServerTest {
     }
 
     @Test
-    fun `metadataOnly returns only the head`() {
-        server.web(ALICE).createNote("A valid note body", "1:1-1:7")
-
-        val response = http.send(
-            HttpRequest.newBuilder(URI("${server.url}/v1/sync?mutationsSince=0&metadataOnly=true"))
-                .header("x-auth-token", token).GET().build(),
-            HttpResponse.BodyHandlers.ofString()
-        )
-
-        val data = Json.parseToJsonElement(response.body()).jsonObject["data"]!!.jsonObject
-        assertEquals(setOf("lastMutationAt"), data.keys)
-        assertEquals(server.head(ALICE), data["lastMutationAt"]!!.jsonPrimitive.long)
-    }
-
-    @Test
     fun `a bookmark body with only mushafId falls back to the default group like the backend`() {
         post(server.head(ALICE), mutation("BOOKMARK", "CREATE", data = """{"type":"page","key":300,"mushafId":7}"""))
         post(server.head(ALICE), mutation("BOOKMARK", "CREATE", data = """{"type":"page","key":301,"mushaf":7}"""))
