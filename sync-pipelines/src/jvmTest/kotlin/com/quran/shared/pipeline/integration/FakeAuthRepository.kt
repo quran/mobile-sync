@@ -20,12 +20,17 @@ import org.publicvalue.multiplatform.oidc.tokenstore.TokenStore
  *
  * Like `OidcAuthRepository`, it keeps the session's tokens only in the graph's token store
  * ([useTokenStore]), which outlives the graph, so the session survives `SyncDevice.restart()`.
+ *
+ * Also like `OidcAuthRepository`, [refreshTokensIfNeeded] refreshes only when the token has expired
+ * by the device's own clock ([expireLocally]); the server rejecting a token does not refresh it.
+ * Tokens never expire locally unless a test says so.
  */
 class FakeAuthRepository(private val device: String, private val server: FakeSyncServer) : AuthRepository {
     @Volatile private var pendingAccount: String? = null
     @Volatile private var expireOnNextRefresh = false
     @Volatile private var remoteLogoutFails = false
     @Volatile private var logoutHold: LogoutHold? = null
+    @Volatile private var expiredLocally = false
     private lateinit var tokenStore: TokenStore
 
     /** The account of the latest login; null after a logout or an expired session. */
@@ -46,6 +51,19 @@ class FakeAuthRepository(private val device: String, private val server: FakeSyn
     fun expireSession() {
         expireOnNextRefresh = true
     }
+
+    /**
+     * The device's clock now says the access token has expired, so the next [refreshTokensIfNeeded]
+     * gets a new one from the server, as `OidcAuthRepository` does inside its safety margin.
+     */
+    fun expireLocally() {
+        expiredLocally = true
+    }
+
+    private val refreshCount = MutableStateFlow(0)
+
+    /** How many times [refreshTokensIfNeeded] replaced the token. */
+    val refreshes: StateFlow<Int> get() = refreshCount
 
     /** Replaces the access token, as a successful refresh does. */
     suspend fun rotateToken() {
@@ -80,6 +98,7 @@ class FakeAuthRepository(private val device: String, private val server: FakeSyn
         this.account = account
         tokenStore.saveTokens(server.issueToken(account, device), null, null)
         expireOnNextRefresh = false
+        expiredLocally = false
     }
 
     override suspend fun loginWithReauthentication() = login()
@@ -88,6 +107,12 @@ class FakeAuthRepository(private val device: String, private val server: FakeSyn
         if (expireOnNextRefresh && accessToken() != null) {
             expireOnNextRefresh = false
             clearLocalSession()
+        }
+        val account = account
+        if (expiredLocally && account != null && accessToken() != null) {
+            expiredLocally = false
+            tokenStore.saveTokens(server.issueToken(account, device), null, null)
+            refreshCount.update { it + 1 }
         }
         return accessToken() != null
     }
@@ -122,7 +147,8 @@ class FakeAuthRepository(private val device: String, private val server: FakeSyn
     override suspend fun getCurrentUser(): UserInfo? = account?.let { UserInfo(id = it, name = it) }
 
     override suspend fun getAuthHeaders(): Map<String, String> {
-        val token = accessToken()?.takeIf { refreshTokensIfNeeded() } ?: run {
+        // Like OidcAuthRepository: refresh first, then read the (possibly new) token.
+        val token = (if (refreshTokensIfNeeded()) accessToken() else null) ?: run {
             deniedHeaders.update { it + 1 }
             return emptyMap()
         }
