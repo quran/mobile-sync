@@ -9,8 +9,8 @@ is the reference.
   repositories in `:persistence` write them without any sync columns.
 - **Base:** `sync_item` holds, per item, its remote id and the state both sides last agreed on. A row with a base and
   no domain row is a local delete.
-- **Sync state:** `sync_meta` holds the token (the GET head), the account, and the outbox (the last POST batch, saved
-  before it is sent).
+- **Sync state:** `sync_meta` holds the token (the GET head), the account, the outbox (the last POST batch, saved
+  before it is sent), the wipe epoch, and the hold bookkeeping.
 
 Every step is idempotent, so a crash anywhere is repaired by the next run.
 

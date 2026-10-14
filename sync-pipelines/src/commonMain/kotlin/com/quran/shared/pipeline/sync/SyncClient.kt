@@ -15,6 +15,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.defaultRequest
+import io.ktor.client.request.header
+import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import kotlinx.io.IOException
 import kotlin.concurrent.Volatile
 import kotlin.time.Clock
@@ -194,7 +198,10 @@ internal class SyncClient(
         ): SyncClient {
             lateinit var client: SyncClient
             // The platform's engine (OkHttp on Android and the JVM, Darwin on iOS) comes from this module's dependencies.
-            val httpClient = HttpClient { installHttpLogging(tag = "SyncHttp") }
+            val httpClient = HttpClient {
+                installHttpLogging(tag = "SyncHttp")
+                defaultRequest { header(HttpHeaders.Accept, ContentType.Application.Json) }
+            }
             val api = SyncApi(httpClient, environment.endPointURL) { client.requestHeaders() }
             val engine = SyncEngineV2(database, api, syncTypes(database), ENGINE_VERSION)
             client = SyncClient(engine, account, gate, observer, timings, httpClient = httpClient)
