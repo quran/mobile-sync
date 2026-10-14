@@ -155,7 +155,7 @@ class QuranDataServiceImportTest {
 private class ImportSyncBindings(private val client: ImportSyncClientSpy) {
     @Provides
     fun synchronizationClientFactory(): QuranDataServiceSynchronizationClientFactory =
-        QuranDataServiceSynchronizationClientFactory { _, _, _, _, _, _ -> client }
+        QuranDataServiceSynchronizationClientFactory { _, _, _, _, _, _, _ -> client }
 }
 
 private class ImportSyncClientSpy : SynchronizationClient {

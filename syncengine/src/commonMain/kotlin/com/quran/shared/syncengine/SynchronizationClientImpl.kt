@@ -6,7 +6,9 @@ import com.quran.shared.syncengine.model.collectionBookmarkRemoteId
 import com.quran.shared.syncengine.network.GetMutationsRequest
 import com.quran.shared.syncengine.network.MutationsResponse
 import com.quran.shared.syncengine.network.PostMutationsRequest
+import com.quran.shared.syncengine.scheduling.DefaultTimings
 import com.quran.shared.syncengine.scheduling.Scheduler
+import com.quran.shared.syncengine.scheduling.SchedulerTimings
 import com.quran.shared.syncengine.scheduling.Trigger
 import com.quran.shared.syncengine.scheduling.createScheduler
 import com.quran.shared.syncengine.scheduling.currentSchedulerAttempt
@@ -22,12 +24,15 @@ internal class SynchronizationClientImpl(
     private val resourceAdapters: List<SyncResourceAdapter>,
     private val authenticationDataFetcher: AuthenticationDataFetcher,
     private val syncCompletionFinalizer: SyncCompletionFinalizer,
-    private val syncLifecycleGate: SyncLifecycleGate
+    private val syncLifecycleGate: SyncLifecycleGate,
+    private val syncRunObserver: SyncRunObserver,
+    schedulerTimings: SchedulerTimings = DefaultTimings
 ) : SynchronizationClient {
 
     private val logger = Logger.withTag("SynchronizationClient")
     
     private val scheduler: Scheduler = createScheduler(
+        timings = schedulerTimings,
         taskFunction = ::startSyncOperation,
         reachedMaximumFailureRetries = { exception ->
             val message = "Sync operation failed after maximum retries: ${exception.message}"
@@ -35,6 +40,7 @@ internal class SynchronizationClientImpl(
             resourceAdapters.forEach { adapter ->
                 adapter.didFail(message)
             }
+            syncRunObserver.syncFailed(exception.toSyncError())
         }
     )
 
@@ -90,26 +96,33 @@ internal class SynchronizationClientImpl(
         val syncEpoch = try {
             if (!syncLifecycleGate.canStartSync()) {
                 logger.i { "Sync lifecycle is unavailable, skipping sync operation" }
+                syncRunObserver.syncSkipped()
                 return
             }
             syncLifecycleGate.captureSyncEpoch()
         } catch (exception: SyncOperationInvalidatedException) {
             logger.i { "Sync operation invalidated before start: ${exception.message}" }
+            syncRunObserver.syncSkipped()
             return
         }
 
         if (resourceAdapters.isEmpty()) {
             logger.w { "No sync resources configured, skipping sync operation" }
+            syncRunObserver.syncSkipped()
             return
         }
 
         logger.i { "Starting sync operation attempt=$attempt for ${resourceAdapters.size} resource(s)" }
 
+        // A retry continues a failed run, so it reports syncing even if fetching headers fails again.
+        if (attempt > 0) syncRunObserver.syncStarted()
         val authHeaders = getAuthHeaders()
         if (authHeaders.isEmpty()) {
             logger.i { "No authentication headers available, skipping sync operation" }
+            syncRunObserver.syncSkipped()
             return
         }
+        if (attempt == 0) syncRunObserver.syncStarted()
 
         // Assume a shared sync token across resources.
         val lastModificationDate = resourceAdapters.first()
@@ -142,8 +155,10 @@ internal class SynchronizationClientImpl(
                     syncCompletionFinalizer.completeSync(token)
                 }
             )
+            syncRunObserver.syncSucceeded()
         } catch (exception: SyncOperationInvalidatedException) {
             logger.i { "Sync operation invalidated, aborting without retry: ${exception.message}" }
+            syncRunObserver.syncSkipped()
         }
     }
 

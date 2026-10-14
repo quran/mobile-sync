@@ -47,7 +47,7 @@ data class FailureRetryingConfig(
     val maximumRetries: Int
 )
 
-private val DefaultTimings = SchedulerTimings(
+internal val DefaultTimings = SchedulerTimings(
     standardInterval = 30.minutes,
     appRefreshInterval = 30.seconds,
     localDataModifiedInterval = 5.seconds,
@@ -464,9 +464,18 @@ private fun SchedulerState.currentlyScheduled(): Boolean =
 fun createScheduler(
     taskFunction: suspend () -> Unit,
     reachedMaximumFailureRetries: suspend (Exception) -> Unit
+): Scheduler = createScheduler(DefaultTimings, taskFunction, reachedMaximumFailureRetries)
+
+/**
+ * Creates a Scheduler with the given [timings]. Tests use it to shorten trigger delays and retries.
+ */
+internal fun createScheduler(
+    timings: SchedulerTimings,
+    taskFunction: suspend () -> Unit,
+    reachedMaximumFailureRetries: suspend (Exception) -> Unit
 ): Scheduler {
     return Scheduler(
-        timings = DefaultTimings,
+        timings = timings,
         taskFunction = taskFunction,
         reachedMaximumFailureRetries = reachedMaximumFailureRetries
     )

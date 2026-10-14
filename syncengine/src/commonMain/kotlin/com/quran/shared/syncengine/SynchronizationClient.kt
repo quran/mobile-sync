@@ -143,6 +143,28 @@ suspend fun checkCurrentSyncWriteBoundary() {
 
 class SyncOperationInvalidatedException(message: String) : Exception(message)
 
+/**
+ * Observes sync runs. A run spans its first attempt and every retry, and ends with exactly one of
+ * [syncSucceeded], [syncSkipped], or [syncFailed], unless it is cancelled.
+ *
+ * Calls arrive on background threads.
+ */
+interface SyncRunObserver {
+    /** A signed-in run is contacting the server. Retries report it again. */
+    fun syncStarted() {}
+
+    /** The run synced every resource. */
+    fun syncSucceeded() {}
+
+    /**
+     * The run ended without syncing: no one is signed in, or a logout or reset stopped it.
+     */
+    fun syncSkipped() {}
+
+    /** The run failed and has no retries left. */
+    fun syncFailed(error: SyncError) {}
+}
+
 interface SynchronizationClient {
     fun localDataUpdated()
     fun applicationStarted()
@@ -165,6 +187,7 @@ object SynchronizationClientBuilder {
         readingSessionsConfigurations: ReadingSessionsSynchronizationConfigurations? = null,
         syncCompletionFinalizer: SyncCompletionFinalizer = SyncCompletionFinalizer { },
         syncLifecycleGate: SyncLifecycleGate = object : SyncLifecycleGate {},
+        syncRunObserver: SyncRunObserver = object : SyncRunObserver {},
         httpClient: HttpClient? = null
     ): SynchronizationClient {
         val adapters = buildList {
@@ -181,7 +204,8 @@ object SynchronizationClientBuilder {
             adapters,
             authFetcher,
             syncCompletionFinalizer,
-            syncLifecycleGate
+            syncLifecycleGate,
+            syncRunObserver
         )
     }
 }

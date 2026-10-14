@@ -1105,7 +1105,7 @@ private class ServiceSynchronizationClientBindings(
 ) {
     @Provides
     fun provideQuranDataServiceSynchronizationClientFactory(): QuranDataServiceSynchronizationClientFactory =
-        QuranDataServiceSynchronizationClientFactory { _, _, _, _, _, _ -> syncClient }
+        QuranDataServiceSynchronizationClientFactory { _, _, _, _, _, _, _ -> syncClient }
 }
 
 private class ServiceAuthRepository(
