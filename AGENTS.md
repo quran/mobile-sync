@@ -91,7 +91,7 @@ Synced types (`sync-v2` `syncTypes`, in dependency order): collections, verses i
 - **Outbox.** Each POST batch is saved before it is sent. When its response is lost, the next GET proves whether it landed (`OutboxResolver`), so nothing is pushed twice or lost.
 - **Holds.** An item the server keeps refusing, or one that fails local validation, is held in `sync_item` with a reason, and its dependents wait on it; the rest keeps syncing. A hold ends when the user edits the item, the app version changes, or it expires. `SyncErrors.kt` lists which errors hold and which abort and retry.
 - **Uniqueness repair.** After the merge and before anything is written, `UniquenessRepair` restores the local unique indexes (a collection name, a session's verse): it links, reverts a local key change, or disambiguates.
-- **Adding a synced type.** Implement a `SyncType` in `sync-v2/.../types` over its own plain table (a `.sq` file in `sync-v2/src/commonMain/sqldelight`, no sync columns): its canonical state, natural key, parent, and mapping to and from the server's resource. Add it to the engine's types in dependency order (parents first). Model the resource in sync-v2's fake server (`sync-v2/src/jvmTest/.../fake`) and add a type unit test (`commonTest/.../types`) and acceptance tests (`jvmTest`).
+- **Adding a synced type.** Implement a `SyncType` in `sync-v2/.../types` over its own plain table (a `.sq` file in `sync-v2/src/commonMain/sqldelight`, no sync columns): its canonical state, natural key, parent, and mapping to and from the server's resource. Add it to `syncTypes` in dependency order (parents first). Model the resource in sync-v2's fake server (`sync-v2/src/jvmTest/.../fake`) and add a type unit test (`commonTest/.../types`) and acceptance tests (`jvmTest`).
 - **Keep the two fakes in step.** sync-v2's fake and the integration tests' `FakeSyncServer` (see Integration Tests) model the same backend. A backend rule added to one, such as a validation, a side effect, or how GET renders a resource, belongs in the other too.
 
 ## Integration Tests
@@ -109,7 +109,7 @@ Synced types (`sync-v2` `syncTypes`, in dependency order): collections, verses i
 ## Development Notes
 
 - Use `kotlinx.coroutines.test` and virtual time for timing-sensitive tests.
-- When adding a synced type, add its `SyncType` and plain table in `sync-v2` (and to `syncTypes`), its store and repository in `persistence`, the `QuranDataService` surface if needed, and tests.
+- When adding a synced type, follow "Adding a synced type" under sync-v2, then add its store and repository in `persistence`, the `QuranDataService` surface if needed, and its model in the integration `FakeSyncServer`.
 - When changing auth or environment behavior, check `AuthConfig`, `AppEnvironment`, `SharedDependencyGraph`, storage factories, and Android manifest placeholders.
 - Android demo OAuth configuration comes from `local.properties` via `OAUTH_CLIENT_ID`.
 - Session lifecycle metadata lives in the `key_value_store` table of `quran.db` (`@SyncMetadataSettings`), and sync state (token, account, outbox) in `sync_meta`; auth metadata stays in its own DataStore and tokens in the platform token store so database loss does not sign users out. Android backup exclusions are documented in `README.md`.

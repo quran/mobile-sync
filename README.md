@@ -35,6 +35,15 @@ flowchart LR
   U[Umbrella XCFramework] --> UI
 ```
 
+### Sync
+
+- **Engine (`:sync-v2`).** Each run fetches every change since the stored token, merges it three ways with the local changes (an edit beats a delete), and pushes what is left in batches of at most 100. An item the server keeps refusing is held, so the rest still syncs.
+- **Persistence on plain tables.** The repositories write plain domain tables, owned by `:sync-v2`'s types, through one store per type, so the app and the importer follow the same rules. The tables carry no sync columns; the engine keeps its own state in `sync_item` and `sync_meta`.
+- **Wiring (`:sync-pipelines`).** `SyncClient` runs the engine for the signed-in account and reports each run; `SyncScheduler` decides when runs happen.
+- **When it syncs.** A run starts 30 seconds after app start, 5 seconds after a local change, and at once for `triggerSync(immediately = true)`. After every run, success or not, the next one is due in 30 minutes, so sync never stops. Runs never overlap. A failed run is retried with exponential backoff (200 ms, ×2.5, up to 5 retries). A 403 that may be the token's scope pauses pushes for a while; automatic runs keep pulling.
+- **Auth.** The sync account is the ID token's `sub`. Signing in to a different account wipes the previous account's local data before anything is pushed. A 401 forces one token refresh and runs again; a refused refresh ends the session, while a network error, a timeout or a server error during a refresh keeps it.
+- **Status.** `QuranDataService.syncStatus` shows `Idle`, `Syncing`, or how the latest run ended: `Succeeded` with its time, or `Failed` with its time and a `SyncError`.
+
 ## Modules
 
 | Module | Purpose |
@@ -277,7 +286,7 @@ Use `readingBookmarks` with `ImportReadingBookmark.Ayah` or `.Page`, each specif
 Each slot may appear once; page numbers must be in `1..604`. An imported slot replaces its
 location, name (including clearing it when null), and modification time. Merge imports leave
 omitted slots unchanged; `deleteExisting = true` clears their locations while preserving slot
-identities and names for sync. Imports are atomic, track local sync mutations, and report the
+identities and names for sync. Imports are atomic and report the
 number of supplied reading bookmarks in `PersistenceImportResult.readingBookmarksImported`.
 An import writes through the repositories' rules: text is trimmed like the server, each note gets a
 creation time of its own (nudged by a millisecond on a clash), a verse keeps one highlight color, and
