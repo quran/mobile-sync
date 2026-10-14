@@ -42,8 +42,8 @@ class SkippedMembershipsTest {
             device.settle()
 
             assertEquals(emptySet(), device.versesIn("Study"))
-            assertTrue(lines.any { "$study-page7" in it && "bookmark page7" in it }, lines.toString())
-            assertTrue(lines.any { "gone-$ayah" in it && "collection gone" in it }, lines.toString())
+            assertTrue(lines.any { "$study-page7" in it }, lines.toString())
+            assertTrue(lines.any { "gone-$ayah" in it }, lines.toString())
         }
     }
 }

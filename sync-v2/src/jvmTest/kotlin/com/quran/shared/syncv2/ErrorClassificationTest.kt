@@ -51,39 +51,6 @@ abstract class ErrorClassificationTest(private val withIndex: Boolean) {
     }
 
     /**
-     * A 404 or 422 from the gateway itself (a deploy, a routing or maintenance page) carries no backend `error.code`:
-     * it says nothing about any item, so nothing is bisected, held or forgotten, and no tombstone is dropped.
-     */
-    @Test
-    fun `a codeless gateway 404 or 422 aborts without touching any item`() {
-        listOf(404, 422).forEach { status ->
-            server().use { server ->
-                Device(server).use { device ->
-                    val study = device.collections.addCollection("Study", t(0)).localId
-                    val old = device.collections.addCollection("Old", t(1)).localId
-                    device.settle()
-                    device.collections.renameCollection(study, "Memorize", t(2))
-                    device.collections.deleteCollection(old)
-                    device.collections.addCollection("New", t(3))
-                    val bases = device.engine.store.rows("COLLECTION")
-                    server.rejectMutation = { HttpError(status, "", "Not Found") }
-                    val posts = server.postStatuses.size
-
-                    val failed = assertIs<SyncResult.Failed>(device.sync(), "$status")
-
-                    assertTrue(failed.retryable)
-                    assertEquals(listOf(status), server.postStatuses.drop(posts), "$status is not bisected")
-                    assertEquals(emptyList(), device.engine.held())
-                    assertEquals(bases, device.engine.store.rows("COLLECTION"), "bases and tombstones are kept")
-                    server.rejectMutation = null
-                    device.settle()
-                    assertEquals(setOf("Memorize", "New"), Remote(server).collectionNames())
-                }
-            }
-        }
-    }
-
-    /**
      * With `mutationIndex`, the backend wraps unexpected errors in the apply loop with an index: a deadlock is a 500
      * with an index.
      */

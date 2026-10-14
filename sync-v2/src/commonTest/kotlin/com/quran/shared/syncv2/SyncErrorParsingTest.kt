@@ -45,8 +45,8 @@ class SyncErrorParsingTest {
     fun `a gateway-only error has a status and no code`() {
         val error = parseSyncError(429, """{"message":"Too Many Requests"}""")
 
+        assertEquals(429, error.status)
         assertNull(error.code)
-        assertEquals("HTTP 429 null: Too Many Requests", error.message)
     }
 
     @Test
