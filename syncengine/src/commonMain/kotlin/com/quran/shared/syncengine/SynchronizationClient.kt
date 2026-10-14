@@ -12,6 +12,8 @@ import com.quran.shared.syncengine.model.SyncNote
 import com.quran.shared.syncengine.model.SyncReadingSession
 import com.quran.shared.syncengine.model.SyncReadingBookmark
 import com.quran.shared.syncengine.network.HttpClientFactory
+import com.quran.shared.syncengine.scheduling.DefaultTimings
+import com.quran.shared.syncengine.scheduling.SchedulerTimings
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.currentCoroutineContext
 import kotlin.coroutines.AbstractCoroutineContextElement
@@ -180,6 +182,7 @@ data class SynchronizationEnvironment(val endPointURL: String)
 
 object SynchronizationClientBuilder {
     // Hidden because SyncRunObserver is; apps get their client through QuranDataService.
+    // [schedulerTimings] replaces the production trigger delays and retries; null keeps them.
     @HiddenFromObjC
     fun build(
         environment: SynchronizationEnvironment,
@@ -193,7 +196,8 @@ object SynchronizationClientBuilder {
         syncCompletionFinalizer: SyncCompletionFinalizer = SyncCompletionFinalizer { },
         syncLifecycleGate: SyncLifecycleGate = object : SyncLifecycleGate {},
         syncRunObserver: SyncRunObserver = object : SyncRunObserver {},
-        httpClient: HttpClient? = null
+        httpClient: HttpClient? = null,
+        schedulerTimings: SchedulerTimings? = null
     ): SynchronizationClient {
         val adapters = buildList {
             add(BookmarksSyncAdapter(bookmarksConfigurations))
@@ -210,7 +214,8 @@ object SynchronizationClientBuilder {
             authFetcher,
             syncCompletionFinalizer,
             syncLifecycleGate,
-            syncRunObserver
+            syncRunObserver,
+            schedulerTimings ?: DefaultTimings
         )
     }
 }

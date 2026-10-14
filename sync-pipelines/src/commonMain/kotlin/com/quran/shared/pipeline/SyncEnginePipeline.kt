@@ -54,6 +54,7 @@ import com.quran.shared.syncengine.model.SyncNote
 import com.quran.shared.syncengine.model.SyncReadingSession
 import com.quran.shared.syncengine.model.SyncReadingBookmark
 import com.quran.shared.syncengine.model.SyncReadingBookmarkLocation
+import com.quran.shared.syncengine.scheduling.SchedulerTimings
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlin.native.HiddenFromObjC
@@ -115,13 +116,18 @@ class SyncEnginePipeline(
 ) {
     private lateinit var syncClient: SynchronizationClient
 
+    /**
+     * Builds the sync client over this pipeline's repositories. [schedulerTimings] replaces the
+     * production trigger delays and retries, for tests; null keeps them.
+     */
     fun setup(
         environment: SynchronizationEnvironment,
         localModificationDateFetcher: LocalModificationDateFetcher,
         authenticationDataFetcher: AuthenticationDataFetcher,
         syncLifecycleGate: SyncLifecycleGate,
         callback: SyncEngineCallback,
-        syncRunObserver: SyncRunObserver
+        syncRunObserver: SyncRunObserver,
+        schedulerTimings: SchedulerTimings? = null
     ): SynchronizationClient {
         val writeBoundaryGuard = CurrentSyncWriteBoundaryGuard
 
@@ -180,7 +186,8 @@ class SyncEnginePipeline(
             syncRunObserver = syncRunObserver,
             syncCompletionFinalizer = SyncCompletionFinalizer { token ->
                 callback.synchronizationDone(token)
-            }
+            },
+            schedulerTimings = schedulerTimings
         )
 
         this.syncClient = syncClient

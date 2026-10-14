@@ -53,6 +53,7 @@ kotlin {
 
         jvmTest.dependencies {
             implementation(libs.sqldelight.sqlite.driver)
+            implementation(libs.kotlinx.serialization.json)
         }
 
     }
