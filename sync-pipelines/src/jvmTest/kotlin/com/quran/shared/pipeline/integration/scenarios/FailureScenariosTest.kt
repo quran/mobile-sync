@@ -10,6 +10,7 @@ import com.quran.shared.pipeline.integration.awaitUntil
 import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.mutation
 import com.quran.shared.pipeline.integration.pollUntil
+import com.quran.shared.pipeline.integration.server.FakeAccount
 import com.quran.shared.pipeline.integration.server.text
 import com.quran.shared.pipeline.integration.syncRejectedWith
 import com.quran.shared.pipeline.integration.syncScenario
@@ -297,6 +298,29 @@ class FailureScenariosTest {
             pollUntil(PERIODIC * 3) { server.state(ALICE).notes.isNotEmpty() }
             assertEquals(listOf("Written during the outage"), server.state(ALICE).notes.map { it.body }, "the note reached the server after the outage")
         }
+    }
+
+    @Test
+    fun `ERR-18 a whole-request 403 for a missing scope`() = syncScenario {
+        val (phone) = signedIn("phone")
+        server.account(ALICE).scopes = FakeAccount.ALL_SCOPES - "note"
+
+        phone.data.addNote("Written without the note scope", 2, 255, 2, 255)
+        phone.data.addCollection("Study")
+        val run = phone.syncNow()
+
+        // The failure surfaces as OBS-02 defines it: the run ends Failed, carrying the 403.
+        val error = assertIs<SyncStatus.Failed>(run.status, "POST statuses ${run.postStatuses}").error
+        assertEquals(403 to "ForbiddenError", error.httpStatus to error.serverCode)
+        assertNotNull(server.state(ALICE).collectionNamed("Study"), "the collection, pushed in an earlier phase, synced")
+        assertEquals(emptyList(), server.state(ALICE).notes)
+        assertEquals(listOf("Written without the note scope"), phone.noteBodies(), "no data loss locally")
+        assertEquals(listOf("Study"), phone.collectionNames())
+
+        server.account(ALICE).scopes = FakeAccount.ALL_SCOPES
+        assertSucceeded(phone.syncNow())
+        assertEquals(listOf("Written without the note scope"), server.state(ALICE).notes.map { it.body })
+        assertConverged(ALICE, phone)
     }
 
     private suspend fun SyncDevice.writePoisonBatch() {
