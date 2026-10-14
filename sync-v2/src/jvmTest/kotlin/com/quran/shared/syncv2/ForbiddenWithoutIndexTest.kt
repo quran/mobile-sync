@@ -83,6 +83,67 @@ class ForbiddenWithoutIndexTest {
         }
     }
 
+    /**
+     * Only collections have items the server refuses. A 403 without an index on a note is the request's scope, even
+     * after something else landed: the run stops and keeps the note's edit, instead of reverting it to base.
+     */
+    @Test
+    fun `a 403 on a type the server never refuses items of is the scope, and keeps the edit`() = FakeSyncServer().use { server ->
+        Device(server).use { device ->
+            val synced = device.addNote("Synced before the scope went", "1:1", t(0))
+            device.settle()
+            server.rejectMutation = { if (it.str("resource") == "NOTE") HttpError(403, "ForbiddenError", "Forbidden") else null }
+            device.notes.updateNote(synced, "Edited without the note scope", t(1))
+            device.collections.addCollection("Study", t(2))
+
+            val failed = assertIs<SyncResult.Failed>(device.sync())
+
+            assertEquals(Pusher.FORBIDDEN_BACKOFF_MILLIS, failed.retryAfterMillis)
+            assertEquals(403, assertIs<SyncHttpException>(failed.cause).status)
+            assertEquals(setOf("Study"), Remote(server).collectionNames(), "the rest landed")
+            assertEquals(listOf("Edited without the note scope"), device.noteBodies(), "the edit is kept, not reverted")
+            server.rejectMutation = null
+            device.settle()
+            assertEquals(listOf("Edited without the note scope"), Remote(server).noteBodies())
+        }
+    }
+
+    /** A new note refused for the scope is not held (a hold would wait for an edit): the run stops, and it syncs later. */
+    @Test
+    fun `a create refused for the scope is not held`() = FakeSyncServer().use { server ->
+        Device(server).use { device ->
+            device.settle()
+            server.rejectMutation = { if (it.str("resource") == "NOTE") HttpError(403, "ForbiddenError", "Forbidden") else null }
+            device.collections.addCollection("Study", t(0))
+            device.addNote("Written without the note scope", "2:255", t(1))
+
+            assertIs<SyncResult.Failed>(device.sync())
+
+            assertEquals(setOf("Study"), Remote(server).collectionNames(), "the rest landed")
+            assertEquals(emptyList(), device.engine.held())
+            server.rejectMutation = null
+            device.settle()
+            assertEquals(listOf("Written without the note scope"), Remote(server).noteBodies())
+        }
+    }
+
+    /** A pull during a push backoff merges what other devices wrote and sends nothing. */
+    @Test
+    fun `a pull-only sync merges remote changes and pushes nothing`() = FakeSyncServer().use { server ->
+        Device(server).use { device ->
+            device.settle()
+            Remote(server).createCollection("From the web")
+            device.collections.addCollection("Local", t(0))
+            val posts = server.postBodies.size
+
+            assertIs<SyncResult.Success>(device.sync(push = false))
+
+            assertEquals(setOf("From the web", "Local"), device.collectionNames())
+            assertEquals(posts, server.postBodies.size, "nothing pushed")
+            assertEquals(setOf("From the web"), Remote(server).collectionNames())
+        }
+    }
+
     @Test
     fun `a 403 on every part is a scope error, which stops with a long backoff`() = FakeSyncServer().use { server ->
         Device(server).use { device ->

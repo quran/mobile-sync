@@ -6,7 +6,10 @@ CREATE TABLE collection(
   -- lower(trim(name)) like the server; NULL for Favorites so a user collection may share its name.
   name_key TEXT,
   is_default INTEGER NOT NULL DEFAULT 0,
+  -- The server's isSystem (Favorites, highlights): app-facing lists hide these.
   is_system INTEGER NOT NULL DEFAULT 0,
+  -- No rename or delete: system collections and the older apps' protected color collections (from GET data).
+  is_read_only INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
@@ -26,13 +29,13 @@ collectionDefault:
 SELECT * FROM collection WHERE is_default = 1;
 
 collectionInsert:
-INSERT INTO collection(name, name_key, is_default, is_system, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?);
+INSERT INTO collection(name, name_key, is_default, is_system, is_read_only, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?);
 
 collectionInsertWithId:
-INSERT INTO collection(local_id, name, name_key, is_default, is_system, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?);
+INSERT INTO collection(local_id, name, name_key, is_default, is_system, is_read_only, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 collectionUpdate:
-UPDATE collection SET name = ?, name_key = ?, is_system = ?, updated_at = ? WHERE local_id = ?;
+UPDATE collection SET name = ?, name_key = ?, is_system = ?, is_read_only = ?, updated_at = ? WHERE local_id = ?;
 
 collectionPark:
 UPDATE collection SET name_key = ? WHERE local_id = ?;

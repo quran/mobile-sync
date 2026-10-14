@@ -49,7 +49,7 @@ class HighlightsTest {
     fun `renaming a highlight collection is held as read-only`() = FakeSyncServer().use { server ->
         Device(server).use { device ->
             val id = device.syncedHighlight()
-            device.database.collectionsQueries.collectionUpdate("Mine", collectionNameKey("Mine"), 1, t(2), id)
+            device.database.collectionsQueries.collectionUpdate("Mine", collectionNameKey("Mine"), 1, 1, t(2), id)
 
             assertEquals(listOf("READ_ONLY"), device.settle().held.map { it.reason })
             assertEquals(setOf(highlight), Remote(server).collectionNames())

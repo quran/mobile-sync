@@ -453,7 +453,9 @@ class CollectionsSyncTest {
 
             device.syncOk()
 
-            assertTrue(device.collections.byName("Blue")!!.isSystem)
+            val blue = device.collections.byName("Blue")!!
+            assertTrue(blue.isReadOnly)
+            assertFalse(blue.isSystem, "a user's collection, shown like any other")
         }
     }
 }

@@ -5,17 +5,13 @@ import com.quran.shared.syncv2.db.SyncV2Database
 import com.quran.shared.syncv2.fake.FakeSyncServer
 import com.quran.shared.syncv2.fake.int
 import com.quran.shared.syncv2.fake.str
-import com.quran.shared.syncv2.types.CollectionAyahsType
 import com.quran.shared.syncv2.types.CollectionsRepository
-import com.quran.shared.syncv2.types.CollectionsType
 import com.quran.shared.syncv2.types.ReadingSessionsRepository
 import com.quran.shared.syncv2.types.NoteRange
 import com.quran.shared.syncv2.types.NotesRepository
-import com.quran.shared.syncv2.types.NotesType
 import com.quran.shared.syncv2.types.ReadingBookmarksRepository
-import com.quran.shared.syncv2.types.ReadingBookmarksType
 import com.quran.shared.syncv2.types.ReadingLocation
-import com.quran.shared.syncv2.types.ReadingSessionsType
+import com.quran.shared.syncv2.types.syncTypes
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import kotlinx.coroutines.runBlocking
@@ -47,15 +43,8 @@ class Device(
     val collections = CollectionsRepository(database)
     val notes = NotesRepository(database)
     val readingBookmarks = ReadingBookmarksRepository(database)
-    private val collectionsType = CollectionsType(database)
     private val http = HttpClient(OkHttp) { engine { config { retryOnConnectionFailure(false) } } }
-    private val types = listOf(
-        collectionsType,
-        CollectionAyahsType(database, collectionsType),
-        ReadingSessionsType(database),
-        NotesType(database),
-        ReadingBookmarksType(database)
-    )
+    private val types = syncTypes(database)
     /** The device clock the engine sees (hold expiry); tests move it forward. */
     var now = 1_760_000_000_000L
     var engine = engine(version = "1")
@@ -75,7 +64,7 @@ class Device(
     )
 
     /** Every sync asserts that no child was dropped for a missing parent: that is a last resort, never expected. */
-    fun sync(): SyncResult = runBlocking { engine.sync(account) }.also {
+    fun sync(push: Boolean = true): SyncResult = runBlocking { engine.sync(account, push) }.also {
         assertEquals(0, it.droppedOrphans, "a child was dropped because its parent was gone: $it")
     }
 
