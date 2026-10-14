@@ -11,6 +11,19 @@ package com.quran.shared.pipeline.integration.server
  * instructions are dropped. A `<` that does not start a tag stays text. An unterminated tag at the
  * end is dropped. Text is entity-decoded and then re-escaped as `&amp;`, `&lt;` and `&gt;` only, so
  * quotes stay as typed and already-escaped input is unchanged.
+ *
+ * Unverified assumptions (sanitize-html was not available to run against; the text-handling tests
+ * are to be checked against the real library):
+ * - Only numeric entities and `amp`, `lt`, `gt`, `quot`, `apos` and `nbsp` are decoded; other named
+ *   entities stay as typed and their `&` is escaped. htmlparser2 knows the full HTML5 table.
+ * - `&amp`, `&lt`, `&gt`, `&quot` and `&nbsp` also decode without a ';', like HTML's legacy
+ *   entities; names are matched case-insensitively.
+ * - A '<' followed by a letter always opens a tag that runs to the next unquoted '>'; "</" not
+ *   followed by a letter is a bogus comment; '<!' and '<?' run to the next '>'.
+ * - An unterminated tag or comment at the end of the input is dropped with everything after it.
+ * - Text inside `script`, `style`, `textarea`, `option` and `noscript` is dropped up to the
+ *   matching closing tag; nesting is not tracked.
+ * - The final trim is JavaScript's `String.prototype.trim`.
  */
 internal fun htmlStrip(value: String): String? {
     val out = StringBuilder()

@@ -236,6 +236,8 @@ internal object ResourceSchemas {
         }
         if (values.distinct().size > 1) throw validationError("`mushafId` and `mushaf` must match when both are provided")
         present.forEachIndexed { i, key -> put(key, values[i]) }
+        // The compatible schema copies a legacy `mushaf` onto `mushafId`, but not the other way.
+        if ("mushaf" in present && "mushafId" in keys && "mushafId" !in present) put("mushafId", values.first())
     }
 
     private fun requireAyah(sura: Int, ayah: Int) {

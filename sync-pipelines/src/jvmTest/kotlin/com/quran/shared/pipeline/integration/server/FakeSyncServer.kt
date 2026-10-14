@@ -12,6 +12,8 @@ import java.net.InetSocketAddress
 import java.net.URLDecoder
 import java.util.concurrent.Executors
 
+enum class ErrorEnvelope { API_GATEWAY, BACKEND }
+
 /** One request the server received, for assertions. [status] is -1 when the connection was dropped. */
 data class RequestRecord(
     val method: String,
@@ -50,6 +52,9 @@ class FakeSyncServer : AutoCloseable {
     internal val lock = Any()
 
     val clock = FakeServerClock()
+
+    /** The error body shape: the API gateway's envelope, as apps receive it in production, or the bare backend body. */
+    @Volatile var errorEnvelope: ErrorEnvelope = ErrorEnvelope.API_GATEWAY
     val faults = ServerFaults()
 
     /** The website, signed in as [account]. */
@@ -158,9 +163,24 @@ class FakeSyncServer : AutoCloseable {
             }
         } catch (error: HttpError) {
             errorBody(error).let { record(error.status, it); respond(exchange, error.status, it) }
-        } catch (error: Exception) {
-            error.printStackTrace()
-            errorBody(HttpError(500, "ServerError", "Something went wrong")).let { record(500, it); respond(exchange, 500, it) }
+        } catch (bug: Throwable) {
+            // Not a modelled backend error: a bug in the fake or in a test's fault callback.
+            synchronized(bugs) { bugs += AssertionError("${request.method} from ${request.device}: ${bug.message}", bug) }
+            errorBody(HttpError(500, "ServerError", "Something went wrong", details = null))
+                .let { record(500, it); respond(exchange, 500, it) }
+        }
+    }
+
+    private val bugs = mutableListOf<Throwable>()
+
+    /** Errors the fake raised that model no backend behavior. A scenario fails when there are any. */
+    val internalErrors: List<Throwable> get() = synchronized(bugs) { bugs.toList() }
+
+    private fun runCallbacks(request: FakeRequest) = faults.takeRuns(request).forEach { callback ->
+        try {
+            synchronized(lock) { callback() }
+        } catch (error: Throwable) {
+            throw IllegalStateException("A fault callback (beforePost or betweenPages) failed: $error", error)
         }
     }
 
@@ -181,7 +201,8 @@ class FakeSyncServer : AutoCloseable {
         requested.filter { it !in RESOURCE_SCOPES }.takeIf { it.isNotEmpty() }?.let {
             throw validationError("Invalid resources: ${it.joinToString(", ")}. Valid resources are: ${RESOURCE_SCOPES.keys.joinToString(", ")}")
         }
-        faults.takeRuns(request).forEach { it() }
+        runCallbacks(request)
+        if (query["metadataOnly"] == "true") return success(buildJsonObject { put("lastMutationAt", account.head) })
         val limit = faults.pageSizeCap?.let { minOf(it, requestedLimit) } ?: requestedLimit
 
         val excluded = RESOURCE_SCOPES.filter { (_, scopes) -> !account.scopes.containsAll(scopes) }.keys
@@ -220,7 +241,7 @@ class FakeSyncServer : AutoCloseable {
         val mutations = MutationValidation.validateBody(body)
         val required = mutations.flatMap { RESOURCE_SCOPES[it.resource].orEmpty() }.toSet()
         if (!account.scopes.containsAll(required)) throw forbidden()
-        faults.takeRuns(request).forEach { synchronized(lock) { it() } }
+        runCallbacks(request)
         return synchronized(lock) {
             if (expected != account.head) {
                 throw HttpError(409, "OutOfSyncError", "Invalid lastMutationAt, please re-sync your data and try again.")
@@ -246,11 +267,14 @@ class FakeSyncServer : AutoCloseable {
             } catch (error: HttpError) {
                 account.restore(snapshot)
                 throw error.also { it.mutationIndex = current?.index }
-            } catch (error: Exception) {
-                // An unexpected error is the same 500 ServerError; BE1 still reports its mutation.
+            } catch (crash: BackendCrash) {
+                // The backend's untyped errors become 500 ServerError; BE1 still reports the mutation.
                 account.restore(snapshot)
-                throw HttpError(500, "ServerError", "Something went wrong", mutationIndex = current?.index)
-                    .also { it.initCause(error) }
+                throw HttpError(500, "ServerError", "Something went wrong", details = null, mutationIndex = current?.index)
+                    .also { it.initCause(crash) }
+            } catch (bug: Throwable) {
+                account.restore(snapshot)
+                throw bug
             }
         }
     }
@@ -275,8 +299,9 @@ class FakeSyncServer : AutoCloseable {
     }.toString()
 
     /**
-     * The API gateway's envelope around the backend's `{success, error:{code, message, details}}`.
-     * In BE1 mode, `mutationIndex` is merged into the backend's `error.details`.
+     * The backend's `{success, error:{code, message, details}}`, wrapped in the API gateway's
+     * envelope unless [errorEnvelope] is [ErrorEnvelope.BACKEND]. In BE1 mode, `mutationIndex` is
+     * merged into the backend's `error.details`.
      */
     internal fun errorBody(error: HttpError): String {
         val index = error.mutationIndex.takeIf { faults.mutationIndex && error.code != "OutOfSyncError" }
@@ -284,19 +309,21 @@ class FakeSyncServer : AutoCloseable {
             index != null -> JsonObject(error.details.orEmpty() + ("mutationIndex" to kotlinx.serialization.json.JsonPrimitive(index)))
             else -> error.details
         }
+        val backend = buildJsonObject {
+            put("success", false)
+            put("error", buildJsonObject {
+                put("code", error.code)
+                put("message", error.message)
+                details?.let { put("details", it) }
+            })
+        }
+        if (errorEnvelope == ErrorEnvelope.BACKEND) return backend.toString()
         return buildJsonObject {
             put("message", error.message)
             put("type", GATEWAY_TYPES[error.status] ?: "error")
             put("success", false)
             put("requestId", "request-${synchronized(log) { ++requestCounter }}")
-            put("details", buildJsonObject {
-                put("success", false)
-                put("error", buildJsonObject {
-                    put("code", error.code)
-                    put("message", error.message)
-                    details?.let { put("details", it) }
-                })
-            })
+            put("details", backend)
         }.toString()
     }
 

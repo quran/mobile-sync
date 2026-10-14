@@ -59,16 +59,20 @@ internal class MutationApplier(private val rules: AccountRules, private val clie
         }
     }
 
-    private fun location(data: JsonObject) = BookmarkLocation(
+    /**
+     * BOOKMARK and COLLECTION_BOOKMARK read `data.mushaf`, so a body with only `mushafId` gets the
+     * default group. READING_BOOKMARK reads `data.mushafId`.
+     */
+    private fun location(data: JsonObject, mushafKey: String = "mushaf") = BookmarkLocation(
         type = data.text("type") ?: "ayah",
         key = data.int("key"),
         verse = (data["verseNumber"] as? JsonPrimitive)?.intOrNull,
-        mushafId = (data["mushafId"] as? JsonPrimitive)?.intOrNull ?: (data["mushaf"] as? JsonPrimitive)?.intOrNull ?: 1
+        mushafId = (data[mushafKey] as? JsonPrimitive)?.intOrNull
     )
 
     private fun readingBookmarkWrite(data: JsonObject) = ReadingBookmarkWrite(
         slot = data.int("slot"),
-        location = data.text("type")?.let { location(data) },
+        location = data.text("type")?.let { location(data, mushafKey = "mushafId") },
         name = if ("name" in data) ReadingBookmarkWrite.Name((data["name"] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.contentOrNull) else null,
         metadata = data["metadata"] as? JsonObject,
         times = ClientTimes.of(data)

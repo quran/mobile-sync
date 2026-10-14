@@ -78,6 +78,52 @@ class FakeSyncServerTest {
     }
 
     @Test
+    fun `typed errors always carry details and the bare backend envelope can replace the gateway one`() {
+        server.errorEnvelope = ErrorEnvelope.BACKEND
+
+        val response = post(server.head(ALICE), mutation("NOTE", "DELETE", resourceId = "missing"))
+
+        assertEquals(404, response.statusCode())
+        val body = Json.parseToJsonElement(response.body()).jsonObject
+        assertEquals(setOf("success", "error"), body.keys)
+        assertEquals(JsonObject(emptyMap()), body["error"]!!.jsonObject["details"])
+    }
+
+    @Test
+    fun `metadataOnly returns only the head`() {
+        server.web(ALICE).createNote("A valid note body", "1:1-1:7")
+
+        val response = http.send(
+            HttpRequest.newBuilder(URI("${server.url}/v1/sync?mutationsSince=0&metadataOnly=true"))
+                .header("x-auth-token", token).GET().build(),
+            HttpResponse.BodyHandlers.ofString()
+        )
+
+        val data = Json.parseToJsonElement(response.body()).jsonObject["data"]!!.jsonObject
+        assertEquals(setOf("lastMutationAt"), data.keys)
+        assertEquals(server.head(ALICE), data["lastMutationAt"]!!.jsonPrimitive.long)
+    }
+
+    @Test
+    fun `a bookmark body with only mushafId falls back to the default group like the backend`() {
+        post(server.head(ALICE), mutation("BOOKMARK", "CREATE", data = """{"type":"page","key":300,"mushafId":7}"""))
+        post(server.head(ALICE), mutation("BOOKMARK", "CREATE", data = """{"type":"page","key":301,"mushaf":7}"""))
+
+        val groups = server.state(ALICE).bookmarks.associate { it.key to it.group }
+        assertEquals(mapOf(300 to "pages_604", 301 to "pages_548"), groups)
+    }
+
+    @Test
+    fun `an exception that models no backend behavior is recorded as a fake bug`() {
+        server.faults.beforePost { error("broken test callback") }
+
+        val response = post(server.head(ALICE), mutation("NOTE", "CREATE", data = NOTE))
+
+        assertEquals(500, response.statusCode())
+        assertEquals(1, server.internalErrors.size)
+    }
+
+    @Test
     fun `a duplicate collection name is a 409 UniqueViolationError marked DUPLICATE and rolls back the batch`() {
         server.web(ALICE).createCollection("Study")
         val head = server.head(ALICE)

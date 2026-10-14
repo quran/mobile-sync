@@ -74,7 +74,7 @@ class ServerFaults internal constructor() {
         status: Int = 500,
         code: String = "ServerError",
         message: String = "Something went wrong",
-        details: JsonObject? = null,
+        details: JsonObject? = JsonObject(emptyMap()),
         match: (FakeRequest) -> Boolean = { it.isPost }
     ) = add(times, match, Action.Fail(HttpError(status, code, message, details)))
 
@@ -82,7 +82,12 @@ class ServerFaults internal constructor() {
     fun outage(requests: Int, status: Int = 503) =
         failRequests(requests, status, "ServiceUnavailableError", "Service unavailable") { true }
 
-    /** Closes matching connections before reading them. OkHttp may retry a dropped request once on its own. */
+    /**
+     * Closes matching connections without an answer. Not deterministic with a finite [times]:
+     * OkHttp may retry a dropped request on a new connection by itself, which consumes another
+     * firing or goes through. For a deterministic failure use [networkDown] (every request),
+     * [failRequests], [outage], or [loseResponse]'s default 504 mode.
+     */
     fun dropConnection(times: Int = 1, match: (FakeRequest) -> Boolean = { true }) = add(times, match, Action.Drop)
 
     /** Drops every connection until [networkUp]: the device sees a network error on each attempt. */
@@ -92,7 +97,7 @@ class ServerFaults internal constructor() {
 
     private var networkDownRule: Rule? = null
 
-    /** Commits matching POSTs, then loses the response. */
+    /** Commits matching POSTs, then loses the response, by default deterministically as a gateway 504. */
     fun loseResponse(
         times: Int = 1,
         how: LostResponse = LostResponse.GATEWAY_TIMEOUT,

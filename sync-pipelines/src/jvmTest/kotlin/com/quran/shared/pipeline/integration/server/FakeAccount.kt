@@ -5,17 +5,27 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
-/** A backend error. The server renders it in the API gateway's envelope. */
+/**
+ * A backend error. Like the backend's `BaseError`, it has `details` (`{}` unless set); only the
+ * untyped 500 "Something went wrong" has none.
+ */
 class HttpError(
     val status: Int,
     val code: String,
     override val message: String,
-    val details: JsonObject? = null,
+    val details: JsonObject? = JsonObject(emptyMap()),
     /** The index of the mutation that caused it, reported only in BE1 mode (`mutationIndex`). */
     var mutationIndex: Int? = null
 ) : Exception(message)
 
-internal fun validationError(message: String) = HttpError(422, "ValidationError", message, JsonObject(emptyMap()))
+/**
+ * An untyped error the real backend throws (for example a note range naming a verse that does not
+ * exist). The backend answers it with 500 `ServerError` "Something went wrong" (S11). Any other
+ * exception inside the fake is a bug in the fake and fails the scenario.
+ */
+class BackendCrash(message: String) : Exception(message)
+
+internal fun validationError(message: String) = HttpError(422, "ValidationError", message)
 internal fun notFound(message: String) = HttpError(404, "NotFoundError", message)
 internal fun forbidden(message: String = "You don't have permission") = HttpError(403, "ForbiddenError", message)
 

@@ -42,7 +42,7 @@ internal object ResourceRendering {
         val isUpdate = row.updatedAt != null && row.updatedAt > row.createdAt
         put("type", if (isUpdate) "UPDATE" else "CREATE")
         put("data", if (vanished) JsonObject(emptyMap()) else data(account, row))
-        put("timestamp", if (isUpdate) row.updatedAt!! else row.createdAt)
+        put("timestamp", if (isUpdate) row.updatedAt else row.createdAt)
     }
 
     /** A live log row whose entity is gone is sent with `{}` (or the split membership key). */

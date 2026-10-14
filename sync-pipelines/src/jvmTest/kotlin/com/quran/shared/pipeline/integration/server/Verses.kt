@@ -22,16 +22,19 @@ internal object Verses {
      * a 500 `ServerError` (S11).
      */
     fun normalizeRange(range: String): String {
-        val parts = RANGE.matchEntire(range)?.groupValues?.drop(1) ?: error("Invalid verse range: $range")
-        if (parts.any { it.length > 1 && it.startsWith("0") }) error("Invalid verse key in range: $range")
+        val parts = RANGE.matchEntire(range)?.groupValues?.drop(1) ?: throw BackendCrash("Invalid verse range: $range")
+        if (parts.any { it.length > 1 && it.startsWith("0") }) throw BackendCrash("Invalid verse key in range: $range")
         val (fromSura, fromAyah, toSura, toAyah) = parts.map(String::toInt)
-        check(exists(fromSura, fromAyah) && exists(toSura, toAyah)) { "Verse range names a missing verse: $range" }
-        check(index(fromSura, fromAyah) <= index(toSura, toAyah)) { "Reversed verse range: $range" }
+        if (!exists(fromSura, fromAyah) || !exists(toSura, toAyah)) throw BackendCrash("Verse range names a missing verse: $range")
+        if (index(fromSura, fromAyah) > index(toSura, toAyah)) throw BackendCrash("Reversed verse range: $range")
         return "$fromSura:$fromAyah-$toSura:$toAyah"
     }
 }
 
-/** `getBookmarkGroupByMushafIdAndType`. Ayah bookmarks share one group whatever the mushaf. */
+/**
+ * `getBookmarkGroupByMushafIdAndType`. Ayah bookmarks share one group whatever the mushaf; a page
+ * bookmark without a mushaf falls back to the 604-page group.
+ */
 internal fun bookmarkGroup(mushafId: Int?, type: String): String = when (type) {
     "ayah" -> "verses_6236"
     "page" -> when (mushafId) {

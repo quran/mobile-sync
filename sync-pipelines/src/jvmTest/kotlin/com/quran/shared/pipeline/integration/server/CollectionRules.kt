@@ -7,7 +7,7 @@ import kotlinx.serialization.json.put
 import java.util.Locale
 
 /** Where an ayah, page, juz or surah bookmark points. */
-data class BookmarkLocation(val type: String, val key: Int, val verse: Int?, val mushafId: Int = 1) {
+data class BookmarkLocation(val type: String, val key: Int, val verse: Int?, val mushafId: Int? = 1) {
     val group: String get() = bookmarkGroup(mushafId, type)
 
     companion object {
