@@ -1,10 +1,18 @@
 package com.quran.shared.pipeline.integration.scenarios
 
 import com.quran.shared.persistence.model.AyahHighlightColor
+import com.quran.shared.pipeline.integration.SyncRun
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.knownIssue
+import com.quran.shared.pipeline.integration.server.ClientTimes
+import com.quran.shared.pipeline.integration.server.CollectionRules
+import com.quran.shared.pipeline.integration.server.text
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.flow.first
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -280,6 +288,22 @@ class BookmarkScenariosTest {
     }
 
     @Test
+    fun `BMK-15 concurrent membership changes in one collection`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+        phone.data.addAyahBookmarkToCollection(phone.data.addCollection("Study").id, 2, 255)
+        syncUntilQuiescent(phone, tablet)
+
+        phone.removeFromCollection("Study", 2, 255)
+        tablet.data.addAyahBookmarkToCollection(tablet.collectionId("Study"), 3, 18)
+        repeat(2) { syncAll(phone, tablet).forEach(::assertSucceeded) }
+
+        val state = server.state(ALICE)
+        assertEquals(setOf("3:18"), state.versesIn(state.collectionNamed("Study")!!.id))
+        listOf(phone, tablet).forEach { assertEquals(listOf("3:18"), it.versesIn("Study"), it.name) }
+        assertConverged(ALICE, phone, tablet)
+    }
+
+    @Test
     fun `BMK-16 adding to a collection the web deleted`() = syncScenario {
         val (phone) = signedIn("phone")
         phone.data.addCollection("Study")
@@ -302,5 +326,88 @@ class BookmarkScenariosTest {
             assertEquals(setOf("2:255"), state.versesIn(assertNotNull(state.collectionNamed("Study")).id))
             assertConverged(ALICE, phone)
         }
+    }
+
+    @Test
+    fun `BMK-17 a bookmark delete split from its membership delete across GET pages`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.addToFavorites(2, 255)
+        syncUntilQuiescent(phone)
+        // The harness note for ERR-14: page with more than 1000 rows, not a page cap. 999 changes
+        // come first, so the BOOKMARK DELETE ends page 1 and its Favorites membership DELETE starts page 2.
+        val web = web(ALICE)
+        repeat(999) {
+            val verse = "2:${it % 286 + 1}"
+            web.createNote("Seeded note number $it", "$verse-$verse", times = ClientTimes(createdAt = T0 + it))
+        }
+
+        web.removeFromFavorites(2, 255)
+
+        val run = phone.syncNow()
+
+        assertEquals(listOf("BOOKMARK DELETE", "COLLECTION_BOOKMARK DELETE"), run.firstPageBoundary(), "the deletes straddle pages 1 and 2")
+        knownIssue(
+            "S23",
+            "A web removal from Favorites wedges the device's sync",
+            // The catalog left this unknown. The client fetches every page before applying any, so the
+            // split changes nothing: the phone pushes the membership DELETE and gets 404, as in BMK-11.
+            expect = FAVORITES_DELETE_404
+        ) {
+            assertSucceeded(run)
+            assertEquals(0, run.posts, "no DELETE echo")
+            assertEquals(emptyList(), phone.favoriteVerses())
+            assertConverged(ALICE, phone)
+        }
+    }
+
+    @Test
+    fun `BMK-18 page and surah bookmarks from the web are left alone`() = syncScenario {
+        val (phone) = signedIn("phone")
+        val web = web(ALICE)
+        val page = web.addPageBookmark(300)
+        val surah = web.addSurahBookmark(18)
+
+        assertSucceeded(phone.syncNow())
+        assertEquals(EMPTY_SNAPSHOT, phone.snapshot(), "the phone shows neither")
+        phone.addToFavorites(2, 255)
+        phone.data.addAyahBookmarkToCollection(phone.data.addCollection("Study").id, 3, 18)
+        syncUntilQuiescent(phone)
+
+        val state = server.state(ALICE)
+        assertEquals(listOf(page, surah), state.bookmarks.filter { it.type != "ayah" }.map { it.id })
+        assertTrue(state.bookmarks.filter { it.type != "ayah" }.all { it.inDefault }, "still in Favorites on the server")
+        val ids = setOf(page, surah, CollectionRules.defaultId(page), CollectionRules.defaultId(surah))
+        val touched = server.posts("phone").flatMap { it.mutations }.filter { it.data("bookmarkId") in ids || it.text("resourceId") in ids }
+        assertEquals(emptyList(), touched, "the phone never pushed a change to them")
+        assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `BMK-19 ayah bookmarks are mushaf-agnostic`() = syncScenario {
+        val (phone) = signedIn("phone")
+        web(ALICE).addBookmark(2, 255, mushafId = INDOPAK_16_LINE)
+
+        assertSucceeded(phone.syncNow())
+        assertEquals(listOf("2:255"), phone.favoriteVerses(), "the phone shows the IndoPak bookmark")
+        phone.removeFromFavorites(2, 255)
+
+        knownIssue("S6", "Removing a verse from Favorites wedges sync permanently", expect = FAVORITES_DELETE_404) {
+            assertSucceeded(phone.syncNow())
+            assertEquals(emptyList(), server.state(ALICE).bookmarks, "the removal deleted the same bookmark, with no second one")
+            assertConverged(ALICE, phone)
+        }
+    }
+
+    /** The last entry of the run's first GET page and the first entry of its second. */
+    private fun SyncRun.firstPageBoundary(): List<String> {
+        val (first, second) = requests.filter { it.method == "GET" && it.status == 200 }.take(2).map { page ->
+            (Json.parseToJsonElement(page.response!!).jsonObject["data"]!!.jsonObject["mutations"] as JsonArray).map { it as JsonObject }
+        }
+        return listOf(first.last(), second.first()).map { "${it.resource} ${it.type}" }
+    }
+
+    private companion object {
+        /** The 16-line IndoPak mushaf, whose pages are the `pages_548` group. */
+        const val INDOPAK_16_LINE = 7
     }
 }
