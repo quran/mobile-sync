@@ -19,7 +19,7 @@ internal object Verses {
     /**
      * `rangesToIndices`: a range the Joi regex accepted can still name verses that don't exist, use
      * leading zeros, or run backwards. The backend then throws an untyped error, which surfaces as
-     * a 500 `ServerError` (S11).
+     * a 500 `ServerError`.
      */
     fun normalizeRange(range: String): String {
         val parts = RANGE.matchEntire(range)?.groupValues?.drop(1) ?: throw BackendCrash("Invalid verse range: $range")

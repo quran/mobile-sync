@@ -49,7 +49,7 @@ class FakeSyncServerTest {
     }
 
     @Test
-    fun `errors use the API gateway envelope and add mutationIndex only in BE1 mode`() {
+    fun `errors use the API gateway envelope and add mutationIndex only when it is on`() {
         val head = server.head(ALICE)
         val bad = mutation("COLLECTION", "CREATE", data = """{"name":"<br>"}""")
         val good = mutation("COLLECTION", "CREATE", data = """{"name":"Study"}""")
@@ -65,7 +65,7 @@ class FakeSyncServerTest {
     }
 
     @Test
-    fun `a note range naming a missing verse is a 500 that reports its mutation in BE1 mode`() {
+    fun `a note range naming a missing verse is a 500 that reports its mutation when mutationIndex is on`() {
         server.faults.mutationIndex = true
 
         val response = post(server.head(ALICE), mutation("NOTE", "CREATE", data = NOTE), mutation("NOTE", "CREATE", data = MISSING_VERSE))

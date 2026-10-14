@@ -5,7 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** Smoke tests for the integration harness: each one passes against today's engine. */
+/** Smoke tests for the integration harness. */
 class SyncHarnessSmokeTest {
 
     @Test

@@ -282,7 +282,8 @@ class FakeSyncServer : AutoCloseable {
                 account.restore(snapshot)
                 throw error.also { it.mutationIndex = current?.index }
             } catch (crash: BackendCrash) {
-                // The backend's untyped errors become 500 ServerError; BE1 still reports the mutation.
+                // The backend's untyped errors become 500 ServerError; with `mutationIndex` on, the
+                // error still names the mutation.
                 account.restore(snapshot)
                 throw HttpError(500, "ServerError", "Something went wrong", details = null, mutationIndex = current?.index)
                     .also { it.initCause(crash) }
@@ -314,8 +315,8 @@ class FakeSyncServer : AutoCloseable {
 
     /**
      * The backend's `{success, error:{code, message, details}}`, wrapped in the API gateway's
-     * envelope unless [errorEnvelope] is [ErrorEnvelope.BACKEND]. In BE1 mode, `mutationIndex` is
-     * merged into the backend's `error.details`.
+     * envelope unless [errorEnvelope] is [ErrorEnvelope.BACKEND]. With [ServerFaults.mutationIndex]
+     * on, `mutationIndex` is merged into the backend's `error.details`.
      */
     internal fun errorBody(error: HttpError): String {
         val index = error.mutationIndex.takeIf { faults.mutationIndex && error.code != "OutOfSyncError" }

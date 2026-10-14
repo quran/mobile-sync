@@ -54,7 +54,7 @@ class RequestGate internal constructor() {
  * boundary only: they change what the server does or answers, never the client.
  */
 class ServerFaults internal constructor() {
-    /** BE1 (backend PR #1932): errors caused by one mutation carry `details.mutationIndex`. Off, as in production. */
+    /** Errors caused by one mutation carry `details.mutationIndex` (quran.com-users-backend#1932). Off, as in production. */
     @Volatile var mutationIndex: Boolean = false
 
     /**
@@ -116,7 +116,7 @@ class ServerFaults internal constructor() {
 
     /**
      * Rejects a POST at the first mutation matching [match], inside the transaction, so the whole
-     * batch rolls back. In BE1 mode the error carries that mutation's index.
+     * batch rolls back. With [mutationIndex] on, the error carries that mutation's index.
      */
     fun rejectMutation(
         times: Int = ALWAYS,

@@ -131,7 +131,7 @@ class SyncDevice internal constructor(
      * so the returned run started after this call. A run that finds no session is returned with no
      * status ([SyncRun.skipped]); [assertSucceeded] fails on it.
      *
-     * A run publishes its end before the scheduler has finished it, and the old scheduler drops an
+     * A run publishes its end before the scheduler has finished it, and a scheduler may drop an
      * immediate trigger that arrives in between. So the trigger is repeated until a run starts
      * ([SyncStatusRecorder.awaitRunAfter]).
      */

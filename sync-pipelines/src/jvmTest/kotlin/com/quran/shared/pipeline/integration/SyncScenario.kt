@@ -51,7 +51,7 @@ import kotlin.test.fail
  * - **The web.** [web] writes straight into the server with REST semantics, also between a
  *   device's GET and POST through [FakeSyncServer.faults] (`beforePost`, `betweenPages`).
  * - **Faults.** `server.faults` fails, blocks or loses requests, rejects chosen mutations, and
- *   turns on BE1's `mutationIndex`.
+ *   turns on the backend's `mutationIndex` (quran.com-users-backend#1932).
  * - **Known issues.** Wrap a test that fails today in [knownIssue] with its tracker id, a
  *   one-line description, and an `expect` predicate that pins how it fails today.
  * - **Time.** Pass explicit `PlatformDateTime` timestamps for anything compared by time, and move

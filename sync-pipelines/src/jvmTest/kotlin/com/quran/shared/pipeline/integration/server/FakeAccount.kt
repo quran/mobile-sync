@@ -14,13 +14,13 @@ class HttpError(
     val code: String,
     override val message: String,
     val details: JsonObject? = JsonObject(emptyMap()),
-    /** The index of the mutation that caused it, reported only in BE1 mode (`mutationIndex`). */
+    /** The index of the mutation that caused it, reported only when [ServerFaults.mutationIndex] is on. */
     var mutationIndex: Int? = null
 ) : Exception(message)
 
 /**
  * An untyped error the real backend throws (for example a note range naming a verse that does not
- * exist). The backend answers it with 500 `ServerError` "Something went wrong" (S11). Any other
+ * exist). The backend answers it with 500 `ServerError` "Something went wrong". Any other
  * exception inside the fake is a bug in the fake and fails the scenario.
  */
 class BackendCrash(message: String) : Exception(message)

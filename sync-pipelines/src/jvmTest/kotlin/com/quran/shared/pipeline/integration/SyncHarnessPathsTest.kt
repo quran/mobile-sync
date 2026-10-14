@@ -25,7 +25,7 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.nanoseconds
 import kotlin.time.Duration.Companion.seconds
 
-/** The harness's less obvious paths, each against today's engine. */
+/** The harness's less obvious paths. */
 class SyncHarnessPathsTest {
 
     @Test
