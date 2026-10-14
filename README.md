@@ -37,7 +37,7 @@ flowchart LR
 
 ### Sync
 
-- **Engine (`:sync-v2`).** Each run fetches every change since the stored token, merges it three ways with the local changes (an edit beats a delete), and pushes what is left in batches of at most 100. An item the server keeps refusing is held, so the rest still syncs.
+- **Engine (`:sync-v2`).** Each run fetches every change since the stored token, merges it three ways with the local changes (an edit beats a delete), and pushes what is left in batches of at most 100. An item the server keeps refusing is held, so the rest still syncs. [SYNC_ENGINE.md](SYNC_ENGINE.md) maps how.
 - **Persistence on plain tables.** The repositories write plain domain tables, owned by `:sync-v2`'s types, through one store per type, so the app and the importer follow the same rules. The tables carry no sync columns; the engine keeps its own state in `sync_item` and `sync_meta`.
 - **Wiring (`:sync-pipelines`).** `SyncClient` runs the engine for the signed-in account and reports each run; `SyncScheduler` decides when runs happen.
 - **When it syncs.** A run starts 30 seconds after app start, 5 seconds after a local change, and at once for `triggerSync(immediately = true)`. After every run, success or not, the next one is due in 30 minutes, so sync never stops. Runs never overlap. A failed run is retried with exponential backoff (200 ms, ×2.5, up to 5 retries). A 403 that may be the token's scope pauses pushes for a while; automatic runs keep pulling.
@@ -50,13 +50,12 @@ flowchart LR
 |---|---|
 | `:auth` | OIDC login/logout, auth state, token handling |
 | `:persistence` | The app database (`MobileSyncDatabase`) and the repositories for bookmarks/collections/notes/reading sessions, over `:sync-v2`'s plain tables |
-| `:syncengine` | The previous sync engine; no longer used, kept for its shared types (`SyncError`, `SynchronizationEnvironment`, `SchedulerTimings`) until it is deleted |
-| `:sync-v2` | The generic sync engine (fetch, three-way merge, push) and the plain domain tables of its types |
-| `:sync-pipelines` | DI graph and `QuranDataService` managed data API |
+| `:sync-v2` | The generic sync engine (fetch, three-way merge, push) and the plain domain tables of its types; see [SYNC_ENGINE.md](SYNC_ENGINE.md) |
+| `:sync-pipelines` | DI graph, the sync client and scheduler, and the `QuranDataService` managed data API |
 | `:umbrella` | iOS XCFramework export (`Shared.xcframework`) |
 | `:demo:android` | Android sample app (Compose) |
 | `:demo:common` | Shared demo helpers/models |
-| `:mutations-definitions` | Shared mutation/domain definitions |
+| `:mutations-definitions` | Shared helpers: the server's text rules (`ServerText`) and the DI scope (`AppScope`) |
 | `:logging` | Routes logs, including HTTP calls, to a host app's logger (`MobileSyncLogging`) |
 
 ## Requirements
@@ -239,7 +238,7 @@ Advanced override for custom endpoints remains available:
 ```kotlin
 import com.quran.shared.auth.model.AuthEnvironment
 import com.quran.shared.auth.model.AuthConfig
-import com.quran.shared.syncengine.SynchronizationEnvironment
+import com.quran.shared.pipeline.SynchronizationEnvironment
 
 val graph = SharedDependencyGraph.init(
     driverFactory = DriverFactory(context = applicationContext),

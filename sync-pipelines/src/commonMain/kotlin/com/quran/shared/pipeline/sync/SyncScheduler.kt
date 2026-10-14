@@ -1,8 +1,6 @@
 package com.quran.shared.pipeline.sync
 
 import co.touchlab.kermit.Logger
-import com.quran.shared.syncengine.scheduling.FailureRetryingConfig
-import com.quran.shared.syncengine.scheduling.SchedulerTimings
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -23,7 +21,25 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
-/** Production timings: as the old scheduler's (30 s after app start, 5 s after a local change, 30 min periodic). */
+/**
+ * How long [SyncScheduler] waits: [standardInterval] between periodic runs, [appRefreshInterval] after an app start,
+ * [localDataModifiedInterval] after a local change, and [failureRetryingConfig] between retries.
+ */
+internal data class SchedulerTimings(
+    val standardInterval: Duration,
+    val appRefreshInterval: Duration,
+    val localDataModifiedInterval: Duration,
+    val failureRetryingConfig: FailureRetryingConfig
+)
+
+/** Exponential backoff: the first retry waits [baseDelay], each next one [multiplier] times longer, for up to [maximumRetries]. */
+internal data class FailureRetryingConfig(
+    val baseDelay: Duration,
+    val multiplier: Double,
+    val maximumRetries: Int
+)
+
+/** Production timings: 30 s after app start, 5 s after a local change, 30 min periodic. */
 internal val DefaultSyncTimings = SchedulerTimings(
     standardInterval = 30.minutes,
     appRefreshInterval = 30.seconds,

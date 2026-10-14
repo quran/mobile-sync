@@ -1,11 +1,11 @@
 package com.quran.shared.pipeline.integration
 
+import com.quran.shared.pipeline.SyncError
+import com.quran.shared.pipeline.SyncErrorKind
 import com.quran.shared.pipeline.SyncStatus
 import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.server.RequestRecord
 import com.quran.shared.pipeline.integration.server.ServerDuplicate
-import com.quran.shared.syncengine.SyncError
-import com.quran.shared.syncengine.SyncErrorKind
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json

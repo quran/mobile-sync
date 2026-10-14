@@ -16,13 +16,12 @@ Core modules:
 
 - `:auth`: OIDC login/logout, auth state, token handling.
 - `:persistence`: the app database (`MobileSyncDatabase`: `QuranDatabase` for app metadata plus `:sync-v2`'s `SyncV2Database` on one driver, schema `MobileSyncSchema`) and the repositories for bookmarks, collections, notes, and reading sessions. Repositories write plain domain rows through one store per type (`NoteStore`, `CollectionStore`, `ReadingSessionStore`, `ReadingBookmarkStore`), which the importer uses too.
-- `:syncengine`: the previous sync engine. Nothing runs it any more; its shared types (`SyncError`, `SynchronizationEnvironment`, `SyncLifecycleGate`, `SyncRunObserver`, `SchedulerTimings`, `HttpClientFactory`) are still used until it is deleted.
-- `:sync-v2`: the generic sync engine (fetch, three-way merge, push), its per-type mappings and their plain domain tables (plus `sync_item` and `sync_meta`). Not exported through `umbrella`.
-- `:sync-pipelines`: DI graph, storage wiring, the sync client and scheduler (`pipeline/sync`), and `QuranDataService`.
+- `:sync-v2`: the generic sync engine (fetch, three-way merge, push), its per-type mappings and their plain domain tables (plus `sync_item` and `sync_meta`). Not exported through `umbrella`. `SYNC_ENGINE.md` maps it.
+- `:sync-pipelines`: DI graph, storage wiring, the sync client and scheduler (`pipeline/sync`), and `QuranDataService` with its public sync types (`SyncStatus`, `SyncError`, `SynchronizationEnvironment`).
 - `:umbrella`: iOS `Shared` XCFramework export.
 - `:demo:android`: Android Compose demo.
 - `:demo:common`: shared demo helpers/models.
-- `:mutations-definitions`: shared mutation types.
+- `:mutations-definitions`: the server's text rules (`ServerText`) and the DI scope (`AppScope`).
 - `:logging`: `MobileSyncLogging` sink for host apps and the shared Ktor HTTP logging used by `:auth` and the sync client.
 
 ## Common Commands
@@ -35,8 +34,6 @@ Core modules:
 ./gradlew allTests --stacktrace --continue
 
 # Focused tests
-./gradlew :syncengine:jvmTest
-./gradlew :syncengine:allTests
 ./gradlew :sync-v2:allTests   # JVM, Android host (JDBC SQLite driver) and iOS simulator
 ./gradlew :persistence:jvmTest
 ./gradlew :persistence:testAndroidHostTest
@@ -55,7 +52,6 @@ Core modules:
 
 Command notes:
 
-- `:syncengine:test`, `:syncengine:testDebugUnitTest`, and `:syncengine:testReleaseUnitTest` are not valid tasks.
 - `:persistence:test` is ambiguous; use a concrete task such as `jvmTest`, `testAndroidHostTest`, or `allTests`.
 - `dependencyUpdates` is not available unless a dependency-update plugin is added.
 - `installDebug` requires an attached emulator/device.
@@ -85,12 +81,8 @@ Synced types (`sync-v2` `syncTypes`, in dependency order): collections, verses i
 
 ## sync-v2
 
-`:sync-v2` is a generic, git-like engine; the KDoc on each class is the reference.
+`SYNC_ENGINE.md` maps the engine: the working, base and remote states, the outbox, holds and uniqueness repair. The KDoc on each class is the reference.
 
-- **Model.** For each item the engine compares three states of the same canonical shape (`State`): *working*, the type's plain domain table that the app writes; *base*, the last state both sides agreed on (`sync_item.base_json`); and *remote*, the entries `GET /v1/sync` returns. `Reconciler` merges them three ways per item (`Merger`; an edit beats a delete, both ways), and `PushPlanner` pushes `diff(base, working)`. A base with no domain row is a local delete.
-- **Outbox.** Each POST batch is saved before it is sent. When its response is lost, the next GET proves whether it landed (`OutboxResolver`), so nothing is pushed twice or lost.
-- **Holds.** An item the server keeps refusing, or one that fails local validation, is held in `sync_item` with a reason, and its dependents wait on it; the rest keeps syncing. A hold ends when the user edits the item, the app version changes, or it expires. `SyncErrors.kt` lists which errors hold and which abort and retry.
-- **Uniqueness repair.** After the merge and before anything is written, `UniquenessRepair` restores the local unique indexes (a collection name, a session's verse): it links, reverts a local key change, or disambiguates.
 - **Adding a synced type.** Implement a `SyncType` in `sync-v2/.../types` over its own plain table (a `.sq` file in `sync-v2/src/commonMain/sqldelight`, no sync columns): its canonical state, natural key, parent, and mapping to and from the server's resource. Add it to `syncTypes` in dependency order (parents first). Model the resource in sync-v2's fake server (`sync-v2/src/jvmTest/.../fake`) and add a type unit test (`commonTest/.../types`) and acceptance tests (`jvmTest`).
 - **Keep the two fakes in step.** sync-v2's fake and the integration tests' `FakeSyncServer` (see Integration Tests) model the same backend. A backend rule added to one, such as a validation, a side effect, or how GET renders a resource, belongs in the other too.
 

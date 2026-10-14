@@ -41,8 +41,7 @@ import com.quran.shared.persistence.repository.readingbookmark.repository.Readin
 import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepository
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.toPlatform
-import com.quran.shared.syncengine.SynchronizationClient
-import com.quran.shared.syncengine.SynchronizationEnvironment
+import com.quran.shared.pipeline.sync.SynchronizationClient
 import com.quran.shared.syncv2.db.SyncV2Database
 import com.quran.shared.persistence.repository.PersistenceResetRepositoryImpl
 import com.quran.shared.syncv2.SyncStore

@@ -38,7 +38,7 @@ mavenPublishing {
 
     pom {
         name = "Quran.com Mutations Definitions"
-        description = "Type declarations that can be used for mutations tracking."
+        description = "The server's text rules (ServerText) and the shared DI scope (AppScope)."
         inceptionYear = libs.versions.project.inception.year.get()
         url = libs.versions.project.url.get()
 

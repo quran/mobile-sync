@@ -17,7 +17,6 @@ dependencyResolutionManagement {
 rootProject.name = "quransync"
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
-include(":syncengine")
 include(":persistence")
 include(":umbrella")
 include(":demo:common")

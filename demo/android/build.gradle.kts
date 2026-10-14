@@ -47,7 +47,6 @@ android {
 }
 
 dependencies {
-    implementation(projects.syncengine)
     implementation(projects.persistence)
     implementation(projects.auth)
     implementation(projects.syncPipelines)

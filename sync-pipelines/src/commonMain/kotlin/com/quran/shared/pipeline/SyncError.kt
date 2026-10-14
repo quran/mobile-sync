@@ -1,7 +1,4 @@
-package com.quran.shared.syncengine
-
-import com.quran.shared.syncengine.network.SyncNetworkException
-import kotlinx.io.IOException
+package com.quran.shared.pipeline
 
 /**
  * Why a sync run failed, as a stable category that apps can map to their own localized text.
@@ -39,23 +36,3 @@ data class SyncError(
     val serverCode: String?,
     val message: String
 )
-
-internal fun Exception.toSyncError(): SyncError =
-    when (this) {
-        is SyncNetworkException -> {
-            val code = status.value
-            val (kind, description) = when {
-                code == 401 || code == 403 ->
-                    SyncErrorKind.AUTHENTICATION to "The sync server did not accept the session"
-                code >= 500 || code == 408 || code == 429 ->
-                    SyncErrorKind.SERVER to "The sync server is unavailable"
-                code in 400..499 ->
-                    SyncErrorKind.REJECTED to "The sync server rejected the request"
-                else ->
-                    SyncErrorKind.UNKNOWN to "The sync server returned an unexpected status"
-            }
-            SyncError(kind, code, serverCode, "$description (HTTP $code)")
-        }
-        is IOException -> SyncError(SyncErrorKind.NETWORK, null, null, "Could not reach the sync server")
-        else -> SyncError(SyncErrorKind.UNKNOWN, null, null, "Sync failed unexpectedly (${this::class.simpleName})")
-    }

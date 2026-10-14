@@ -1,15 +1,10 @@
 package com.quran.shared.pipeline.sync
 
 import co.touchlab.kermit.Logger
-import com.quran.shared.syncengine.SyncError
-import com.quran.shared.syncengine.SyncErrorKind
-import com.quran.shared.syncengine.SyncLifecycleGate
-import com.quran.shared.syncengine.SyncOperationInvalidatedException
-import com.quran.shared.syncengine.SyncRunObserver
-import com.quran.shared.syncengine.SynchronizationClient
-import com.quran.shared.syncengine.SynchronizationEnvironment
-import com.quran.shared.syncengine.network.HttpClientFactory
-import com.quran.shared.syncengine.scheduling.SchedulerTimings
+import com.quran.shared.logging.installHttpLogging
+import com.quran.shared.pipeline.SyncError
+import com.quran.shared.pipeline.SyncErrorKind
+import com.quran.shared.pipeline.SynchronizationEnvironment
 import com.quran.shared.syncv2.SyncApi
 import com.quran.shared.syncv2.SyncEngineV2
 import com.quran.shared.syncv2.SyncHttpException
@@ -20,6 +15,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.defaultRequest
+import io.ktor.client.request.header
+import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import kotlinx.io.IOException
 import kotlin.concurrent.Volatile
 import kotlin.time.Clock
@@ -198,7 +197,11 @@ internal class SyncClient(
             timings: SchedulerTimings = DefaultSyncTimings
         ): SyncClient {
             lateinit var client: SyncClient
-            val httpClient = HttpClientFactory.createHttpClient()
+            // The platform's engine (OkHttp on Android and the JVM, Darwin on iOS) comes from this module's dependencies.
+            val httpClient = HttpClient {
+                installHttpLogging(tag = "SyncHttp")
+                defaultRequest { header(HttpHeaders.Accept, ContentType.Application.Json) }
+            }
             val api = SyncApi(httpClient, environment.endPointURL) { client.requestHeaders() }
             val engine = SyncEngineV2(database, api, syncTypes(database), ENGINE_VERSION)
             client = SyncClient(engine, account, gate, observer, timings, httpClient = httpClient)

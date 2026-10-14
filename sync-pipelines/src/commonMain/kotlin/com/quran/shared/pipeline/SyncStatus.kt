@@ -2,8 +2,7 @@ package com.quran.shared.pipeline
 
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.currentPlatformDateTime
-import com.quran.shared.syncengine.SyncError
-import com.quran.shared.syncengine.SyncRunObserver
+import com.quran.shared.pipeline.sync.SyncRunObserver
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

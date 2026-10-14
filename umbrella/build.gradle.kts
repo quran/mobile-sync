@@ -17,7 +17,6 @@ kotlin {
             baseName = "Shared"
             isStatic = true
 
-            export(projects.syncengine)
             export(projects.persistence)
             export(projects.syncPipelines)
             export(projects.auth)
@@ -31,7 +30,6 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            api(projects.syncengine)
             api(projects.persistence)
             api(projects.syncPipelines)
             api(projects.auth)
@@ -48,7 +46,7 @@ mavenPublishing {
 
     pom {
         name = "Quran.com Umbrella Framework"
-        description = "An umbrella framework for Quran.com Persistence and SyncEngine"
+        description = "An umbrella framework for Quran.com Mobile Sync"
         inceptionYear = libs.versions.project.inception.year.get()
         url = libs.versions.project.url.get()
 
