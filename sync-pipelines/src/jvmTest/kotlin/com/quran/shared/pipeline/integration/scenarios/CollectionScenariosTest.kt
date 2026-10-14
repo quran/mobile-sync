@@ -1,16 +1,16 @@
 package com.quran.shared.pipeline.integration.scenarios
 
+import com.quran.shared.persistence.DuplicateCollectionNameException
+import com.quran.shared.persistence.ReadOnlyCollectionException
 import com.quran.shared.pipeline.integration.assertSucceeded
-import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.mutation
-import com.quran.shared.pipeline.integration.syncFailedLocally
-import com.quran.shared.pipeline.integration.syncRejectedWith
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.flow.first
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -53,15 +53,9 @@ class CollectionScenariosTest {
 
         phone.data.updateCollection(study.id, "Memorize")
 
-        knownIssue(
-            "S2",
-            "This device's own echo overwrites a newer local rename",
-            expect = failureMentions("local name", "Study")
-        ) {
-            assertSucceeded(phone.syncNow())
-            assertEquals(listOf("Memorize"), phone.collectionNames(), "local name")
-            assertEquals(listOf("Memorize"), server.state(ALICE).collections.map { it.name }, "server name")
-        }
+        assertSucceeded(phone.syncNow())
+        assertEquals(listOf("Memorize"), phone.collectionNames(), "local name")
+        assertEquals(listOf("Memorize"), server.state(ALICE).collections.map { it.name }, "server name")
     }
 
     @Test
@@ -92,17 +86,11 @@ class CollectionScenariosTest {
         tablet.data.addCollection("Study")
         assertSucceeded(tablet.syncNow())
 
-        knownIssue(
-            "S1",
-            "A never-sent collection tombstone binds another device's collection and deletes it",
-            expect = failureMentions("tablet's Study on the server")
-        ) {
-            assertSucceeded(phone.syncNow())
-            assertSucceeded(phone.syncNow())
-            assertEquals(listOf("Study"), server.state(ALICE).collections.map { it.name }, "tablet's Study on the server")
-            assertSucceeded(tablet.syncNow())
-            assertEquals(listOf("Study"), tablet.collectionNames(), "tablet's Study on the tablet")
-        }
+        assertSucceeded(phone.syncNow())
+        assertSucceeded(phone.syncNow())
+        assertEquals(listOf("Study"), server.state(ALICE).collections.map { it.name }, "tablet's Study on the server")
+        assertSucceeded(tablet.syncNow())
+        assertEquals(listOf("Study"), tablet.collectionNames(), "tablet's Study on the tablet")
     }
 
     @Test
@@ -111,19 +99,11 @@ class CollectionScenariosTest {
         repeat(2) { phone.data.deleteCollection(phone.data.addCollection("Study").id) }
         web(ALICE).createCollection("study")
 
-        // The catalog predicted the "ambiguous tombstones" throw. For collections the sync doesn't
-        // throw: the web's create binds a tombstone, never shows, and the second sync deletes it
-        // on the server.
-        knownIssue(
-            "S1",
-            "Never-sent collection tombstones bind a remote create with the same name and delete it",
-            expect = failureMentions("the web's study on the server", "expected:<[study]> but was:<[]>")
-        ) {
-            assertSucceeded(phone.syncNow())
-            assertSucceeded(phone.syncNow())
-            assertEquals(listOf("study"), server.state(ALICE).collections.map { it.name }, "the web's study on the server")
-            assertEquals(listOf("study"), phone.collectionNames(), "the web's study on the phone")
-        }
+        // S1: a create deleted before it was sent leaves no tombstone, so nothing can bind the web's create.
+        assertSucceeded(phone.syncNow())
+        assertSucceeded(phone.syncNow())
+        assertEquals(listOf("study"), server.state(ALICE).collections.map { it.name }, "the web's study on the server")
+        assertEquals(listOf("study"), phone.collectionNames(), "the web's study on the phone")
     }
 
     @Test
@@ -155,17 +135,11 @@ class CollectionScenariosTest {
         web.renameCollection(study, "Memorize")
         phone.data.addAyahBookmarkToCollection(phone.data.addCollection("Memorize").id, 2, 255)
 
-        knownIssue(
-            "S9",
-            "A remote collection rename onto a locally held name violates the unique index",
-            expect = syncFailedLocally("SQLiteException")
-        ) {
-            assertSucceeded(phone.syncNow())
-            assertEquals(listOf("Memorize"), phone.collectionNames())
-            assertEquals(listOf("2:255", "3:18"), phone.versesIn("Memorize"))
-            syncUntilQuiescent(phone)
-            assertConverged(ALICE, phone)
-        }
+        assertSucceeded(phone.syncNow())
+        assertEquals(listOf("Memorize"), phone.collectionNames())
+        assertEquals(listOf("2:255", "3:18"), phone.versesIn("Memorize"))
+        syncUntilQuiescent(phone)
+        assertConverged(ALICE, phone)
     }
 
     @Test
@@ -178,16 +152,10 @@ class CollectionScenariosTest {
         assertSucceeded(phone.syncNow())
         phone.data.updateCollection(study.id, "Memorize")
 
-        knownIssue(
-            "S2",
-            "The echo of a membership's collection bump overwrites a newer local rename",
-            expect = failureMentions("local name", "expected:<[Memorize]> but was:<[Study]>")
-        ) {
-            assertSucceeded(phone.syncNow())
-            assertSucceeded(phone.syncNow())
-            assertEquals(listOf("Memorize"), phone.collectionNames(), "local name")
-            assertEquals(listOf("Memorize"), server.state(ALICE).collections.map { it.name }, "server name")
-        }
+        assertSucceeded(phone.syncNow())
+        assertSucceeded(phone.syncNow())
+        assertEquals(listOf("Memorize"), phone.collectionNames(), "local name")
+        assertEquals(listOf("Memorize"), server.state(ALICE).collections.map { it.name }, "server name")
     }
 
     @Test
@@ -201,15 +169,9 @@ class CollectionScenariosTest {
         web.renameCollection(a, "B")
         web.renameCollection(b, "D")
 
-        knownIssue(
-            "S9",
-            "A chain of remote renames violates the unique name index",
-            expect = syncFailedLocally("SQLiteException")
-        ) {
-            assertSucceeded(phone.syncNow())
-            assertEquals(listOf("B", "D"), phone.collectionNames())
-            assertConverged(ALICE, phone)
-        }
+        assertSucceeded(phone.syncNow())
+        assertEquals(listOf("B", "D"), phone.collectionNames())
+        assertConverged(ALICE, phone)
     }
 
     @Test
@@ -221,20 +183,10 @@ class CollectionScenariosTest {
         phone.data.updateCollection(phone.collectionId("Notes"), "Memorize")
         web.addToCollection(web.createCollection("Memorize"), 3, 18)
 
-        knownIssue(
-            "S9",
-            "A local rename onto a remotely created name diverges silently",
-            // The sync succeeds, but the phone keeps its unsent rename and never shows the web's Memorize.
-            expect = failureMentions(
-                "expected:<UserDataSnapshot(notes=[], favorites=[], collections=[Memorize: 3:18, Notes: 2:255]",
-                "but was:<UserDataSnapshot(notes=[], favorites=[], collections=[Memorize: 2:255]"
-            )
-        ) {
-            assertSucceeded(phone.syncNow())
-            syncUntilQuiescent(phone)
-            assertConverged(ALICE, phone)
-            assertTrue(phone.versesIn("Memorize").orEmpty().contains("3:18"), "the remote Memorize's verse on the phone")
-        }
+        assertSucceeded(phone.syncNow())
+        syncUntilQuiescent(phone)
+        assertConverged(ALICE, phone)
+        assertTrue(phone.versesIn("Memorize").orEmpty().contains("3:18"), "the remote Memorize's verse on the phone")
     }
 
     @Test
@@ -246,16 +198,11 @@ class CollectionScenariosTest {
 
         val failure = assertFails { phone.data.updateCollection(study.id, "memorize") }
 
-        // The API has no duplicate-name error type yet, so this accepts the API's validation family,
-        // IllegalArgumentException, as TextLengthLimitException and the reserved-name checks use.
-        // Tighten it to the type S16's fix adds.
-        knownIssue(
-            "S16",
-            "Renaming a collection to another existing name throws an untyped SQLite exception",
-            expect = failureMentions("a typed duplicate-name error", "SQLiteException")
-        ) {
-            assertTrue(failure is IllegalArgumentException, "a typed duplicate-name error, not ${failure::class.qualifiedName}")
-        }
+        // S16: a typed error, in the API's validation family (IllegalArgumentException), like
+        // TextLengthLimitException and the reserved-name checks.
+        assertTrue(failure is IllegalArgumentException, "a typed duplicate-name error, not ${failure::class.qualifiedName}")
+        assertEquals("Memorize", assertIs<DuplicateCollectionNameException>(failure).name)
+
         assertEquals(listOf("Memorize", "Study"), phone.collectionNames())
         val run = phone.syncNow()
         assertSucceeded(run)
@@ -273,17 +220,11 @@ class CollectionScenariosTest {
         assertSucceeded(tablet.syncNow())
         phone.data.updateCollection(phone.collectionId("Study"), "B", at(2_000))
 
-        knownIssue(
-            "S17",
-            "Concurrent collection renames resolve remote-wins, not newest-wins",
-            expect = failureMentions("the phone's name", "expected:<[B]> but was:<[A]>")
-        ) {
-            assertSucceeded(phone.syncNow())
-            assertEquals(listOf("B"), phone.collectionNames(), "the phone's name")
-            syncUntilQuiescent(phone, tablet)
-            assertEquals(listOf("B"), server.state(ALICE).collections.map { it.name })
-            assertConverged(ALICE, phone, tablet)
-        }
+        assertSucceeded(phone.syncNow())
+        assertEquals(listOf("B"), phone.collectionNames(), "the phone's name")
+        syncUntilQuiescent(phone, tablet)
+        assertEquals(listOf("B"), server.state(ALICE).collections.map { it.name })
+        assertConverged(ALICE, phone, tablet)
     }
 
     @Test
@@ -296,19 +237,13 @@ class CollectionScenariosTest {
         web.deleteCollection(web.collectionId("Study")!!)
         phone.data.updateCollection(phone.collectionId("Study"), "Memorize")
 
-        knownIssue(
-            "S15",
-            "A remote delete beats a local collection rename",
-            expect = failureMentions("the phone's collections", "expected:<[Memorize]> but was:<[]>")
-        ) {
-            assertSucceeded(phone.syncNow())
-            assertEquals(listOf("Memorize"), phone.collectionNames(), "the phone's collections")
-            assertEquals(listOf("2:255"), phone.versesIn("Memorize"))
-            syncUntilQuiescent(phone)
-            val state = server.state(ALICE)
-            assertEquals(setOf("2:255"), state.versesIn(state.collectionNamed("Memorize")!!.id))
-            assertConverged(ALICE, phone)
-        }
+        assertSucceeded(phone.syncNow())
+        assertEquals(listOf("Memorize"), phone.collectionNames(), "the phone's collections")
+        assertEquals(listOf("2:255"), phone.versesIn("Memorize"))
+        syncUntilQuiescent(phone)
+        val state = server.state(ALICE)
+        assertEquals(setOf("2:255"), state.versesIn(state.collectionNamed("Memorize")!!.id))
+        assertConverged(ALICE, phone)
     }
 
     @Test
@@ -325,17 +260,10 @@ class CollectionScenariosTest {
         syncUntilQuiescent(phone)
 
         assertEquals(listOf("Memorize"), phone.collectionNames(), "the remote rename brings the collection back")
-        // The catalog left this unknown. The rename wins over the delete, but the delete's removal of
-        // 2:255 from the collection is still pushed, so both sides end with an empty Memorize.
-        knownIssue(
-            "S26",
-            "A remote rename restores a locally deleted collection, but its memberships' removals are still pushed",
-            expect = failureMentions("the phone's Memorize", "expected:<[2:255]> but was:<[]>")
-        ) {
-            assertEquals(listOf("2:255"), phone.versesIn("Memorize"), "the phone's Memorize")
-            assertEquals(setOf("2:255"), server.state(ALICE).versesIn(study), "the server keeps the membership")
-            assertConverged(ALICE, phone)
-        }
+        // S26: the remote rename restores the collection with the verses its local delete removed.
+        assertEquals(listOf("2:255"), phone.versesIn("Memorize"), "the phone's Memorize")
+        assertEquals(setOf("2:255"), server.state(ALICE).versesIn(study), "the server keeps the membership")
+        assertConverged(ALICE, phone)
     }
 
     @Test
@@ -356,17 +284,10 @@ class CollectionScenariosTest {
 
         // Nothing is silently dropped: the default Favorites keeps 1:1, and the web's "Favorites"
         // shows as some user collection holding 4:1, under its name or a documented rename.
-        knownIssue(
-            "S9",
-            "A web user collection named Favorites is skipped as colliding with the default",
-            // The catalog predicted S9. The sync succeeds, and the web's Favorites never shows.
-            expect = failureMentions("user collections holding 4:1", "expected:<1> but was:<0>")
-        ) {
-            assertEquals(listOf("1:1"), phone.favoriteVerses(), "the default Favorites")
-            val holding = phone.data.collectionsWithBookmarks.first()
-                .filter { c -> !c.collection.isDefault && c.bookmarks.any { it.sura == 4 && it.ayah == 1 } }
-            assertEquals(1, holding.size, "user collections holding 4:1")
-        }
+        assertEquals(listOf("1:1"), phone.favoriteVerses(), "the default Favorites")
+        val holding = phone.data.collectionsWithBookmarks.first()
+            .filter { c -> !c.collection.isDefault && c.bookmarks.any { it.sura == 4 && it.ayah == 1 } }
+        assertEquals(1, holding.size, "user collections holding 4:1")
     }
 
     @Test
@@ -377,21 +298,15 @@ class CollectionScenariosTest {
         val (phone) = signedIn("phone")
         assertEquals(listOf("2:255"), phone.versesIn("blue"))
 
-        knownIssue(
-            "S11",
-            "Renaming an older app's protected color collection gets 403 forever",
-            expect = syncRejectedWith(403, carrying = mutation("COLLECTION", "UPDATE"))
-        ) {
-            // Either the API refuses the change, or the sync reverts it after the 403.
-            runCatching { phone.data.updateCollection(phone.collectionId("blue"), "Renamed") }
-            assertSucceeded(phone.syncNow())
-            assertEquals(listOf("blue"), phone.collectionNames())
-            runCatching { phone.data.deleteCollection(phone.collectionId("blue")) }
-            assertSucceeded(phone.syncNow())
-            assertEquals(listOf("2:255"), phone.versesIn("blue"))
-            assertEquals(setOf("2:255"), server.state(ALICE).versesIn(blue))
-            assertConverged(ALICE, phone)
-        }
+        // The API refuses the change with a typed error: older apps' color collections arrive read-only.
+        assertFailsWith<ReadOnlyCollectionException> { phone.data.updateCollection(phone.collectionId("blue"), "Renamed") }
+        assertSucceeded(phone.syncNow())
+        assertEquals(listOf("blue"), phone.collectionNames())
+        assertFailsWith<ReadOnlyCollectionException> { phone.data.deleteCollection(phone.collectionId("blue")) }
+        assertSucceeded(phone.syncNow())
+        assertEquals(listOf("2:255"), phone.versesIn("blue"))
+        assertEquals(setOf("2:255"), server.state(ALICE).versesIn(blue))
+        assertConverged(ALICE, phone)
     }
 
     @Test
