@@ -9,9 +9,9 @@ import com.quran.shared.pipeline.integration.UserDataSnapshot
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.mutation
+import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.server.CollectionRules
 import com.quran.shared.pipeline.integration.syncRejectedWith
-import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlin.test.Test
 import kotlin.test.assertEquals

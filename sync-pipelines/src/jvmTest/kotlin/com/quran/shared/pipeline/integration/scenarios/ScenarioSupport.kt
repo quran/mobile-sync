@@ -130,8 +130,8 @@ internal fun RequestRecord.responseHead(): Long =
 /** S7's signature: a note UPDATE carrying `ranges` gets 422. */
 internal val NOTE_UPDATE_REJECTED = syncRejectedWith(422, carrying = mutation("NOTE", "UPDATE", "ranges"))
 
-/** S6's signature: a Favorites membership DELETE gets 404 "bookmark is not found". */
-internal val FAVORITES_DELETE_REJECTED = syncRejectedWith(404, carrying = mutation("COLLECTION_BOOKMARK", "DELETE"))
+/** A Favorites membership DELETE gets 404 "bookmark is not found": the signature of both S6 and S23. */
+internal val FAVORITES_DELETE_404 = syncRejectedWith(404, carrying = mutation("COLLECTION_BOOKMARK", "DELETE"))
 
 /** Accepts a failure whose message contains every fragment. */
 internal fun failureMentions(vararg fragments: String): (AssertionError) -> Boolean = { failure ->

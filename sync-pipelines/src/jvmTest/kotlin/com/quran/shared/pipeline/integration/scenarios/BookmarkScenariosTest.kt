@@ -42,7 +42,7 @@ class BookmarkScenariosTest {
 
         phone.removeFromFavorites(2, 255)
 
-        knownIssue("S6", "Removing a verse from Favorites wedges sync permanently", expect = FAVORITES_DELETE_REJECTED) {
+        knownIssue("S6", "Removing a verse from Favorites wedges sync permanently", expect = FAVORITES_DELETE_404) {
             assertSucceeded(phone.syncNow())
             assertSucceeded(tablet.syncNow())
             assertSucceeded(phone.syncNow())
@@ -112,7 +112,7 @@ class BookmarkScenariosTest {
 
         // Variant 2: no highlight, so the server deletes the bookmark with its Favorites membership.
         phone.data.replaceAyahBookmarkCollections(3, 18, emptyList())
-        knownIssue("S6", "Removing a verse from Favorites wedges sync permanently", expect = FAVORITES_DELETE_REJECTED) {
+        knownIssue("S6", "Removing a verse from Favorites wedges sync permanently", expect = FAVORITES_DELETE_404) {
             assertSucceeded(phone.syncNow())
             assertSucceeded(tablet.syncNow())
             assertNull(server.state(ALICE).bookmarkAt(3, 18))
@@ -218,7 +218,7 @@ class BookmarkScenariosTest {
         // The catalog predicted a pass. Applying the remote BOOKMARK DELETE turns the phone's
         // Favorites membership into a pending DELETE that the membership phase can no longer match
         // to the remote one, so the phone pushes it and gets 404 on every attempt.
-        knownIssue("S23", "A web removal from Favorites wedges the device's sync", expect = FAVORITES_DELETE_REJECTED) {
+        knownIssue("S23", "A web removal from Favorites wedges the device's sync", expect = FAVORITES_DELETE_404) {
             val runs = listOf(phone.syncNow(), phone.syncNow())
             runs.forEach(::assertSucceeded)
             assertNull(server.state(ALICE).bookmarkAt(2, 255))
