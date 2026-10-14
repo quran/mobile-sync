@@ -45,15 +45,13 @@ class ConvergenceScenariosP1Test {
         d3.removeFromFavorites(2, 3)
         d3.data.addCollection("Fresh")
 
+        // d3 syncs first, so S6 surfaces first. Behind it, S7 rejects the note edits, and S2
+        // reverts the rename d3 makes right after its push.
         knownIssue(
-            "S6",
-            "Removing a verse from Favorites wedges sync permanently",
-            // d3 syncs first, so S6 surfaces first. Behind it, S7 rejects the note edits, and S2
-            // reverts the rename d3 makes right after its push.
-            expect = {
-                FAVORITES_DELETE_REJECTED(it) || NOTE_UPDATE_REJECTED(it) ||
-                    failureMentions("the rename made after a push", "but was:<Fresh>")(it)
-            }
+            "The unbookmark wedges sync (S6), note edits get 422 (S7), an echo reverts a rename (S2)",
+            "S6" to FAVORITES_DELETE_REJECTED,
+            "S7" to NOTE_UPDATE_REJECTED,
+            "S2" to failureMentions("the rename made after a push", "but was:<Fresh>")
         ) {
             assertSucceeded(d3.syncNow())
             d3.data.updateCollection(d3.collectionId("Fresh"), "Renamed fresh")
@@ -139,9 +137,9 @@ class ConvergenceScenariosP1Test {
         // The catalog predicted S7. The edit survives the ACK, but the next GET echoes the phone's
         // own CREATE (S2) and reverts it before it is pushed. Once S2 is fixed, S7's 422 takes over.
         knownIssue(
-            "S2",
-            "This device's own echo overwrites a newer local edit",
-            expect = { failureMentions("the latest edit on the phone", "but was:<[Sent before the edit]>")(it) || NOTE_UPDATE_REJECTED(it) }
+            "The echo of the CREATE reverts the edit (S2); once it is pushed, its UPDATE gets 422 (S7)",
+            "S2" to failureMentions("the latest edit on the phone", "but was:<[Sent before the edit]>"),
+            "S7" to NOTE_UPDATE_REJECTED
         ) {
             assertSucceeded(phone.syncNow())
             syncUntilQuiescent(phone)

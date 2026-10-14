@@ -95,11 +95,11 @@ class FailureScenariosP1Test {
             }
         )
 
+        // S7's 422 rejects the note UPDATE before the server can answer 404, until S7 is fixed.
         knownIssue(
-            "S10",
-            "A remote DELETE skipped for a row edited mid-sync leaves an UPDATE that gets 404 forever",
-            // S7's 422 rejects the note UPDATE before the server can answer 404, until S7 is fixed.
-            expect = { syncRejectedWith(404, carrying = mutation("NOTE", "UPDATE"))(it) || NOTE_UPDATE_REJECTED(it) }
+            "The skipped remote DELETE leaves an UPDATE that gets 404 (S10), or 422 first (S7)",
+            "S10" to syncRejectedWith(404, carrying = mutation("NOTE", "UPDATE")),
+            "S7" to NOTE_UPDATE_REJECTED
         ) {
             assertSucceeded(phone.syncNow())
             syncUntilQuiescent(phone)

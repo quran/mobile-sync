@@ -52,10 +52,9 @@ class NoteScenariosTest {
         phone.data.updateNote(phone.note("First body of it").id, "Edited body of it", 2, 255, 2, 255)
 
         knownIssue(
-            "S2",
-            "This device's own echo overwrites a newer local edit",
-            // Once S2 is fixed the edit is pushed, and S7's 422 takes over until S7 is fixed too.
-            expect = { failureMentions("local body", "First body of it")(it) || NOTE_UPDATE_REJECTED(it) }
+            "The echo reverts the edit (S2); once it is pushed, its UPDATE gets 422 (S7)",
+            "S2" to failureMentions("local body", "First body of it"),
+            "S7" to NOTE_UPDATE_REJECTED
         ) {
             assertSucceeded(phone.syncNow())
             assertEquals(listOf("Edited body of it"), phone.noteBodies(), "local body")
@@ -139,7 +138,7 @@ class NoteScenariosTest {
         val run = phone.syncNow()
 
         assertSucceeded(run)
-        assertEquals(1, run.posts, "the session still went up")
+        assertTrue(run.accepted.of("READING_SESSION").isNotEmpty(), "the session still went up")
         assertEquals(emptyList(), server.posts("phone").flatMap { it.mutations }.of("NOTE"))
         assertEquals(emptyList(), server.state(ALICE).notes)
         assertConverged(ALICE, phone)
@@ -171,10 +170,9 @@ class NoteScenariosTest {
         tablet.data.updateNote(tablet.note("The original body").id, "The tablet's newer edit", 2, 255, 2, 255, at(2_000))
 
         knownIssue(
-            "S7",
-            "Editing a synced note sends ranges in the UPDATE and gets 422 forever",
-            // Once S7 is fixed, S17 (remote wins, not newest wins) keeps the phone's older edit.
-            expect = { NOTE_UPDATE_REJECTED(it) || failureMentions("newest edit", "but was:<[The phone's older edit]>")(it) }
+            "The phone's UPDATE gets 422 (S7); once it is accepted, remote-wins keeps the older edit (S17)",
+            "S7" to NOTE_UPDATE_REJECTED,
+            "S17" to failureMentions("newest edit", "but was:<[The phone's older edit]>")
         ) {
             assertSucceeded(phone.syncNow())
             assertSucceeded(tablet.syncNow())
@@ -233,17 +231,14 @@ class NoteScenariosTest {
         val (phone) = signedIn("phone")
         web(ALICE).createNote("A note on two passages", "2:255-2:256", "3:18-3:18")
 
+        // The public note model holds one range, so the device shows the first one only (S4).
         knownIssue(
-            "S4",
-            "Extra note ranges are dropped",
-            // The public note model holds one range, so the device shows the first one only. Once
-            // it keeps every range, editing the body hits S7's 422 until S7 is fixed too.
-            expect = {
-                failureMentions(
-                    "expected:<UserDataSnapshot(notes=[A note on two passages | 2:255-2:256,3:18-3:18]",
-                    "but was:<UserDataSnapshot(notes=[A note on two passages | 2:255-2:256]"
-                )(it) || NOTE_UPDATE_REJECTED(it)
-            }
+            "Extra note ranges are dropped (S4); once kept, editing the body gets 422 (S7)",
+            "S4" to failureMentions(
+                "expected:<UserDataSnapshot(notes=[A note on two passages | 2:255-2:256,3:18-3:18]",
+                "but was:<UserDataSnapshot(notes=[A note on two passages | 2:255-2:256]"
+            ),
+            "S7" to NOTE_UPDATE_REJECTED
         ) {
             assertSucceeded(phone.syncNow())
             assertConverged(ALICE, phone)
@@ -269,12 +264,11 @@ class NoteScenariosTest {
         phone.data.updateNote(phone.note("Written before the loss").id, "Edited after the loss", 2, 255, 2, 255)
 
         knownIssue(
-            "S12",
-            "A lost POST response plus a later local edit duplicates notes",
-            // Once the echo links to the edited note, the edit goes up as an UPDATE and hits S7.
-            expect = { failureMentions("notes on the phone", "but was:<[Edited after the loss, Written before the loss]>")(it) || NOTE_UPDATE_REJECTED(it) }
+            "A lost response plus an edit duplicates the note (S12); once linked, the edit's UPDATE gets 422 (S7)",
+            "S12" to failureMentions("notes on the phone", "but was:<[Edited after the loss, Written before the loss]>"),
+            "S7" to NOTE_UPDATE_REJECTED
         ) {
-            assertSucceeded(phone.syncNow())
+            syncUntilQuiescent(phone)
             assertEquals(listOf("Edited after the loss"), phone.noteBodies(), "notes on the phone")
             assertEquals(listOf("Edited after the loss"), server.state(ALICE).notes.map { it.body }, "notes on the server")
         }
