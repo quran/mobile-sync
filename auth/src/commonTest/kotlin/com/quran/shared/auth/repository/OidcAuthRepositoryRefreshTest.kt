@@ -45,6 +45,32 @@ class OidcAuthRepositoryRefreshTest {
     }
 
     @Test
+    fun `a refresh that times out keeps the session`() = runTest(UnconfinedTestDispatcher()) {
+        val storage = committedSession(expiresAt = 0)
+        val failure = OpenIdConnectException.TechnicalFailure("timeout", HttpRequestTimeoutException())
+        val repository = oidcRepository(storage, refreshingClient(failure))
+
+        assertFailsWith<OpenIdConnectException.TechnicalFailure> { repository.refreshTokensIfNeeded() }
+
+        assertEquals("old-access-token", repository.getAccessToken())
+    }
+
+    /** TechnicalFailure wraps any error, not only network ones: a bad response body is not transient. */
+    @Test
+    fun `a refresh that fails for a technical reason other than the network ends the session`() = runTest(UnconfinedTestDispatcher()) {
+        val storage = committedSession(expiresAt = 0)
+        val failure = OpenIdConnectException.TechnicalFailure("unreadable", IllegalStateException("unexpected body"))
+        val repository = oidcRepository(storage, refreshingClient(failure))
+
+        assertFalse(repository.refreshTokensIfNeeded())
+
+        assertNull(repository.getAccessToken())
+    }
+
+    /** Named like Ktor's timeout exceptions, which aren't all IOExceptions on every platform. */
+    private class HttpRequestTimeoutException : Exception("timed out")
+
+    @Test
     fun `a refresh the server fails with a 5xx keeps the session`() = runTest(UnconfinedTestDispatcher()) {
         val storage = committedSession(expiresAt = Long.MAX_VALUE)
         val failure = OpenIdConnectException.UnsuccessfulTokenRequest(

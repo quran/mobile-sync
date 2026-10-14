@@ -680,9 +680,13 @@ private fun Throwable.cancellationCauseOrNull(): CancellationException? {
  * server error. Only a refusal (an OAuth error response such as `invalid_grant`) ends the session.
  */
 internal fun Exception.isTransientRefreshFailure(): Boolean = when (this) {
-    is OpenIdConnectException.TechnicalFailure -> true
+    // The OIDC library wraps every non-HTTP failure in TechnicalFailure; only a network error or a timeout is transient.
+    is OpenIdConnectException.TechnicalFailure -> generateSequence(cause) { it.cause }.any { it.isNetworkOrTimeout() }
     is OpenIdConnectException.UnsuccessfulTokenRequest ->
         statusCode.value >= 500 || statusCode.value == 408 || statusCode.value == 429
     is kotlinx.io.IOException -> true
     else -> false
 }
+
+private fun Throwable.isNetworkOrTimeout(): Boolean =
+    this is kotlinx.io.IOException || this::class.simpleName.orEmpty().contains("Timeout")
