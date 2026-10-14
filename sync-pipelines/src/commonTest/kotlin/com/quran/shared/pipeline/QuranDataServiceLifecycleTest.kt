@@ -44,6 +44,8 @@ import com.quran.shared.persistence.util.toPlatform
 import com.quran.shared.syncengine.SynchronizationClient
 import com.quran.shared.syncengine.SynchronizationEnvironment
 import com.quran.shared.syncv2.db.SyncV2Database
+import com.quran.shared.persistence.repository.PersistenceResetRepositoryImpl
+import com.quran.shared.syncv2.SyncStore
 import com.russhwolf.settings.MapSettings
 import com.russhwolf.settings.coroutines.toSuspendSettings
 import com.quran.shared.pipeline.storage.MobileSyncStorageModule
@@ -180,6 +182,7 @@ class QuranDataServiceLifecycleTest {
                 )
             )
         )
+        fixture.seedSyncState()
         advanceUntilIdle()
 
         val result = fixture.service.logout()
@@ -192,6 +195,7 @@ class QuranDataServiceLifecycleTest {
         )
         assertEquals(null, fixture.authRepository.getAccessToken())
         assertEquals(1, fixture.resetRepository.deleteCount)
+        fixture.assertSyncStateWiped()
         assertEquals(
             listOf(RemoteLogoutMode.TOKEN_REVOCATION_ONLY),
             fixture.authRepository.remoteLogoutModes
@@ -245,6 +249,7 @@ class QuranDataServiceLifecycleTest {
         advanceUntilIdle()
 
         assertEquals(1, fixture.resetRepository.deleteCount)
+        fixture.assertSyncStateWiped()
         fixture.clearAndJoin()
     }
 
@@ -312,9 +317,11 @@ class QuranDataServiceLifecycleTest {
                 onAttemptRemoteLogout = {
                     assertEquals(null, fixture.authRepository.getAccessToken())
                     assertEquals(1, fixture.resetRepository.deleteCount)
+                    fixture.assertSyncStateWiped()
                 }
             )
         )
+        fixture.seedSyncState()
         advanceUntilIdle()
 
         fixture.service.logout()
@@ -333,6 +340,7 @@ class QuranDataServiceLifecycleTest {
             )
         )
         val authFacade = SyncAuthService(fixture.authService, fixture.service, fixture.lifecycleCoordinator)
+        fixture.seedSyncState()
         advanceUntilIdle()
 
         val result = authFacade.logout()
@@ -340,6 +348,7 @@ class QuranDataServiceLifecycleTest {
         assertEquals(emptyList(), result.warnings)
         assertEquals(null, fixture.authRepository.getAccessToken())
         assertEquals(1, fixture.resetRepository.deleteCount)
+        fixture.assertSyncStateWiped()
         fixture.clearAndJoin()
     }
 
@@ -408,6 +417,7 @@ class QuranDataServiceLifecycleTest {
                 remoteLogoutException = CancellationException("remote logout cancelled")
             )
         )
+        fixture.seedSyncState()
         advanceUntilIdle()
 
         assertFailsWith<CancellationException> {
@@ -416,6 +426,7 @@ class QuranDataServiceLifecycleTest {
 
         assertEquals(null, fixture.authRepository.getAccessToken())
         assertEquals(1, fixture.resetRepository.deleteCount)
+        fixture.assertSyncStateWiped()
         fixture.clearAndJoin()
     }
 
@@ -429,6 +440,7 @@ class QuranDataServiceLifecycleTest {
                 throwOnLogoutTokenCapture = true
             )
         )
+        fixture.seedSyncState()
         advanceUntilIdle()
 
         val result = fixture.service.logout()
@@ -441,6 +453,7 @@ class QuranDataServiceLifecycleTest {
         )
         assertEquals(null, fixture.authRepository.getAccessToken())
         assertEquals(1, fixture.resetRepository.deleteCount)
+        fixture.assertSyncStateWiped()
         fixture.clearAndJoin()
     }
 
@@ -461,6 +474,7 @@ class QuranDataServiceLifecycleTest {
 
         assertEquals(SessionLifecycleState(epoch = 1L, resetInProgress = false), lifecycleStore.snapshot())
         assertEquals(1, fixture.resetRepository.deleteCount)
+        fixture.assertSyncStateWiped()
         fixture.clearAndJoin()
     }
 
@@ -856,6 +870,7 @@ class QuranDataServiceLifecycleTest {
                 throwOnClearLocalSession = true
             )
         )
+        fixture.seedSyncState()
         advanceUntilIdle()
 
         val error = assertFailsWith<IllegalStateException> {
@@ -865,6 +880,7 @@ class QuranDataServiceLifecycleTest {
         assertEquals("local session clear failed", error.message)
         assertEquals(true, fixture.lifecycleStore.snapshot().resetInProgress)
         assertEquals(0, fixture.resetRepository.deleteCount)
+        fixture.assertSyncStateKept()
         assertEquals(0, fixture.authRepository.remoteLogoutAttemptCount)
         assertEquals("access-token", fixture.authRepository.getAccessToken())
         assertFailsWith<SessionResetInProgressException> {
@@ -990,6 +1006,28 @@ private class QuranDataServiceFixture(
     private val importRepository = ServiceImportRepository()
     val syncClient = ServiceSynchronizationClient()
     private val database = inMemoryMobileSyncDatabase()
+    private val syncStore = SyncStore(database.synced)
+
+    init {
+        // The reset is real, over this fixture's database; the fake only adds failures and counts.
+        resetRepository.delegate = PersistenceResetRepositoryImpl(database.quran, database.synced)
+    }
+
+    /** Sync state as an earlier sync left it: a token and the account it belongs to. */
+    fun seedSyncState() {
+        syncStore.token = 77L
+        syncStore.account = "alice"
+    }
+
+    fun assertSyncStateWiped() {
+        assertEquals(0L, syncStore.token, "the sync token")
+        assertNull(syncStore.account, "the sync account")
+    }
+
+    fun assertSyncStateKept() {
+        assertEquals(77L, syncStore.token, "the sync token")
+        assertEquals("alice", syncStore.account, "the sync account")
+    }
     val authService = AuthService.createWithSessionPublicationGuard(
         authRepository = authRepository,
         sessionPublicationGuard = AuthSessionPublicationGuard {
@@ -1225,6 +1263,7 @@ private class ServiceResetRepository(
     var deleteAttempts = 0
         private set
     var deleteCount = 0
+    var delegate: PersistenceResetRepository? = null
 
     override fun deleteAllData() {
         deleteAttempts++
@@ -1232,6 +1271,7 @@ private class ServiceResetRepository(
             if (transientDeleteFailures > 0) transientDeleteFailures--
             throw IllegalStateException("delete failed")
         }
+        delegate?.deleteAllData()
         deleteCount++
     }
 }
