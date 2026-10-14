@@ -151,8 +151,7 @@ class ReadingBookmarksType(private val database: SyncV2Database) : SyncType {
             val key = data.int("key")
             val verse = data.int("verseNumber")
             if (type !in TYPES || key == null || (type == AYAH) != (verse != null)) {
-                logger.w { "Skipping reading bookmark $id: unsupported location $type $key $verse" }
-                return null
+                return RemoteItem.Unresolved(id, "unsupported location $type $key $verse", entry.timestamp)
             }
             ReadingLocation.of(type, key, verse, data.int("mushafId") ?: ReadingLocation.STANDARD)
         }
