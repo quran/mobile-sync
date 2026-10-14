@@ -102,7 +102,11 @@ internal class SyncClient(
         }
     }
 
-    /** One engine run; a 401 forces a token refresh and runs once more. */
+    /**
+     * One engine run; a 401 forces a token refresh and runs once more. A 401 again, with a token the authorization
+     * server just issued, isn't retried in this run: the next run (periodic, or a user's) may refresh once more. So a
+     * server that keeps rejecting tokens gets at most one refresh per run, never a storm.
+     */
     private suspend fun sync(accountId: String, push: Boolean): SyncResult {
         val result = engine.sync(accountId, push)
         if ((result as? SyncResult.Failed)?.httpStatus != UNAUTHORIZED) return result
@@ -110,7 +114,10 @@ internal class SyncClient(
         if (!account.forceTokenRefresh()) {
             return SyncResult.Failed("the session ended", retryable = false, cause = SignedOutException())
         }
-        return engine.sync(accountId, push)
+        val again = engine.sync(accountId, push)
+        if ((again as? SyncResult.Failed)?.httpStatus != UNAUTHORIZED) return again
+        logger.w { "The server rejected a freshly refreshed token; not retrying in this run" }
+        return again.copy(retryable = false)
     }
 
     private fun failed(result: SyncResult.Failed, willRetry: (AttemptOutcome.Failed) -> Boolean): AttemptOutcome {

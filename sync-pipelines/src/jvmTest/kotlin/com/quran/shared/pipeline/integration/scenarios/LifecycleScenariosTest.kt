@@ -1,5 +1,9 @@
 package com.quran.shared.pipeline.integration.scenarios
 
+import kotlin.test.assertNotNull
+import kotlin.test.assertIs
+import com.quran.shared.pipeline.integration.server.ServerFaults
+import com.quran.shared.pipeline.SyncStatus
 import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.pipeline.LogoutWarning
@@ -383,6 +387,24 @@ class LifecycleScenariosTest {
         assertEquals(listOf("Written after the server revoked the token"), server.state(ALICE).notes.map { it.body })
 
         assertEquals(1, phone.auth.refreshes.value, "the client refreshed the token once")
+    }
+
+    @Test
+    fun `LIFE-14 variant, a server that keeps rejecting tokens gets one refresh per run`() = syncScenario {
+        val phone = device("phone")
+        assertSucceeded(phone.login(ALICE))
+        server.faults.failRequests(ServerFaults.ALWAYS, status = 401, code = "TokenExpiredError", message = "Token expired") { true }
+        phone.data.addNote("Written while every token is rejected", 1, 1, 1, 7)
+
+        val first = phone.syncNow()
+
+        assertEquals(401, assertIs<SyncStatus.Failed>(first.status).error.httpStatus)
+        assertEquals(1, phone.auth.refreshes.value, "one forced refresh in the run")
+        assertEquals(listOf(401, 401), first.requests.map { it.status }, "the request, then once more with the new token")
+        assertNotNull(phone.auth.accessToken(), "the session is kept")
+
+        phone.syncNow()
+        assertEquals(2, phone.auth.refreshes.value, "one more refresh in the next run, not a storm")
     }
 
     @Test
