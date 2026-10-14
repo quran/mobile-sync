@@ -4,6 +4,7 @@ import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.pipeline.integration.DeviceTimings
 import com.quran.shared.pipeline.integration.assertSucceeded
+import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -59,16 +60,22 @@ class ConvergenceScenariosTest {
         assertEquals(0, second.posts)
         assertConverged(ALICE, phone)
 
-        // The server trims reading bookmark names. The catalog expected S13 here (the client keeping
-        // the raw name), but the device and server agree and nothing is pushed again.
+        // The server trims reading bookmark names, and the client keeps the raw name it pushed
+        // (S13). Today the next sync's echo of this device's own push (S2) overwrites it, which
+        // hides S13 from any check made after a second sync.
         phone.data.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "  Juz 30  ")
         assertSucceeded(phone.syncNow())
+        assertEquals(listOf("Juz 30"), server.state(ALICE).readingBookmarks.map { it.name })
+        knownIssue(
+            "S13",
+            "The client keeps a raw reading bookmark name that the server trims",
+            expect = failureMentions("name after the push", "expected:<[Juz 30]> but was:<[  Juz 30  ]>")
+        ) {
+            assertEquals(listOf("Juz 30"), phone.data.readingBookmarks.first().map { it.name }, "name after the push")
+        }
         val again = phone.syncNow()
         assertSucceeded(again)
-        assertEquals(0, again.posts)
-        assertEquals(listOf("Juz 30"), server.state(ALICE).readingBookmarks.map { it.name })
-        assertEquals(listOf("Juz 30"), phone.data.readingBookmarks.first().map { it.name })
-        assertConverged(ALICE, phone)
+        assertEquals(0, again.posts, "the trimmed name's echo was pushed back")
     }
 
     @Test
