@@ -1,13 +1,21 @@
 package com.quran.shared.pipeline.integration
 
+import com.quran.shared.pipeline.SyncStatus
 import com.quran.shared.pipeline.integration.server.ClientTimes
+import com.quran.shared.pipeline.integration.server.RequestRecord
+import com.quran.shared.syncengine.SyncError
+import com.quran.shared.syncengine.SyncErrorKind
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Instant
 
 class KnownIssueTest {
     @Test
@@ -55,5 +63,31 @@ class KnownIssueTest {
             syncScenario(knownDuplicates = duplicates) { web("alice").createNote("Only one note here", "2:255-2:255") }
         }
         assertEquals("S12 appears fixed; remove knownIssue", fixed.message)
+    }
+
+    @Test
+    fun `syncFailedLocally pins the exception a run gave up on`() {
+        val error = SyncError(SyncErrorKind.UNKNOWN, null, null, "Sync failed unexpectedly (SQLiteException)")
+        val failure = SyncRunFailure(SyncRun(SyncStatus.Failed(Instant.fromEpochMilliseconds(0), error), emptyList()), "failed")
+
+        assertTrue(syncFailedLocally("SQLiteException")(failure))
+        assertFalse(syncFailedLocally("IllegalStateException")(failure))
+        assertFalse(syncFailedLocally("SQLiteException")(AssertionError("Sync failed unexpectedly (SQLiteException)")))
+    }
+
+    @Test
+    fun `syncRejectedWith can require the rejected POST to carry the issue's mutation`() {
+        val update = Json.parseToJsonElement(
+            """{"mutations":[{"type":"UPDATE","resource":"NOTE","resourceId":"n1","data":{"body":"b","ranges":["1:1-1:1"]}}]}"""
+        ).jsonObject
+        val error = SyncError(SyncErrorKind.REJECTED, 422, "ValidationError", "The sync server rejected the request (HTTP 422)")
+        val post = RequestRecord("POST", "phone", "alice", emptyMap(), update, 422, null)
+        val failure = SyncRunFailure(SyncRun(SyncStatus.Failed(Instant.fromEpochMilliseconds(0), error), listOf(post)), "failed")
+
+        assertTrue(syncRejectedWith(422)(failure))
+        assertTrue(syncRejectedWith(422, carrying = mutation("NOTE", "UPDATE", "ranges"))(failure))
+        assertFalse(syncRejectedWith(422, carrying = mutation("NOTE", "UPDATE", "saveToQR"))(failure))
+        assertFalse(syncRejectedWith(422, carrying = mutation("NOTE", "CREATE"))(failure))
+        assertFalse(syncRejectedWith(404, carrying = mutation("NOTE", "UPDATE"))(failure))
     }
 }

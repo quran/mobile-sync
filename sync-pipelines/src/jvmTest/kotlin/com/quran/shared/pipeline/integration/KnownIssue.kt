@@ -1,7 +1,10 @@
 package com.quran.shared.pipeline.integration
 
 import com.quran.shared.pipeline.SyncStatus
+import com.quran.shared.pipeline.integration.server.text
+import com.quran.shared.syncengine.SyncErrorKind
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.JsonObject
 import kotlin.test.fail
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -48,10 +51,31 @@ suspend fun knownIssue(
     println("Known issue $id still reproduces: ${failure.message?.lineSequence()?.firstOrNull()}")
 }
 
-/** Accepts a sync run that failed for good with HTTP [status], as [assertSucceeded] reports it. */
-fun syncRejectedWith(status: Int): (AssertionError) -> Boolean = { failure ->
+/**
+ * Accepts a sync run that failed for good with HTTP [status], as [assertSucceeded] reports it.
+ * With [carrying], the run's last POST answered with [status] must also carry a mutation it
+ * accepts (see [mutation]), so the pin names the mutation the issue is about.
+ */
+fun syncRejectedWith(status: Int, carrying: ((JsonObject) -> Boolean)? = null): (AssertionError) -> Boolean = { failure ->
     val run = (failure as? SyncRunFailure)?.run
-    (run?.status as? SyncStatus.Failed)?.error?.httpStatus == status
+    run != null && (run.status as? SyncStatus.Failed)?.error?.httpStatus == status &&
+        (carrying == null || run.requests.lastOrNull { it.method == "POST" && it.status == status }?.mutations.orEmpty().any(carrying))
+}
+
+/** Matches a POSTed mutation of [resource] and [type] whose `data` has every key in [dataKeys]. */
+fun mutation(resource: String, type: String, vararg dataKeys: String): (JsonObject) -> Boolean = { mutation ->
+    val data = mutation["data"] as? JsonObject
+    mutation.text("resource") == resource && mutation.text("type") == type && dataKeys.all { data?.containsKey(it) == true }
+}
+
+/**
+ * Accepts a sync run that gave up on a local [exception], named by its simple class name: no HTTP
+ * status, kind UNKNOWN. That is how an exception thrown while applying remote changes surfaces
+ * through the public status.
+ */
+fun syncFailedLocally(exception: String): (AssertionError) -> Boolean = { failure ->
+    val error = ((failure as? SyncRunFailure)?.run?.status as? SyncStatus.Failed)?.error
+    error != null && error.httpStatus == null && error.kind == SyncErrorKind.UNKNOWN && "($exception)" in error.message
 }
 
 /** The harness itself gave up waiting. It is not an assertion, so [knownIssue] never accepts it. */
