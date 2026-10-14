@@ -1,14 +1,12 @@
 package com.quran.shared.pipeline.integration
 
 import com.quran.shared.auth.model.AuthState
-import com.quran.shared.pipeline.SyncStatus
 import com.quran.shared.pipeline.integration.server.ErrorEnvelope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.nanoseconds
 import kotlin.time.Duration.Companion.seconds
@@ -60,10 +58,11 @@ class SyncHarnessPathsTest {
         phone.data.addNote("Rejected for good", 1, 1, 1, 7)
         val run = phone.syncNow()
 
-        val error = assertIs<SyncStatus.Failed>(run.status).error
-        assertEquals(422, error.httpStatus)
-        assertEquals("ValidationError", error.serverCode)
-        assertEquals(List(6) { 422 }, run.postStatuses)
+        // The code was read: a 422 with a backend code holds the item, where a codeless one would only be retried.
+        assertSucceeded(run)
+        assertEquals(listOf(422), run.postStatuses)
+        assertEquals(emptyList(), server.state(ALICE).notes)
+        assertEquals(listOf("Rejected for good"), phone.data.notes.first().map { it.body }, "held locally")
     }
 
     private companion object {

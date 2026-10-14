@@ -7,7 +7,6 @@ import com.quran.shared.pipeline.SyncStatus
 import com.quran.shared.pipeline.integration.DeviceTimings
 import com.quran.shared.pipeline.integration.SyncRun
 import com.quran.shared.pipeline.integration.assertSucceeded
-import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.server.ServerFaults
 import com.quran.shared.pipeline.integration.syncScenario
@@ -57,7 +56,9 @@ class ProtocolScenariosTest {
         assertIs<SyncStatus.Failed>(brokenPost.status)
         assertEquals(listOf(SUCCESS_FALSE), brokenPost.malformed(), "the POST got success:false with 200")
         assertEquals(1_050, server.state(ALICE).notes.size, "the server applied nothing")
-        assertEquals(listOf("Written on the phone"), phone.noteBodies(), "nothing was applied")
+        // The fetch is merged before the push: the server's notes arrived, and the phone's note waits to be pushed.
+        assertEquals(1_051, phone.noteBodies().size, "the GET was merged")
+        assertTrue("Written on the phone" in phone.noteBodies())
 
         val healed = phone.syncNow()
 
@@ -201,15 +202,9 @@ class ProtocolScenariosTest {
             after.copy(readingBookmarks = emptyList()),
             "after the vanished entries"
         )
-        // The catalog left this unknown. A READING_BOOKMARK entry without a slot falls back to the
-        // local slot with no location, the way a cleared slot is read, so slot 1 disappears.
-        knownIssue(
-            "S27",
-            "A {} reading bookmark entry clears the local slot",
-            expect = failureMentions("slot 1 unchanged", "expected:<[1 ayah:36:1 null]> but was:<[]>")
-        ) {
-            assertEquals(before.readingBookmarks, after.readingBookmarks, "slot 1 unchanged")
-        }
+        // S27: a READING_BOOKMARK entry without a slot is skipped, never read as a cleared slot.
+        assertEquals(before.readingBookmarks, after.readingBookmarks, "slot 1 unchanged")
+
 
         // The fault clears when the server logs each row again; nothing resends a row the client has passed.
         web.renameCollection(study, "Memorize", ClientTimes(updatedAt = T0 + 2_000))
