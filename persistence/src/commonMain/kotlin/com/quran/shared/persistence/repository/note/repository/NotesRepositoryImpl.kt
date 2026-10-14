@@ -6,6 +6,7 @@ import com.quran.shared.di.AppScope
 import com.quran.shared.mutations.trimLikeServer
 import com.quran.shared.persistence.TextLengthField
 import com.quran.shared.persistence.model.Note
+import com.quran.shared.persistence.model.NoteRange
 import com.quran.shared.persistence.repository.note.NoteStore
 import com.quran.shared.persistence.repository.note.StoredNote
 import com.quran.shared.persistence.requireServerTextLength
@@ -14,7 +15,7 @@ import com.quran.shared.persistence.util.currentPlatformDateTime
 import com.quran.shared.persistence.util.toEpochMillisecondsFromPlatform
 import com.quran.shared.persistence.util.toPlatform
 import com.quran.shared.syncv2.db.SyncV2Database
-import com.quran.shared.syncv2.types.NoteRange
+import com.quran.shared.syncv2.types.NoteRange as StoredNoteRange
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.Dispatchers
@@ -60,7 +61,7 @@ class NotesRepositoryImpl(
         val at = timestamp.toEpochMillisecondsFromPlatform()
         return withContext(Dispatchers.IO) {
             database.transactionWithResult {
-                val localId = store.insert(body, listOf(NoteRange(startSura, startAyah, endSura, endAyah)), at)
+                val localId = store.insert(body, listOf(StoredNoteRange(startSura, startAyah, endSura, endAyah)), at)
                 requireNotNull(store.get(localId)) { "Expected note after insert." }.toNote()
             }
         }
@@ -96,16 +97,9 @@ class NotesRepositoryImpl(
     }
 }
 
-/** The app-facing note shows its first range (a note created on the web may have more; all are kept). */
-internal fun StoredNote.toNote(): Note {
-    val range = ranges.first()
-    return Note(
-        body = body,
-        startSura = range.startSura,
-        startAyah = range.startAyah,
-        endSura = range.endSura,
-        endAyah = range.endAyah,
-        lastUpdated = Instant.fromEpochMilliseconds(updatedAt).toPlatform(),
-        id = localId.toString()
-    )
-}
+internal fun StoredNote.toNote(): Note = Note(
+    body = body,
+    ranges = ranges.map { NoteRange(it.startSura, it.startAyah, it.endSura, it.endAyah) },
+    lastUpdated = Instant.fromEpochMilliseconds(updatedAt).toPlatform(),
+    id = localId.toString()
+)

@@ -5,6 +5,7 @@ import co.touchlab.kermit.Logger
 import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.DuplicateCollectionNameException
 import com.quran.shared.persistence.ReadOnlyCollectionException
+import com.quran.shared.persistence.ReservedCollectionNameException
 import com.quran.shared.persistence.TextLengthField
 import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.model.isSystemCollectionName
@@ -51,7 +52,7 @@ class CollectionsRepositoryImpl(
     /** Adding a name that is taken (trimmed, case-insensitive) returns the existing collection. */
     override suspend fun addCollection(name: String, timestamp: PlatformDateTime): Collection {
         logger.i { "Adding collection with name=$name" }
-        require(!isSystemCollectionName(name)) { "System collection name is reserved: $name." }
+        if (isSystemCollectionName(name)) throw ReservedCollectionNameException(name)
         requireServerTextLength(TextLengthField.COLLECTION_NAME, name)
         val at = timestamp.toEpochMillisecondsFromPlatform()
         return withContext(Dispatchers.IO) {
@@ -74,7 +75,7 @@ class CollectionsRepositoryImpl(
                     "Expected active collection id=$id before update."
                 }
                 if (existing.isReadOnly) throw ReadOnlyCollectionException(id)
-                require(!isSystemCollectionName(name)) { "System collection name is reserved: $name." }
+                if (isSystemCollectionName(name)) throw ReservedCollectionNameException(name)
                 requireServerTextLength(TextLengthField.COLLECTION_NAME, name)
                 store.byName(name)?.takeIf { it.local_id != existing.local_id }?.let {
                     throw DuplicateCollectionNameException(it.name)

@@ -28,7 +28,9 @@ data class UserDataSnapshot(
         suspend fun of(service: QuranDataService): UserDataSnapshot {
             val collections = service.collectionsWithBookmarks.first()
             return UserDataSnapshot(
-                notes = service.notes.first().map { note(it.body, "${it.startSura}:${it.startAyah}-${it.endSura}:${it.endAyah}") }.sorted(),
+                notes = service.notes.first().map { note ->
+                    note(note.body, note.ranges.joinToString(",") { "${it.startSura}:${it.startAyah}-${it.endSura}:${it.endAyah}" })
+                }.sorted(),
                 favorites = collections.filter { it.collection.isDefault }
                     .flatMap { c -> c.bookmarks.map { "${it.sura}:${it.ayah}" } }.sorted(),
                 collections = collections.filter { !it.collection.isDefault }

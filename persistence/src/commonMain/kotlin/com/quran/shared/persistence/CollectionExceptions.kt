@@ -12,3 +12,10 @@ class DuplicateCollectionNameException(val name: String) :
  * color collections older Quran.com apps created, which the server protects.
  */
 class ReadOnlyCollectionException(val id: String) : IllegalArgumentException("Collection $id is read-only.")
+
+/**
+ * Thrown when creating or renaming a collection to a name users can't give one: Favorites, or one of the server's
+ * reserved `system:` names. Names compare as the server compares them: trimmed and case-insensitive.
+ */
+class ReservedCollectionNameException(val name: String) :
+    IllegalArgumentException("The collection name \"$name\" is reserved.")
