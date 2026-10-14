@@ -203,11 +203,13 @@ internal class DeviceBindings(
     private val timings: SchedulerTimings
 ) {
     /**
-     * The app's [DriverFactory] opens one process-wide database, which simulated devices cannot
-     * share, so each device opens its own in-memory database in place of the factory's.
+     * Replaces the app's database binding with this device's in-memory one. It cannot go through
+     * [DriverFactory] yet: the JVM `DriverFactory` is a final class that always opens `quran.db` in
+     * the working directory, and the production binding caches one database for the whole process.
+     * So Metro reports the `DriverFactory` graph input as unused for device graphs.
      */
     @Provides
-    fun database(@Suppress("UNUSED_PARAMETER") appDriverFactory: DriverFactory): QuranDatabase = database
+    fun database(): QuranDatabase = database
 
     @Provides
     fun authRepository(storage: MobileSyncStorage): AuthRepository = authRepository.useTokenStore(storage.tokenStore)
