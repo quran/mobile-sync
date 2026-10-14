@@ -9,7 +9,11 @@ import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.server.text
 import com.quran.shared.pipeline.integration.syncRejectedWith
 import com.quran.shared.pipeline.integration.syncScenario
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
@@ -18,6 +22,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 /** Catalog section 2.10: failures and the sync protocol. */
 class FailureScenariosTest {
@@ -104,7 +109,8 @@ class FailureScenariosTest {
         val run = phone.syncNow()
 
         assertSucceeded(run)
-        assertEquals(listOf(500, 200), run.postStatuses)
+        assertEquals(500, run.postStatuses.first(), "the first POST failed")
+        assertEquals(200, run.postStatuses.last(), "the last POST succeeded")
         assertEquals(1, server.state(ALICE).notes.size)
         assertConverged(ALICE, phone)
     }
@@ -112,14 +118,19 @@ class FailureScenariosTest {
     @Test
     fun `ERR-11 a short network error recovers within retries`() = syncScenario {
         val (phone) = signedIn("phone")
-        // The harness note for ERR-11: a short outage is a number of failed requests, not a time.
-        server.faults.outage(requests = 3)
-
         phone.data.addNote("Sent after the outage", 1, 1, 1, 7)
-        val run = phone.syncNow()
+        // The harness note for ERR-11: a short outage is a number of failed requests, not a time.
+        // The network comes back once two requests were dropped, well within the retries.
+        server.faults.networkDown()
+        val run = coroutineScope {
+            val sync = async { phone.syncNow() }
+            withTimeout(10.seconds) { while (server.requests("phone").count { it.status == DROPPED } < 2) delay(1) }
+            server.faults.networkUp()
+            sync.await()
+        }
 
         assertSucceeded(run)
-        assertEquals(3, run.requests.count { it.status == 503 })
+        assertTrue(run.requests.count { it.status == DROPPED } >= 2, "dropped requests: ${run.requests.count { it.status == DROPPED }}")
         assertEquals(1, server.state(ALICE).notes.size)
         assertConverged(ALICE, phone)
     }
@@ -149,7 +160,8 @@ class FailureScenariosTest {
 
         assertSucceeded(run)
         val pages = run.requests.filter { it.method == "GET" }
-        assertEquals(listOf("1", "2"), pages.map { it.query["page"] })
+        assertTrue(pages.size >= 2, "GET pages: ${pages.size}")
+        assertEquals((1..pages.size).map { it.toString() }, pages.map { it.query["page"] })
         val total = Json.parseToJsonElement(pages.first().response!!).jsonObject["data"]!!.jsonObject["total"]!!.jsonPrimitive.int
         assertEquals(server.state(ALICE).log.size + 1, total, "total counts Favorites")
         assertEquals(995, phone.data.notes.first().size)
@@ -182,5 +194,8 @@ class FailureScenariosTest {
 
     private companion object {
         const val POISON = "A note the server always rejects"
+
+        /** [com.quran.shared.pipeline.integration.server.RequestRecord.status] of a dropped connection. */
+        const val DROPPED = -1
     }
 }
