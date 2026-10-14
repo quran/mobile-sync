@@ -247,8 +247,10 @@ class FakeSyncServer : AutoCloseable {
                 account.restore(snapshot)
                 throw error.also { it.mutationIndex = current?.index }
             } catch (error: Exception) {
+                // An unexpected error is the same 500 ServerError; BE1 still reports its mutation.
                 account.restore(snapshot)
-                throw error
+                throw HttpError(500, "ServerError", "Something went wrong", mutationIndex = current?.index)
+                    .also { it.initCause(error) }
             }
         }
     }

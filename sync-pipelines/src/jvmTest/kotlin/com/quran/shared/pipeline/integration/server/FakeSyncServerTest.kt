@@ -65,6 +65,19 @@ class FakeSyncServerTest {
     }
 
     @Test
+    fun `a note range naming a missing verse is a 500 that reports its mutation in BE1 mode`() {
+        server.faults.mutationIndex = true
+
+        val response = post(server.head(ALICE), mutation("NOTE", "CREATE", data = NOTE), mutation("NOTE", "CREATE", data = MISSING_VERSE))
+
+        assertEquals(500, response.statusCode())
+        val error = errorOf(response)
+        assertEquals("ServerError", error.str("code"))
+        assertEquals(1L, error["details"]!!.jsonObject["mutationIndex"]!!.jsonPrimitive.long)
+        assertEquals(0, server.state(ALICE).notes.size)
+    }
+
+    @Test
     fun `a duplicate collection name is a 409 UniqueViolationError marked DUPLICATE and rolls back the batch`() {
         server.web(ALICE).createCollection("Study")
         val head = server.head(ALICE)
@@ -156,5 +169,6 @@ class FakeSyncServerTest {
     private companion object {
         const val ALICE = "alice"
         const val NOTE = """{"body":"A valid note body","ranges":["1:1-1:7"]}"""
+        const val MISSING_VERSE = """{"body":"A note on 2:300","ranges":["2:300-2:300"]}"""
     }
 }
