@@ -6,6 +6,7 @@ import com.quran.shared.pipeline.integration.DeviceTimings
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.syncScenario
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -125,18 +126,20 @@ class ConvergenceScenariosTest {
     fun `CONV-07 a write during an in-flight sync is not lost`() = syncScenario {
         // The harness note for CONV-07: a short local-change delay, then awaitSync().
         val phone = device("phone", DeviceTimings(localChangeDelay = 300.milliseconds))
-        phone.login(ALICE)
+        assertSucceeded(phone.login(ALICE))
         val gate = server.faults.blockPost()
         phone.data.addNote("Pushed while blocked", 1, 1, 1, 7)
 
-        coroutineScope {
+        val followUp = coroutineScope {
             val first = async { phone.syncNow() }
             withContext(Dispatchers.IO) { gate.awaitArrived() }
+            // Mark before the write, so the follow-up it schedules cannot start unobserved.
+            val followUp = async(start = CoroutineStart.UNDISPATCHED) { phone.awaitSync() }
             phone.data.addReadingSession(2, 255)
             gate.release()
             assertSucceeded(first.await())
+            followUp.await()
         }
-        val followUp = phone.awaitSync()
 
         assertSucceeded(followUp)
         assertEquals(1, followUp.accepted.of("READING_SESSION", "CREATE").size)
