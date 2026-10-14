@@ -252,4 +252,33 @@ class ReadingSessionScenariosTest {
         assertEquals(listOf("3:7"), phone.sessionVerses())
         assertConverged(ALICE, phone)
     }
+
+    @Test
+    fun `RS-13 variant, a remote move onto a verse with a pending local revisit`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.data.addReadingSession(3, 7, at(0))
+        phone.data.addReadingSession(2, 255, at(1_000))
+        syncUntilQuiescent(phone)
+        val web = web(ALICE)
+
+        // The revisit makes the phone's 3:7 pending, so the remote DELETE of that session is not
+        // simply applied, and the moved session's UPDATE lands on a verse the phone still holds.
+        phone.data.addReadingSession(3, 7, Instant.fromEpochMilliseconds(System.currentTimeMillis() + 60_000))
+        web.moveReadingSession(web.sessionId(2, 255)!!, 3, 7)
+
+        // Today the newer revisit wins last-write-wins over the remote DELETE and its UPDATE gets
+        // 404 (S8), so the POST fails before the move is applied. Once S8 is fixed, applying the
+        // move onto the phone's 3:7 may hit the unique position index (S19).
+        knownIssue(
+            "The revisit's UPDATE gets 404 (S8); behind it, the move may violate the unique index (S19)",
+            "S8" to syncRejectedWith(404, carrying = mutation("READING_SESSION", "UPDATE")),
+            "S19" to syncFailedLocally("SQLiteException")
+        ) {
+            assertSucceeded(phone.syncNow())
+            syncUntilQuiescent(phone)
+            assertEquals(listOf("3:7"), phone.sessionVerses())
+            assertEquals(listOf("3:7"), server.state(ALICE).sessionVerses)
+            assertConverged(ALICE, phone)
+        }
+    }
 }
