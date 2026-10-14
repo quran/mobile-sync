@@ -2,7 +2,6 @@ package com.quran.shared.pipeline.integration.scenarios
 
 import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.pipeline.integration.assertSucceeded
-import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.flow.first
 import kotlin.test.Test
@@ -135,19 +134,12 @@ class HighlightScenariosTest {
         repeat(2) { syncAll(phone, tablet).forEach(::assertSucceeded) }
         syncUntilQuiescent(phone, tablet)
 
-        // The catalog left this unknown. Both devices show yellow, because the flow shows one color
-        // per verse, but the tablet stores the phone's green next to its yellow and the server keeps both.
+        // One color per verse on remote changes too, so the server ends with one color as well.
         listOf(phone, tablet).forEach { assertEquals(listOf("2:255 yellow"), it.highlightList(), it.name) }
-        knownIssue(
-            "S24",
-            "Concurrent highlight color changes leave the verse in two color collections",
-            expect = failureMentions("one color on the server", "but was:<[system:highlights:green, system:highlights:yellow]>")
-        ) {
-            val state = server.state(ALICE)
-            val colors = state.collections.filter { "2:255" in state.versesIn(it.id) }.map { it.name }.sorted()
-            assertEquals(listOf("system:highlights:yellow"), colors, "one color on the server, the newest")
-            assertConverged(ALICE, phone, tablet)
-        }
+        val state = server.state(ALICE)
+        val colors = state.collections.filter { "2:255" in state.versesIn(it.id) }.map { it.name }.sorted()
+        assertEquals(listOf("system:highlights:yellow"), colors, "one color on the server, the newest")
+        assertConverged(ALICE, phone, tablet)
     }
 
     @Test

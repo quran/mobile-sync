@@ -31,8 +31,9 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(libs.kotlinx.coroutines.core)
-            implementation(libs.kotlinx.serialization.json)
-            implementation(libs.ktor.client.core)
+            // State is a JsonObject, and SyncApi takes a Ktor HttpClient: both are part of the public API.
+            api(libs.kotlinx.serialization.json)
+            api(libs.ktor.client.core)
             implementation(libs.kermit)
             implementation(projects.mutationsDefinitions)
         }

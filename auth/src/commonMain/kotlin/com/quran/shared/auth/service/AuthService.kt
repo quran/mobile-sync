@@ -415,13 +415,33 @@ class AuthService private constructor(
         }
     }
 
-    private suspend fun refreshAuthenticatedSession(generation: Long): Boolean {
+    /**
+     * Refreshes the access token now, even though it has not expired locally, because the server rejected it (401).
+     * A refused refresh token ends the session, which [authState] then reports; a transient failure keeps the
+     * session and is thrown.
+     *
+     * @return true when a new token is in use; false when there is no session or it ended.
+     */
+    @HiddenFromObjC
+    suspend fun forceRefreshAccessToken(): Boolean {
+        val current = lifecycleSnapshot() as? AuthPublicationLifecycle.Authenticated ?: return false
+        return refreshAuthenticatedSession(current.generation, force = true)
+    }
+
+    /** The signed-in account's stable id (the OIDC `sub`), or null without a session or a known user. */
+    @HiddenFromObjC
+    suspend fun currentAccountId(): String? {
+        if (lifecycleSnapshot() !is AuthPublicationLifecycle.Authenticated) return null
+        return authRepository.getCurrentUser()?.id?.takeIf { it.isNotBlank() }
+    }
+
+    private suspend fun refreshAuthenticatedSession(generation: Long, force: Boolean = false): Boolean {
         if (!isPublicationGuardAllowed()) {
             clearAuthenticatedIfGenerationCurrent(generation)
             return false
         }
         val refreshed = try {
-            authRepository.refreshTokensIfNeeded()
+            if (force) authRepository.forceRefreshTokens() else authRepository.refreshTokensIfNeeded()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

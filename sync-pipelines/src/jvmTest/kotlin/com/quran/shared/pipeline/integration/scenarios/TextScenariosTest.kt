@@ -7,7 +7,7 @@ import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.pipeline.integration.SyncDevice
 import com.quran.shared.pipeline.integration.SyncScenario
 import com.quran.shared.pipeline.integration.assertSucceeded
-import com.quran.shared.pipeline.integration.knownIssue
+import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.flow.first
 import kotlin.test.Test
@@ -160,8 +160,10 @@ class TextScenariosTest {
         web.createCollection("ÉTUDE")
         web.createCollection("Straße")
 
-        phone.data.addCollection("étude")
-        phone.data.addCollection("STRASSE")
+        // Written before the web's: when a local create links to a remote collection with the same name, the
+        // newer spelling wins, so the phone's must be older for the server to keep "ÉTUDE".
+        phone.data.addCollection("étude", at(0))
+        phone.data.addCollection("STRASSE", at(0))
         syncUntilQuiescent(phone, tablet)
 
         // unverified vs Postgres: this assumes production Postgres uses a UTF-8 lc_ctype. The fake
@@ -172,6 +174,20 @@ class TextScenariosTest {
         assertEquals(listOf("STRASSE", "Straße", "ÉTUDE"), names)
         assertTrue(server.requests.count { it.status == 409 } <= 1, "409 statuses: ${server.requests.count { it.status == 409 }}")
         listOf(phone, tablet).forEach { assertEquals(names, it.collectionNames(), it.name) }
+        assertConverged(ALICE, phone, tablet)
+    }
+
+    /** TXT-09 the other way: the phone's spelling is newer, so linking keeps it and renames the server's. */
+    @Test
+    fun `TXT-09 variant, a newer local spelling wins the link`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+        web(ALICE).createCollection("ÉTUDE", ClientTimes(T0, T0))
+
+        phone.data.addCollection("étude", at(5_000))
+        syncUntilQuiescent(phone, tablet)
+
+        assertEquals(listOf("étude"), server.state(ALICE).collections.map { it.name })
+        listOf(phone, tablet).forEach { assertEquals(listOf("étude"), it.collectionNames(), it.name) }
         assertConverged(ALICE, phone, tablet)
     }
 
@@ -194,20 +210,13 @@ class TextScenariosTest {
     fun `TXT-11 reading bookmark names are trimmed like the server`() = syncScenario {
         val (phone, tablet) = signedIn("phone", "tablet")
 
-        knownIssue(
-            "S13",
-            "The client keeps reading bookmark names the server trims or turns into null",
-            // The server and the tablet show the trimmed name; the phone keeps what it typed.
-            expect = failureMentions("server, phone and tablet", "but was:<[Juz 30,   Juz 30  , Juz 30]>")
-        ) {
-            phone.data.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "  Juz 30  ")
-            syncAll(phone, tablet).forEach(::assertSucceeded)
-            assertEquals(listOf("Juz 30", "Juz 30", "Juz 30"), slotOneNames(phone, tablet), "server, phone and tablet")
+        phone.data.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "  Juz 30  ")
+        syncAll(phone, tablet).forEach(::assertSucceeded)
+        assertEquals(listOf("Juz 30", "Juz 30", "Juz 30"), slotOneNames(phone, tablet), "server, phone and tablet")
 
-            phone.data.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "   ")
-            syncAll(phone, tablet).forEach(::assertSucceeded)
-            assertEquals(listOf(null, null, null), slotOneNames(phone, tablet), "server, phone and tablet")
-        }
+        phone.data.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "   ")
+        syncAll(phone, tablet).forEach(::assertSucceeded)
+        assertEquals(listOf(null, null, null), slotOneNames(phone, tablet), "server, phone and tablet")
     }
 
     /** Slot 1's name on the server, then on each device. */

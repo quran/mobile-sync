@@ -11,7 +11,13 @@ sealed interface PushOutcome {
     data object Restart : PushOutcome
     /** Every phase made progress, but local changes kept coming (edits during each POST): run another round. */
     data object MorePending : PushOutcome
-    data class Failed(val reason: String, val retryable: Boolean, val retryAfterMillis: Long? = null) : PushOutcome
+    /** [cause]: the server's answer, when the run failed on one. */
+    data class Failed(
+        val reason: String,
+        val retryable: Boolean,
+        val retryAfterMillis: Long? = null,
+        val cause: SyncHttpException? = null
+    ) : PushOutcome
 }
 
 /** The 500s one batch got in this sync, and the last one (its index points at the item). */
@@ -146,12 +152,14 @@ class Pusher(
         val culprit = error.mutationIndex?.let(batch::getOrNull) ?: batch.singleOrNull()
         return when (SyncErrors.classify(error, culprit?.kind)) {
             SyncErrors.Action.RESTART -> Sent.Abort(PushOutcome.Restart)
-            SyncErrors.Action.ABORT_RETRYABLE -> Sent.Abort(PushOutcome.Failed(failure(error), retryable = true))
+            SyncErrors.Action.ABORT_RETRYABLE -> Sent.Abort(PushOutcome.Failed(failure(error), retryable = true, cause = error))
             SyncErrors.Action.ITEM -> item(error, batch, culprit, head)
             SyncErrors.Action.UNIQUE_VIOLATION ->
                 if (memory.uniqueRestarts++ == 0) Sent.Abort(PushOutcome.Restart) else item(error, batch, culprit, head)
-            // A scope error for the whole request, or an item's 403 from a server without the index.
+            // A scope error for the whole request, or an item's 403 from a server without the index. Only some types
+            // have items the server refuses; for the others it is the scope.
             SyncErrors.Action.FORBIDDEN -> when {
+                batch.none { it.type.forbidsItems } -> forbidden(error)
                 memory.landed -> item(error, batch, culprit, head)
                 batch.size > 1 -> bisect(error, batch, head)
                 else -> forbidden(error)
@@ -209,7 +217,7 @@ class Pusher(
                 is Posted.Ok -> landed(posted, Sent.Changed(posted.head))
                 is Posted.Rejected -> when {
                     posted.error.code == SyncErrors.OUT_OF_SYNC -> Sent.Abort(PushOutcome.Restart)
-                    posted.error.status >= 500 -> Sent.Abort(PushOutcome.Failed(failure(posted.error), retryable = true))
+                    posted.error.status >= 500 -> Sent.Abort(PushOutcome.Failed(failure(posted.error), retryable = true, cause = posted.error))
                     ambiguous(posted.error) -> forbidden(posted.error)
                     else -> rejected(posted.error, second, head)
                 }
@@ -233,7 +241,7 @@ class Pusher(
     private fun repeated(culprit: Planned, error: SyncHttpException, head: Long): Sent {
         if ((store.failures[failureKey(culprit)]?.takeIf { it.status == error.status }?.count ?: 0) > 0) return hold(culprit, error, head)
         generation.transaction { countFailure(culprit, error) }
-        return Sent.Abort(PushOutcome.Failed(failure(error), retryable = true))
+        return Sent.Abort(PushOutcome.Failed(failure(error), retryable = true, cause = error))
     }
 
     /** Holds [culprit] with the growing expiry (see [HOLD_MILLIS]). */
@@ -300,7 +308,7 @@ class Pusher(
 
     /** It may be a scope error for the whole request: keep every change and retry, but not soon. */
     private fun forbidden(error: SyncHttpException) =
-        Sent.Abort(PushOutcome.Failed("request forbidden: ${error.message}", retryable = true, FORBIDDEN_BACKOFF_MILLIS))
+        Sent.Abort(PushOutcome.Failed("request forbidden: ${error.message}", retryable = true, FORBIDDEN_BACKOFF_MILLIS, error))
 
     private fun signature(batch: List<Planned>) = batch.joinToString { "${it.type.name}:${it.localId}:${it.kind}" }
 

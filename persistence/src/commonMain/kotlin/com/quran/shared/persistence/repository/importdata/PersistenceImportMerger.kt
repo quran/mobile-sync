@@ -1,7 +1,5 @@
 package com.quran.shared.persistence.repository.importdata
 
-import com.quran.shared.mutations.collectionNameKey
-import com.quran.shared.mutations.trimLikeServer
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.input.ImportAyahHighlight
 import com.quran.shared.persistence.input.ImportCollection
@@ -9,32 +7,33 @@ import com.quran.shared.persistence.input.ImportCollectionAyahBookmark
 import com.quran.shared.persistence.input.ImportReadingBookmark
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.PersistenceImportResult
-import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.model.DEFAULT_COLLECTION_NAME
-import com.quran.shared.persistence.model.DatabaseCollection
-import com.quran.shared.persistence.model.highlightColorForCollectionName
+import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.isSystemCollectionName
-import com.quran.shared.persistence.repository.bookmark.AyahBookmarkResolutionState
-import com.quran.shared.persistence.repository.bookmark.AyahBookmarkStore
-import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
-import com.quran.shared.persistence.repository.bookmark.activeSavedCollectionIdsForBookmark
 import com.quran.shared.persistence.repository.collection.CollectionStore
+import com.quran.shared.persistence.repository.note.NoteStore
 import com.quran.shared.persistence.repository.readingbookmark.ReadingBookmarkStore
+import com.quran.shared.persistence.repository.readingsession.ReadingSessionStore
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.toEpochMillisecondsFromPlatform
+import com.quran.shared.syncv2.db.SyncV2Database
+import com.quran.shared.syncv2.types.NoteRange
+import com.quran.shared.syncv2.types.ReadingLocation
 import kotlinx.coroutines.ensureActive
 import kotlin.coroutines.CoroutineContext
 
 internal class PersistenceImportMerger(
     private val database: QuranDatabase,
-    private val reconciler: BookmarkDependencyReconciler,
+    synced: SyncV2Database,
     private val data: PersistenceImportData,
     private val trackHistory: Boolean,
     private val context: CoroutineContext
 ) {
-    private val ayahBookmarkStore = AyahBookmarkStore(database)
-    private val collectionStore = CollectionStore(database)
-    private val readingBookmarkStore = ReadingBookmarkStore(database)
+    private val collectionStore = CollectionStore(synced)
+    private val noteStore = NoteStore(synced)
+    private val sessionStore = ReadingSessionStore(synced)
+    private val readingBookmarkStore = ReadingBookmarkStore(synced)
+    private val notesQueries = synced.notesQueries
     private var bookmarksImported = 0
     private var collectionsImported = 0
     private var collectionBookmarksImported = 0
@@ -132,120 +131,68 @@ internal class PersistenceImportMerger(
         val unseenCount = emptyCollections.size + memberships.size + sessions.size + notes.size +
             readingBookmarks.size + highlights.size
         alreadyProcessed = candidateCount - unseenCount
-        val collectionIndex = CollectionIndex(collectionStore.activeCollections())
-        val bookmarkIndex = mutableMapOf<Pair<Int, Int>, ResolvedBookmark>()
+        val bookmarkedVerses = mutableSetOf<Pair<Int, Int>>()
         val noteKeys = if (notes.isEmpty()) {
             mutableSetOf()
         } else {
-            database.notesQueries.getNotes().executeAsList().mapTo(mutableSetOf()) { row ->
-                NoteKey(
-                    normalizedBody = normalizedNoteBody(row.note),
-                    startSura = row.start_sura,
-                    startAyah = row.start_ayah,
-                    endSura = row.end_sura,
-                    endAyah = row.end_ayah
-                )
+            noteStore.all().mapTo(mutableSetOf()) { note ->
+                val range = note.ranges.first()
+                NoteKey(normalizedNoteBody(note.body), range.startSura, range.startAyah, range.endSura, range.endAyah)
             }
         }
-        val highlightColors = mutableMapOf<Pair<Int, Int>, MutableSet<AyahHighlightColor>>()
-        if (highlights.isNotEmpty()) {
-            database.bookmark_collectionsQueries.getCollectionBookmarksWithDetails().executeAsList().forEach { row ->
-                val color = highlightColorForCollectionName(row.collection_name.value) ?: return@forEach
-                highlightColors.getOrPut(row.sura.toInt() to row.ayah.toInt(), ::mutableSetOf).add(color)
-            }
-        }
-
         val highlightsByPosition = highlights.groupBy { it.sura to it.ayah }
-        val highlightWinners = highlightsByPosition.mapValues { (_, candidates) ->
-            candidates.minWith(HIGHLIGHT_PRIORITY)
-        }
-        val bookmarkDatesByPosition = buildBookmarkDatesByPosition(memberships, highlightWinners.values)
-        val firstSaveModifiedAtByPosition = memberships
-            .groupBy { it.sura to it.ayah }
-            .mapValues { (_, candidates) -> candidates.maxOf { it.lastUpdated.toEpochMillisecondsFromPlatform() } }
 
         emptyCollections.forEach { collection ->
             context.ensureActive()
-            val modifiedAt = collection.lastUpdated.toEpochMillisecondsFromPlatform()
             val resolution = resolveCollection(
                 canonicalCollectionName(collection.name),
                 effectiveCreatedAtMillis(collection.createdAt, collection.lastUpdated),
-                modifiedAt,
-                collectionIndex
+                collection.lastUpdated.toEpochMillisecondsFromPlatform()
             )
-            if (resolution.inserted) {
-                collectionsImported++
-                didChange = true
-            } else {
-                matched++
-            }
+            if (resolution.inserted) collectionsImported++ else matched++
             history?.record(ImportFingerprint.collection(collection))
         }
 
         memberships.forEach { membership ->
             context.ensureActive()
             val destination = destinationOf(membership)
-            val modifiedAt = membership.lastUpdated.toEpochMillisecondsFromPlatform()
             val collection = resolveCollection(
                 canonicalCollectionName(destination.name),
                 effectiveCreatedAtMillis(destination.createdAt, destination.lastUpdated),
-                destination.lastUpdated.toEpochMillisecondsFromPlatform(),
-                collectionIndex
+                destination.lastUpdated.toEpochMillisecondsFromPlatform()
             )
-            if (collection.inserted) {
-                collectionsImported++
-                didChange = true
+            if (collection.inserted) collectionsImported++
+            val position = membership.sura to membership.ayah
+            if (position !in bookmarkedVerses && collectionStore.membershipsOf(membership.sura, membership.ayah).isEmpty()) {
+                bookmarkedVerses += position
+                bookmarksImported++
             }
-            val bookmarkDates = requireNotNull(bookmarkDatesByPosition[membership.sura to membership.ayah])
-            val bookmark = resolveBookmark(membership.sura, membership.ayah, bookmarkDates, bookmarkIndex)
-            val existing = database.bookmark_collectionsQueries
-                .getCollectionBookmarkFor(bookmark.localId, collection.localId)
-                .executeAsOneOrNull()
-            if (existing?.is_active == 1L) {
-                matched++
-            } else {
-                // A highlight can create the parent before it becomes an app-facing saved bookmark.
-                // Match repository writes by stamping the first saved membership.
-                val isFirstSavedMembership = bookmark.preexisting &&
-                    database.activeSavedCollectionIdsForBookmark(bookmark.localId).isEmpty()
-                database.bookmark_collectionsQueries.insertImportedBookmarkCollection(
-                    bookmark_local_id = bookmark.localId,
-                    collection_local_id = collection.localId,
-                    created_at = effectiveCreatedAtMillis(membership.createdAt, membership.lastUpdated),
-                    modified_at = modifiedAt
-                )
-                if (isFirstSavedMembership) {
-                    database.bookmarksQueries.touchBookmarkForFirstSavedMembership(
-                        local_id = bookmark.localId,
-                        modified_at = firstSaveModifiedAtByPosition.getValue(membership.sura to membership.ayah)
-                    )
-                }
-                if (existing == null) collectionBookmarksImported++
+            val added = collectionStore.addVerse(
+                collection.localId,
+                membership.sura,
+                membership.ayah,
+                effectiveCreatedAtMillis(membership.createdAt, membership.lastUpdated)
+            )
+            if (added) {
+                collectionBookmarksImported++
                 didChange = true
+            } else {
+                matched++
             }
             history?.record(ImportFingerprint.collectionMembership(membership, destination))
         }
 
         notes.forEach { note ->
             context.ensureActive()
-            val key = NoteKey(
-                normalizedBody = normalizedNoteBody(note.body),
-                startSura = note.startSura.toLong(),
-                startAyah = note.startAyah.toLong(),
-                endSura = note.endSura.toLong(),
-                endAyah = note.endAyah.toLong()
-            )
+            val key = NoteKey(normalizedNoteBody(note.body), note.startSura, note.startAyah, note.endSura, note.endAyah)
             if (key in noteKeys) {
                 matched++
             } else {
-                database.notesQueries.insertImportedNote(
-                    note = note.body.trimLikeServer(),
-                    start_sura = note.startSura.toLong(),
-                    start_ayah = note.startAyah.toLong(),
-                    end_sura = note.endSura.toLong(),
-                    end_ayah = note.endAyah.toLong(),
-                    created_at = effectiveCreatedAtMillis(note.createdAt, note.lastUpdated),
-                    modified_at = note.lastUpdated.toEpochMillisecondsFromPlatform()
+                noteStore.insert(
+                    body = note.body,
+                    ranges = listOf(NoteRange(note.startSura, note.startAyah, note.endSura, note.endAyah)),
+                    createdAt = effectiveCreatedAtMillis(note.createdAt, note.lastUpdated),
+                    updatedAt = note.lastUpdated.toEpochMillisecondsFromPlatform()
                 )
                 noteKeys.add(key)
                 notesImported++
@@ -257,30 +204,18 @@ internal class PersistenceImportMerger(
         sessions.forEach { session ->
             context.ensureActive()
             val modifiedAt = session.lastUpdated.toEpochMillisecondsFromPlatform()
-            val existing = database.reading_sessionsQueries
-                .getReadingSessionForChapterVerse(session.sura.toLong(), session.ayah.toLong())
-                .executeAsOneOrNull()
+            val existing = sessionStore.at(session.sura, session.ayah)
             when {
                 existing == null -> {
-                    database.reading_sessionsQueries.insertImportedReadingSession(
-                        chapter_number = session.sura.toLong(),
-                        verse_number = session.ayah.toLong(),
-                        created_at = effectiveCreatedAtMillis(session.createdAt, session.lastUpdated),
-                        modified_at = modifiedAt
-                    )
+                    sessionStore.visit(session.sura, session.ayah, effectiveCreatedAtMillis(session.createdAt, session.lastUpdated), modifiedAt)
                     readingSessionsImported++
                     didChange = true
                 }
-                existing.modified_at == modifiedAt -> matched++
+                existing.updated_at == modifiedAt -> matched++
                 // Advance older sessions even when unsynced; a newer visit to the same ayah loses nothing.
-                existing.modified_at > modifiedAt -> keptExisting++
+                existing.updated_at > modifiedAt -> keptExisting++
                 else -> {
-                    database.reading_sessionsQueries.updateReadingSession(
-                        chapter_number = session.sura.toLong(),
-                        verse_number = session.ayah.toLong(),
-                        modified_at = modifiedAt,
-                        local_id = existing.local_id
-                    )
+                    sessionStore.visit(session.sura, session.ayah, existing.created_at, modifiedAt)
                     readingSessionsUpdated++
                     didChange = true
                 }
@@ -288,60 +223,9 @@ internal class PersistenceImportMerger(
             history?.record(ImportFingerprint.readingSession(session))
         }
 
-        importHighlights(
-            highlightsByPosition,
-            highlightWinners,
-            bookmarkDatesByPosition,
-            history,
-            context,
-            bookmarkIndex,
-            highlightColors
-        )
-
-        readingBookmarks.forEach { bookmark ->
-            context.ensureActive()
-            when (bookmark) {
-                is ImportReadingBookmark.Ayah -> readingBookmarkStore.setAyah(
-                    slot = bookmark.slot,
-                    sura = bookmark.sura,
-                    ayah = bookmark.ayah,
-                    timestampMillis = bookmark.lastUpdated.toEpochMillisecondsFromPlatform()
-                )
-                is ImportReadingBookmark.Page -> readingBookmarkStore.setPage(
-                    slot = bookmark.slot,
-                    page = bookmark.page,
-                    timestampMillis = bookmark.lastUpdated.toEpochMillisecondsFromPlatform()
-                )
-            }
-            readingBookmarkStore.rename(
-                slot = bookmark.slot,
-                name = bookmark.name,
-                timestampMillis = bookmark.lastUpdated.toEpochMillisecondsFromPlatform()
-            )
-            readingBookmarksImported++
-            didChange = true
-            history?.record(ImportFingerprint.readingBookmark(bookmark))
-        }
-
-        context.ensureActive()
-        if (didChange) {
-            reconciler.reconcile()
-        }
-        return result()
-    }
-
-    private fun importHighlights(
-        highlightsByPosition: Map<Pair<Int, Int>, List<ImportAyahHighlight>>,
-        highlightWinners: Map<Pair<Int, Int>, ImportAyahHighlight>,
-        bookmarkDatesByPosition: Map<Pair<Int, Int>, BookmarkDates>,
-        history: ImportHistoryTracker?,
-        context: CoroutineContext,
-        bookmarkIndex: MutableMap<Pair<Int, Int>, ResolvedBookmark>,
-        highlightColors: MutableMap<Pair<Int, Int>, MutableSet<AyahHighlightColor>>
-    ) {
         highlightsByPosition.forEach { (position, candidates) ->
             context.ensureActive()
-            val existingColors = highlightColors[position].orEmpty()
+            val existingColors = collectionStore.highlightColorsOf(position.first, position.second)
             if (existingColors.isNotEmpty()) {
                 candidates.forEach { candidate ->
                     if (candidate.color in existingColors) matched++ else keptExisting++
@@ -349,86 +233,41 @@ internal class PersistenceImportMerger(
                 }
                 return@forEach
             }
-
-            val winner = highlightWinners.getValue(position)
-            val modifiedAt = winner.lastUpdated.toEpochMillisecondsFromPlatform()
-            val collectionResolution = collectionStore.getOrCreateActiveHighlight(
-                winner.color,
-                modifiedAt
-            )
-            val collection = collectionResolution.collection
-            if (collectionResolution.changed) didChange = true
-            val bookmark = resolveBookmark(
-                winner.sura,
-                winner.ayah,
-                requireNotNull(bookmarkDatesByPosition[position]),
-                bookmarkIndex
-            ).localId
-            val existingLink = database.bookmark_collectionsQueries
-                .getCollectionBookmarkFor(bookmark, collection.local_id)
-                .executeAsOneOrNull()
-            if (existingLink?.is_active == 1L) {
-                matched++
-            } else {
-                database.bookmark_collectionsQueries.insertImportedBookmarkCollection(
-                    bookmark_local_id = bookmark,
-                    collection_local_id = collection.local_id,
-                    created_at = effectiveCreatedAtMillis(winner.createdAt, winner.lastUpdated),
-                    modified_at = modifiedAt
-                )
-                highlightsImported++
-                didChange = true
-            }
+            val winner = candidates.minWith(HIGHLIGHT_PRIORITY)
+            collectionStore.setHighlight(winner.sura, winner.ayah, winner.color, winner.lastUpdated.toEpochMillisecondsFromPlatform())
+            highlightsImported++
+            didChange = true
             history?.record(ImportFingerprint.highlight(winner))
             candidates.filterNot { it === winner }.forEach { candidate ->
                 keptExisting++
                 history?.record(ImportFingerprint.highlight(candidate))
             }
         }
-    }
 
-    private fun resolveCollection(
-        name: String,
-        createdAt: Long,
-        modifiedAt: Long,
-        index: CollectionIndex
-    ): CollectionResolution {
-        if (name == DEFAULT_COLLECTION_NAME) {
-            val collection = collectionStore.requireDefault()
-            return CollectionResolution(collection.local_id, false)
-        }
-        index.find(name)?.let { return CollectionResolution(it, false) }
-        val inserted = collectionStore.insertImported(name, createdAt, modifiedAt)
-        index.add(inserted.name.value, inserted.local_id)
-        return CollectionResolution(inserted.local_id, true)
-    }
-
-    private fun resolveBookmark(
-        sura: Int,
-        ayah: Int,
-        bookmarkDates: BookmarkDates,
-        index: MutableMap<Pair<Int, Int>, ResolvedBookmark>
-    ): ResolvedBookmark {
-        val position = sura to ayah
-        index[position]?.let { return it }
-        val resolution = ayahBookmarkStore.resolve(
-            sura,
-            ayah,
-            bookmarkDates.createdAt,
-            bookmarkDates.modifiedAt
-        )
-        when (resolution.state) {
-            AyahBookmarkResolutionState.EXISTING -> Unit
-            AyahBookmarkResolutionState.INSERTED -> {
-                bookmarksImported++
-                didChange = true
+        readingBookmarks.forEach { bookmark ->
+            context.ensureActive()
+            val at = bookmark.lastUpdated.toEpochMillisecondsFromPlatform()
+            val location = when (bookmark) {
+                is ImportReadingBookmark.Ayah -> ReadingLocation.ayah(bookmark.sura, bookmark.ayah)
+                is ImportReadingBookmark.Page -> ReadingLocation.page(bookmark.page, PageReadingBookmark.MADANI_MUSHAF_ID)
             }
-            AyahBookmarkResolutionState.REACTIVATED -> didChange = true
+            readingBookmarkStore.setLocation(bookmark.slot, location, at)
+            readingBookmarkStore.rename(bookmark.slot, bookmark.name, at)
+            readingBookmarksImported++
+            didChange = true
+            history?.record(ImportFingerprint.readingBookmark(bookmark))
         }
-        return ResolvedBookmark(
-            localId = resolution.bookmark.local_id,
-            preexisting = resolution.state == AyahBookmarkResolutionState.EXISTING
-        ).also { index[position] = it }
+
+        context.ensureActive()
+        return result()
+    }
+
+    /** Favorites by its canonical name; any other name links to the collection with the same name, or creates one. */
+    private fun resolveCollection(name: String, createdAt: Long, modifiedAt: Long): CollectionResolution {
+        if (name == DEFAULT_COLLECTION_NAME) return CollectionResolution(collectionStore.favorites().local_id, false)
+        collectionStore.byName(name)?.let { return CollectionResolution(it.local_id, false) }
+        didChange = true
+        return CollectionResolution(collectionStore.insertUser(name, createdAt, modifiedAt), true)
     }
 
     private fun result() = PersistenceImportResult(
@@ -448,10 +287,6 @@ internal class PersistenceImportMerger(
 }
 
 private data class CollectionResolution(val localId: Long, val inserted: Boolean)
-private data class BookmarkDates(val createdAt: Long, val modifiedAt: Long)
-
-/** A parent bookmark resolved for this import; [preexisting] is true when it was already active. */
-private data class ResolvedBookmark(val localId: Long, val preexisting: Boolean)
 
 private val HIGHLIGHT_PRIORITY = compareByDescending<ImportAyahHighlight> {
     it.lastUpdated.toEpochMillisecondsFromPlatform()
@@ -459,72 +294,14 @@ private val HIGHLIGHT_PRIORITY = compareByDescending<ImportAyahHighlight> {
 
 private data class NoteKey(
     val normalizedBody: String,
-    val startSura: Long,
-    val startAyah: Long,
-    val endSura: Long,
-    val endAyah: Long
+    val startSura: Int,
+    val startAyah: Int,
+    val endSura: Int,
+    val endAyah: Int
 )
-
-private class CollectionIndex(collections: List<DatabaseCollection>) {
-    private val exactNames = mutableMapOf<String, Long>()
-    private val caseInsensitiveNames = mutableMapOf<String, Long>()
-
-    init {
-        collections
-            .filter { it.is_system == 0L }
-            .sortedBy { it.local_id }
-            .forEach { collection -> add(collection.name.value, collection.local_id) }
-    }
-
-    fun find(name: String): Long? = exactNames[name] ?: caseInsensitiveNames[collectionNameKey(name)]
-
-    fun add(name: String, localId: Long) {
-        if (name !in exactNames) exactNames[name] = localId
-        val normalizedName = collectionNameKey(name)
-        if (normalizedName !in caseInsensitiveNames) caseInsensitiveNames[normalizedName] = localId
-    }
-}
 
 private fun effectiveCreatedAtMillis(createdAt: PlatformDateTime?, lastUpdated: PlatformDateTime): Long =
     (createdAt ?: lastUpdated).toEpochMillisecondsFromPlatform()
-
-private fun buildBookmarkDatesByPosition(
-    memberships: List<ImportCollectionAyahBookmark>,
-    highlights: Collection<ImportAyahHighlight>
-): Map<Pair<Int, Int>, BookmarkDates> {
-    val bookmarkDatesByPosition = mutableMapOf<Pair<Int, Int>, BookmarkDates>()
-    memberships.forEach { membership ->
-        bookmarkDatesByPosition.include(
-            membership.sura,
-            membership.ayah,
-            effectiveCreatedAtMillis(membership.createdAt, membership.lastUpdated),
-            membership.lastUpdated.toEpochMillisecondsFromPlatform()
-        )
-    }
-    highlights.forEach { highlight ->
-        bookmarkDatesByPosition.include(
-            highlight.sura,
-            highlight.ayah,
-            effectiveCreatedAtMillis(highlight.createdAt, highlight.lastUpdated),
-            highlight.lastUpdated.toEpochMillisecondsFromPlatform()
-        )
-    }
-    return bookmarkDatesByPosition
-}
-
-private fun MutableMap<Pair<Int, Int>, BookmarkDates>.include(
-    sura: Int,
-    ayah: Int,
-    createdAt: Long,
-    modifiedAt: Long
-) {
-    val position = sura to ayah
-    val existing = this[position]
-    this[position] = BookmarkDates(
-        createdAt = minOf(existing?.createdAt ?: createdAt, createdAt),
-        modifiedAt = maxOf(existing?.modifiedAt ?: modifiedAt, modifiedAt)
-    )
-}
 
 private fun <T> List<T>.deduplicateImportCandidates(
     fingerprint: (T) -> String,

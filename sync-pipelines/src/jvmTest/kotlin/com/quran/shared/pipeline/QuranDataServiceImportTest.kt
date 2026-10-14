@@ -2,15 +2,13 @@
 
 package com.quran.shared.pipeline
 
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.auth.repository.AuthRepository
 import com.quran.shared.auth.repository.LogoutTokenMaterial
 import com.quran.shared.auth.repository.RemoteLogoutFailure
 import com.quran.shared.auth.repository.RemoteLogoutMode
 import com.quran.shared.auth.service.AuthService
-import com.quran.shared.persistence.QuranDatabase
-import com.quran.shared.persistence.createQuranDatabase
+import com.quran.shared.persistence.MobileSyncDatabase
 import com.quran.shared.persistence.input.ImportNote
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.repository.PersistenceResetRepositoryImpl
@@ -46,8 +44,7 @@ import kotlin.time.Instant
 
 class QuranDataServiceImportTest {
     private val dispatcher = StandardTestDispatcher()
-    private lateinit var driver: JdbcSqliteDriver
-    private lateinit var database: QuranDatabase
+    private lateinit var database: MobileSyncDatabase
     private lateinit var authService: AuthService
     private lateinit var service: QuranDataService
     private lateinit var lifecycleCoordinator: SessionLifecycleCoordinator
@@ -59,32 +56,29 @@ class QuranDataServiceImportTest {
     @BeforeTest
     fun setUp() {
         Dispatchers.setMain(dispatcher)
-        driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        QuranDatabase.Schema.create(driver)
-        database = createQuranDatabase(driver)
+        database = inMemoryMobileSyncDatabase()
+        val synced = database.synced
         authService = AuthService(LoggedOutAuthRepository())
-        val readingBookmarks = ReadingBookmarksRepositoryImpl(database)
         lifecycleCoordinator = SessionLifecycleCoordinator(
             SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings())
         )
         val pipeline = SyncEnginePipeline(
-            bookmarksRepository = BookmarksRepositoryImpl(database),
-            readingBookmarksRepository = readingBookmarks,
-            readingBookmarksSynchronizationRepository = readingBookmarks,
-            collectionsRepository = CollectionsRepositoryImpl(database),
-            collectionBookmarksRepository = CollectionBookmarksRepositoryImpl(database),
-            notesRepository = NotesRepositoryImpl(database),
-            readingSessionsRepository = ReadingSessionsRepositoryImpl(database)
+            bookmarksRepository = BookmarksRepositoryImpl(synced),
+            readingBookmarksRepository = ReadingBookmarksRepositoryImpl(synced),
+            collectionsRepository = CollectionsRepositoryImpl(synced),
+            collectionBookmarksRepository = CollectionBookmarksRepositoryImpl(synced),
+            notesRepository = NotesRepositoryImpl(synced),
+            readingSessionsRepository = ReadingSessionsRepositoryImpl(synced)
         )
         service = createDynamicGraphFactory<QuranDataServiceTestGraph.Factory>(ImportSyncBindings(syncClient))
             .create(
                 authService = authService,
                 pipeline = pipeline,
                 environment = SynchronizationEnvironment("https://example.invalid"),
-                persistenceResetRepository = PersistenceResetRepositoryImpl(database),
-                persistenceImportRepository = PersistenceImportRepositoryImpl(database),
-                syncLocalModificationDateStore = SyncSettingsLocalModificationDateStore(MapSettings().toSuspendSettings()),
-                sessionLifecycleCoordinator = lifecycleCoordinator
+                persistenceResetRepository = PersistenceResetRepositoryImpl(database.quran, synced),
+                persistenceImportRepository = PersistenceImportRepositoryImpl(database.quran, synced),
+                sessionLifecycleCoordinator = lifecycleCoordinator,
+                database = synced
             ).quranDataService
     }
 
@@ -94,7 +88,7 @@ class QuranDataServiceImportTest {
             service.clearAndJoin()
             authService.clearAndJoin()
         }
-        driver.close()
+        database.driver.close()
         Dispatchers.resetMain()
     }
 
@@ -103,13 +97,13 @@ class QuranDataServiceImportTest {
         val result = service.importData(data, deleteExisting = false, trackHistory = true)
 
         assertTrue(result.changed)
-        assertEquals("Imported note", database.notesQueries.getNotes().executeAsOne().note)
+        assertEquals("Imported note", database.synced.notesQueries.all().executeAsOne().body)
         assertEquals(1, syncClient.localDataUpdatedCount)
     }
 
     @Test
     fun `recording history for matching data does not schedule sync`() = runTest(dispatcher) {
-        PersistenceImportRepositoryImpl(database).importData(data)
+        PersistenceImportRepositoryImpl(database.quran, database.synced).importData(data)
 
         val result = service.importData(data, deleteExisting = false, trackHistory = true)
         val replay = service.importData(data, deleteExisting = false, trackHistory = true)
@@ -118,7 +112,7 @@ class QuranDataServiceImportTest {
         assertEquals(1, result.matched)
         assertEquals(1, replay.alreadyProcessed)
         assertFalse(replay.changed)
-        assertEquals(1L, database.notesQueries.countAll().executeAsOne())
+        assertEquals(1, database.synced.notesQueries.all().executeAsList().size)
         assertEquals(0, syncClient.localDataUpdatedCount)
     }
 
@@ -143,7 +137,7 @@ class QuranDataServiceImportTest {
             }
         }
 
-        assertEquals(0L, database.notesQueries.countAll().executeAsOne())
+        assertEquals(0, database.synced.notesQueries.all().executeAsList().size)
         assertEquals(0, syncClient.localDataUpdatedCount)
         val retry = service.importData(data, deleteExisting = false, trackHistory = true)
         assertEquals(0, retry.alreadyProcessed)
@@ -155,7 +149,7 @@ class QuranDataServiceImportTest {
 private class ImportSyncBindings(private val client: ImportSyncClientSpy) {
     @Provides
     fun synchronizationClientFactory(): QuranDataServiceSynchronizationClientFactory =
-        QuranDataServiceSynchronizationClientFactory { _, _, _, _, _, _, _ -> client }
+        QuranDataServiceSynchronizationClientFactory { _, _, _, _ -> client }
 }
 
 private class ImportSyncClientSpy : SynchronizationClient {

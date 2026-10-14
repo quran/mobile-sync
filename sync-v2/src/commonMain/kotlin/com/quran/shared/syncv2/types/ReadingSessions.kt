@@ -20,7 +20,11 @@ import kotlinx.serialization.json.put
 
 data class ReadingSession(val localId: Long, val sura: Int, val ayah: Int, val updatedAt: Long)
 
-/** Plain CRUD over `reading_session`. Mobile keeps the newest [MAX_SESSIONS]. */
+/**
+ * Plain CRUD over `reading_session` for this module's tests, standing in for the app's repository (persistence).
+ * Mobile keeps the newest [MAX_SESSIONS]. The companion's [prune] is production API: the app's reading-session store
+ * and [ReadingSessionsType.prune] both run it, so every local write and every sync ranks sessions the same way.
+ */
 class ReadingSessionsRepository(private val database: SyncV2Database) {
     private val queries get() = database.sessionsQueries
 
@@ -53,7 +57,10 @@ class ReadingSessionsRepository(private val database: SyncV2Database) {
     companion object {
         const val MAX_SESSIONS = 20
 
-        /** Every device ranks the same way: clientUpdatedAt descending, ties broken by verse. */
+        /**
+         * Production API, used by the app's reading-session store as well as by the sync type: keeps the newest
+         * [MAX_SESSIONS]. Every device ranks the same way: clientUpdatedAt descending, ties broken by verse.
+         */
         fun prune(database: SyncV2Database) {
             database.sessionsQueries.all().executeAsList().drop(MAX_SESSIONS)
                 .forEach { database.sessionsQueries.delete(it.local_id) }

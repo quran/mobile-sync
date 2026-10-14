@@ -147,7 +147,8 @@ internal class NoteSessionRules(
         return base.copy(
             type = location?.type, group = location?.group, key = location?.key,
             verse = location?.verse.takeIf { location?.type == "ayah" },
-            name = write.name?.let { it.value } ?: base.name,
+            // Present replaces the name, null included (the server stores an empty name as null).
+            name = if (write.name != null) write.name.value else base.name,
             metadata = if (write.location == null && resetTimes) base.metadata else write.metadata,
             clientCreatedAt = if (resetTimes) null else times.createdAt ?: base.clientCreatedAt,
             clientUpdatedAt = if (resetTimes) null else times.updatedAt ?: base.clientUpdatedAt

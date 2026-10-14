@@ -64,8 +64,8 @@ class DriverFactoryStorageFullTest {
 
         val driver = DriverFactory(name).makeDriver()
         try {
-            val collections = createQuranDatabase(driver).collectionsQueries.getCollections().executeAsList()
-            assertEquals(6, collections.size)
+            val collections = MobileSyncDatabase(driver).synced.collectionsQueries.collectionsAll().executeAsList()
+            assertEquals(listOf("Favorites"), collections.map { it.name })
         } finally {
             driver.close()
         }

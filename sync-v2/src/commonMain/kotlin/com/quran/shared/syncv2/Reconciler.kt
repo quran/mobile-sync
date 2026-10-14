@@ -9,12 +9,15 @@ import co.touchlab.kermit.Logger
 class Reconciler(private val store: SyncStore, private val types: List<SyncType>, private val refs: Refs) {
     private val logger = Logger.withTag("SyncV2Reconciler")
     private val restoredParents = mutableMapOf<String, Set<Long>>()
+    /** Parents edited themselves (not only through a child) and deleted remotely: recreated with all their children. */
+    private val recreatedParents = mutableMapOf<String, Set<Long>>()
     /** Children dropped because their parent was gone: a last resort that should never happen (see [dropOrphans]). */
     var droppedOrphans = 0
         private set
 
     fun reconcile(entries: List<RemoteEntry>) {
         restoredParents.clear()
+        recreatedParents.clear()
         types.forEach { reconcileType(it, entries) }
         types.forEach { type -> type.prune(store.rows(type.name).values.mapNotNull { row -> row.base?.let { row.localId to it } }.toMap()) }
     }
@@ -29,13 +32,20 @@ class Reconciler(private val store: SyncStore, private val types: List<SyncType>
         releaseDuplicateHolds(type, items)
         val localDirty = dirtyParents(type)
         val remoteDirty = remotelyEditedParents(type, entries)
+        val recreatedParent = recreatedParentOf(type)
         items.forEach {
-            it.localEdit = it.localId in localDirty || it.localId in revived
+            it.localEdit = it.localId in localDirty || it.localId in revived || recreatedParent(it)
             it.remoteChildEdit = it.localId in remoteDirty
         }
 
         val merger = Merger(type)
+        val ownEdits = items.filter { it.working != null && (it.localId in revived || !merger.same(it.working, it.base)) }
+            .mapNotNull { it.localId }.toSet()
         items.forEach(merger::merge)
+        recreatedParents[type.name] = items
+            .filter { it.remote is RemoteItem.Deleted && it.working != null && it.localId in ownEdits }
+            .mapNotNull { it.localId }.toSet()
+        linkEqualNewItems(type, merger, items)
         UniquenessRepair(type, merger, this::repointChildren).repair(items)
         dropOrphans(type, items)
         write(type, items)
@@ -98,6 +108,43 @@ class Reconciler(private val store: SyncStore, private val types: List<SyncType>
             revived += localId
         }
         return revived
+    }
+
+    /**
+     * Edit beats delete for a parent edited itself (a renamed collection deleted remotely): it is recreated as this
+     * device has it, children included, so their remote deletes (the server's cascade) are edits beaten too. A parent
+     * recreated only because a child was added or changed keeps just those children.
+     */
+    private fun recreatedParentOf(type: SyncType): (MergeItem) -> Boolean {
+        val parent = type.parent ?: return { false }
+        val recreated = recreatedParents[parent.type.name].orEmpty()
+        if (recreated.isEmpty()) return { false }
+        return { item -> item.working?.let { parentId(it, parent) } in recreated }
+    }
+
+    /**
+     * For types without a natural key (notes): a local item the server never saw that equals a new remote item, with
+     * the same [SyncType.outboxKey] and the same content, is the same item, created on two devices from the same
+     * data (two devices importing the same legacy notes, with their original creation times). It is linked to the
+     * remote one instead of being pushed as a duplicate. Nothing is lost: the two are equal.
+     */
+    private fun linkEqualNewItems(type: SyncType, merger: Merger, items: List<MergeItem>) {
+        val newRemote = items.filter { it.localId == null && it.remoteId != null && it.working != null }
+            .groupBy { type.outboxKey(it.working!!) }
+        if (newRemote.isEmpty()) return
+        val linked = mutableSetOf<MergeItem>()
+        items.filter { it.localId != null && it.remoteId == null && it.base == null && it.working != null }.forEach { local ->
+            val key = type.outboxKey(local.working!!) ?: return@forEach
+            val target = newRemote[key].orEmpty().firstOrNull { it !in linked && merger.same(it.working, local.working) } ?: return@forEach
+            logger.i { "${type.name}: linking new ${local.localId} to the equal remote ${target.remoteId}" }
+            linked += target
+            target.localId = local.localId
+            target.original = local.original
+            target.heldReason = null
+            local.localId = null
+            local.working = null
+            local.original = null
+        }
     }
 
     /** A parent this sync restored (edit beats delete) gets back the children its local delete cascaded. */

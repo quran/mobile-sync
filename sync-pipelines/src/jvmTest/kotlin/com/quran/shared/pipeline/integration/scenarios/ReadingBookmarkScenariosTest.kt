@@ -5,7 +5,6 @@ import com.quran.shared.persistence.model.EmptyReadingBookmark
 import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.pipeline.integration.assertSucceeded
-import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.flow.first
@@ -112,16 +111,11 @@ class ReadingBookmarkScenariosTest {
         assertEquals(0, runs.sumOf { it.posts }, "nothing pushed back")
         val slot = server.state(ALICE).readingBookmarks.single { it.slot == 1 }
         assertEquals(Triple("page", "pages_548", 300), Triple(slot.type, slot.group, slot.key), "the server keeps the IndoPak page")
-        // The public model has no mushaf, so the test can only require that page 300 of the 548-page
-        // IndoPak is not shown as Madani page 300.
-        knownIssue(
-            "S13",
-            "A web page reading bookmark from an IndoPak mushaf lands on the same-numbered Madani page",
-            expect = failureMentions("mapped to the Madani mushaf", "Actual: 300")
-        ) {
-            val onPhone = assertIs<PageReadingBookmark>(phone.data.readingBookmarks.first().single())
-            assertNotEquals(300, onPhone.page, "mapped to the Madani mushaf")
-        }
+        // The public model carries the page's mushaf, so page 300 of the 548-page IndoPak (mushaf 7) is not
+        // shown as Madani page 300 (mushaf 5).
+        val onPhone = assertIs<PageReadingBookmark>(phone.data.readingBookmarks.first().single())
+        assertEquals(300 to 7, onPhone.page to onPhone.mushafId, "page 300 of the 548-page IndoPak")
+        assertNotEquals(PageReadingBookmark.MADANI_MUSHAF_ID, onPhone.mushafId, "not the Madani mushaf")
     }
 
     @Test
@@ -136,18 +130,11 @@ class ReadingBookmarkScenariosTest {
 
         assertSucceeded(phone.syncWhileHeld(gate) { phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 67, 1, at(2_000)) })
 
-        knownIssue(
-            "S18",
-            "A remote reading-bookmark apply loses a mid-sync local edit",
-            // The catalog suspected this. Applying the web's slot after the POST clears the phone's newer edit.
-            expect = failureMentions("the latest slot on the phone", "expected:<(67, 1)> but was:<(36, 1)>")
-        ) {
-            syncUntilQuiescent(phone)
-            val onPhone = assertIs<AyahReadingBookmark>(phone.data.readingBookmarks.first().single())
-            assertEquals(67 to 1, onPhone.sura to onPhone.ayah, "the latest slot on the phone")
-            val slot = server.state(ALICE).readingBookmarks.single { it.slot == 1 }
-            assertEquals(67 to 1, slot.key to slot.verse, "the latest slot on the server")
-            assertConverged(ALICE, phone)
-        }
+        syncUntilQuiescent(phone)
+        val onPhone = assertIs<AyahReadingBookmark>(phone.data.readingBookmarks.first().single())
+        assertEquals(67 to 1, onPhone.sura to onPhone.ayah, "the latest slot on the phone")
+        val slot = server.state(ALICE).readingBookmarks.single { it.slot == 1 }
+        assertEquals(67 to 1, slot.key to slot.verse, "the latest slot on the server")
+        assertConverged(ALICE, phone)
     }
 }

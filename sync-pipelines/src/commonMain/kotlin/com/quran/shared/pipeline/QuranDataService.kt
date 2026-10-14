@@ -23,21 +23,17 @@ import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.repository.PersistenceResetRepository
-import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepository
-import com.quran.shared.persistence.repository.collection.repository.CollectionsRepository
-import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepository
 import com.quran.shared.persistence.repository.importdata.PersistenceImportRepository
-import com.quran.shared.persistence.repository.note.repository.NotesRepository
-import com.quran.shared.persistence.repository.readingsession.repository.ReadingSessionsRepository
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.currentPlatformDateTime
 import com.quran.shared.persistence.util.toPlatform
-import com.quran.shared.syncengine.AuthenticationDataFetcher
-import com.quran.shared.syncengine.LocalModificationDateFetcher
+import com.quran.shared.pipeline.sync.SyncAccount
+import com.quran.shared.pipeline.sync.SyncClient
 import com.quran.shared.syncengine.SyncLifecycleGate
 import com.quran.shared.syncengine.SyncRunObserver
 import com.quran.shared.syncengine.SynchronizationClient
 import com.quran.shared.syncengine.SynchronizationEnvironment
+import com.quran.shared.syncv2.db.SyncV2Database
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutinesState
 import dev.zacsweers.metro.Inject
@@ -73,50 +69,34 @@ internal fun interface QuranDataServiceSynchronizationClientFactory {
     /**
      * Builds a synchronization client for the service lifecycle.
      *
-     * @param pipeline the sync pipeline that owns resource adapters and repository bridges.
      * @param environment the remote sync environment.
-     * @param localModificationDateFetcher reads the current local sync token.
-     * @param authenticationDataFetcher supplies fresh authentication headers for sync requests.
+     * @param account the signed-in session: request headers, the account id and forced token refreshes.
      * @param syncLifecycleGate guards sync work during managed session resets.
-     * @param callback receives sync completion and error events.
      * @param syncRunObserver receives the start and outcome of each sync run.
      * @return the synchronization client used for app-start, local-mutation, and immediate sync triggers.
      */
     fun create(
-        pipeline: SyncEnginePipeline,
         environment: SynchronizationEnvironment,
-        localModificationDateFetcher: LocalModificationDateFetcher,
-        authenticationDataFetcher: AuthenticationDataFetcher,
+        account: SyncAccount,
         syncLifecycleGate: SyncLifecycleGate,
-        callback: SyncEngineCallback,
         syncRunObserver: SyncRunObserver
     ): SynchronizationClient
 }
 
 /**
- * Production sync client factory that delegates to [SyncEnginePipeline.setup].
+ * Production sync client factory: the sync engine over the app's database.
  */
 @HiddenFromObjC
 @Inject
-internal class DefaultQuranDataServiceSynchronizationClientFactory() :
-    QuranDataServiceSynchronizationClientFactory {
+internal class DefaultQuranDataServiceSynchronizationClientFactory(
+    private val database: SyncV2Database
+) : QuranDataServiceSynchronizationClientFactory {
     override fun create(
-        pipeline: SyncEnginePipeline,
         environment: SynchronizationEnvironment,
-        localModificationDateFetcher: LocalModificationDateFetcher,
-        authenticationDataFetcher: AuthenticationDataFetcher,
+        account: SyncAccount,
         syncLifecycleGate: SyncLifecycleGate,
-        callback: SyncEngineCallback,
         syncRunObserver: SyncRunObserver
-    ): SynchronizationClient =
-        pipeline.setup(
-            environment = environment,
-            localModificationDateFetcher = localModificationDateFetcher,
-            authenticationDataFetcher = authenticationDataFetcher,
-            syncLifecycleGate = syncLifecycleGate,
-            callback = callback,
-            syncRunObserver = syncRunObserver
-        )
+    ): SynchronizationClient = SyncClient.create(database, environment, account, syncLifecycleGate, syncRunObserver)
 }
 
 /**
@@ -135,7 +115,6 @@ class QuranDataService internal constructor(
     private val environment: SynchronizationEnvironment,
     private val persistenceResetRepository: PersistenceResetRepository,
     private val persistenceImportRepository: PersistenceImportRepository,
-    private val syncLocalModificationDateStore: SyncLocalModificationDateStore,
     private val sessionLifecycleCoordinator: SessionLifecycleCoordinator,
     private val syncClientFactory: QuranDataServiceSynchronizationClientFactory
 ) {
@@ -148,9 +127,11 @@ class QuranDataService internal constructor(
     private var initialized = false
     private var syncLifecycleStarted = false
 
+    /** Stops the service for good: its work, and the sync client's scheduler and HTTP client. */
     fun clear() {
         serviceJob.cancel()
         syncClient.cancelSyncing()
+        (syncClient as? AutoCloseable)?.close()
     }
 
     @HiddenFromObjC
@@ -223,15 +204,12 @@ class QuranDataService internal constructor(
     @NativeCoroutinesState
     val syncStatus: StateFlow<SyncStatus> get() = syncStatusTracker.status
 
-    // Cast the synchronization repository to the transactional repository.
-    // This keeps QuranDataService as the single app-facing data entry point.
-    private val bookmarksRepository = pipeline.bookmarksRepository as BookmarksRepository
+    private val bookmarksRepository = pipeline.bookmarksRepository
     private val readingBookmarksRepository = pipeline.readingBookmarksRepository
-    private val collectionsRepository = pipeline.collectionsRepository as CollectionsRepository
-    private val collectionBookmarksRepository =
-        pipeline.collectionBookmarksRepository as CollectionBookmarksRepository
-    private val notesRepository = pipeline.notesRepository as NotesRepository
-    private val readingSessionsRepository = pipeline.readingSessionsRepository as ReadingSessionsRepository
+    private val collectionsRepository = pipeline.collectionsRepository
+    private val collectionBookmarksRepository = pipeline.collectionBookmarksRepository
+    private val notesRepository = pipeline.notesRepository
+    private val readingSessionsRepository = pipeline.readingSessionsRepository
 
     /**
      * Flow of ayah highlights, stored independently from app-facing bookmark collections.
@@ -270,7 +248,7 @@ class QuranDataService internal constructor(
             }
 
     /**
-     * Flow of all notes for the UI to observe.
+     * Flow of all notes for the UI to observe. Notes archived on QuranReflect are not included.
      */
     @NativeCoroutines
     val notes: Flow<List<Note>> get() = notesRepository.getNotesFlow()
@@ -282,23 +260,18 @@ class QuranDataService internal constructor(
     val readingSessions: Flow<List<ReadingSession>> get() = readingSessionsRepository.getReadingSessionsFlow()
 
     init {
-        val authFetcher = object : AuthenticationDataFetcher {
-            override suspend fun fetchAuthenticationHeaders(): Map<String, String> {
-                return authService.getAuthHeaders()
-            }
+        val account = object : SyncAccount {
+            override suspend fun authHeaders(): Map<String, String> = authService.getAuthHeaders()
 
-            override fun isLoggedIn(): Boolean {
-                return authService.isLoggedIn()
-            }
+            override suspend fun accountId(): String? = authService.currentAccountId()
+
+            override suspend fun forceTokenRefresh(): Boolean = authService.forceRefreshAccessToken()
         }
 
         syncClient = syncClientFactory.create(
-            pipeline = pipeline,
             environment = environment,
-            localModificationDateFetcher = syncLocalModificationDateStore,
-            authenticationDataFetcher = authFetcher,
+            account = account,
             syncLifecycleGate = sessionLifecycleCoordinator,
-            callback = SettingsSyncEngineCallback(syncLocalModificationDateStore, CurrentSyncWriteBoundaryGuard),
             syncRunObserver = syncStatusTracker
         )
 
@@ -366,7 +339,7 @@ class QuranDataService internal constructor(
      *
      * @param immediately `false` waits a few seconds so a burst of local edits syncs once. `true`
      *   starts right away, such as for a user's "Sync now". An immediate request made while a sync
-     *   is running or waiting to retry is dropped; [syncStatus] reports that sync's outcome.
+     *   is running starts another right after it; one made while a sync waits to retry starts now.
      */
     fun triggerSync(immediately: Boolean = false) {
         if (!sessionLifecycleCoordinator.canStartSync()) {
@@ -385,10 +358,10 @@ class QuranDataService internal constructor(
         resetLocalDataAndSyncToken()
     }
 
+    /** Deletes the user's data with its sync state: the token, the account, the bases and the outbox. */
     private suspend fun resetLocalDataAndSyncToken() {
         syncStatusTracker.reset()
         persistenceResetRepository.deleteAllData()
-        syncLocalModificationDateStore.updateLastModificationDate(0L)
     }
 
     private fun logoutRemoteCleanupFailureWarnings(
@@ -658,6 +631,8 @@ class QuranDataService internal constructor(
      * @param name the new collection name.
      * @return the updated collection.
      * @throws IllegalArgumentException when [id] does not identify an active collection.
+     * @throws com.quran.shared.persistence.ReadOnlyCollectionException when the collection can't be renamed.
+     * @throws com.quran.shared.persistence.DuplicateCollectionNameException when another collection has [name].
      * @throws TextLengthLimitException when [name] is outside the server's length limits.
      */
     @NativeCoroutines
@@ -682,7 +657,11 @@ class QuranDataService internal constructor(
         }
     }
 
-    /** Deletes a custom collection and schedules sync when a row was removed. */
+    /**
+     * Deletes a custom collection and schedules sync when a row was removed.
+     *
+     * @throws com.quran.shared.persistence.ReadOnlyCollectionException when the collection can't be deleted.
+     */
     @NativeCoroutines
     suspend fun deleteCollection(id: String): Boolean {
         return mutatingCall(
@@ -747,41 +726,24 @@ class QuranDataService internal constructor(
     }
 
     /**
-     * Updates an existing note and schedules sync for the local mutation.
+     * Updates a note's body and schedules sync for the local mutation. A note's verse ranges never
+     * change, as on the server.
      *
      * @param id the mobile-sync identifier of the note to update.
      * @param body the updated note body.
-     * @param startSura the first sura covered by the note.
-     * @param startAyah the first ayah covered by the note.
-     * @param endSura the last sura covered by the note.
-     * @param endAyah the last ayah covered by the note.
+     * @throws IllegalArgumentException when [id] does not identify a note.
      * @throws TextLengthLimitException when a changed [body] is outside the server's length limits.
      */
     @NativeCoroutines
-    suspend fun updateNote(
-        id: String,
-        body: String,
-        startSura: Int,
-        startAyah: Int,
-        endSura: Int,
-        endAyah: Int
-    ) {
-        updateNote(id, body, startSura, startAyah, endSura, endAyah, currentPlatformDateTime())
+    suspend fun updateNote(id: String, body: String) {
+        updateNote(id, body, currentPlatformDateTime())
     }
 
     /** @throws TextLengthLimitException when a changed [body] is outside the server's length limits. */
     @NativeCoroutines
-    suspend fun updateNote(
-        id: String,
-        body: String,
-        startSura: Int,
-        startAyah: Int,
-        endSura: Int,
-        endAyah: Int,
-        timestamp: PlatformDateTime
-    ) {
+    suspend fun updateNote(id: String, body: String, timestamp: PlatformDateTime) {
         mutatingCall("Failed to update note") {
-            notesRepository.updateNote(id, body, startSura, startAyah, endSura, endAyah, timestamp)
+            notesRepository.updateNote(id, body, timestamp)
         }
     }
 
@@ -796,18 +758,4 @@ class QuranDataService internal constructor(
         }
     }
 
-}
-
-internal class SettingsSyncEngineCallback(
-    private val syncLocalModificationDateStore: SyncLocalModificationDateStore,
-    private val writeBoundaryGuard: SyncWriteBoundaryGuard = SyncWriteBoundaryGuard {}
-) : SyncEngineCallback {
-    override suspend fun synchronizationDone(newLastModificationDate: Long) {
-        Logger.i { "Sync completed. New last modified: $newLastModificationDate" }
-        syncLocalModificationDateStore.updateLastModificationDate(newLastModificationDate, writeBoundaryGuard)
-    }
-
-    override suspend fun encounteredError(errorMsg: String) {
-        Logger.e { "Sync error: $errorMsg" }
-    }
 }

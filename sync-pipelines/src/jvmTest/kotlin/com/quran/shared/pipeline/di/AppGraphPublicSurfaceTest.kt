@@ -11,7 +11,6 @@ import com.quran.shared.persistence.repository.readingsession.repository.Reading
 import com.quran.shared.pipeline.SessionLifecycleCoordinator
 import com.quran.shared.pipeline.SyncEnginePipeline
 import com.quran.shared.pipeline.SyncAuthService
-import com.quran.shared.pipeline.SyncLocalModificationDateStore
 import com.quran.shared.pipeline.QuranDataService
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -84,7 +83,6 @@ class AppGraphPublicSurfaceTest {
         val managedInternalTypes = writeCapablePersistenceRepositoryTypes + setOf(
             AuthService::class.java,
             SyncEnginePipeline::class.java,
-            SyncLocalModificationDateStore::class.java,
             SessionLifecycleCoordinator::class.java
         )
     }

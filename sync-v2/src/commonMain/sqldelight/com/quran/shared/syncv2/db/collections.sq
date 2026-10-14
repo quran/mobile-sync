@@ -6,7 +6,10 @@ CREATE TABLE collection(
   -- lower(trim(name)) like the server; NULL for Favorites so a user collection may share its name.
   name_key TEXT,
   is_default INTEGER NOT NULL DEFAULT 0,
+  -- The server's isSystem (Favorites, highlights): app-facing lists hide these.
   is_system INTEGER NOT NULL DEFAULT 0,
+  -- No rename or delete: system collections and the older apps' protected color collections (from GET data).
+  is_read_only INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
@@ -15,6 +18,10 @@ CREATE UNIQUE INDEX collection_name_key_idx ON collection(name_key);
 
 collectionsAll:
 SELECT * FROM collection ORDER BY local_id;
+
+-- App-facing: newest first.
+collectionsNewestFirst:
+SELECT * FROM collection ORDER BY created_at DESC, local_id DESC;
 
 collectionGet:
 SELECT * FROM collection WHERE local_id = ?;
@@ -26,13 +33,13 @@ collectionDefault:
 SELECT * FROM collection WHERE is_default = 1;
 
 collectionInsert:
-INSERT INTO collection(name, name_key, is_default, is_system, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?);
+INSERT INTO collection(name, name_key, is_default, is_system, is_read_only, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?);
 
 collectionInsertWithId:
-INSERT INTO collection(local_id, name, name_key, is_default, is_system, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?);
+INSERT INTO collection(local_id, name, name_key, is_default, is_system, is_read_only, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 collectionUpdate:
-UPDATE collection SET name = ?, name_key = ?, is_system = ?, updated_at = ? WHERE local_id = ?;
+UPDATE collection SET name = ?, name_key = ?, is_system = ?, is_read_only = ?, updated_at = ? WHERE local_id = ?;
 
 collectionPark:
 UPDATE collection SET name_key = ? WHERE local_id = ?;
@@ -61,6 +68,10 @@ SELECT * FROM collection_ayah WHERE local_id = ?;
 
 collectionAyahsIn:
 SELECT * FROM collection_ayah WHERE collection_local_id = ? ORDER BY sura, ayah;
+
+-- Every collection a verse is in.
+collectionAyahsAt:
+SELECT * FROM collection_ayah WHERE sura = ? AND ayah = ? ORDER BY local_id;
 
 collectionAyahFind:
 SELECT * FROM collection_ayah WHERE collection_local_id = ? AND sura = ? AND ayah = ?;

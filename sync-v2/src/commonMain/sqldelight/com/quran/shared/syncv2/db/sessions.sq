@@ -16,6 +16,9 @@ SELECT * FROM reading_session ORDER BY updated_at DESC, sura, ayah;
 at:
 SELECT * FROM reading_session WHERE sura = ? AND ayah = ?;
 
+get:
+SELECT * FROM reading_session WHERE local_id = ?;
+
 insert:
 INSERT INTO reading_session(sura, ayah, created_at, updated_at) VALUES (?, ?, ?, ?);
 

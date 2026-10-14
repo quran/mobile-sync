@@ -55,7 +55,10 @@ data class Note(
     val archivedAt: Long? = null
 )
 
-/** Plain CRUD over `note` and `note_range`. Ranges are set once, on create. */
+/**
+ * Plain CRUD over `note` and `note_range` for this module's tests, standing in for the app's NoteStore (persistence).
+ * Ranges are set once, on create.
+ */
 class NotesRepository(private val database: SyncV2Database) {
     private val type = NotesType(database)
 
@@ -64,7 +67,7 @@ class NotesRepository(private val database: SyncV2Database) {
     /**
      * Adds a note; the body is stored trimmed like the server. [at] becomes the note's `clientCreatedAt`, or the
      * first millisecond after it that no other note has (one query): with the ranges, it is how a lost CREATE is
-     * recognised. Every local create (an importer too) must come through here.
+     * recognised.
      */
     fun addNote(body: String, ranges: List<NoteRange>, at: Long): Long = database.transactionWithResult {
         require(ranges.isNotEmpty()) { "a note needs a range" }

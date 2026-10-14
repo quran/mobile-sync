@@ -7,12 +7,10 @@ import com.quran.shared.pipeline.integration.SyncDevice
 import com.quran.shared.pipeline.integration.SyncScenario
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.awaitUntil
-import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.mutation
 import com.quran.shared.pipeline.integration.pollUntil
 import com.quran.shared.pipeline.integration.server.FakeAccount
 import com.quran.shared.pipeline.integration.server.text
-import com.quran.shared.pipeline.integration.syncRejectedWith
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
@@ -66,15 +64,15 @@ class FailureScenariosTest {
     @Test
     fun `ERR-03 a lost response for natural-key creates`() = syncScenario {
         val (phone) = signedIn("phone")
-        server.faults.loseResponse { it.carries("COLLECTION_BOOKMARK") }
-        server.faults.loseResponse { it.carries("READING_SESSION") }
+        // The verse, the session and the slot go in one POST, so one lost response covers every kind.
+        server.faults.loseResponse { it.carries("COLLECTION_BOOKMARK") && it.carries("READING_SESSION") }
 
         phone.addToFavorites(2, 255)
         phone.data.addReadingSession(18, 1)
         phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 36, 1)
         syncUntilQuiescent(phone)
 
-        assertEquals(2, server.posts("phone").count { it.status == 504 }, "both faults fired")
+        assertEquals(1, server.posts("phone").count { it.status == 504 }, "the response was lost once")
         val state = server.state(ALICE)
         assertEquals(setOf("2:255"), state.favorites)
         assertEquals(listOf("18:1"), state.sessionVerses)
@@ -116,18 +114,17 @@ class FailureScenariosTest {
         phone.data.addCollection("Study")
         phone.data.addNote("A note behind the duplicate", 2, 255, 2, 255)
 
-        knownIssue(
-            "S11",
-            "A permanent 409 UniqueViolationError on one collection blocks every later phase",
-            expect = syncRejectedWith(409, carrying = mutation("COLLECTION", "CREATE"))
-        ) {
-            assertSucceeded(phone.syncNow())
-            assertEquals(listOf("A note behind the duplicate"), server.state(ALICE).notes.map { it.body })
-            assertEquals(1, phone.collectionNames().size, "Study is held or repaired, not lost")
-            assertSucceeded(phone.syncNow())
-        }
+        assertSucceeded(phone.syncNow())
+        assertEquals(listOf("A note behind the duplicate"), server.state(ALICE).notes.map { it.body })
+        assertEquals(1, phone.collectionNames().size, "Study is held or repaired, not lost")
+        assertSucceeded(phone.syncNow())
     }
 
+    /**
+     * A GET's remote delete is merged, with the token, before the push: by the time the POST is in flight the row is
+     * gone, so there is no stale row to edit and no 404. An edit made while the GET is held, before the merge commits,
+     * wins: edit beats delete, so R is recreated with the edit.
+     */
     @Test
     fun `ERR-06 a 404 after a remote delete raced a local edit`() = syncScenario {
         val (phone) = signedIn("phone")
@@ -139,29 +136,37 @@ class FailureScenariosTest {
         phone.data.addReadingSession(18, 1)
         val gate = server.faults.blockPost { it.carries("READING_SESSION") }
 
+        assertSucceeded(phone.syncWhileHeld(gate) { assertEquals(emptyList(), phone.noteBodies(), "deleted before the POST") })
+
+        assertSucceeded(phone.syncNow())
+        syncUntilQuiescent(phone)
+        assertEquals(emptyList(), server.requests("phone").filter { it.status == 404 }.map { it.mutations }, "no 404")
+        assertEquals(emptyList(), server.state(ALICE).notes)
+        assertConverged(ALICE, phone)
+
+        // Before the merge commits, the edit lands while the GET carrying the delete is held.
+        // Edit beats delete, so R is recreated with the edit.
+        phone.data.addNote("Deleted on the web while the GET is held", 3, 18, 3, 18)
+        syncUntilQuiescent(phone)
+        web.deleteNote(web.noteId("Deleted on the web while the GET is held")!!)
+        val getGate = server.faults.blockGet()
+
         assertSucceeded(
-            phone.syncWhileHeld(gate) {
-                phone.data.updateNote(phone.note("Deleted on the web mid-sync").id, "Edited while the delete was applied", 2, 255, 2, 255)
+            phone.syncWhileHeld(getGate) {
+                phone.data.updateNote(phone.note("Deleted on the web while the GET is held").id, "Edited while the GET was held")
             }
         )
 
-        // S7's 422 rejects the note UPDATE before the server can answer 404, until S7 is fixed.
-        knownIssue(
-            "The skipped remote DELETE leaves an UPDATE that gets 404 (S10), or 422 first (S7)",
-            "S10" to syncRejectedWith(404, carrying = mutation("NOTE", "UPDATE")),
-            "S7" to NOTE_UPDATE_REJECTED
-        ) {
-            assertSucceeded(phone.syncNow())
-            syncUntilQuiescent(phone)
-            assertEquals(listOf("Edited while the delete was applied"), phone.noteBodies())
-            assertEquals(listOf("Edited while the delete was applied"), server.state(ALICE).notes.map { it.body })
-        }
+        syncUntilQuiescent(phone)
+        assertEquals(listOf("Edited while the GET was held"), phone.noteBodies())
+        assertEquals(listOf("Edited while the GET was held"), server.state(ALICE).notes.map { it.body })
+        assertEquals(listOf("3:18-3:18"), server.state(ALICE).notes.single().ranges)
+        assertEquals(emptyList(), server.requests("phone").filter { it.status == 404 }.map { it.mutations }, "no 404")
+        assertConverged(ALICE, phone)
     }
 
     @Test
     fun `ERR-06 variant, a 404 after a remote delete raced a local rename`() = syncScenario {
-        // The note variant above hits S7 first. A collection rename shows S10 on its own. Collections
-        // apply in the first phase, so the held POST is a collection's.
         val (phone) = signedIn("phone")
         phone.data.addCollection("Study")
         syncUntilQuiescent(phone)
@@ -170,18 +175,28 @@ class FailureScenariosTest {
         phone.data.addCollection("Other")
         val gate = server.faults.blockPost { it.carries("COLLECTION") }
 
-        assertSucceeded(phone.syncWhileHeld(gate) { phone.data.updateCollection(phone.collectionId("Study"), "Memorize") })
+        assertSucceeded(phone.syncWhileHeld(gate) { assertEquals(listOf("Other"), phone.collectionNames(), "deleted before the POST") })
 
-        knownIssue(
-            "S10",
-            "A remote DELETE skipped for a row edited mid-sync leaves an UPDATE that gets 404 forever",
-            expect = syncRejectedWith(404, carrying = mutation("COLLECTION", "UPDATE"))
-        ) {
-            assertSucceeded(phone.syncNow())
-            syncUntilQuiescent(phone)
-            assertEquals(listOf("Memorize", "Other"), phone.collectionNames())
-            assertConverged(ALICE, phone)
-        }
+        assertSucceeded(phone.syncNow())
+        syncUntilQuiescent(phone)
+        assertEquals(emptyList(), server.requests("phone").filter { it.status == 404 }.map { it.mutations }, "no 404")
+        assertEquals(listOf("Other"), phone.collectionNames())
+        assertConverged(ALICE, phone)
+
+        // The edit lands while the GET carrying the delete is held, before the merge: the renamed collection is
+        // recreated with the new name.
+        phone.data.addCollection("Study")
+        syncUntilQuiescent(phone)
+        web.deleteCollection(web.collectionId("Study")!!)
+        val getGate = server.faults.blockGet()
+
+        assertSucceeded(phone.syncWhileHeld(getGate) { phone.data.updateCollection(phone.collectionId("Study"), "Memorize") })
+
+        syncUntilQuiescent(phone)
+        assertEquals(listOf("Memorize", "Other"), phone.collectionNames())
+        assertEquals(listOf("Memorize", "Other"), server.state(ALICE).collections.map { it.name }.sorted())
+        assertEquals(emptyList(), server.requests("phone").filter { it.status == 404 }.map { it.mutations }, "no 404")
+        assertConverged(ALICE, phone)
     }
 
     @Test
@@ -195,16 +210,14 @@ class FailureScenariosTest {
         phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 36, 1)
         val run = phone.syncNow()
 
-        knownIssue("S11", "One rejected mutation blocks the whole batch forever", expect = syncRejectedWith(422, carrying = mutation("NOTE", "CREATE"))) {
-            assertSucceeded(run)
-            val state = server.state(ALICE)
-            assertNotNull(state.collectionNamed("Study"))
-            assertEquals(listOf("18:1"), state.sessionVerses)
-            assertEquals(listOf(1), state.readingBookmarks.map { it.slot })
-            assertEquals(emptyList(), state.notes)
-            assertEquals(listOf(POISON), phone.noteBodies(), "the poison note is held locally")
-            assertSucceeded(phone.syncNow())
-        }
+        assertSucceeded(run)
+        val state = server.state(ALICE)
+        assertNotNull(state.collectionNamed("Study"))
+        assertEquals(listOf("18:1"), state.sessionVerses)
+        assertEquals(listOf(1), state.readingBookmarks.map { it.slot })
+        assertEquals(emptyList(), state.notes)
+        assertEquals(listOf(POISON), phone.noteBodies(), "the poison note is held locally")
+        assertSucceeded(phone.syncNow())
     }
 
     @Test
@@ -216,11 +229,9 @@ class FailureScenariosTest {
 
         val run = phone.syncNow()
 
-        knownIssue("S11", "One rejected mutation blocks the whole batch forever", expect = syncRejectedWith(422, carrying = mutation("NOTE", "CREATE"))) {
-            assertSucceeded(run)
-            assertTrue(run.posts <= 2 + PHASES, "no bisecting: ${run.posts} POSTs")
-            assertPoisonHeld(phone)
-        }
+        assertSucceeded(run)
+        assertTrue(run.posts <= 2 + PHASES, "no bisecting: ${run.posts} POSTs")
+        assertPoisonHeld(phone)
     }
 
     @Test
@@ -248,10 +259,8 @@ class FailureScenariosTest {
 
         val run = phone.syncNow()
 
-        knownIssue("S11", "A persistent 500 on one mutation blocks the whole batch forever", expect = syncRejectedWith(500, carrying = mutation("NOTE", "CREATE"))) {
-            assertSucceeded(run)
-            assertPoisonHeld(phone)
-        }
+        assertSucceeded(run)
+        assertPoisonHeld(phone)
     }
 
     @Test
@@ -290,14 +299,8 @@ class FailureScenariosTest {
         assertIs<SyncStatus.Failed>(failed.status, "the retries ran out during the outage")
         server.faults.networkUp()
 
-        knownIssue(
-            "S21",
-            "After the retries run out, sync stops until something triggers it",
-            expect = failureMentions("the note reached the server after the outage", "but was:<[]>")
-        ) {
-            pollUntil(PERIODIC * 3) { server.state(ALICE).notes.isNotEmpty() }
-            assertEquals(listOf("Written during the outage"), server.state(ALICE).notes.map { it.body }, "the note reached the server after the outage")
-        }
+        pollUntil(PERIODIC * 3) { server.state(ALICE).notes.isNotEmpty() }
+        assertEquals(listOf("Written during the outage"), server.state(ALICE).notes.map { it.body }, "the note reached the server after the outage")
     }
 
     @Test
@@ -321,6 +324,32 @@ class FailureScenariosTest {
         assertSucceeded(phone.syncNow())
         assertEquals(listOf("Written without the note scope"), server.state(ALICE).notes.map { it.body })
         assertConverged(ALICE, phone)
+    }
+
+    /**
+     * A 403 that may be the token's scope stops pushes for hours, but not pulls: the periodic sync keeps fetching what
+     * other devices write, and pushes nothing. syncStatus keeps the 403 until a run that pushes succeeds. A "sync now"
+     * tries to push again.
+     */
+    @Test
+    fun `ERR-18 variant, pulls go on while pushes back off after a 403`() = syncScenario {
+        val phone = device("phone", DeviceTimings(periodicInterval = PERIODIC))
+        assertSucceeded(phone.login(ALICE))
+        server.account(ALICE).scopes = FakeAccount.ALL_SCOPES - "note"
+        phone.data.addNote("Written without the note scope", 2, 255, 2, 255)
+        val failed = assertIs<SyncStatus.Failed>(phone.syncNow().status)
+        web(ALICE).createCollection("Written on the web")
+
+        val periodic = phone.awaitSync()
+
+        assertEquals(failed, periodic.status, "the pull keeps the 403 in syncStatus")
+        assertEquals(failed, phone.data.syncStatus.value)
+        assertEquals(0, periodic.posts, "no push during the backoff")
+        assertEquals(listOf("Written on the web"), phone.collectionNames(), "the pull went on")
+        server.account(ALICE).scopes = FakeAccount.ALL_SCOPES
+        assertSucceeded(phone.syncNow())
+        assertIs<SyncStatus.Succeeded>(phone.data.syncStatus.value)
+        assertEquals(listOf("Written without the note scope"), server.state(ALICE).notes.map { it.body })
     }
 
     private suspend fun SyncDevice.writePoisonBatch() {

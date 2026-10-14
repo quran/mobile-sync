@@ -54,20 +54,6 @@ class ReadingBookmarksSyncTest {
         }
     }
 
-    @Test
-    fun `a page slot syncs to another device`() = FakeSyncServer().use { server ->
-        Device(server).use { phone ->
-            Device(server).use { tablet ->
-                phone.readingBookmarks.set(2, ReadingLocation.page(300), t(0))
-                phone.settle()
-                tablet.settle()
-
-                assertEquals(mapOf(2 to "page 300"), Remote(server).readingSlots())
-                assertEquals(mapOf(2 to "page 300"), tablet.readingSlots())
-            }
-        }
-    }
-
     /** RB-04: a clear is an UPDATE with every location field null (a DELETE would reset the slot's timestamps). */
     @Test
     fun `clearing a slot is an update with nulls and keeps its name`() = FakeSyncServer().use { server ->
@@ -110,86 +96,6 @@ class ReadingBookmarksSyncTest {
             assertEquals("Juz 30", Remote(server).readingBookmarkName(1))
             assertNull(Remote(server).readingBookmarkName(2))
             assertEquals(1, server.postBodies.size)
-        }
-    }
-
-    /** RB-05: two devices set one slot before syncing; the newer location wins on both and on the server. */
-    @Test
-    fun `concurrent sets on one slot keep the newest`() = FakeSyncServer().use { server ->
-        Device(server).use { phone ->
-            Device(server).use { tablet ->
-                phone.readingBookmarks.set(1, ReadingLocation.ayah(18, 10), t(1))
-                tablet.readingBookmarks.set(1, ReadingLocation.ayah(36, 1), t(2))
-
-                phone.settle()
-                tablet.settle()
-                phone.settle()
-
-                assertEquals(mapOf(1 to "36:1"), Remote(server).readingSlots())
-                assertEquals(mapOf(1 to "36:1"), phone.readingSlots())
-                assertEquals(mapOf(1 to "36:1"), tablet.readingSlots())
-            }
-        }
-    }
-
-    /** S18, RB-07: the web moves the slot, then the user moves it again while this device's POST is in flight. */
-    @Test
-    fun `a slot edit made during the POST is kept`() = FakeSyncServer().use { server ->
-        Device(server).use { device ->
-            device.readingBookmarks.set(1, ReadingLocation.ayah(18, 10), t(0))
-            device.settle()
-            Remote(server).setReadingBookmark(1, 36, 1, t(1))
-            device.addNote("Pushed while the slot changes", "1:1", t(2))
-            server.duringNextPost = { device.readingBookmarks.set(1, ReadingLocation.ayah(67, 1), t(3)) }
-
-            device.settle()
-
-            assertEquals(mapOf(1 to "67:1"), device.readingSlots())
-            assertEquals(mapOf(1 to "67:1"), Remote(server).readingSlots())
-        }
-    }
-
-    /** S27, ERR-19: a slot whose row vanished comes as `{}`; it must not clear the local slot. */
-    @Test
-    fun `a vanished reading bookmark entry does not clear the local slot`() = FakeSyncServer().use { server ->
-        Device(server).use { device ->
-            device.readingBookmarks.set(1, ReadingLocation.ayah(18, 10), t(0))
-            device.settle()
-            val posts = server.postBodies.size
-
-            Remote(server).vanish("READING_BOOKMARK", Remote(server).readingBookmarkId(1))
-            device.settle()
-
-            assertEquals(mapOf(1 to "18:10"), device.readingSlots())
-            assertEquals(posts, server.postBodies.size)
-        }
-    }
-
-    @Test
-    fun `a remote clear arrives as a cleared slot with its name`() = FakeSyncServer().use { server ->
-        Device(server).use { device ->
-            device.readingBookmarks.set(3, ReadingLocation.ayah(2, 255), t(0))
-            device.readingBookmarks.rename(3, "Kursi", t(1))
-            device.settle()
-
-            Remote(server).clearReadingBookmark(3, t(2))
-            device.settle()
-
-            assertEquals(mapOf(3 to "-"), device.readingSlots())
-            assertEquals("Kursi", device.readingBookmarks.readingBookmarks().single().name)
-        }
-    }
-
-    /** RB-06 (S13): a page from another mushaf keeps its mushafId, so the app can map it; nothing is pushed back. */
-    @Test
-    fun `a web page slot from another mushaf keeps its mushaf`() = FakeSyncServer().use { server ->
-        Device(server).use { device ->
-            Remote(server).setReadingPage(1, 300, mushafId = 7, updatedAt = t(0))
-
-            device.settle()
-
-            assertEquals(ReadingLocation.page(300, mushafId = 7), device.readingBookmarks.readingBookmarks().single().location)
-            assertEquals(0, server.postBodies.size)
         }
     }
 

@@ -5,8 +5,8 @@ import com.quran.shared.auth.model.AuthConfig
 import com.quran.shared.auth.model.AuthRuntimeConfig
 import com.quran.shared.auth.repository.AuthRepository
 import com.quran.shared.persistence.DriverFactory
-import com.quran.shared.persistence.QuranDatabase
-import com.quran.shared.persistence.createQuranDatabase
+import com.quran.shared.persistence.MobileSyncDatabase
+import com.quran.shared.persistence.MobileSyncSchema
 import com.quran.shared.pipeline.LogoutResult
 import com.quran.shared.pipeline.QuranDataService
 import com.quran.shared.pipeline.QuranDataServiceSynchronizationClientFactory
@@ -16,6 +16,7 @@ import com.quran.shared.pipeline.di.AppGraph
 import com.quran.shared.pipeline.integration.server.FakeSyncServer
 import com.quran.shared.pipeline.integration.server.RequestGate
 import com.quran.shared.pipeline.integration.server.RequestRecord
+import com.quran.shared.pipeline.sync.SyncClient
 import com.quran.shared.pipeline.storage.MobileSyncStorage
 import com.quran.shared.syncengine.SynchronizationEnvironment
 import com.quran.shared.syncengine.scheduling.FailureRetryingConfig
@@ -35,6 +36,7 @@ import org.publicvalue.multiplatform.oidc.tokenstore.SettingsTokenStore
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.milliseconds
+import java.util.Properties
 
 /**
  * Scheduler timings for a simulated device. By default nothing syncs on its own: app start, local
@@ -99,8 +101,9 @@ class SyncDevice internal constructor(
     val server: FakeSyncServer,
     private val timings: DeviceTimings
 ) {
-    private val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { QuranDatabase.Schema.create(it) }
-    private val database = createQuranDatabase(driver)
+    private val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY, Properties().apply { put("foreign_keys", "true") })
+        .also { MobileSyncSchema.create(it) }
+    private val database = MobileSyncDatabase(driver)
     private val storage = MobileSyncStorage(SettingsTokenStore(InMemorySettingsStore()), MapSettings().toFlowSettings())
 
     /** The OIDC boundary: choose the account, expire the session, rotate tokens, fail remote logout. */
@@ -227,7 +230,7 @@ class SyncDevice internal constructor(
  */
 @BindingContainer
 internal class DeviceBindings(
-    private val database: QuranDatabase,
+    private val database: MobileSyncDatabase,
     private val authRepository: FakeAuthRepository,
     private val timings: SchedulerTimings
 ) {
@@ -238,15 +241,15 @@ internal class DeviceBindings(
      * So Metro reports the `DriverFactory` graph input as unused for device graphs.
      */
     @Provides
-    fun database(): QuranDatabase = database
+    fun database(): MobileSyncDatabase = database
 
     @Provides
     fun authRepository(storage: MobileSyncStorage): AuthRepository = authRepository.useTokenStore(storage.tokenStore)
 
     @Provides
     fun synchronizationClientFactory(): QuranDataServiceSynchronizationClientFactory =
-        QuranDataServiceSynchronizationClientFactory { pipeline, environment, dates, auth, gate, callback, observer ->
-            pipeline.setup(environment, dates, auth, gate, callback, observer, schedulerTimings = timings)
+        QuranDataServiceSynchronizationClientFactory { environment, account, gate, observer ->
+            SyncClient.create(database.synced, environment, account, gate, observer, timings)
         }
 }
 

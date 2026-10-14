@@ -1,14 +1,11 @@
 package com.quran.shared.pipeline.integration
 
 import com.quran.shared.auth.model.AuthState
-import com.quran.shared.pipeline.SyncStatus
-import com.quran.shared.pipeline.integration.server.ErrorEnvelope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.nanoseconds
 import kotlin.time.Duration.Companion.seconds
@@ -48,22 +45,6 @@ class SyncHarnessPathsTest {
             hold.release.complete(Unit)
             logout.await()
         }
-    }
-
-    @Test
-    fun `the engine reads the bare backend error envelope`() = syncScenario {
-        server.errorEnvelope = ErrorEnvelope.BACKEND
-        val phone = device("phone")
-        phone.login(ALICE)
-        server.faults.rejectMutation(status = 422, code = "ValidationError") { it.resource == "NOTE" }
-
-        phone.data.addNote("Rejected for good", 1, 1, 1, 7)
-        val run = phone.syncNow()
-
-        val error = assertIs<SyncStatus.Failed>(run.status).error
-        assertEquals(422, error.httpStatus)
-        assertEquals("ValidationError", error.serverCode)
-        assertEquals(List(6) { 422 }, run.postStatuses)
     }
 
     private companion object {

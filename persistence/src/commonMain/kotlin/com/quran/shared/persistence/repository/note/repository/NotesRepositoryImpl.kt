@@ -1,31 +1,20 @@
 package com.quran.shared.persistence.repository.note.repository
 
 import app.cash.sqldelight.coroutines.asFlow
-import app.cash.sqldelight.coroutines.mapToList
 import co.touchlab.kermit.Logger
 import com.quran.shared.di.AppScope
-import com.quran.shared.mutations.LOCAL_MUTATION_ENTITY_FACET
-import com.quran.shared.mutations.LocalModelMutation
-import com.quran.shared.mutations.LocalMutationResource
-import com.quran.shared.mutations.Mutation
-import com.quran.shared.mutations.RemoteModelMutation
 import com.quran.shared.mutations.trimLikeServer
 import com.quran.shared.persistence.TextLengthField
-import com.quran.shared.persistence.requireServerTextLength
-import com.quran.shared.persistence.QuranDatabase
-import com.quran.shared.persistence.input.LocalSyncNote
-import com.quran.shared.persistence.input.RemoteNote
-import com.quran.shared.persistence.model.DatabaseNote
 import com.quran.shared.persistence.model.Note
-import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
-import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
-import com.quran.shared.persistence.repository.note.extension.toNote
-import com.quran.shared.persistence.repository.note.extension.toNoteMutation
+import com.quran.shared.persistence.repository.note.NoteStore
+import com.quran.shared.persistence.repository.note.StoredNote
+import com.quran.shared.persistence.requireServerTextLength
 import com.quran.shared.persistence.util.PlatformDateTime
-import com.quran.shared.persistence.util.currentEpochMilliseconds
 import com.quran.shared.persistence.util.currentPlatformDateTime
-import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toEpochMillisecondsFromPlatform
+import com.quran.shared.persistence.util.toPlatform
+import com.quran.shared.syncv2.db.SyncV2Database
+import com.quran.shared.syncv2.types.NoteRange
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.Dispatchers
@@ -33,36 +22,30 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import kotlin.native.HiddenFromObjC
+import kotlin.time.Instant
 
 @Inject
 @SingleIn(AppScope::class)
+@HiddenFromObjC
 class NotesRepositoryImpl(
-    private val database: QuranDatabase
-) : NotesRepository, NotesSynchronizationRepository {
+    private val database: SyncV2Database
+) : NotesRepository {
 
     private val logger = Logger.withTag("NotesRepository")
-    private val notesQueries = lazy { database.notesQueries }
+    private val store = NoteStore(database)
 
-    override suspend fun getAllNotes(): List<Note> {
-        return withContext(Dispatchers.IO) {
-            notesQueries.value.getNotes()
-                .executeAsList()
-                .map { it.toNote() }
+    override suspend fun getAllNotes(): List<Note> = withContext(Dispatchers.IO) {
+        store.active().map { it.toNote() }
+    }
+
+    override fun getNotesFlow(): Flow<List<Note>> =
+        database.notesQueries.active().asFlow().map {
+            withContext(Dispatchers.IO) { store.active().map { note -> note.toNote() } }
         }
-    }
 
-    override fun getNotesFlow(): Flow<List<Note>> {
-        return notesQueries.value.getNotes()
-            .asFlow()
-            .mapToList(Dispatchers.IO)
-            .map { list ->
-                list.map { it.toNote() }
-            }
-    }
-
-    override suspend fun addNote(body: String, startSura: Int, startAyah: Int, endSura: Int, endAyah: Int): Note {
-        return addNote(body, startSura, startAyah, endSura, endAyah, currentPlatformDateTime())
-    }
+    override suspend fun addNote(body: String, startSura: Int, startAyah: Int, endSura: Int, endAyah: Int): Note =
+        addNote(body, startSura, startAyah, endSura, endAyah, currentPlatformDateTime())
 
     override suspend fun addNote(
         body: String,
@@ -72,352 +55,57 @@ class NotesRepositoryImpl(
         endAyah: Int,
         timestamp: PlatformDateTime
     ): Note {
-        return addNoteWithTimestampMillis(
-            body,
-            startSura,
-            startAyah,
-            endSura,
-            endAyah,
-            timestamp.toEpochMillisecondsFromPlatform()
-        )
-    }
-
-    private suspend fun addNoteWithTimestampMillis(
-        body: String,
-        startSura: Int,
-        startAyah: Int,
-        endSura: Int,
-        endAyah: Int,
-        timestampMillis: Long
-    ): Note {
         logger.i { "Adding note for range=$startSura:$startAyah-$endSura:$endAyah" }
         requireServerTextLength(TextLengthField.NOTE_BODY, body)
+        val at = timestamp.toEpochMillisecondsFromPlatform()
         return withContext(Dispatchers.IO) {
-            var inserted: Note? = null
-            database.transaction {
-                notesQueries.value.addNewNote(
-                    note = body.trimLikeServer(),
-                    start_sura = startSura.toLong(),
-                    start_ayah = startAyah.toLong(),
-                    end_sura = endSura.toLong(),
-                    end_ayah = endAyah.toLong(),
-                    timestamp = timestampMillis
-                )
-                val record = notesQueries.value.getLastInsertedNote().executeAsOneOrNull()
-                requireNotNull(record) { "Expected note after insert." }
-                inserted = record.toNote()
+            database.transactionWithResult {
+                val localId = store.insert(body, listOf(NoteRange(startSura, startAyah, endSura, endAyah)), at)
+                requireNotNull(store.get(localId)) { "Expected note after insert." }.toNote()
             }
-            requireNotNull(inserted)
         }
     }
 
-    override suspend fun updateNote(
-        id: String,
-        body: String,
-        startSura: Int,
-        startAyah: Int,
-        endSura: Int,
-        endAyah: Int
-    ): Note {
-        return updateNote(id, body, startSura, startAyah, endSura, endAyah, currentPlatformDateTime())
-    }
+    override suspend fun updateNote(id: String, body: String): Note = updateNote(id, body, currentPlatformDateTime())
 
-    override suspend fun updateNote(
-        id: String,
-        body: String,
-        startSura: Int,
-        startAyah: Int,
-        endSura: Int,
-        endAyah: Int,
-        timestamp: PlatformDateTime
-    ): Note {
-        return updateNoteWithTimestampMillis(
-            id,
-            body,
-            startSura,
-            startAyah,
-            endSura,
-            endAyah,
-            timestamp.toEpochMillisecondsFromPlatform()
-        )
-    }
-
-    private suspend fun updateNoteWithTimestampMillis(
-        id: String,
-        body: String,
-        startSura: Int,
-        startAyah: Int,
-        endSura: Int,
-        endAyah: Int,
-        timestampMillis: Long
-    ): Note {
+    override suspend fun updateNote(id: String, body: String, timestamp: PlatformDateTime): Note {
         logger.i { "Updating note id=$id" }
+        val at = timestamp.toEpochMillisecondsFromPlatform()
         return withContext(Dispatchers.IO) {
-            val localId = id.toLong()
-            val trimmedBody = body.trimLikeServer()
-            // Only a changed body is checked, so a legacy note outside the limits can still have its range edited.
-            if (notesQueries.value.getNoteByLocalId(localId).executeAsOneOrNull()?.note != trimmedBody) {
-                requireServerTextLength(TextLengthField.NOTE_BODY, body)
+            database.transactionWithResult {
+                val localId = id.toLongOrNull()
+                val existing = localId?.let(store::get)
+                requireNotNull(existing) { "Expected note id=$id before update." }
+                // Only a changed body is checked, so a legacy note outside the limits can still be saved unchanged.
+                if (existing.body != body.trimLikeServer()) requireServerTextLength(TextLengthField.NOTE_BODY, body)
+                store.updateBody(existing.localId, body, at)
+                requireNotNull(store.get(existing.localId)) { "Expected note id=$id after update." }.toNote()
             }
-            notesQueries.value.updateNote(
-                note = trimmedBody,
-                start_sura = startSura.toLong(),
-                start_ayah = startAyah.toLong(),
-                end_sura = endSura.toLong(),
-                end_ayah = endAyah.toLong(),
-                id = localId,
-                timestamp = timestampMillis
-            )
-            val record = notesQueries.value.getNoteByLocalId(localId)
-                .executeAsOneOrNull()
-            requireNotNull(record) { "Expected note id=$id after update." }
-            record.toNote()
         }
     }
 
     override suspend fun deleteNote(id: String): Boolean {
         logger.i { "Deleting note id=$id" }
         return withContext(Dispatchers.IO) {
-            val timestampMillis = currentEpochMilliseconds()
-            var deleted = false
-            database.transaction {
-                val localId = id.toLong()
-                val note = notesQueries.value.getNoteByLocalId(localId).executeAsOneOrNull()
-                if (note?.deleted != 0L) {
-                    return@transaction
-                }
-                notesQueries.value.deleteNote(
-                    id = localId,
-                    timestamp = timestampMillis
-                )
-                deleted = true
-            }
-            deleted
-        }
-    }
-
-    override suspend fun fetchMutatedNotes(lastModified: Long): List<LocalModelMutation<LocalSyncNote>> {
-        return withContext(Dispatchers.IO) {
-            notesQueries.value.getUnsyncedNotes()
-                .executeAsList()
-                .map { it.toNoteMutation() }
-        }
-    }
-
-    override suspend fun applyRemoteChanges(
-        updatesToPersist: List<RemoteModelMutation<RemoteNote>>,
-        localMutationsToClear: List<LocalModelMutation<LocalSyncNote>>,
-        writeBoundaryGuard: PersistenceWriteBoundaryGuard
-    ) {
-        logger.i {
-            "Applying note remote changes with ${updatesToPersist.size} updates " +
-                "and clearing ${localMutationsToClear.size} local mutations"
-        }
-        return withContext(Dispatchers.IO) {
-            writeBoundaryGuard.checkWriteBoundary()
-            database.transaction {
-                localMutationsToClear.forEach { local ->
-                    if (local.mutation != Mutation.CREATED && ackMatchesCurrentRow(local)) {
-                        clearLocalMutation(local)
-                    }
-                }
-
-                updatesToPersist.forEach { remote ->
-                    when (remote.mutation) {
-                        Mutation.CREATED, Mutation.MODIFIED -> applyRemoteNoteUpsert(
-                            remote = remote
-                        )
-                        Mutation.DELETED -> applyRemoteNoteDeletion(remote)
-                    }
-                }
+            database.transactionWithResult {
+                val note = id.toLongOrNull()?.let(store::get) ?: return@transactionWithResult false
+                store.delete(note.localId)
+                true
             }
         }
     }
+}
 
-    private fun applyRemoteNoteUpsert(remote: RemoteModelMutation<RemoteNote>) {
-        val model = remote.model
-        val body = model.body
-        val startSura = model.startSura
-        val startAyah = model.startAyah
-        val endSura = model.endSura
-        val endAyah = model.endAyah
-        if (body.isNullOrEmpty() || startSura == null || startAyah == null || endSura == null || endAyah == null) {
-            logger.w { "Skipping remote note mutation without body or ranges: remoteId=${remote.remoteID}" }
-            return
-        }
-
-        val updatedAt = model.lastUpdated.fromPlatform().toEpochMilliseconds()
-        val createdAt = model.createdAt?.fromPlatform()?.toEpochMilliseconds() ?: updatedAt
-        val existing = notesQueries.value.getNoteByRemoteId(remote.remoteID)
-            .executeAsOneOrNull()
-        if (existing?.hasPendingLocalMutation() == true) {
-            logger.i { "Skipping remote note upsert for pending local row: remoteId=${remote.remoteID}" }
-            return
-        }
-        if (remote.mutation == Mutation.CREATED && existing == null) {
-            val createdAck = remote.createdAckOrNull()
-            if (createdAck != null && attachRemoteIdForCreatedAck(remote, createdAck, updatedAt)) {
-                return
-            }
-            if (attachRemoteIdForSemanticReplay(remote, updatedAt)) {
-                return
-            }
-        }
-        notesQueries.value.persistRemoteNote(
-            remote_id = remote.remoteID,
-            note = body.trimLikeServer(),
-            start_sura = startSura.toLong(),
-            start_ayah = startAyah.toLong(),
-            end_sura = endSura.toLong(),
-            end_ayah = endAyah.toLong(),
-            created_at = createdAt,
-            modified_at = updatedAt
-        )
-    }
-
-    private fun applyRemoteNoteDeletion(remote: RemoteModelMutation<RemoteNote>) {
-        val row = notesQueries.value.getNoteByRemoteId(remote.remoteID)
-            .executeAsOneOrNull()
-        if (row?.hasPendingLocalMutation() == true) {
-            logger.i { "Skipping remote note deletion for pending local row: remoteId=${remote.remoteID}" }
-            return
-        }
-        notesQueries.value.deleteRemoteNote(remote_id = remote.remoteID)
-    }
-
-    override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> {
-        return buildRemoteResourceExistenceMap(remoteIDs) { chunk ->
-            notesQueries.value.checkRemoteIDsExistence(chunk)
-                .executeAsList()
-                .mapNotNull { it.remote_id }
-        }
-    }
-
-    private fun attachRemoteIdForCreatedAck(
-        remote: RemoteModelMutation<RemoteNote>,
-        ack: CreatedNoteAck,
-        updatedAt: Long
-    ): Boolean {
-        val row = notesQueries.value.getNoteByLocalId(ack.localId)
-            .executeAsOneOrNull()
-        if (row?.remote_id != null) {
-            return false
-        }
-        notesQueries.value.attachRemoteNoteIdForCreatedAck(
-            local_id = ack.localId,
-            remote_id = remote.remoteID,
-            pending_version = ack.pendingVersion,
-            modified_at = updatedAt
-        )
-        val attached = notesQueries.value.getNoteByLocalId(ack.localId)
-            .executeAsOneOrNull()
-        return attached?.remote_id == remote.remoteID
-    }
-
-    private fun attachRemoteIdForSemanticReplay(
-        remote: RemoteModelMutation<RemoteNote>,
-        updatedAt: Long
-    ): Boolean {
-        val model = remote.model
-        if (!model.semanticReplayEligible) {
-            return false
-        }
-        val body = model.body?.trimLikeServer() ?: return false
-        val startSura = model.startSura ?: return false
-        val startAyah = model.startAyah ?: return false
-        val endSura = model.endSura ?: return false
-        val endAyah = model.endAyah ?: return false
-        val activeCandidates = notesQueries.value.getPendingActiveCreatedNotesByContent(
-            note = body,
-            start_sura = startSura.toLong(),
-            start_ayah = startAyah.toLong(),
-            end_sura = endSura.toLong(),
-            end_ayah = endAyah.toLong()
-        ).executeAsList()
-        val deletedCandidates = notesQueries.value.getPendingDeletedCreatedNotesByContent(
-            note = body,
-            start_sura = startSura.toLong(),
-            start_ayah = startAyah.toLong(),
-            end_sura = endSura.toLong(),
-            end_ayah = endAyah.toLong()
-        ).executeAsList()
-        val candidates = activeCandidates + deletedCandidates
-        if (candidates.size != 1) {
-            return false
-        }
-        return attachRemoteIdForSemanticReplay(remote, candidates.single(), updatedAt)
-    }
-
-    private fun attachRemoteIdForSemanticReplay(
-        remote: RemoteModelMutation<RemoteNote>,
-        row: DatabaseNote,
-        updatedAt: Long
-    ): Boolean {
-        if (row.remote_id != null || row.pendingMutation() != Mutation.CREATED) {
-            return false
-        }
-        notesQueries.value.attachRemoteNoteIdForSemanticReplay(
-            local_id = row.local_id,
-            remote_id = remote.remoteID,
-            modified_at = updatedAt
-        )
-        val attached = notesQueries.value.getNoteByLocalId(row.local_id)
-            .executeAsOneOrNull()
-        return attached?.remote_id == remote.remoteID
-    }
-
-    private fun clearLocalMutation(local: LocalModelMutation<LocalSyncNote>) {
-        val ack = local.ack ?: return
-        notesQueries.value.clearLocalMutationFor(
-            id = local.localID.toLong(),
-            modified_at = local.model.lastUpdated.fromPlatform().toEpochMilliseconds(),
-            pending_version = ack.observedPendingVersion,
-            pending_op = ack.observedPendingOp.name
-        )
-    }
-
-    private fun ackMatchesCurrentRow(local: LocalModelMutation<LocalSyncNote>): Boolean {
-        val ack = local.ack ?: return false
-        if (ack.localID != local.localID ||
-            ack.resource != LocalMutationResource.NOTE ||
-            ack.facet != LOCAL_MUTATION_ENTITY_FACET ||
-            ack.observedPendingOp != local.mutation) {
-            return false
-        }
-        val row = notesQueries.value.getNoteByLocalId(local.localID.toLong())
-            .executeAsOneOrNull()
-            ?: return false
-        return row.pending_version == ack.observedPendingVersion &&
-            row.pendingMutation() == ack.observedPendingOp
-    }
-
-    private fun DatabaseNote.pendingMutation(): Mutation? {
-        return when {
-            remote_id == null -> Mutation.CREATED
-            deleted == 1L -> Mutation.DELETED
-            is_edited == 1L -> Mutation.MODIFIED
-            else -> null
-        }
-    }
-
-    private fun DatabaseNote.hasPendingLocalMutation(): Boolean = pendingMutation() != null
-
-    private fun RemoteModelMutation<RemoteNote>.createdAckOrNull(): CreatedNoteAck? {
-        val ack = ack ?: return null
-        if (mutation != Mutation.CREATED ||
-            ack.resource != LocalMutationResource.NOTE ||
-            ack.facet != LOCAL_MUTATION_ENTITY_FACET ||
-            ack.observedPendingOp != Mutation.CREATED) {
-            return null
-        }
-        return CreatedNoteAck(
-            localId = ack.localID.toLong(),
-            pendingVersion = ack.observedPendingVersion
-        )
-    }
-
-    private data class CreatedNoteAck(
-        val localId: Long,
-        val pendingVersion: Long
+/** The app-facing note shows its first range (a note created on the web may have more; all are kept). */
+internal fun StoredNote.toNote(): Note {
+    val range = ranges.first()
+    return Note(
+        body = body,
+        startSura = range.startSura,
+        startAyah = range.startAyah,
+        endSura = range.endSura,
+        endAyah = range.endAyah,
+        lastUpdated = Instant.fromEpochMilliseconds(updatedAt).toPlatform(),
+        id = localId.toString()
     )
 }

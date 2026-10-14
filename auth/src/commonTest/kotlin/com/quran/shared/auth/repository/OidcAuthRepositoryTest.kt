@@ -2266,7 +2266,7 @@ class OidcAuthRepositoryTest {
         }
 }
 
-private fun oidcRepository(
+internal fun oidcRepository(
     storage: AuthStorage,
     oidcClient: OpenIdConnectClient = BlockingRefreshOidcClient(
         refreshResponse = AccessTokenResponse(
@@ -2499,7 +2499,7 @@ private class FailingSettings(
     override suspend fun getBooleanOrNull(key: String): Boolean? = delegate.getBooleanOrNull(key)
 }
 
-private class BlockingRefreshOidcClient(
+internal class BlockingRefreshOidcClient(
     private val refreshResponse: AccessTokenResponse,
     private val refreshFailure: Exception? = null,
     private val revokeFailure: Exception? = null
@@ -2573,7 +2573,7 @@ private class BlockingRefreshOidcClient(
 }
 
 @Suppress("OVERRIDE_DEPRECATION")
-private class RecordingTokenStore(
+internal class RecordingTokenStore(
     accessToken: String? = null,
     refreshToken: String? = null,
     idToken: String? = null,

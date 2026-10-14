@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 
 interface NotesRepository {
     /**
-     * Fetch and returns all notes.
+     * Fetch and returns all notes, except the ones archived on QuranReflect.
      */
     suspend fun getAllNotes(): List<Note>
 
@@ -25,19 +25,13 @@ interface NotesRepository {
     ): Note
 
     /**
-     * Update a note by its mobile-sync ID.
+     * Updates a note's body by its mobile-sync ID. A note's verse ranges never change, as on the server.
+     *
+     * @throws IllegalArgumentException when [id] does not identify a note.
      */
-    suspend fun updateNote(id: String, body: String, startSura: Int, startAyah: Int, endSura: Int, endAyah: Int): Note
+    suspend fun updateNote(id: String, body: String): Note
 
-    suspend fun updateNote(
-        id: String,
-        body: String,
-        startSura: Int,
-        startAyah: Int,
-        endSura: Int,
-        endAyah: Int,
-        timestamp: PlatformDateTime
-    ): Note
+    suspend fun updateNote(id: String, body: String, timestamp: PlatformDateTime): Note
 
     /**
      * Delete a note by its mobile-sync ID.

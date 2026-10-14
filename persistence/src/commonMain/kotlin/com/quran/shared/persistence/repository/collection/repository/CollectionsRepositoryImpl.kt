@@ -1,34 +1,21 @@
 package com.quran.shared.persistence.repository.collection.repository
 
 import app.cash.sqldelight.coroutines.asFlow
-import app.cash.sqldelight.coroutines.mapToList
 import co.touchlab.kermit.Logger
 import com.quran.shared.di.AppScope
-import com.quran.shared.mutations.LOCAL_MUTATION_ENTITY_FACET
-import com.quran.shared.mutations.LocalModelMutation
-import com.quran.shared.mutations.LocalMutationResource
-import com.quran.shared.mutations.Mutation
-import com.quran.shared.mutations.RemoteModelMutation
-import com.quran.shared.persistence.QuranDatabase
+import com.quran.shared.persistence.DuplicateCollectionNameException
+import com.quran.shared.persistence.ReadOnlyCollectionException
 import com.quran.shared.persistence.TextLengthField
-import com.quran.shared.persistence.input.LocalSyncCollection
-import com.quran.shared.persistence.input.RemoteCollection
 import com.quran.shared.persistence.model.Collection
-import com.quran.shared.persistence.model.CollectionName
-import com.quran.shared.persistence.model.DatabaseCollection
 import com.quran.shared.persistence.model.isSystemCollectionName
-import com.quran.shared.persistence.repository.PersistenceWriteBoundaryGuard
-import com.quran.shared.persistence.repository.buildRemoteResourceExistenceMap
-import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
 import com.quran.shared.persistence.repository.collection.CollectionStore
-import com.quran.shared.persistence.repository.collection.extension.toCollection
-import com.quran.shared.persistence.repository.collection.extension.toCollectionMutation
+import com.quran.shared.persistence.repository.collection.isHighlight
 import com.quran.shared.persistence.requireServerTextLength
 import com.quran.shared.persistence.util.PlatformDateTime
-import com.quran.shared.persistence.util.currentEpochMilliseconds
 import com.quran.shared.persistence.util.currentPlatformDateTime
-import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.persistence.util.toEpochMillisecondsFromPlatform
+import com.quran.shared.persistence.util.toPlatform
+import com.quran.shared.syncv2.db.SyncV2Database
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.Dispatchers
@@ -36,416 +23,93 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import kotlin.native.HiddenFromObjC
+import kotlin.time.Instant
+import com.quran.shared.syncv2.db.Collection as CollectionRow
 
 @Inject
 @SingleIn(AppScope::class)
+@HiddenFromObjC
 class CollectionsRepositoryImpl(
-    private val database: QuranDatabase,
-    private val reconciler: BookmarkDependencyReconciler = BookmarkDependencyReconciler(database)
-) : CollectionsRepository, CollectionsSynchronizationRepository {
+    private val database: SyncV2Database
+) : CollectionsRepository {
 
     private val logger = Logger.withTag("CollectionsRepository")
-    private val collectionQueries = lazy { database.collectionsQueries }
-    private val bookmarkCollectionQueries = lazy { database.bookmark_collectionsQueries }
     private val store = CollectionStore(database)
 
-    override suspend fun getAllCollections(): List<Collection> {
-        return withContext(Dispatchers.IO) {
-            collectionQueries.value.getCollections()
-                .executeAsList()
-                .map { it.toCollection() }
+    override suspend fun getAllCollections(): List<Collection> = withContext(Dispatchers.IO) {
+        store.newestFirst().map { it.toCollection() }
+    }
+
+    override fun getCollectionsFlow(): Flow<List<Collection>> =
+        database.collectionsQueries.collectionsNewestFirst().asFlow().map {
+            withContext(Dispatchers.IO) { store.newestFirst().map { row -> row.toCollection() } }
         }
-    }
 
-    override fun getCollectionsFlow(): Flow<List<Collection>> {
-        return collectionQueries.value.getCollections()
-            .asFlow()
-            .mapToList(Dispatchers.IO)
-            .map { list ->
-                list.map { it.toCollection() }
-            }
-    }
+    override suspend fun addCollection(name: String): Collection = addCollection(name, currentPlatformDateTime())
 
-    override suspend fun addCollection(name: String): Collection {
-        return addCollection(name, currentPlatformDateTime())
-    }
-
+    /** Adding a name that is taken (trimmed, case-insensitive) returns the existing collection. */
     override suspend fun addCollection(name: String, timestamp: PlatformDateTime): Collection {
-        return addCollectionWithTimestampMillis(name, timestamp.toEpochMillisecondsFromPlatform())
-    }
-
-    private suspend fun addCollectionWithTimestampMillis(name: String, timestampMillis: Long): Collection {
         logger.i { "Adding collection with name=$name" }
+        require(!isSystemCollectionName(name)) { "System collection name is reserved: $name." }
+        requireServerTextLength(TextLengthField.COLLECTION_NAME, name)
+        val at = timestamp.toEpochMillisecondsFromPlatform()
         return withContext(Dispatchers.IO) {
-            store.add(name, timestampMillis).toCollection()
+            database.transactionWithResult {
+                val localId = store.byName(name)?.local_id ?: store.insertUser(name, at)
+                requireNotNull(store.get(localId)).toCollection()
+            }
         }
     }
 
-    override suspend fun updateCollection(id: String, name: String): Collection {
-        return updateCollection(id, name, currentPlatformDateTime())
-    }
+    override suspend fun updateCollection(id: String, name: String): Collection =
+        updateCollection(id, name, currentPlatformDateTime())
 
     override suspend fun updateCollection(id: String, name: String, timestamp: PlatformDateTime): Collection {
-        return updateCollectionWithTimestampMillis(id, name, timestamp.toEpochMillisecondsFromPlatform())
-    }
-
-    private suspend fun updateCollectionWithTimestampMillis(
-        id: String,
-        name: String,
-        timestampMillis: Long
-    ): Collection {
         logger.i { "Updating collection id=$id with name=$name" }
+        val at = timestamp.toEpochMillisecondsFromPlatform()
         return withContext(Dispatchers.IO) {
-            val localId = id.toLong()
-            var updatedCollection: Collection? = null
-
-            database.transaction {
-                val existing = collectionQueries.value.getCollectionByLocalId(localId)
-                    .executeAsOneOrNull()
-                require(existing?.deleted == 0L) {
+            database.transactionWithResult {
+                val existing = requireNotNull(id.toLongOrNull()?.let(store::get)) {
                     "Expected active collection id=$id before update."
                 }
-                require(existing.is_system == 0L) {
-                    "System collections cannot be renamed."
-                }
-                require(!isSystemCollectionName(name)) {
-                    "System collection name is reserved: $name."
-                }
+                if (existing.isReadOnly) throw ReadOnlyCollectionException(id)
+                require(!isSystemCollectionName(name)) { "System collection name is reserved: $name." }
                 requireServerTextLength(TextLengthField.COLLECTION_NAME, name)
-
-                val collectionName = CollectionName.of(name)
-                collectionQueries.value.updateCollectionName(
-                    name = collectionName,
-                    name_key = collectionName.key,
-                    id = localId,
-                    timestamp = timestampMillis
-                )
-                val record = requireNotNull(
-                    collectionQueries.value.getCollectionByLocalId(localId)
-                        .executeAsOneOrNull()
-                ) { "Expected collection id=$id after update." }
-                require(record.deleted == 0L) { "Expected active collection id=$id after update." }
-                updatedCollection = record.toCollection()
+                store.byName(name)?.takeIf { it.local_id != existing.local_id }?.let {
+                    throw DuplicateCollectionNameException(it.name)
+                }
+                store.rename(existing, name, at)
+                requireNotNull(store.get(existing.local_id)).toCollection()
             }
-
-            requireNotNull(updatedCollection)
         }
     }
 
     override suspend fun deleteCollection(id: String): Boolean {
         logger.i { "Deleting collection id=$id" }
         return withContext(Dispatchers.IO) {
-            val timestampMillis = currentEpochMilliseconds()
-            var deleted = false
-            database.transaction {
-                val localId = id.toLong()
-                val collection = collectionQueries.value.getCollectionByLocalId(localId).executeAsOneOrNull()
-                if (collection?.deleted != 0L) {
-                    return@transaction
-                }
-                require(collection.is_system == 0L) {
-                    "System collections cannot be deleted."
-                }
-                collectionQueries.value.deleteCollection(
-                    id = localId,
-                    timestamp = timestampMillis
-                )
-                reconciler.reconcile(timestampMillis)
-                deleted = true
-            }
-            deleted
-        }
-    }
-
-    override suspend fun fetchMutatedCollections(): List<LocalModelMutation<LocalSyncCollection>> {
-        return withContext(Dispatchers.IO) {
-            collectionQueries.value.getUnsyncedCollections()
-                .executeAsList()
-                .map { it.toCollectionMutation() }
-        }
-    }
-
-    override suspend fun applyRemoteChanges(
-        updatesToPersist: List<RemoteModelMutation<RemoteCollection>>,
-        localMutationsToClear: List<LocalModelMutation<LocalSyncCollection>>,
-        writeBoundaryGuard: PersistenceWriteBoundaryGuard
-    ) {
-        logger.i {
-            "Applying collection remote changes with ${updatesToPersist.size} updates " +
-                    "and clearing ${localMutationsToClear.size} local mutations"
-        }
-        return withContext(Dispatchers.IO) {
-            writeBoundaryGuard.checkWriteBoundary()
-            database.transaction {
-                localMutationsToClear.forEach { local ->
-                    if (local.mutation != Mutation.CREATED && ackMatchesCurrentRow(local)) {
-                        clearLocalMutation(local)
-                    }
-                }
-
-                updatesToPersist.forEach { remote ->
-                    when (remote.mutation) {
-                        Mutation.CREATED, Mutation.MODIFIED -> applyRemoteCollectionUpsert(remote)
-                        Mutation.DELETED -> applyRemoteCollectionDeletion(remote)
-                    }
-                }
-                reconciler.reconcile()
+            database.transactionWithResult {
+                val existing = id.toLongOrNull()?.let(store::get) ?: return@transactionWithResult false
+                if (existing.isReadOnly) throw ReadOnlyCollectionException(id)
+                store.delete(existing.local_id)
+                true
             }
         }
     }
-
-    private fun applyRemoteCollectionUpsert(remote: RemoteModelMutation<RemoteCollection>) {
-        val remoteName = remote.model.name
-        if (remoteName.isNullOrEmpty()) {
-            logger.w { "Skipping remote collection mutation without name: remoteId=${remote.remoteID}" }
-            return
-        }
-        val name = CollectionName.of(remoteName)
-
-        val updatedAt = remote.model.lastUpdated.fromPlatform().toEpochMilliseconds()
-        val createdAt = remote.model.createdAt?.fromPlatform()?.toEpochMilliseconds() ?: updatedAt
-        val existingByRemote = collectionQueries.value.getCollectionByRemoteId(remote.remoteID)
-            .executeAsOneOrNull()
-
-        if (existingByRemote != null) {
-            if (existingByRemote.hasPendingLocalMutation()) {
-                logger.i { "Skipping remote collection upsert for pending local row: remoteId=${remote.remoteID}" }
-                return
-            }
-            collectionQueries.value.updateRemoteCollection(
-                remote_id = remote.remoteID,
-                name = name,
-                name_key = name.key,
-                modified_at = updatedAt,
-                is_default = remote.model.isDefault.toLong(),
-                is_system = remote.model.isSystem.toLong()
-            )
-            return
-        }
-
-        if (remote.model.isDefault && attachRemoteIdToSeededDefault(remote, name, updatedAt)) {
-            return
-        }
-
-        if (remote.mutation == Mutation.CREATED) {
-            val createdAck = remote.createdAckOrNull()
-            if (createdAck != null && attachRemoteIdForCreatedAck(remote, createdAck, updatedAt)) {
-                return
-            }
-        }
-
-        if (attachRemoteIdForSemanticReplay(remote, name, updatedAt)) {
-            return
-        }
-
-        val existingByName = collectionQueries.value.getCollectionByName(name.key)
-            .executeAsOneOrNull()
-        if (existingByName != null) {
-            logger.i {
-                "Skipping remote collection upsert with colliding name: " +
-                    "remoteId=${remote.remoteID}, localId=${existingByName.local_id}"
-            }
-        } else {
-            collectionQueries.value.persistRemoteCollection(
-                remote_id = remote.remoteID,
-                name = name,
-                name_key = name.key,
-                created_at = createdAt,
-                modified_at = updatedAt,
-                is_default = remote.model.isDefault.toLong(),
-                is_system = remote.model.isSystem.toLong()
-            )
-        }
-    }
-
-    private fun applyRemoteCollectionDeletion(remote: RemoteModelMutation<RemoteCollection>) {
-        val existing = collectionQueries.value.getCollectionByRemoteId(remote.remoteID)
-            .executeAsOneOrNull()
-        if (existing?.is_system == 1L) {
-            logger.i { "Skipping remote deletion for system collection: remoteId=${remote.remoteID}" }
-            return
-        }
-        if (existing?.hasPendingLocalMutation() == true) {
-            logger.i { "Skipping remote collection deletion for pending local row: remoteId=${remote.remoteID}" }
-            return
-        }
-        val affectedBookmarkLocalIds = bookmarkCollectionQueries.value
-            .getBookmarkLocalIdsForCollectionRemoteId(remote.remoteID)
-            .executeAsList()
-        collectionQueries.value.deleteRemoteCollection(remote_id = remote.remoteID)
-        affectedBookmarkLocalIds.forEach { bookmarkLocalId ->
-            reconciler.pruneBookmarkIfOrphan(bookmarkLocalId)
-        }
-    }
-
-    override suspend fun remoteResourcesExist(remoteIDs: List<String>): Map<String, Boolean> {
-        return buildRemoteResourceExistenceMap(remoteIDs) { chunk ->
-            collectionQueries.value.checkRemoteIDsExistence(chunk)
-                .executeAsList()
-                .mapNotNull { it.remote_id }
-        }
-    }
-
-    private fun attachRemoteIdForCreatedAck(
-        remote: RemoteModelMutation<RemoteCollection>,
-        ack: CreatedCollectionAck,
-        updatedAt: Long
-    ): Boolean {
-        val row = collectionQueries.value.getCollectionByLocalId(ack.localId)
-            .executeAsOneOrNull()
-        if (row?.remote_id != null) {
-            return false
-        }
-        collectionQueries.value.attachRemoteCollectionIdForCreatedAck(
-            local_id = ack.localId,
-            remote_id = remote.remoteID,
-            pending_version = ack.pendingVersion,
-            modified_at = updatedAt,
-            is_default = remote.model.isDefault.toLong(),
-            is_system = remote.model.isSystem.toLong()
-        )
-        val attached = collectionQueries.value.getCollectionByLocalId(ack.localId)
-            .executeAsOneOrNull()
-        return attached?.remote_id == remote.remoteID
-    }
-
-    private fun attachRemoteIdToSeededDefault(
-        remote: RemoteModelMutation<RemoteCollection>,
-        name: CollectionName,
-        updatedAt: Long
-    ): Boolean {
-        val row = collectionQueries.value.getDefaultCollection().executeAsOneOrNull()
-        if (row == null || row.remote_id != null) {
-            return false
-        }
-        collectionQueries.value.attachRemoteCollectionIdForSemanticReplay(
-            local_id = row.local_id,
-            remote_id = remote.remoteID,
-            name = name,
-            name_key = name.key,
-            modified_at = updatedAt,
-            is_default = 1L,
-            is_system = remote.model.isSystem.toLong()
-        )
-        return collectionQueries.value.getCollectionByLocalId(row.local_id)
-            .executeAsOneOrNull()
-            ?.remote_id == remote.remoteID
-    }
-
-    private fun attachRemoteIdForSemanticReplay(
-        remote: RemoteModelMutation<RemoteCollection>,
-        name: CollectionName,
-        updatedAt: Long
-    ): Boolean {
-        // Only a create may bind a deleted row; binding an update would push a delete of the remote collection.
-        if (remote.mutation == Mutation.CREATED) {
-            val deletedCandidates = collectionQueries.value.getPendingDeletedCreatedCollectionsByName(name.key)
-                .executeAsList()
-            if (deletedCandidates.size > 1) {
-                throw IllegalStateException(
-                    "Ambiguous deleted collection semantic replay candidates for remoteId=${remote.remoteID}"
-                )
-            }
-            if (deletedCandidates.size == 1) {
-                return attachRemoteIdForSemanticReplay(remote, name, deletedCandidates.single(), updatedAt)
-            }
-        }
-
-        val activeCandidates = collectionQueries.value.getPendingActiveCreatedCollectionsByName(name.key)
-            .executeAsList()
-        if (activeCandidates.size != 1) {
-            return false
-        }
-        return attachRemoteIdForSemanticReplay(remote, name, activeCandidates.single(), updatedAt)
-    }
-
-    private fun attachRemoteIdForSemanticReplay(
-        remote: RemoteModelMutation<RemoteCollection>,
-        name: CollectionName,
-        row: DatabaseCollection,
-        updatedAt: Long
-    ): Boolean {
-        if (row.remote_id != null || row.pendingMutation() != Mutation.CREATED) {
-            return false
-        }
-        collectionQueries.value.attachRemoteCollectionIdForSemanticReplay(
-            local_id = row.local_id,
-            remote_id = remote.remoteID,
-            name = name,
-            name_key = name.key,
-            modified_at = updatedAt,
-            is_default = remote.model.isDefault.toLong(),
-            is_system = remote.model.isSystem.toLong()
-        )
-        val attached = collectionQueries.value.getCollectionByLocalId(row.local_id)
-            .executeAsOneOrNull()
-        return attached?.remote_id == remote.remoteID
-    }
-
-    private fun clearLocalMutation(local: LocalModelMutation<LocalSyncCollection>) {
-        val ack = local.ack ?: return
-        val affectedBookmarkLocalIds = if (local.mutation == Mutation.DELETED && local.remoteID != null) {
-            bookmarkCollectionQueries.value
-                .getBookmarkLocalIdsForCollectionRemoteId(local.remoteID)
-                .executeAsList()
-        } else {
-            emptyList()
-        }
-        collectionQueries.value.clearLocalMutationFor(
-            id = local.localID.toLong(),
-            modified_at = local.model.lastUpdated.fromPlatform().toEpochMilliseconds(),
-            pending_version = ack.observedPendingVersion,
-            pending_op = ack.observedPendingOp.name
-        )
-        affectedBookmarkLocalIds.forEach { bookmarkLocalId ->
-            reconciler.pruneBookmarkIfOrphan(bookmarkLocalId)
-        }
-    }
-
-    private fun ackMatchesCurrentRow(local: LocalModelMutation<LocalSyncCollection>): Boolean {
-        val ack = local.ack ?: return false
-        if (ack.localID != local.localID ||
-            ack.resource != LocalMutationResource.COLLECTION ||
-            ack.facet != LOCAL_MUTATION_ENTITY_FACET ||
-            ack.observedPendingOp != local.mutation) {
-            return false
-        }
-        val row = collectionQueries.value.getCollectionByLocalId(local.localID.toLong())
-            .executeAsOneOrNull()
-            ?: return false
-        return row.pending_version == ack.observedPendingVersion &&
-            row.pendingMutation() == ack.observedPendingOp
-    }
-
-    private fun DatabaseCollection.pendingMutation(): Mutation? {
-        return when {
-            remote_id == null -> Mutation.CREATED
-            deleted == 1L -> Mutation.DELETED
-            is_edited == 1L -> Mutation.MODIFIED
-            else -> null
-        }
-    }
-
-    private fun RemoteModelMutation<RemoteCollection>.createdAckOrNull(): CreatedCollectionAck? {
-        val ack = ack ?: return null
-        if (mutation != Mutation.CREATED ||
-            ack.resource != LocalMutationResource.COLLECTION ||
-            ack.facet != LOCAL_MUTATION_ENTITY_FACET ||
-            ack.observedPendingOp != Mutation.CREATED) {
-            return null
-        }
-        return CreatedCollectionAck(
-            localId = ack.localID.toLong(),
-            pendingVersion = ack.observedPendingVersion
-        )
-    }
-
-    private fun DatabaseCollection.hasPendingLocalMutation(): Boolean = pendingMutation() != null
-
-    private fun Boolean.toLong(): Long = if (this) 1L else 0L
-
-    private data class CreatedCollectionAck(
-        val localId: Long,
-        val pendingVersion: Long
-    )
 }
+
+/** Favorites, highlights and the server's system collections are system collections; app-facing lists hide them. */
+internal val CollectionRow.isSystemCollection: Boolean get() = is_default == 1L || is_system == 1L || isHighlight
+
+/** No rename or delete: system collections and the older apps' protected color collections. */
+internal val CollectionRow.isReadOnly: Boolean get() = isSystemCollection || is_read_only == 1L
+
+internal fun CollectionRow.toCollection(): Collection = Collection(
+    name = name,
+    lastUpdated = Instant.fromEpochMilliseconds(updated_at).toPlatform(),
+    id = local_id.toString(),
+    isDefault = is_default == 1L,
+    isSystem = isSystemCollection,
+    isReadOnly = isReadOnly
+)
+

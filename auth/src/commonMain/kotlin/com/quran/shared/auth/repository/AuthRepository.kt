@@ -65,6 +65,14 @@ interface AuthRepository {
     suspend fun refreshTokensIfNeeded(): Boolean
 
     /**
+     * Refreshes the access token now, even if it has not expired locally: the server rejected it (a revocation,
+     * or a device clock behind the server's).
+     * @return true if a new token is stored; false if the session ended (the refresh token was refused) or there is none.
+     * @throws Exception when the refresh failed for a transient reason (network, server error); the session is kept.
+     */
+    suspend fun forceRefreshTokens(): Boolean = refreshTokensIfNeeded()
+
+    /**
      * Revokes current tokens and clears all local authentication data.
      */
     suspend fun logout()

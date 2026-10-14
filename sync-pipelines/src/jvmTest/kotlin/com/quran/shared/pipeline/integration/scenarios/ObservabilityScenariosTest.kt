@@ -5,7 +5,7 @@ import com.quran.shared.persistence.TextLengthField
 import com.quran.shared.persistence.TextLengthLimitException
 import com.quran.shared.pipeline.SyncStatus
 import com.quran.shared.pipeline.integration.assertSucceeded
-import com.quran.shared.pipeline.integration.server.text
+import com.quran.shared.pipeline.integration.server.ServerFaults
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -37,7 +37,7 @@ class ObservabilityScenariosTest {
             assertFailsWith<TextLengthLimitException> { phone.data.addNote("short", 1, 1, 1, 1) },
             assertFailsWith<TextLengthLimitException> { phone.data.addNote("x".repeat(10_001), 1, 1, 1, 1) },
             assertFailsWith<TextLengthLimitException> {
-                phone.data.updateNote(phone.note("A note to edit later").id, "<".repeat(2_501), 2, 255, 2, 255)
+                phone.data.updateNote(phone.note("A note to edit later").id, "<".repeat(2_501))
             },
             assertFailsWith<TextLengthLimitException> { phone.data.addCollection(" ") },
             assertFailsWith<TextLengthLimitException> { phone.data.updateCollection(study.id, "y".repeat(256)) }
@@ -62,7 +62,8 @@ class ObservabilityScenariosTest {
     @Test
     fun `OBS-02 a permanently failing sync is reported once through the public API`() = syncScenario {
         val (phone) = signedIn("phone")
-        server.faults.rejectMutation { it.resource == "NOTE" && it.data?.text("body") == "Rejected on every attempt" }
+        // A rejected mutation is held and doesn't fail the run; a POST that always fails still does.
+        server.faults.failRequests(times = ServerFaults.ALWAYS, status = 503, code = "ServiceUnavailableError")
         phone.data.addNote("Rejected on every attempt", 2, 255, 2, 255)
         phone.data.addCollection("Study")
         phone.data.addReadingSession(18, 1)
@@ -83,7 +84,7 @@ class ObservabilityScenariosTest {
         assertIs<SyncStatus.Succeeded>(statuses.first(), "the login's result: $statuses")
         assertEquals(listOf(SyncStatus.Syncing, run.status), statuses.drop(1), "one run, then exactly one failure")
         val error = assertIs<SyncStatus.Failed>(run.status).error
-        assertEquals(422 to "ValidationError", error.httpStatus to error.serverCode)
+        assertEquals(503 to "ServiceUnavailableError", error.httpStatus to error.serverCode)
     }
 
     @Test

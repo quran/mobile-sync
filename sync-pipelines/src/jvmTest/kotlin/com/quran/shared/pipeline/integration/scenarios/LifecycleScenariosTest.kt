@@ -1,5 +1,10 @@
 package com.quran.shared.pipeline.integration.scenarios
 
+import kotlin.test.assertNotNull
+import kotlin.test.assertIs
+import com.quran.shared.auth.model.AuthState
+import com.quran.shared.pipeline.integration.server.ServerFaults
+import com.quran.shared.pipeline.SyncStatus
 import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.pipeline.LogoutWarning
@@ -11,10 +16,8 @@ import com.quran.shared.pipeline.integration.SyncScenario
 import com.quran.shared.pipeline.integration.UserDataSnapshot
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.awaitUntil
-import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.server.CollectionRules
-import com.quran.shared.pipeline.integration.syncRejectedWith
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -189,17 +192,11 @@ class LifecycleScenariosTest {
 
         val run = phone.login(BOB)
 
-        knownIssue(
-            "S3",
-            "An account switch after an expired session pushes A's data into B",
-            expect = failureMentions("A's data reached B")
-        ) {
-            assertSucceeded(run)
-            assertEquals(emptyList(), server.state(BOB).notes.map { it.body }.filter { "Alice" in it }, "A's data reached B")
-            assertEquals(emptyList(), server.state(BOB).sessionVerses, "A's data reached B")
-            assertEquals(listOf("Bob wrote this long ago"), phone.noteBodies(), "B's history on the device")
-            assertConverged(BOB, phone)
-        }
+        assertSucceeded(run)
+        assertEquals(emptyList(), server.state(BOB).notes.map { it.body }.filter { "Alice" in it }, "A's data reached B")
+        assertEquals(emptyList(), server.state(BOB).sessionVerses, "A's data reached B")
+        assertEquals(listOf("Bob wrote this long ago"), phone.noteBodies(), "B's history on the device")
+        assertConverged(BOB, phone)
     }
 
     @Test
@@ -339,26 +336,19 @@ class LifecycleScenariosTest {
     }
 
     @Test
-    fun `LIFE-14 retries re-read the token store after a 401`() = syncScenario {
-        // The client has no refresh triggered by a 401, so this proves only that each retry reads
-        // the token store again. The variants below leave recovery to the client's own refresh path.
-        // Slow retries leave time to rotate the token between the 401 and the next attempt.
-        val phone = device("phone", DeviceTimings(retryBaseDelay = 100.milliseconds))
+    fun `LIFE-14 a token the server rejects is refreshed after the 401`() = syncScenario {
+        val phone = device("phone")
         assertSucceeded(phone.login(ALICE))
+        // The server revokes the token, or a skewed device clock still thinks it is valid.
         server.expireTokens(ALICE)
-        phone.data.addNote("Written after the token expired", 1, 1, 1, 7)
+        phone.data.addNote("Written after the server revoked the token", 1, 1, 1, 7)
 
-        val run = coroutineScope {
-            val sync = async { phone.syncNow() }
-            awaitUntil("the expired token got 401") { server.requests("phone").any { it.status == 401 } }
-            phone.auth.rotateToken()
-            sync.await()
-        }
+        val run = phone.syncNow()
 
         assertSucceeded(run)
-        assertEquals(401, run.requests.first().status, "the first attempt used the expired token")
-        assertEquals(listOf(200), run.postStatuses.filter { it != 401 }, "POST statuses ${run.postStatuses}")
-        assertEquals(listOf("Written after the token expired"), server.state(ALICE).notes.map { it.body })
+        assertEquals(401, run.requests.first().status, "the first attempt used the rejected token")
+        assertEquals(1, phone.auth.refreshes.value, "the client refreshed the token once")
+        assertEquals(listOf("Written after the server revoked the token"), server.state(ALICE).notes.map { it.body })
         assertConverged(ALICE, phone)
     }
 
@@ -380,22 +370,37 @@ class LifecycleScenariosTest {
     }
 
     @Test
-    fun `LIFE-14 variant, a token the server rejects before its local expiry`() = syncScenario {
+    fun `LIFE-14 variant, a server that keeps rejecting tokens gets one refresh per run`() = syncScenario {
         val phone = device("phone")
         assertSucceeded(phone.login(ALICE))
-        // The server revokes the token, or a skewed device clock still thinks it is valid.
-        server.expireTokens(ALICE)
-        phone.data.addNote("Written after the server revoked the token", 1, 1, 1, 7)
+        server.faults.failRequests(ServerFaults.ALWAYS, status = 401, code = "TokenExpiredError", message = "Token expired") { true }
+        phone.data.addNote("Written while every token is rejected", 1, 1, 1, 7)
 
-        knownIssue(
-            "S25",
-            "A token the server rejects before its local expiry fails every sync with 401",
-            expect = syncRejectedWith(401)
-        ) {
-            assertSucceeded(phone.syncNow())
-            assertEquals(listOf("Written after the server revoked the token"), server.state(ALICE).notes.map { it.body })
-        }
-        assertEquals(0, phone.auth.refreshes.value, "the client never refreshed the token")
+        val first = phone.syncNow()
+
+        assertEquals(401, assertIs<SyncStatus.Failed>(first.status).error.httpStatus)
+        assertEquals(1, phone.auth.refreshes.value, "one forced refresh in the run")
+        assertEquals(listOf(401, 401), first.requests.map { it.status }, "the request, then once more with the new token")
+        assertNotNull(phone.auth.accessToken(), "the session is kept")
+
+        phone.syncNow()
+        assertEquals(2, phone.auth.refreshes.value, "one more refresh in the next run, not a storm")
+    }
+
+    @Test
+    fun `LIFE-14 variant, a refused refresh after a 401 ends the session and skips the run`() = syncScenario {
+        val phone = device("phone")
+        val login = phone.login(ALICE)
+        assertSucceeded(login)
+        server.expireTokens(ALICE)
+        phone.auth.refuseNextForcedRefresh()
+
+        val run = phone.syncNow()
+
+        assertEquals(login.status, run.status, "skipped: the status from before the run stays")
+        assertEquals(listOf(401), run.requests.map { it.status })
+        assertNull(phone.auth.accessToken(), "the session ended")
+        assertTrue(phone.authService.authState.value !is AuthState.Success)
     }
 
     @Test

@@ -38,6 +38,8 @@ kotlin {
             implementation(libs.kotlinx.datetime)
             implementation(libs.sha2)
             api(projects.mutationsDefinitions)
+            // The user's data lives in sync-v2's plain domain tables, next to its sync state.
+            implementation(projects.syncV2)
         }
 
         commonTest.dependencies {

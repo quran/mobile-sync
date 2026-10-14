@@ -5,7 +5,6 @@ import com.quran.shared.syncv2.fake.FakeSyncServer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 /**
  * Highlights are system collections (`system:highlights:<color>`): the server lets a client create them, but no
@@ -24,17 +23,6 @@ class HighlightsTest {
     }
 
     @Test
-    fun `a highlight collection can be created and arrives read-only`() = FakeSyncServer().use { server ->
-        Device(server).use { device ->
-            device.syncedHighlight()
-
-            assertEquals(setOf(highlight), Remote(server).collectionNames())
-            assertEquals(setOf("2:255"), Remote(server).versesIn(highlight))
-            assertTrue(device.collections.byName(highlight)!!.isSystem)
-        }
-    }
-
-    @Test
     fun `any other system name is held as reserved`() = FakeSyncServer().use { server ->
         Device(server).use { device ->
             device.collections.addCollection("system:notes", t(0))
@@ -49,7 +37,7 @@ class HighlightsTest {
     fun `renaming a highlight collection is held as read-only`() = FakeSyncServer().use { server ->
         Device(server).use { device ->
             val id = device.syncedHighlight()
-            device.database.collectionsQueries.collectionUpdate("Mine", collectionNameKey("Mine"), 1, t(2), id)
+            device.database.collectionsQueries.collectionUpdate("Mine", collectionNameKey("Mine"), 1, 1, t(2), id)
 
             assertEquals(listOf("READ_ONLY"), device.settle().held.map { it.reason })
             assertEquals(setOf(highlight), Remote(server).collectionNames())
@@ -131,23 +119,6 @@ class HighlightsTest {
                     assertEquals(emptySet(), remote.versesIn("${HIGHLIGHT}green"))
                 }
             }
-        }
-    }
-
-    /** One color per verse applies to highlights only: a verse may be in any number of other collections. */
-    @Test
-    fun `a highlighted verse can also be in user collections`() = FakeSyncServer().use { server ->
-        Device(server).use { device ->
-            device.highlight(2, 255, "blue", t(0))
-            val study = device.collections.addCollection("Study", t(1)).localId
-            device.collections.addAyah(study, 2, 255, t(2))
-            device.collections.addAyah(device.collections.favorites().localId, 2, 255, t(3))
-
-            device.settle()
-
-            assertEquals(mapOf("2:255" to setOf("blue")), device.highlights())
-            assertEquals(setOf("2:255"), device.versesIn("Study"))
-            assertEquals(setOf("2:255"), device.versesIn(Device.FAVORITES))
         }
     }
 

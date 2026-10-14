@@ -85,6 +85,11 @@ interface SyncType {
      * goes to the newer item. For states whose fields only make sense together (a session's sura and ayah).
      */
     val mergeWholeObject: Boolean get() = false
+    /**
+     * Whether the server may refuse one item of this type with 403 (protected collections). For the other types a
+     * 403 without a `mutationIndex` can only be the request's scope, so the run stops instead of reverting the item.
+     */
+    val forbidsItems: Boolean get() = false
 
     /**
      * The identity the server upserts on and keeps unique (a verse, a collection name), or null when the type has none

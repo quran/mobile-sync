@@ -4,8 +4,14 @@ import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.PersistenceImportResult
-import com.quran.shared.persistence.repository.bookmark.BookmarkDependencyReconciler
+import com.quran.shared.persistence.model.ReadingBookmarkSlot
+import com.quran.shared.persistence.repository.collection.CollectionStore
+import com.quran.shared.persistence.repository.collection.repository.isReadOnly
+import com.quran.shared.persistence.repository.note.NoteStore
+import com.quran.shared.persistence.repository.readingbookmark.ReadingBookmarkStore
+import com.quran.shared.persistence.repository.readingsession.ReadingSessionStore
 import com.quran.shared.persistence.util.currentEpochMilliseconds
+import com.quran.shared.syncv2.db.SyncV2Database
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.Dispatchers
@@ -13,12 +19,20 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlin.native.HiddenFromObjC
 
+/**
+ * Imports through the repositories' write paths ([NoteStore], [CollectionStore], [ReadingSessionStore],
+ * [ReadingBookmarkStore]), so imported rows follow the same rules as the app's own writes: trimmed text, the note
+ * creation-time nudge, one highlight color per verse, and the newest 20 reading sessions. An import writes domain rows
+ * only; the sync engine pushes them like any other local change.
+ */
 @Inject
 @SingleIn(AppScope::class)
+@HiddenFromObjC
 class PersistenceImportRepositoryImpl(
     private val database: QuranDatabase,
-    private val reconciler: BookmarkDependencyReconciler = BookmarkDependencyReconciler(database)
+    private val synced: SyncV2Database
 ) : PersistenceImportRepository {
 
     override suspend fun importData(
@@ -32,36 +46,35 @@ class PersistenceImportRepositoryImpl(
         return withContext(Dispatchers.IO) {
             val context = currentCoroutineContext()
             context.ensureActive()
-            var result: PersistenceImportResult? = null
-            database.transaction {
-                if (deleteExisting) {
-                    deleteExistingData()
-                }
-                val merged = PersistenceImportMerger(
-                    database = database,
-                    reconciler = reconciler,
-                    data = data,
-                    trackHistory = trackHistory,
-                    context = context
-                ).merge()
-                result = merged.copy(changed = deleteExisting || merged.changed)
+            database.transactionWithResult {
+                if (deleteExisting) deleteExistingData()
+                val merged = PersistenceImportMerger(database, synced, data, trackHistory, context).merge()
+                merged.copy(changed = deleteExisting || merged.changed)
             }
-            requireNotNull(result)
         }
     }
 
+    /**
+     * Deletes the user's data as local deletes, so the next sync deletes what the server has too. Reading bookmark slots
+     * keep their identities and names; their locations are cleared.
+     */
     private fun deleteExistingData() {
-        val timestamp = currentEpochMilliseconds()
-        database.bookmark_collectionsQueries.markUnsyncedBookmarkCollectionsDeletedForImport(timestamp)
-        database.bookmark_collectionsQueries.markRemoteBookmarkCollectionsDeleted(timestamp)
-        database.bookmarksQueries.markUnsyncedBookmarksDeletedForImport(timestamp)
-        database.bookmarksQueries.markRemoteBookmarksDeleted(timestamp)
-        database.collectionsQueries.markUnsyncedCollectionsDeletedForImport(timestamp)
-        database.collectionsQueries.markRemoteCollectionsDeleted(timestamp)
-        database.notesQueries.markUnsyncedNotesDeletedForImport(timestamp)
-        database.notesQueries.markRemoteNotesDeleted(timestamp)
-        database.reading_bookmarksQueries.markAllForImportReplacement(timestamp)
-        database.reading_sessionsQueries.markUnsyncedReadingSessionsDeletedForImport(timestamp)
-        database.reading_sessionsQueries.markRemoteReadingSessionsDeleted(timestamp)
+        val now = currentEpochMilliseconds()
+        val notes = NoteStore(synced)
+        synced.notesQueries.all().executeAsList().forEach { notes.delete(it.local_id) }
+        val sessions = ReadingSessionStore(synced)
+        sessions.all().forEach { sessions.delete(it.local_id) }
+        val collections = CollectionStore(synced)
+        // Favorites, highlights and protected collections can't be deleted: they are emptied instead.
+        collections.all().forEach { row ->
+            if (row.isReadOnly) {
+                collections.versesIn(row.local_id).forEach { collections.removeVerse(row.local_id, it.sura.toInt(), it.ayah.toInt()) }
+            } else {
+                collections.delete(row.local_id)
+            }
+        }
+        val readingBookmarks = ReadingBookmarkStore(synced)
+        ReadingBookmarkSlot.entries.filter { readingBookmarks.get(it)?.location_type != null }
+            .forEach { readingBookmarks.setLocation(it, null, now) }
     }
 }

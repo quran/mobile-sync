@@ -17,19 +17,6 @@ import kotlin.test.assertNull
 class NotesSyncTest {
     private fun t(n: Int) = 1_760_000_000_000L + n * 1_000L
 
-    @Test
-    fun `a note syncs and its echo is a no-op`() = FakeSyncServer().use { server ->
-        Device(server).use { device ->
-            device.addNote("Patience is light", "2:153", t(0))
-
-            device.settle()
-
-            assertEquals(listOf("Patience is light"), Remote(server).noteBodies())
-            assertEquals(listOf(listOf("2:153-2:153")), Remote(server).noteRanges())
-            assertEquals(1, server.postBodies.size)
-        }
-    }
-
     /** A note created on the web with several ranges keeps all of them, in order, through an edit. */
     @Test
     fun `a note with several ranges keeps all of them through an edit`() = FakeSyncServer().use { server ->
@@ -61,21 +48,6 @@ class NotesSyncTest {
             val update = server.postBodies.last()["mutations"]!!.jsonArray.single().jsonObject
             assertEquals(setOf("body", "clientUpdatedAt"), (update["data"] as JsonObject).keys)
             assertEquals(listOf("Second body of it"), Remote(server).noteBodies())
-        }
-    }
-
-    /** Text is sent escaped like sanitize-html, so tags and entities survive and the echo is a no-op. */
-    @Test
-    fun `note text with angle brackets and ampersands round trips exactly`() = FakeSyncServer().use { server ->
-        Device(server).use { device ->
-            val typed = "x<y & a>b <b>tag</b> \"q\""
-            device.addNote("  $typed ", "1:1", t(0))
-
-            device.settle()
-
-            assertEquals(listOf(typed), device.noteBodies(), "stored trimmed like the server")
-            assertEquals(listOf("x&lt;y &amp; a&gt;b &lt;b&gt;tag&lt;/b&gt; \"q\""), Remote(server).noteBodies())
-            assertEquals(1, server.postBodies.size)
         }
     }
 
@@ -192,6 +164,29 @@ class NotesSyncTest {
     }
 
     /**
+     * Two devices that create the same note, with the same creation time, ranges and body (both imported the same
+     * legacy data), end with one note: the second device links its new note to the first one's instead of pushing it.
+     */
+    @Test
+    fun `the same note created on two devices is linked, not duplicated`() = FakeSyncServer().use { server ->
+        Device(server).use { phone ->
+            Device(server).use { tablet ->
+                phone.addNote("Imported on both devices", "2:255", t(0))
+                tablet.addNote("Imported on both devices", "2:255", t(0))
+                tablet.addNote("Imported on both devices", "3:18", t(0))
+
+                phone.settle()
+                tablet.settle()
+                phone.settle()
+
+                assertEquals(2, Remote(server).noteIds().size, "${Remote(server).noteRanges()}")
+                assertEquals(listOf("Imported on both devices", "Imported on both devices"), tablet.noteBodies())
+                assertEquals(2, phone.noteBodies().size)
+            }
+        }
+    }
+
+    /**
      * NOTE-18: two identical notes written in the same millisecond, then a lost response. The 1 ms nudge keeps their
      * `clientCreatedAt` apart, so each echo binds its own note and nothing is pushed twice.
      */
@@ -292,41 +287,6 @@ class NotesSyncTest {
         }
     }
 
-    /** S15, NOTE-10: edit beats delete for a type without a natural key, too. */
-    @Test
-    fun `a note edited locally and deleted remotely is recreated`() = FakeSyncServer().use { server ->
-        Device(server).use { device ->
-            val note = device.addNote("First draft", "2:255", t(0))
-            device.settle()
-            val original = Remote(server).noteIds().single()
-            Remote(server).deleteNote(original)
-            device.notes.updateNote(note, "Second draft", t(1))
-
-            device.settle()
-
-            assertEquals(listOf("Second draft"), Remote(server).noteBodies())
-            assertEquals(listOf(listOf("2:255-2:255")), Remote(server).noteRanges())
-            assertNotEquals(original, Remote(server).noteIds().single())
-            assertEquals(listOf("Second draft"), device.noteBodies())
-        }
-    }
-
-    /** NOTE-11: a remote edit beats a local delete. */
-    @Test
-    fun `a note deleted locally and edited remotely comes back with the edit`() = FakeSyncServer().use { server ->
-        Device(server).use { device ->
-            val note = device.addNote("Written on the phone", "2:255", t(0))
-            device.settle()
-            Remote(server).editNote(Remote(server).noteIds().single(), "Edited on the web")
-            device.notes.deleteNote(note)
-
-            device.settle()
-
-            assertEquals(listOf("Edited on the web"), device.noteBodies())
-            assertEquals(listOf("Edited on the web"), Remote(server).noteBodies())
-        }
-    }
-
     /** NOTE-09: concurrent edits keep the newer one, whichever side it is on. */
     @Test
     fun `concurrent note edits keep the newer one`() {
@@ -346,22 +306,6 @@ class NotesSyncTest {
                     assertEquals(listOf(expected), remote.noteBodies(), "localNewer=$localNewer")
                 }
             }
-        }
-    }
-
-    /** A note that vanished between the server's queries comes as `{}`: ignored, never read as a change. */
-    @Test
-    fun `a vanished note entry is ignored`() = FakeSyncServer().use { server ->
-        Device(server).use { device ->
-            device.addNote("Still here", "1:1", t(0))
-            device.settle()
-            val posts = server.postBodies.size
-
-            Remote(server).vanish("NOTE", Remote(server).noteIds().single())
-            device.settle()
-
-            assertEquals(listOf("Still here"), device.noteBodies())
-            assertEquals(posts, server.postBodies.size)
         }
     }
 }

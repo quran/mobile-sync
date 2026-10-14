@@ -1,43 +1,32 @@
 package com.quran.shared.persistence.repository
 
-import app.cash.sqldelight.db.SqlDriver
-import com.quran.shared.persistence.QuranDatabase
-import com.quran.shared.persistence.TestDatabaseDriver
+import com.quran.shared.persistence.MobileSyncDatabase
 import com.quran.shared.persistence.TextLengthBound
 import com.quran.shared.persistence.TextLengthField
 import com.quran.shared.persistence.TextLengthLimitException
-import com.quran.shared.persistence.createQuranDatabase
+import com.quran.shared.persistence.at
+import com.quran.shared.persistence.createTestDatabase
 import com.quran.shared.persistence.input.ImportNote
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepositoryImpl
 import com.quran.shared.persistence.repository.importdata.PersistenceImportRepositoryImpl
 import com.quran.shared.persistence.repository.note.repository.NotesRepositoryImpl
-import com.quran.shared.persistence.util.toPlatform
 import kotlinx.coroutines.test.runTest
-import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlin.time.Instant
 
 class TextLengthLimitTest {
-    private lateinit var driver: SqlDriver
-    private lateinit var database: QuranDatabase
+    private lateinit var database: MobileSyncDatabase
     private lateinit var notes: NotesRepositoryImpl
     private lateinit var collections: CollectionsRepositoryImpl
 
     @BeforeTest
     fun setup() {
-        driver = TestDatabaseDriver().createDriver()
-        database = createQuranDatabase(driver)
-        notes = NotesRepositoryImpl(database)
-        collections = CollectionsRepositoryImpl(database)
-    }
-
-    @AfterTest
-    fun tearDown() {
-        driver.close()
+        database = createTestDatabase()
+        notes = NotesRepositoryImpl(database.synced)
+        collections = CollectionsRepositoryImpl(database.synced)
     }
 
     @Test
@@ -60,25 +49,24 @@ class TextLengthLimitTest {
         val note = addNote("Reflect on this verse")
 
         assertLimit(TextLengthField.NOTE_BODY, TextLengthBound.TOO_SHORT, limit = 6, length = 4) {
-            notes.updateNote(note.id, "Good", 2, 255, 2, 255, at(2_000L))
+            notes.updateNote(note.id, "Good", at(2_000L))
         }
 
         assertEquals(listOf("Reflect on this verse"), notes.getAllNotes().map { it.body })
     }
 
     @Test
-    fun `a legacy short note can still have its verse range edited`() = runTest {
-        PersistenceImportRepositoryImpl(database).importData(
+    fun `a legacy short note can still be saved with its body unchanged`() = runTest {
+        PersistenceImportRepositoryImpl(database.quran, database.synced).importData(
             PersistenceImportData(notes = listOf(ImportNote("Good", 2, 255, 2, 255, at(1_000L))))
         )
         val legacy = notes.getAllNotes().single()
 
-        val updated = notes.updateNote(legacy.id, " Good\n", 2, 255, 2, 257, at(2_000L))
+        val updated = notes.updateNote(legacy.id, " Good\n", at(2_000L))
 
         assertEquals("Good", updated.body)
-        assertEquals(257, updated.endAyah)
         assertLimit(TextLengthField.NOTE_BODY, TextLengthBound.TOO_SHORT, limit = 6, length = 4) {
-            notes.updateNote(legacy.id, "Fine", 2, 255, 2, 257, at(3_000L))
+            notes.updateNote(legacy.id, "Fine", at(3_000L))
         }
     }
 
@@ -124,6 +112,4 @@ class TextLengthLimitTest {
         assertEquals(limit, error.limit)
         assertEquals(length, error.length)
     }
-
-    private fun at(milliseconds: Long) = Instant.fromEpochMilliseconds(milliseconds).toPlatform()
 }

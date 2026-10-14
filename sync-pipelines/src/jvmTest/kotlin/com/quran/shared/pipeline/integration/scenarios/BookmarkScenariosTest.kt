@@ -3,11 +3,12 @@ package com.quran.shared.pipeline.integration.scenarios
 import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.pipeline.integration.SyncRun
 import com.quran.shared.pipeline.integration.assertSucceeded
-import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.server.CollectionRules
 import com.quran.shared.pipeline.integration.server.text
 import com.quran.shared.pipeline.integration.syncScenario
+import com.quran.shared.pipeline.integration.SyncDevice
+import com.quran.shared.persistence.util.fromPlatform
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -22,6 +23,52 @@ import kotlin.test.assertTrue
 
 /** Ayah bookmarks, Favorites and collection memberships. */
 class BookmarkScenariosTest {
+
+    /**
+     * A verse's bookmark dates come from its memberships, which arrive from the server with client times: a
+     * membership's time is its clientUpdatedAt, or its clientCreatedAt, or the server's timestamp. The bookmark was
+     * last updated when its earliest surviving saved membership was made, and added with its earliest membership.
+     */
+    @Test
+    fun `bookmark dates of verses from the web follow their memberships`() = syncScenario {
+        val (phone) = signedIn("phone")
+        val web = web(ALICE)
+        val study = web.createCollection("Study")
+        val memorize = web.createCollection("Memorize")
+        web.addToCollection(study, 2, 255, times = ClientTimes(T0 + 1_000, T0 + 3_000))
+        web.addToCollection(memorize, 2, 255, times = ClientTimes(T0 + 2_000, T0 + 2_500))
+        assertSucceeded(phone.syncNow())
+
+        assertEquals(T0 + 2_500 to T0 + 2_500, phone.bookmarkDates("Study", 2, 255), "the earliest membership, by clientUpdatedAt")
+
+        web.removeFromCollection(memorize, 2, 255)
+        assertSucceeded(phone.syncNow())
+        assertEquals(T0 + 3_000 to T0 + 3_000, phone.bookmarkDates("Study", 2, 255), "the earliest surviving membership")
+
+        server.faults.omitMembershipTimes = setOf("clientUpdatedAt")
+        web.addToCollection(study, 3, 18, times = ClientTimes(T0 + 4_000, T0 + 6_000))
+        assertSucceeded(phone.syncNow())
+        assertEquals(T0 + 4_000 to T0 + 4_000, phone.bookmarkDates("Study", 3, 18), "no clientUpdatedAt: clientCreatedAt")
+
+        server.faults.omitMembershipTimes = setOf("clientUpdatedAt", "clientCreatedAt")
+        // Logged times never go back, so the frozen server time is ahead of everything logged so far.
+        val serverTime = System.currentTimeMillis() + 3_600_000
+        server.clock.frozenAt = serverTime
+        web.addToCollection(study, 3, 19, times = ClientTimes(T0 + 5_000, T0 + 5_000))
+        assertSucceeded(phone.syncNow())
+        // The write logs the bookmark and the membership a millisecond apart (logged times are monotonic).
+        val (lastUpdated, added) = phone.bookmarkDates("Study", 3, 19)
+        assertEquals(lastUpdated, added)
+        assertTrue(lastUpdated in serverTime..serverTime + 5, "no client times: the server's timestamp, $lastUpdated vs $serverTime")
+    }
+
+    /** `bookmarkLastUpdated` to `bookmarkAddedDate` of a verse in a collection, in epoch milliseconds. */
+    private suspend fun SyncDevice.bookmarkDates(collection: String, sura: Int, ayah: Int): Pair<Long, Long> {
+        val bookmark = data.collectionsWithBookmarks.first().single { it.collection.name == collection }
+            .bookmarks.single { it.sura == sura && it.ayah == ayah }
+        return bookmark.bookmarkLastUpdated.fromPlatform().toEpochMilliseconds() to
+            bookmark.bookmarkAddedDate.fromPlatform().toEpochMilliseconds()
+    }
 
     @Test
     fun `BMK-01 add a verse to Favorites`() = syncScenario {
@@ -50,13 +97,11 @@ class BookmarkScenariosTest {
 
         phone.removeFromFavorites(2, 255)
 
-        knownIssue("S6", "Removing a verse from Favorites wedges sync permanently", expect = FAVORITES_DELETE_404) {
-            assertSucceeded(phone.syncNow())
-            assertSucceeded(tablet.syncNow())
-            assertSucceeded(phone.syncNow())
-            assertNull(server.state(ALICE).bookmarkAt(2, 255))
-            assertEquals(emptyList(), tablet.favoriteVerses())
-        }
+        assertSucceeded(phone.syncNow())
+        assertSucceeded(tablet.syncNow())
+        assertSucceeded(phone.syncNow())
+        assertNull(server.state(ALICE).bookmarkAt(2, 255))
+        assertEquals(emptyList(), tablet.favoriteVerses())
     }
 
     @Test
@@ -84,15 +129,10 @@ class BookmarkScenariosTest {
         phone.removeFromCollection("Study", 3, 18)
         val run = phone.syncNow()
 
-        knownIssue(
-            "S6",
-            "A COLLECTION_BOOKMARK DELETE ACK has no resourceId, so the first attempt fails and a retry heals it",
-            expect = failureMentions("GETs in the run", "expected:<1> but was:<2>")
-        ) {
-            assertSucceeded(run)
-            assertEquals(1, run.gets, "GETs in the run")
-            assertEquals(1, run.posts, "POSTs in the run")
-        }
+        assertSucceeded(run)
+        assertEquals(1, run.gets, "GETs in the run")
+        assertEquals(1, run.posts, "POSTs in the run")
+
         assertSucceeded(run)
         val state = server.state(ALICE)
         assertEquals(emptySet(), state.versesIn(state.collectionNamed("Study")!!.id))
@@ -120,12 +160,10 @@ class BookmarkScenariosTest {
 
         // Variant 2: no highlight, so the server deletes the bookmark with its Favorites membership.
         phone.data.replaceAyahBookmarkCollections(3, 18, emptyList())
-        knownIssue("S6", "Removing a verse from Favorites wedges sync permanently", expect = FAVORITES_DELETE_404) {
-            assertSucceeded(phone.syncNow())
-            assertSucceeded(tablet.syncNow())
-            assertNull(server.state(ALICE).bookmarkAt(3, 18))
-            assertEquals(emptyList(), tablet.favoriteVerses())
-        }
+        assertSucceeded(phone.syncNow())
+        assertSucceeded(tablet.syncNow())
+        assertNull(server.state(ALICE).bookmarkAt(3, 18))
+        assertEquals(emptyList(), tablet.favoriteVerses())
     }
 
     @Test
@@ -223,17 +261,13 @@ class BookmarkScenariosTest {
 
         web(ALICE).removeFromFavorites(2, 255)
 
-        // The catalog predicted a pass. Applying the remote BOOKMARK DELETE turns the phone's
-        // Favorites membership into a pending DELETE that the membership phase can no longer match
-        // to the remote one, so the phone pushes it and gets 404 on every attempt.
-        knownIssue("S23", "A web removal from Favorites wedges the device's sync", expect = FAVORITES_DELETE_404) {
-            val runs = listOf(phone.syncNow(), phone.syncNow())
-            runs.forEach(::assertSucceeded)
-            assertNull(server.state(ALICE).bookmarkAt(2, 255))
-            assertEquals(emptyList(), phone.favoriteVerses())
-            assertEquals(0, runs.sumOf { it.posts }, "no DELETE echo")
-            assertConverged(ALICE, phone)
-        }
+        // The remote BOOKMARK and membership DELETEs only remove the verse locally; nothing is pushed back.
+        val runs = listOf(phone.syncNow(), phone.syncNow())
+        runs.forEach(::assertSucceeded)
+        assertNull(server.state(ALICE).bookmarkAt(2, 255))
+        assertEquals(emptyList(), phone.favoriteVerses())
+        assertEquals(0, runs.sumOf { it.posts }, "no DELETE echo")
+        assertConverged(ALICE, phone)
     }
 
     @Test
@@ -313,19 +347,13 @@ class BookmarkScenariosTest {
         web.deleteCollection(web.collectionId("Study")!!)
         phone.data.addAyahBookmarkToCollection(phone.collectionId("Study"), 2, 255)
 
-        // The catalog left this unknown. The sync completes, and the web's delete drops the membership.
-        knownIssue(
-            "S15",
-            "A remote collection delete beats a local add to that collection",
-            expect = failureMentions("the edit beats the delete", "expected:<[2:255]> but was:<null>")
-        ) {
-            assertSucceeded(phone.syncNow())
-            syncUntilQuiescent(phone)
-            assertEquals(listOf("2:255"), phone.versesIn("Study"), "the edit beats the delete")
-            val state = server.state(ALICE)
-            assertEquals(setOf("2:255"), state.versesIn(assertNotNull(state.collectionNamed("Study")).id))
-            assertConverged(ALICE, phone)
-        }
+        // Edit beats delete: the added verse recreates the collection.
+        assertSucceeded(phone.syncNow())
+        syncUntilQuiescent(phone)
+        assertEquals(listOf("2:255"), phone.versesIn("Study"), "the edit beats the delete")
+        val state = server.state(ALICE)
+        assertEquals(setOf("2:255"), state.versesIn(assertNotNull(state.collectionNamed("Study")).id))
+        assertConverged(ALICE, phone)
     }
 
     @Test
@@ -346,18 +374,10 @@ class BookmarkScenariosTest {
         val run = phone.syncNow()
 
         assertEquals(listOf("BOOKMARK DELETE", "COLLECTION_BOOKMARK DELETE"), run.firstPageBoundary(), "the deletes straddle pages 1 and 2")
-        knownIssue(
-            "S23",
-            "A web removal from Favorites wedges the device's sync",
-            // The catalog left this unknown. The client fetches every page before applying any, so the
-            // split changes nothing: the phone pushes the membership DELETE and gets 404, as in BMK-11.
-            expect = FAVORITES_DELETE_404
-        ) {
-            assertSucceeded(run)
-            assertEquals(0, run.posts, "no DELETE echo")
-            assertEquals(emptyList(), phone.favoriteVerses())
-            assertConverged(ALICE, phone)
-        }
+        assertSucceeded(run)
+        assertEquals(0, run.posts, "no DELETE echo")
+        assertEquals(emptyList(), phone.favoriteVerses())
+        assertConverged(ALICE, phone)
     }
 
     @Test
@@ -391,11 +411,9 @@ class BookmarkScenariosTest {
         assertEquals(listOf("2:255"), phone.favoriteVerses(), "the phone shows the IndoPak bookmark")
         phone.removeFromFavorites(2, 255)
 
-        knownIssue("S6", "Removing a verse from Favorites wedges sync permanently", expect = FAVORITES_DELETE_404) {
-            assertSucceeded(phone.syncNow())
-            assertEquals(emptyList(), server.state(ALICE).bookmarks, "the removal deleted the same bookmark, with no second one")
-            assertConverged(ALICE, phone)
-        }
+        assertSucceeded(phone.syncNow())
+        assertEquals(emptyList(), server.state(ALICE).bookmarks, "the removal deleted the same bookmark, with no second one")
+        assertConverged(ALICE, phone)
     }
 
     /** The last entry of the run's first GET page and the first entry of its second. */
