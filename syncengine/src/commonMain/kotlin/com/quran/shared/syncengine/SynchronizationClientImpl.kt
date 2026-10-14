@@ -183,6 +183,11 @@ internal class SynchronizationClientImpl(
             logger.i { "Dropping failure of a sync that started before a session reset" }
             syncRunObserver.syncSkipped()
             return
+        } catch (checkFailure: CancellationException) {
+            throw checkFailure
+        } catch (checkFailure: Exception) {
+            // The run still failed; report its own error rather than leaving the status syncing.
+            logger.w(checkFailure) { "Could not check the session epoch before reporting a sync failure" }
         }
         syncRunObserver.syncFailed(exception.toSyncError())
     }

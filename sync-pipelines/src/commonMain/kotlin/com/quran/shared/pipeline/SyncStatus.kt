@@ -13,15 +13,13 @@ import kotlin.concurrent.Volatile
  * The state of sync in this app session, published by [QuranDataService.syncStatus].
  *
  * A sync that fails is retried a few times and stays [Syncing] until it succeeds or gives up.
+ * A sync that ends without syncing, because no one is signed in or a logout or reset stopped it,
+ * leaves the status as it was before that sync started.
+ *
  * Status is not persisted, so it starts as [Idle] on every launch.
  */
 sealed class SyncStatus {
-    /**
-     * No sync has finished since launch, or a logout or reset cleared the previous result.
-     *
-     * A sync that ends without syncing, because no one is signed in or a logout or reset stopped
-     * it, leaves the status as it was before that sync started.
-     */
+    /** No sync has finished since launch, or a logout or reset cleared the previous result. */
     data object Idle : SyncStatus()
 
     /** A signed-in sync is running or waiting to retry. */

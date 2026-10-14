@@ -121,7 +121,7 @@ class SyncEnginePipeline(
         authenticationDataFetcher: AuthenticationDataFetcher,
         syncLifecycleGate: SyncLifecycleGate,
         callback: SyncEngineCallback,
-        syncRunObserver: SyncRunObserver = object : SyncRunObserver {}
+        syncRunObserver: SyncRunObserver
     ): SynchronizationClient {
         val writeBoundaryGuard = CurrentSyncWriteBoundaryGuard
 

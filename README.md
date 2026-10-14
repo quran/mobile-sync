@@ -194,6 +194,9 @@ graph.authService.login()
 As on Android, the optional `MobileSyncLogging.configure(sink:minSeverity:)` call must come before
 `SharedDependencyGraph.doInit`, because HTTP clients read the severity when they are created.
 
+Kotlin default arguments are not exported to Swift, so pass every argument, such as
+`triggerSync(immediately: false)`.
+
 ```swift
 import Shared
 

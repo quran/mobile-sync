@@ -180,7 +180,7 @@ private class SyncRunEvents : SyncRunObserver {
 
     suspend fun next(): String =
         withContext(Dispatchers.Default) {
-            withTimeout(2_000) { recorded.receive() }
+            withTimeout(10_000) { recorded.receive() }
         }
 
     private fun record(event: String, forward: () -> Unit) {

@@ -16,6 +16,7 @@ import io.ktor.client.HttpClient
 import kotlinx.coroutines.currentCoroutineContext
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
+import kotlin.native.HiddenFromObjC
 
 interface LocalDataFetcher<Model> {
     /**
@@ -149,6 +150,7 @@ class SyncOperationInvalidatedException(message: String) : Exception(message)
  *
  * Calls arrive on background threads.
  */
+@HiddenFromObjC
 interface SyncRunObserver {
     /** A signed-in run is contacting the server. Retries report it again. */
     fun syncStarted() {}
@@ -177,6 +179,8 @@ interface SynchronizationClient {
 data class SynchronizationEnvironment(val endPointURL: String)
 
 object SynchronizationClientBuilder {
+    // Hidden because SyncRunObserver is; apps get their client through QuranDataService.
+    @HiddenFromObjC
     fun build(
         environment: SynchronizationEnvironment,
         authFetcher: AuthenticationDataFetcher,
