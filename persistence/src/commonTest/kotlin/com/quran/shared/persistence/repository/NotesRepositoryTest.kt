@@ -3,6 +3,7 @@ package com.quran.shared.persistence.repository
 import com.quran.shared.persistence.MobileSyncDatabase
 import com.quran.shared.persistence.at
 import com.quran.shared.persistence.createTestDatabase
+import com.quran.shared.persistence.model.NoteRange as PublicNoteRange
 import com.quran.shared.persistence.repository.note.NoteStore
 import com.quran.shared.persistence.repository.note.repository.NotesRepositoryImpl
 import com.quran.shared.persistence.util.fromPlatform
@@ -32,10 +33,7 @@ class NotesRepositoryTest {
         val note = repository.addNote(body = "test note", startSura = 2, startAyah = 13, endSura = 2, endAyah = 13)
 
         assertEquals("test note", note.body)
-        assertEquals(2, note.startSura)
-        assertEquals(13, note.startAyah)
-        assertEquals(2, note.endSura)
-        assertEquals(13, note.endAyah)
+        assertEquals(listOf(PublicNoteRange(2, 13, 2, 13)), note.ranges)
         assertEquals(listOf(note), repository.getAllNotes())
     }
 
@@ -43,10 +41,7 @@ class NotesRepositoryTest {
     fun `addNote preserves coordinates without applying an ayah counting method`() = runTest {
         val note = repository.addNote(body = "alternate counting note", startSura = 1, startAyah = 8, endSura = 1, endAyah = 8)
 
-        assertEquals(1, note.startSura)
-        assertEquals(8, note.startAyah)
-        assertEquals(1, note.endSura)
-        assertEquals(8, note.endAyah)
+        assertEquals(listOf(PublicNoteRange(1, 8, 1, 8)), note.ranges)
     }
 
     @Test
@@ -110,7 +105,7 @@ class NotesRepositoryTest {
 
         val updated = repository.updateNote(note.id, "updated note", at(2_000L))
 
-        assertEquals(listOf(2, 13, 2, 14), listOf(updated.startSura, updated.startAyah, updated.endSura, updated.endAyah))
+        assertEquals(listOf(PublicNoteRange(2, 13, 2, 14)), updated.ranges)
         assertEquals(listOf(NoteRange(2, 13, 2, 14)), ranges(note.id))
     }
 
@@ -130,12 +125,12 @@ class NotesRepositoryTest {
     }
 
     @Test
-    fun `a note with several ranges shows its first range`() = runTest {
+    fun `a note with several ranges shows every range in order`() = runTest {
         insertNote("web note", listOf(NoteRange(3, 5, 3, 7), NoteRange(2, 1, 2, 3)), createdAt = 1_000L)
 
         val note = repository.getAllNotes().single()
 
-        assertEquals(listOf(3, 5, 3, 7), listOf(note.startSura, note.startAyah, note.endSura, note.endAyah))
+        assertEquals(listOf(PublicNoteRange(3, 5, 3, 7), PublicNoteRange(2, 1, 2, 3)), note.ranges)
     }
 
     @Test

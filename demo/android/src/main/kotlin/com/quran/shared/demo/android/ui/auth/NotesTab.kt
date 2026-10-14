@@ -118,7 +118,9 @@ fun NoteItem(
                     style = MaterialTheme.typography.bodyLarge
                 )
                 Text(
-                    text = "Sura ${note.startSura}, Ayah ${note.startAyah} - Sura ${note.endSura}, Ayah ${note.endAyah}",
+                    text = note.ranges.joinToString("; ") {
+                        "Sura ${it.startSura}, Ayah ${it.startAyah} - Sura ${it.endSura}, Ayah ${it.endAyah}"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

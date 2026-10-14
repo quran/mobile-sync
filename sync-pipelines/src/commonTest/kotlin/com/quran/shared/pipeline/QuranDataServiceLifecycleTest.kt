@@ -26,6 +26,7 @@ import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.model.EmptyReadingBookmark
 import com.quran.shared.persistence.model.Note
+import com.quran.shared.persistence.model.NoteRange
 import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
@@ -1532,7 +1533,7 @@ private class ServiceNotesRepository : NotesRepository {
 
     override suspend fun getAllNotes(): List<Note> = emptyList()
     override suspend fun addNote(body: String, startSura: Int, startAyah: Int, endSura: Int, endAyah: Int): Note =
-        Note(body, startSura, startAyah, endSura, endAyah, testTimestamp(), "note")
+        Note(body, listOf(NoteRange(startSura, startAyah, endSura, endAyah)), testTimestamp(), "note")
     override suspend fun addNote(
         body: String,
         startSura: Int,

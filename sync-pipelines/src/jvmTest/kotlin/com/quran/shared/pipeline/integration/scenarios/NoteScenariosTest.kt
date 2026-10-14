@@ -2,7 +2,6 @@ package com.quran.shared.pipeline.integration.scenarios
 
 import com.quran.shared.pipeline.integration.DeviceTimings
 import com.quran.shared.pipeline.integration.assertSucceeded
-import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.flow.first
@@ -270,23 +269,13 @@ class NoteScenariosTest {
         val (phone) = signedIn("phone")
         web(ALICE).createNote("A note on two passages", "2:255-2:256", "3:18-3:18")
 
-        // The device keeps every range (note_range); the public model holds only the first.
-        knownIssue(
-            "S4",
-            "The public note model shows only a note's first range",
-            expect = failureMentions(
-                "expected:<UserDataSnapshot(notes=[A note on two passages | 2:255-2:256,3:18-3:18]",
-                "but was:<UserDataSnapshot(notes=[A note on two passages | 2:255-2:256]"
-            )
-        ) {
-            assertSucceeded(phone.syncNow())
-            assertConverged(ALICE, phone)
-            val note = phone.note("A note on two passages")
-            phone.data.updateNote(note.id, "An edited note on two passages")
-            assertSucceeded(phone.syncNow())
-            assertEquals(listOf("2:255-2:256", "3:18-3:18"), server.state(ALICE).notes.single().ranges)
-            assertConverged(ALICE, phone)
-        }
+        assertSucceeded(phone.syncNow())
+        assertConverged(ALICE, phone)
+        val note = phone.note("A note on two passages")
+        phone.data.updateNote(note.id, "An edited note on two passages")
+        assertSucceeded(phone.syncNow())
+        assertEquals(listOf("2:255-2:256", "3:18-3:18"), server.state(ALICE).notes.single().ranges)
+        assertConverged(ALICE, phone)
     }
 
     @Test
