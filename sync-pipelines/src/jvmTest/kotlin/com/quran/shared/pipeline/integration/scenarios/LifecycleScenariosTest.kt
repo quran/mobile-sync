@@ -284,7 +284,7 @@ class LifecycleScenariosTest {
         val head = server.head(ALICE)
         val gate = server.faults.blockGet()
 
-        // The held GET is answered after the reset: nothing it carries may land, and nothing may be pushed.
+        // The logout cancels the held GET, so nothing it carries lands and nothing is pushed.
         phone.syncWhileHeld(gate) { withTimeout(10.seconds) { phone.logout() } }
 
         assertEquals(EMPTY_SNAPSHOT, phone.snapshot())

@@ -9,6 +9,7 @@ import com.quran.shared.persistence.repository.importdata.PersistenceImportRepos
 import com.quran.shared.persistence.repository.note.repository.NotesRepositoryImpl
 import com.quran.shared.syncv2.SyncRow
 import com.quran.shared.syncv2.SyncStore
+import com.quran.shared.syncv2.types.syncTypes
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
 import kotlin.test.BeforeTest
@@ -52,12 +53,17 @@ class ImportSyncStateTest {
 
     @Test
     fun `an import while logged out writes no sync state`() = runTest {
+        val epoch = store.epoch
+
         repository.importData(LEGACY, deleteExisting = false, trackHistory = true)
         repository.importData(LEGACY, deleteExisting = true, trackHistory = false)
 
         assertEquals(0, store.token)
         assertNull(store.account)
-        assertEquals(emptyList(), database.synced.sync_itemQueries.all("NOTE").executeAsList())
+        assertEquals(epoch, store.epoch)
+        syncTypes(database.synced).forEach { type ->
+            assertEquals(emptyList(), database.synced.sync_itemQueries.all(type.name).executeAsList(), type.name)
+        }
     }
 
     private companion object {
