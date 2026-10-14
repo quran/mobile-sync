@@ -12,7 +12,9 @@ import com.quran.shared.syncengine.scheduling.SchedulerTimings
 import com.quran.shared.syncengine.scheduling.Trigger
 import com.quran.shared.syncengine.scheduling.createScheduler
 import com.quran.shared.syncengine.scheduling.currentSchedulerAttempt
+import com.quran.shared.syncengine.scheduling.isFinalSchedulerAttempt
 import io.ktor.client.HttpClient
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -40,7 +42,6 @@ internal class SynchronizationClientImpl(
             resourceAdapters.forEach { adapter ->
                 adapter.didFail(message)
             }
-            syncRunObserver.syncFailed(exception.toSyncError())
         }
     )
 
@@ -114,6 +115,19 @@ internal class SynchronizationClientImpl(
 
         logger.i { "Starting sync operation attempt=$attempt for ${resourceAdapters.size} resource(s)" }
 
+        try {
+            synchronize(attempt, syncEpoch)
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (exception: Exception) {
+            // Report the final failure inside the run, so it lands before the next run can start and
+            // before a logout, which joins this run, resets the status.
+            if (isFinalSchedulerAttempt()) reportFinalFailure(exception, syncEpoch)
+            throw exception
+        }
+    }
+
+    private suspend fun synchronize(attempt: Int, syncEpoch: Long) {
         // A retry continues a failed run, so it reports syncing even if fetching headers fails again.
         if (attempt > 0) syncRunObserver.syncStarted()
         val authHeaders = getAuthHeaders()
@@ -160,6 +174,17 @@ internal class SynchronizationClientImpl(
             logger.i { "Sync operation invalidated, aborting without retry: ${exception.message}" }
             syncRunObserver.syncSkipped()
         }
+    }
+
+    private suspend fun reportFinalFailure(exception: Exception, syncEpoch: Long) {
+        try {
+            syncLifecycleGate.checkSyncEpoch(syncEpoch)
+        } catch (_: SyncOperationInvalidatedException) {
+            logger.i { "Dropping failure of a sync that started before a session reset" }
+            syncRunObserver.syncSkipped()
+            return
+        }
+        syncRunObserver.syncFailed(exception.toSyncError())
     }
 
     private suspend fun pushMutations(

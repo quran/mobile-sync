@@ -21,6 +21,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
+import kotlin.concurrent.Volatile
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -55,10 +56,24 @@ class SyncRunObserverTest {
         client.triggerSyncImmediately()
 
         assertEquals(
-            listOf("started", "started", "started", "failed SERVER 503"),
+            listOf("started", "started", "started", "failed SERVER 503 ServerError"),
             observer.await(4)
         )
         assertEquals(3, backend.requestCount)
+    }
+
+    @Test
+    fun `failure of a run that outlived a session reset is dropped`() = runTest {
+        val gate = ResettableSyncLifecycleGate()
+        backend.status = {
+            gate.reset()
+            HttpStatusCode.ServiceUnavailable
+        }
+        val client = createClient(timings = FastTimings.withMaximumRetries(0), syncLifecycleGate = gate)
+
+        client.triggerSyncImmediately()
+
+        assertEquals(listOf("started", "skipped"), observer.await(2))
     }
 
     @Test
@@ -124,13 +139,34 @@ private val FastTimings = SchedulerTimings(
     failureRetryingConfig = FailureRetryingConfig(baseDelay = 1.milliseconds, multiplier = 1.0, maximumRetries = 2)
 )
 
+private fun SchedulerTimings.withMaximumRetries(maximumRetries: Int) =
+    copy(failureRetryingConfig = failureRetryingConfig.copy(maximumRetries = maximumRetries))
+
+/** Starts a new session epoch on [reset], as a logout does. */
+private class ResettableSyncLifecycleGate : SyncLifecycleGate {
+    @Volatile
+    private var epoch = 0L
+
+    fun reset() {
+        epoch += 1
+    }
+
+    override suspend fun captureSyncEpoch(): Long = epoch
+
+    override suspend fun checkSyncEpoch(epoch: Long) {
+        if (epoch != this.epoch) throw SyncOperationInvalidatedException("Session reset")
+    }
+}
+
 private class SyncRunEvents : SyncRunObserver {
     private val events = Channel<String>(Channel.UNLIMITED)
 
     override fun syncStarted() { events.trySend("started") }
     override fun syncSucceeded() { events.trySend("succeeded") }
     override fun syncSkipped() { events.trySend("skipped") }
-    override fun syncFailed(error: SyncError) { events.trySend("failed ${error.kind} ${error.httpStatus}") }
+    override fun syncFailed(error: SyncError) {
+        events.trySend("failed ${error.kind} ${error.httpStatus} ${error.serverCode}")
+    }
 
     suspend fun await(count: Int): List<String> =
         withContext(Dispatchers.Default) {
@@ -138,7 +174,9 @@ private class SyncRunEvents : SyncRunObserver {
         }
 }
 
-/** Serves an empty `GET /v1/sync` page with a status chosen per request. */
+/**
+ * Serves an empty `GET /v1/sync` page, or the backend's error body when the chosen status is not OK.
+ */
 private class SyncBackend {
     var status: (index: Int) -> HttpStatusCode = { HttpStatusCode.OK }
     var requestCount = 0
@@ -146,9 +184,14 @@ private class SyncBackend {
 
     val httpClient = HttpClient(
         MockEngine {
+            val status = status(requestCount++)
             respond(
-                content = """{"success":true,"data":{"lastMutationAt":10,"mutations":[],"total":0}}""",
-                status = status(requestCount++),
+                content = if (status == HttpStatusCode.OK) {
+                    """{"success":true,"data":{"lastMutationAt":10,"mutations":[],"total":0}}"""
+                } else {
+                    """{"success":false,"error":{"code":"ServerError","message":"Something went wrong"}}"""
+                },
+                status = status,
                 headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
             )
         }

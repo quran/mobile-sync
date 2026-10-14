@@ -100,10 +100,37 @@ class PostMutationsRequestTest {
         }
 
         assertEquals("\"bookmarkId\" is not allowed", exception.parsedMessage)
+        assertEquals("ValidationError", exception.serverCode)
         assertEquals(errorBody, exception.rawBody)
 
         val errorResponse = errorResponseJson.decodeFromString<SyncErrorResponse>(errorBody)
         assertEquals(buildJsonObject {}, errorResponse.details?.error?.details)
+    }
+
+    @Test
+    fun `postMutations reads the code and message from the backend error body`() = runTest {
+        val errorBody = """
+            {
+              "success": false,
+              "error": {
+                "code": "UniqueViolationError",
+                "message": "Collection already exists",
+                "details": { "field": "name" }
+              }
+            }
+        """.trimIndent()
+        val request = postRequestWithResponse(errorBody, HttpStatusCode.Conflict)
+
+        val exception = assertFailsWith<SyncNetworkException> {
+            request.postMutations(
+                mutations = listOf(collectionBookmarkCreateRequest()),
+                lastModificationDate = 1000L,
+                authHeaders = emptyMap()
+            )
+        }
+
+        assertEquals("UniqueViolationError", exception.serverCode)
+        assertEquals("Collection already exists", exception.parsedMessage)
     }
 
     @Test

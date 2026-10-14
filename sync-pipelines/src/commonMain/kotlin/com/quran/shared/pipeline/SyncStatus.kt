@@ -7,6 +7,7 @@ import com.quran.shared.syncengine.SyncRunObserver
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlin.concurrent.Volatile
 
 /**
  * The state of sync in this app session, published by [QuranDataService.syncStatus].
@@ -16,8 +17,10 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 sealed class SyncStatus {
     /**
-     * No sync has finished since launch, no one is signed in, or a logout or reset cleared the
-     * previous result. A sync that ends because no one is signed in also returns here.
+     * No sync has finished since launch, or a logout or reset cleared the previous result.
+     *
+     * A sync that ends without syncing, because no one is signed in or a logout or reset stopped
+     * it, leaves the status as it was before that sync started.
      */
     data object Idle : SyncStatus()
 
@@ -38,24 +41,33 @@ internal class SyncStatusTracker : SyncRunObserver {
     private val mutableStatus = MutableStateFlow<SyncStatus>(SyncStatus.Idle)
     val status: StateFlow<SyncStatus> = mutableStatus.asStateFlow()
 
+    /** The status to show when a run ends without a result. */
+    @Volatile
+    private var lastResult: SyncStatus = SyncStatus.Idle
+
     override fun syncStarted() {
         mutableStatus.value = SyncStatus.Syncing
     }
 
     override fun syncSucceeded() {
-        mutableStatus.value = SyncStatus.Succeeded(currentPlatformDateTime())
+        publishResult(SyncStatus.Succeeded(currentPlatformDateTime()))
     }
 
     override fun syncSkipped() {
-        reset()
+        mutableStatus.value = lastResult
     }
 
     override fun syncFailed(error: SyncError) {
-        mutableStatus.value = SyncStatus.Failed(currentPlatformDateTime(), error)
+        publishResult(SyncStatus.Failed(currentPlatformDateTime(), error))
     }
 
     /** Forgets the previous result after a logout or reset. */
     fun reset() {
-        mutableStatus.value = SyncStatus.Idle
+        publishResult(SyncStatus.Idle)
+    }
+
+    private fun publishResult(result: SyncStatus) {
+        lastResult = result
+        mutableStatus.value = result
     }
 }

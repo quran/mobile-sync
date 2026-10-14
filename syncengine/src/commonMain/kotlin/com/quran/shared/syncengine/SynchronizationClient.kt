@@ -157,7 +157,8 @@ interface SyncRunObserver {
     fun syncSucceeded() {}
 
     /**
-     * The run ended without syncing: no one is signed in, or a logout or reset stopped it.
+     * The run ended without a result: no one is signed in, or a logout or reset stopped it or
+     * began while it ran.
      */
     fun syncSkipped() {}
 

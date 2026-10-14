@@ -75,13 +75,18 @@ internal var schedulerAfterCommandDrainSnapshotHook: (() -> Unit)? = null
 internal var schedulerBeforeCommandDrainReleaseHook: (() -> Unit)? = null
 
 private class SchedulerAttemptContext(
-    val attempt: Int
+    val attempt: Int,
+    val isFinal: Boolean
 ) : AbstractCoroutineContextElement(SchedulerAttemptContext) {
     companion object Key : CoroutineContext.Key<SchedulerAttemptContext>
 }
 
 internal suspend fun currentSchedulerAttempt(): Int =
     currentCoroutineContext()[SchedulerAttemptContext]?.attempt ?: 0
+
+/** Whether the scheduler gives up, instead of retrying, if the current attempt fails. */
+internal suspend fun isFinalSchedulerAttempt(): Boolean =
+    currentCoroutineContext()[SchedulerAttemptContext]?.isFinal ?: true
 
 /**
  * A scheduler that manages the execution of a task function with configurable timing and retry logic.
@@ -308,7 +313,9 @@ class Scheduler(
 
         logger.d { "Executing task function, state: WaitingForReply" }
         try {
-            withContext(SchedulerAttemptContext(startingState.getRetryCount())) {
+            val attempt = startingState.getRetryCount()
+            val isFinal = attempt >= timings.failureRetryingConfig.maximumRetries
+            withContext(SchedulerAttemptContext(attempt, isFinal)) {
                 taskFunction()
             }
 

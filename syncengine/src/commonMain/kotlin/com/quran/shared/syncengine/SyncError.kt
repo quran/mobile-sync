@@ -30,28 +30,32 @@ enum class SyncErrorKind {
  *
  * @param kind the stable failure category.
  * @param httpStatus the HTTP status code when the server answered with an error, or `null`.
+ * @param serverCode the server's error identifier, such as `UniqueViolationError`, or `null`.
  * @param message a short English description for diagnostics; apps should localize from [kind].
  */
 data class SyncError(
     val kind: SyncErrorKind,
     val httpStatus: Int?,
+    val serverCode: String?,
     val message: String
 )
 
 internal fun Exception.toSyncError(): SyncError =
     when (this) {
-        is SyncNetworkException -> status.value.let { code ->
-            when {
+        is SyncNetworkException -> {
+            val code = status.value
+            val (kind, description) = when {
                 code == 401 || code == 403 ->
-                    SyncError(SyncErrorKind.AUTHENTICATION, code, "The sync server did not accept the session (HTTP $code)")
+                    SyncErrorKind.AUTHENTICATION to "The sync server did not accept the session"
                 code >= 500 || code == 408 || code == 429 ->
-                    SyncError(SyncErrorKind.SERVER, code, "The sync server is unavailable (HTTP $code)")
+                    SyncErrorKind.SERVER to "The sync server is unavailable"
                 code in 400..499 ->
-                    SyncError(SyncErrorKind.REJECTED, code, "The sync server rejected the request (HTTP $code)")
+                    SyncErrorKind.REJECTED to "The sync server rejected the request"
                 else ->
-                    SyncError(SyncErrorKind.UNKNOWN, code, "The sync server returned an unexpected status (HTTP $code)")
+                    SyncErrorKind.UNKNOWN to "The sync server returned an unexpected status"
             }
+            SyncError(kind, code, serverCode, "$description (HTTP $code)")
         }
-        is IOException -> SyncError(SyncErrorKind.NETWORK, null, "Could not reach the sync server")
-        else -> SyncError(SyncErrorKind.UNKNOWN, null, "Sync failed unexpectedly (${this::class.simpleName})")
+        is IOException -> SyncError(SyncErrorKind.NETWORK, null, null, "Could not reach the sync server")
+        else -> SyncError(SyncErrorKind.UNKNOWN, null, null, "Sync failed unexpectedly (${this::class.simpleName})")
     }

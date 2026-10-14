@@ -31,9 +31,29 @@ class SyncErrorTest {
     }
 
     @Test
+    fun `http failures keep the server error code`() {
+        val exception = SyncNetworkException(
+            status = HttpStatusCode.Conflict,
+            rawBody = "",
+            parsedMessage = null,
+            serverCode = "UniqueViolationError"
+        )
+
+        assertEquals(
+            SyncError(
+                SyncErrorKind.REJECTED,
+                409,
+                "UniqueViolationError",
+                "The sync server rejected the request (HTTP 409)"
+            ),
+            exception.toSyncError()
+        )
+    }
+
+    @Test
     fun `transport failures are network errors without a status`() {
         assertEquals(
-            SyncError(SyncErrorKind.NETWORK, null, "Could not reach the sync server"),
+            SyncError(SyncErrorKind.NETWORK, null, null, "Could not reach the sync server"),
             IOException("Connection reset").toSyncError()
         )
     }
@@ -41,7 +61,7 @@ class SyncErrorTest {
     @Test
     fun `other failures are unknown and name only the exception type`() {
         assertEquals(
-            SyncError(SyncErrorKind.UNKNOWN, null, "Sync failed unexpectedly (IllegalStateException)"),
+            SyncError(SyncErrorKind.UNKNOWN, null, null, "Sync failed unexpectedly (IllegalStateException)"),
             IllegalStateException("Sync head changed during pagination").toSyncError()
         )
     }

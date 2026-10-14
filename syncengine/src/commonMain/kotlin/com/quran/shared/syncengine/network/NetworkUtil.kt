@@ -8,13 +8,20 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 
+/**
+ * A sync error body. The backend sends `{success, error}`; the API gateway wraps that body in
+ * `details` and adds its own `message` and `type`.
+ */
 @Serializable
 internal data class SyncErrorResponse(
-    val message: String,
-    val type: String,
+    val message: String? = null,
+    val type: String? = null,
     val success: Boolean,
+    val error: SyncErrorDetail? = null,
     val details: SyncErrorDetails? = null
-)
+) {
+    val backendError: SyncErrorDetail? get() = error ?: details?.error
+}
 
 @Serializable
 internal data class SyncErrorDetails(
@@ -54,8 +61,8 @@ internal suspend fun HttpResponse.processError(
         logContext.format("HTTP error response: status=${status}, body=$errorBody")
     }
 
-    val parsedMessage = try {
-        errorResponseJson.decodeFromString<SyncErrorResponse>(errorBody).message
+    val response = try {
+        errorResponseJson.decodeFromString<SyncErrorResponse>(errorBody)
     } catch (e: Exception) {
         logger.w {
             logContext.format("Failed to parse error response, using raw body: ${e.message}")
@@ -63,5 +70,10 @@ internal suspend fun HttpResponse.processError(
         null
     }
 
-    throw SyncNetworkException(status, errorBody, parsedMessage)
+    throw SyncNetworkException(
+        status = status,
+        rawBody = errorBody,
+        parsedMessage = response?.message ?: response?.backendError?.message,
+        serverCode = response?.backendError?.code
+    )
 }

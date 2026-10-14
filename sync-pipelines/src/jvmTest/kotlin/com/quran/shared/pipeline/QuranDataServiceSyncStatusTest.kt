@@ -107,28 +107,56 @@ class QuranDataServiceSyncStatusTest {
     @Test
     fun `sync run outcomes drive the status`() = runTest(dispatcher) {
         service.awaitInitialization()
-        val error = SyncError(SyncErrorKind.SERVER, 503, "The sync server is unavailable (HTTP 503)")
 
         events.syncStarted()
         assertEquals(SyncStatus.Syncing, service.syncStatus.value)
         events.syncSucceeded()
         assertIs<SyncStatus.Succeeded>(service.syncStatus.value)
-        events.syncFailed(error)
-        assertEquals(error, assertIs<SyncStatus.Failed>(service.syncStatus.value).error)
+        events.syncStarted()
+        events.syncFailed(serverError)
+        assertEquals(serverError, assertIs<SyncStatus.Failed>(service.syncStatus.value).error)
+    }
+
+    @Test
+    fun `skipped run restores the result from before it started`() = runTest(dispatcher) {
+        service.awaitInitialization()
+        events.syncFailed(serverError)
+
+        events.syncStarted()
         events.syncSkipped()
-        assertEquals(SyncStatus.Idle, service.syncStatus.value)
+
+        assertEquals(serverError, assertIs<SyncStatus.Failed>(service.syncStatus.value).error)
+    }
+
+    @Test
+    fun `run without a session keeps the latest result`() = runTest(dispatcher) {
+        service.awaitInitialization()
+        events.syncFailed(serverError)
+        events.next()
+
+        service.triggerSync(immediately = true)
+
+        assertEquals("skipped", events.next())
+        assertEquals(serverError, assertIs<SyncStatus.Failed>(service.syncStatus.value).error)
     }
 
     @Test
     fun `logout clears the latest sync result`() = runTest(dispatcher) {
         service.awaitInitialization()
-        events.syncFailed(SyncError(SyncErrorKind.NETWORK, null, "Could not reach the sync server"))
+        events.syncFailed(serverError)
 
         service.logout()
 
         assertEquals(SyncStatus.Idle, service.syncStatus.value)
     }
 }
+
+private val serverError = SyncError(
+    kind = SyncErrorKind.SERVER,
+    httpStatus = 503,
+    serverCode = "ServerError",
+    message = "The sync server is unavailable (HTTP 503)"
+)
 
 @BindingContainer
 private class RecordingSyncBindings(private val events: SyncRunEvents) {
