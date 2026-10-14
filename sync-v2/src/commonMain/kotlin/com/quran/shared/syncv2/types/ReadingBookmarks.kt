@@ -86,7 +86,7 @@ class ReadingBookmarksRepository(private val database: SyncV2Database) {
  * one field (type, key, verse and mushaf together), so two sides' locations never mix, and a rename on one device
  * survives a location change on another. A clear is an UPDATE with every location field null, as the backend
  * expects (its DELETE would also reset the slot's client timestamps). Entries without a slot (`{}`, a vanished row)
- * are skipped, never read as a clear (S27). The mushaf key is `mushafId`, the only one this resource accepts.
+ * are skipped, never read as a clear. The mushaf key is `mushafId`, the only one this resource accepts.
  * `metadata` round-trips (the server replaces it on every write), except `source`, which the server keeps.
  */
 class ReadingBookmarksType(private val database: SyncV2Database) : SyncType {

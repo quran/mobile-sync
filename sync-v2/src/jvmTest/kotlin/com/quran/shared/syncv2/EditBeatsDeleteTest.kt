@@ -11,7 +11,7 @@ import kotlin.test.assertFalse
 class EditBeatsDeleteTest {
     private fun t(n: Int) = 1_760_000_000_000L + n * 1_000L
 
-    /** Reviewer probe P1: the remote verse used to wedge sync on a foreign-key violation. */
+    /** A remote verse in a locally deleted collection must not wedge sync on a foreign-key violation. */
     @Test
     fun `a verse added remotely to a collection deleted locally restores the collection with all its verses`() =
         FakeSyncServer().use { server ->
@@ -32,7 +32,7 @@ class EditBeatsDeleteTest {
             }
         }
 
-    /** Reviewer probe P5: reverting a forbidden DELETE must bring back the verses the local delete cascaded. */
+    /** Reverting a forbidden DELETE must bring back the verses the local delete cascaded. */
     @Test
     fun `a forbidden collection delete is reverted with its verses`() = FakeSyncServer().use { server ->
         server.includeMutationIndex = true

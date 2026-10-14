@@ -33,7 +33,7 @@ class ForbiddenWithoutIndexTest {
         }
     }
 
-    /** Reviewer probe: two forbidden items used to make every half fail, which read as a scope error, for good. */
+    /** Two forbidden items must not make every half fail and read as a scope error for good. */
     @Test
     fun `two forbidden deletes are both reverted once something else lands`() = FakeSyncServer().use { server ->
         Device(server).use { device ->

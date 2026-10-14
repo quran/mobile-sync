@@ -121,7 +121,7 @@ class ConcurrencyTest {
         }
     }
 
-    /** S3 with the race: A's sync in flight while the user switches to B. B must never see A's data. */
+    /** An account switch while A's sync is in flight: B must never see A's data. */
     @Test
     fun `an account switch during a sync keeps the old account's data out of the new one`() = FakeSyncServer().use { server ->
         Device(server).use { device ->

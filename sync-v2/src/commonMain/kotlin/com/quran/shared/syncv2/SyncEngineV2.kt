@@ -116,7 +116,7 @@ class SyncEngineV2(
 
     /**
      * Switches to [account] and returns the generation this sync commits under, in one transaction. A different
-     * account wipes everything first; only resetting bases would turn A's rows into CREATEs in B (S3).
+     * account wipes everything first; only resetting bases would turn A's rows into CREATEs in B.
      */
     private fun start(account: String): Generation = database.transactionWithResult {
         val previous = store.account

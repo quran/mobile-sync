@@ -74,7 +74,7 @@ class HighlightsTest {
     }
 
     /**
-     * S24, HL-07: 2:255 is blue on both devices; the phone makes it green, then the tablet (newer) makes it yellow.
+     * HL-07: 2:255 is blue on both devices; the phone makes it green, then the tablet (newer) makes it yellow.
      * One color per verse holds for remote changes too: the tablet removes the phone's green membership, and the
      * server ends with one color.
      */
@@ -107,7 +107,7 @@ class HighlightsTest {
     }
 
     /**
-     * S24 with three devices and the web. All three have 2:255 green (added at t1). A highlights it green again at
+     * With three devices and the web. All three have 2:255 green (added at t1). A highlights it green again at
      * t5, which changes nothing on the server (its base stays t1). The web, which doesn't keep one color per verse,
      * adds yellow at t3. Every device must rank green by the server's t1, so all keep yellow: had A ranked by its own
      * t5, it would keep green while B and C keep yellow, and their pushes could remove both colors.

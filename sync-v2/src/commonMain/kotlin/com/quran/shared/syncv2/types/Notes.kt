@@ -83,9 +83,9 @@ class NotesRepository(private val database: SyncV2Database) {
 /**
  * NOTE: no natural key (equal notes are separate notes, and the server never upserts them). A lost CREATE is
  * recognised by [outboxKey], `(clientCreatedAt, ranges)`: both are immutable, and the body is left out so a note
- * another device edited since still matches. UPDATE sends only the body and `clientUpdatedAt` (S7); ranges never
- * change (S4). The body is sent escaped like the server's sanitize-html and unescaped on GET. `archivedAt` (archived on
- * QuranReflect, S13) is a field like any other: an archived note stays a row, its edits still sync (the server's UPDATE
+ * another device edited since still matches. UPDATE sends only the body and `clientUpdatedAt`; ranges never
+ * change. The body is sent escaped like the server's sanitize-html and unescaped on GET. `archivedAt` (archived on
+ * QuranReflect) is a field like any other: an archived note stays a row, its edits still sync (the server's UPDATE
  * accepts them), and an unarchive brings it back. The client never sends it.
  */
 class NotesType(private val database: SyncV2Database) : SyncType {

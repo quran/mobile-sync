@@ -10,7 +10,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
-/** Reading sessions against the new engine: S1, S5, S8, pruning, moves, edit-vs-delete. */
+/** Reading sessions: pruning, moves, edit-vs-delete. */
 class ReadingSessionsSyncTest {
     private fun t(n: Int) = 1_760_000_000_000L + n * 1_000L
 
@@ -28,7 +28,7 @@ class ReadingSessionsSyncTest {
         }
     }
 
-    /** S1 (sessions, scenario 1): never-synced pruned sessions leave no tombstones, so nothing can be ambiguous. */
+    /** Never-synced pruned sessions leave no tombstones, so nothing can be ambiguous. */
     @Test
     fun `two pruned unsynced sessions at one verse do not break the first sync`() = FakeSyncServer().use { server ->
         Device(server).use { device ->
@@ -47,7 +47,7 @@ class ReadingSessionsSyncTest {
         }
     }
 
-    /** S1 (sessions, scenario 2): a pruned never-synced session can't bind and delete another device's session. */
+    /** A pruned never-synced session can't bind and delete another device's session. */
     @Test
     fun `a pruned unsynced session does not delete another device's session at that verse`() = FakeSyncServer().use { server ->
         Device(server).use { device ->
@@ -65,7 +65,7 @@ class ReadingSessionsSyncTest {
         }
     }
 
-    /** S5: natural-key revival turns "pruned, then revisited" into one UPDATE instead of CREATE + DELETE. */
+    /** Natural-key revival turns "pruned, then revisited" into one UPDATE instead of CREATE + DELETE. */
     @Test
     fun `revisiting a pruned synced session before sync keeps the visit`() = FakeSyncServer().use { server ->
         Device(server).use { device ->
@@ -205,8 +205,8 @@ class ReadingSessionsSyncTest {
     }
 
     /**
-     * Reviewer probe: the losing remote session becomes a tombstone under local id -1; a remote edit restores it
-     * there; a remote move then parks it. Parking at `ayah = -local_id` put it on 2:1, a real verse already taken.
+     * The losing remote session becomes a tombstone under local id -1; a remote edit restores it there; a remote
+     * move then parks it, which must not land on a real verse.
      */
     @Test
     fun `a session restored under a negative id can be parked`() = FakeSyncServer().use { server ->

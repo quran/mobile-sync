@@ -184,7 +184,7 @@ class Pusher(
         }
     }
 
-    /** No item to blame: split the batch in halves (the only place that bisects; not needed with BE1's index). */
+    /** No item to blame: split the batch in halves (the only place that bisects; not needed when the server sends `mutationIndex`). */
     private suspend fun bisect(error: SyncHttpException, batch: List<Planned>, head: Long): Sent {
         val half = (batch.size + 1) / 2
         return split(error, batch.take(half), batch.drop(half), head)

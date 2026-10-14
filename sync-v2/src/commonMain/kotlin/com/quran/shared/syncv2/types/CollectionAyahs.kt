@@ -149,7 +149,7 @@ class CollectionAyahsType(private val database: SyncV2Database, collections: Col
      * One color per verse: when a verse is in more than one highlight collection (another device changed its color
      * while this one did too), the newest membership stays and the others go; a synced one is pushed as a DELETE.
      * A synced membership ranks by the server's `addedAt` (its base), an unsynced one by its own; ties go to the
-     * color name. So every device ranks one pair the same way and they converge on one color (S24): ranking by a
+     * color name. So every device ranks one pair the same way and they converge on one color: ranking by a
      * local value could make two devices each remove the other's color, leaving none.
      */
     override fun prune(synced: Map<Long, State>) {

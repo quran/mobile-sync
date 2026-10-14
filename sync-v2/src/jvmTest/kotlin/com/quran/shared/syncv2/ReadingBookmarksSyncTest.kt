@@ -95,7 +95,7 @@ class ReadingBookmarksSyncTest {
         }
     }
 
-    /** TXT-11 (S13): names are trimmed like the server, and an empty one is null, so nothing is pushed back. */
+    /** TXT-11: names are trimmed like the server, and an empty one is null, so nothing is pushed back. */
     @Test
     fun `slot names are trimmed like the server`() = FakeSyncServer().use { server ->
         Device(server).use { device ->

@@ -30,7 +30,7 @@ class NotesSyncTest {
         }
     }
 
-    /** S4: a note created on the web with several ranges keeps all of them, in order, through an edit. */
+    /** A note created on the web with several ranges keeps all of them, in order, through an edit. */
     @Test
     fun `a note with several ranges keeps all of them through an edit`() = FakeSyncServer().use { server ->
         Device(server).use { device ->
@@ -48,7 +48,7 @@ class NotesSyncTest {
         }
     }
 
-    /** S7: the server's note UPDATE accepts only the body and client timestamps; `ranges` would get 422 forever. */
+    /** The server's note UPDATE accepts only the body and client timestamps; `ranges` would get 422 forever. */
     @Test
     fun `an edit sends only the body and its time`() = FakeSyncServer().use { server ->
         Device(server).use { device ->
@@ -106,7 +106,7 @@ class NotesSyncTest {
     }
 
     /**
-     * S13: archiving on QuranReflect is a 30-day trash. The note stays a row here, marked archived (app-facing queries
+     * Archiving on QuranReflect is a 30-day trash. The note stays a row here, marked archived (app-facing queries
      * hide it), and nothing is deleted or pushed.
      */
     @Test
@@ -157,7 +157,7 @@ class NotesSyncTest {
         }
     }
 
-    /** S12 for notes: the CREATE landed, its response was lost, and the user edited before the retry. */
+    /** Notes: the CREATE landed, its response was lost, and the user edited before the retry. */
     @Test
     fun `a lost note create is bound by clientCreatedAt and ranges instead of duplicated`() = FakeSyncServer().use { server ->
         Device(server).use { device ->
@@ -327,7 +327,7 @@ class NotesSyncTest {
         }
     }
 
-    /** S17, NOTE-09: concurrent edits keep the newer one, whichever side it is on. */
+    /** NOTE-09: concurrent edits keep the newer one, whichever side it is on. */
     @Test
     fun `concurrent note edits keep the newer one`() {
         listOf(true, false).forEach { localNewer ->

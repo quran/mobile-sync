@@ -77,7 +77,7 @@ class Reconciler(private val store: SyncStore, private val types: List<SyncType>
     }
 
     /**
-     * Natural-key revival (S5): a new local row whose key matches a local tombstone takes over that
+     * Natural-key revival: a new local row whose key matches a local tombstone takes over that
      * tombstone's remote id and base, so "delete then re-add" becomes one UPDATE (or nothing).
      */
     private fun revive(type: SyncType): Set<Long> {

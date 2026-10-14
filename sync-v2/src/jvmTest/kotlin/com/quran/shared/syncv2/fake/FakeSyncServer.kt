@@ -35,7 +35,7 @@ class FakeSyncServer : AutoCloseable {
     var getCount = 0
 
     // Fault injection (server behavior, not client mocking). The defaults are production's.
-    /** `error.details.mutationIndex`, which the backend sends only with BE1 (#1932): off by default. */
+    /** `error.details.mutationIndex`, which the backend sends only with quran.com-users-backend#1932: off by default. */
     @Volatile var includeMutationIndex = false
     /** Production wraps backend errors in the API gateway's envelope; false sends the backend's own shape. */
     @Volatile var gatewayErrors = true

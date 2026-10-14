@@ -70,7 +70,7 @@ class CollectionTypesTest {
     }
 
     /**
-     * S24: a verse in two highlight colors keeps the newest. A synced membership ranks by the server's addedAt (its
+     * A verse in two highlight colors keeps the newest. A synced membership ranks by the server's addedAt (its
      * base), not its local one, so every device ranks the pair the same way.
      */
     @Test

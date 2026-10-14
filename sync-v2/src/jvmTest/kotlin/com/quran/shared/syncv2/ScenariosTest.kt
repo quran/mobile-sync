@@ -9,7 +9,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
-/** End-to-end scenarios the spike review listed as missing: more devices, bigger pushes, lost and partial requests. */
+/** End-to-end scenarios: more devices, bigger pushes, lost and partial requests. */
 class ScenariosTest {
     private fun t(n: Int) = 1_760_000_000_000L + n * 1_000L
 
@@ -148,7 +148,7 @@ class ScenariosTest {
         }
     }
 
-    /** Reviewer probe P7: a verse added on A to a collection B deleted; everything settles without more pushes. */
+    /** A verse added on A to a collection B deleted; everything settles without more pushes. */
     @Test
     fun `a verse added to a collection another device deleted settles on both`() = FakeSyncServer().use { server ->
         Device(server).use { a ->
@@ -172,7 +172,7 @@ class ScenariosTest {
         }
     }
 
-    /** Reviewer probe P8: quran.com removes a bookmark with BOOKMARK DELETE; it leaves Favorites here too. */
+    /** quran.com removes a bookmark with BOOKMARK DELETE; it leaves Favorites here too. */
     @Test
     fun `a bookmark deleted on quran com leaves Favorites`() = FakeSyncServer().use { server ->
         Device(server).use { device ->
@@ -213,7 +213,7 @@ class ScenariosTest {
         }
     }
 
-    /** Reviewer probe P9: another device writes during the POST; the gateway-wrapped 409 restarts the round. */
+    /** Another device writes during the POST; the gateway-wrapped 409 restarts the round. */
     @Test
     fun `another device writing during the POST restarts and converges`() = FakeSyncServer().use { server ->
         Device(server).use { device ->

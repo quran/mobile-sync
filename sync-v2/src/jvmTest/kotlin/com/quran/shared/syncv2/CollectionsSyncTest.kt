@@ -10,7 +10,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** Collections and verses in collections against the new engine: S1, S2, S6, S9, S10, edit-vs-delete. */
+/** Collections and verses in collections. */
 class CollectionsSyncTest {
     private fun t(n: Int) = 1_760_000_000_000L + n * 1_000L
 
@@ -53,7 +53,7 @@ class CollectionsSyncTest {
         }
     }
 
-    /** S9, COL-16: a user collection named "Favorites" is a collection like any other, next to the default one. */
+    /** COL-16: a user collection named "Favorites" is a collection like any other, next to the default one. */
     @Test
     fun `a web collection named Favorites arrives next to the default one`() = FakeSyncServer().use { server ->
         Device(server).use { device ->
@@ -104,7 +104,7 @@ class CollectionsSyncTest {
         }
     }
 
-    /** S1 (collections): a never-synced create + delete leaves no tombstone, so another device's "Study" is safe. */
+    /** A never-synced create + delete leaves no tombstone, so another device's "Study" is safe. */
     @Test
     fun `creating and deleting an unsynced collection twice does not delete another device's collection`() =
         FakeSyncServer().use { server ->
@@ -250,7 +250,7 @@ class CollectionsSyncTest {
         }
     }
 
-    /** Reviewer probe P6: renames that take each other's names reach the server in an order it accepts. */
+    /** Renames that take each other's names reach the server in an order it accepts. */
     @Test
     fun `a shift and a swap of collection names push without a duplicate-name error`() = FakeSyncServer().use { server ->
         Device(server).use { device ->
@@ -312,7 +312,7 @@ class CollectionsSyncTest {
         }
     }
 
-    /** S9 scenario 3: a local rename clashing with a remote create is reverted to base; nothing diverges. */
+    /** A local rename clashing with a remote create is reverted to base; nothing diverges. */
     @Test
     fun `a local rename clashing with a remote create is reverted`() = FakeSyncServer().use { server ->
         Device(server).use { device ->

@@ -3,7 +3,7 @@ package com.quran.shared.syncv2
 import co.touchlab.kermit.Logger
 
 /**
- * Restores the local unique indexes after the merge, before anything is written (S9):
+ * Restores the local unique indexes after the merge, before anything is written:
  * - a local-only row clashing with a remote-backed one is linked to it;
  * - a local key change (rename, move) clashing with a remote-backed row is reverted to base, except for
  *   [SyncType.mergeWholeObject] types, where the newer of the two keeps the key and the older one is deleted;

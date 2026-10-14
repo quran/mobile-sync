@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
 
 /**
  * Only an allowlist of item errors holds; auth, rate limits and outages abort, retry and hold nothing.
- * Runs against a server with and without `mutationIndex` (BE1): see the subclasses at the end.
+ * Runs against a server with and without `mutationIndex`: see the subclasses at the end.
  */
 abstract class ErrorClassificationTest(private val withIndex: Boolean) {
     private fun t(n: Int) = 1_760_000_000_000L + n * 1_000L
@@ -83,7 +83,10 @@ abstract class ErrorClassificationTest(private val withIndex: Boolean) {
         }
     }
 
-    /** BE1 wraps unexpected errors in the apply loop with an index: a deadlock is a 500 with an index. */
+    /**
+     * With `mutationIndex`, the backend wraps unexpected errors in the apply loop with an index: a deadlock is a 500
+     * with an index.
+     */
     @Test
     fun `a transient 500 is retried, not held`() = server().use { server ->
         var failures = 1

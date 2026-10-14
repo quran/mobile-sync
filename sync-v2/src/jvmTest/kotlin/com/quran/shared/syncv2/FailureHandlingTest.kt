@@ -12,8 +12,8 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
- * S11 (holds, error classification, bisecting), S12-style lost responses, S3 account switch, races.
- * Runs against a server with and without `mutationIndex` (BE1): see the subclasses at the end.
+ * Holds, error classification, bisecting, lost responses, account switches and races.
+ * Runs against a server with and without `mutationIndex`: see the subclasses at the end.
  */
 abstract class FailureHandlingTest(private val withIndex: Boolean) {
     private fun t(n: Int) = 1_760_000_000_000L + n * 1_000L
@@ -189,7 +189,7 @@ abstract class FailureHandlingTest(private val withIndex: Boolean) {
         }
     }
 
-    /** S12 for collections: the batch landed, the response was lost, and the user renamed before the retry. */
+    /** Collections: the batch landed, the response was lost, and the user renamed before the retry. */
     @Test
     fun `a lost response whose batch landed binds instead of duplicating`() = server().use { server ->
         Device(server).use { device ->
@@ -240,7 +240,7 @@ abstract class FailureHandlingTest(private val withIndex: Boolean) {
         }
     }
 
-    /** S10's window: an edit made while the POST is in flight is pushed by the next sync, never lost. */
+    /** An edit made while the POST is in flight is pushed by the next sync, never lost. */
     @Test
     fun `an edit made during the POST is pushed by the next sync`() = server().use { server ->
         Device(server).use { device ->
@@ -254,7 +254,7 @@ abstract class FailureHandlingTest(private val withIndex: Boolean) {
         }
     }
 
-    /** S3: a different account wipes local data first, so nothing of A's is pushed into B. */
+    /** A different account wipes local data first, so nothing of A's is pushed into B. */
     @Test
     fun `an account switch wipes the previous account's data`() = server().use { server ->
         Device(server).use { device ->
