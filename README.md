@@ -50,13 +50,12 @@ flowchart LR
 |---|---|
 | `:auth` | OIDC login/logout, auth state, token handling |
 | `:persistence` | The app database (`MobileSyncDatabase`) and the repositories for bookmarks/collections/notes/reading sessions, over `:sync-v2`'s plain tables |
-| `:syncengine` | The previous sync engine; no longer used, kept for its shared types (`SyncError`, `SynchronizationEnvironment`, `SchedulerTimings`) until it is deleted |
-| `:sync-v2` | The generic sync engine (fetch, three-way merge, push) and the plain domain tables of its types |
-| `:sync-pipelines` | DI graph and `QuranDataService` managed data API |
+| `:sync-v2` | The generic sync engine (fetch, three-way merge, push) and the plain domain tables of its types; see [SYNC_ENGINE.md](SYNC_ENGINE.md) |
+| `:sync-pipelines` | DI graph, the sync client and scheduler, and the `QuranDataService` managed data API |
 | `:umbrella` | iOS XCFramework export (`Shared.xcframework`) |
 | `:demo:android` | Android sample app (Compose) |
 | `:demo:common` | Shared demo helpers/models |
-| `:mutations-definitions` | Shared mutation/domain definitions |
+| `:mutations-definitions` | Shared helpers: the server's text rules (`ServerText`) and the DI scope (`AppScope`) |
 | `:logging` | Routes logs, including HTTP calls, to a host app's logger (`MobileSyncLogging`) |
 
 ## Requirements
@@ -239,7 +238,7 @@ Advanced override for custom endpoints remains available:
 ```kotlin
 import com.quran.shared.auth.model.AuthEnvironment
 import com.quran.shared.auth.model.AuthConfig
-import com.quran.shared.syncengine.SynchronizationEnvironment
+import com.quran.shared.pipeline.SynchronizationEnvironment
 
 val graph = SharedDependencyGraph.init(
     driverFactory = DriverFactory(context = applicationContext),

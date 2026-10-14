@@ -16,13 +16,12 @@ Core modules:
 
 - `:auth`: OIDC login/logout, auth state, token handling.
 - `:persistence`: the app database (`MobileSyncDatabase`: `QuranDatabase` for app metadata plus `:sync-v2`'s `SyncV2Database` on one driver, schema `MobileSyncSchema`) and the repositories for bookmarks, collections, notes, and reading sessions. Repositories write plain domain rows through one store per type (`NoteStore`, `CollectionStore`, `ReadingSessionStore`, `ReadingBookmarkStore`), which the importer uses too.
-- `:syncengine`: the previous sync engine. Nothing runs it any more; its shared types (`SyncError`, `SynchronizationEnvironment`, `SyncLifecycleGate`, `SyncRunObserver`, `SchedulerTimings`, `HttpClientFactory`) are still used until it is deleted.
-- `:sync-v2`: the generic sync engine (fetch, three-way merge, push), its per-type mappings and their plain domain tables (plus `sync_item` and `sync_meta`). Not exported through `umbrella`.
-- `:sync-pipelines`: DI graph, storage wiring, the sync client and scheduler (`pipeline/sync`), and `QuranDataService`.
+- `:sync-v2`: the generic sync engine (fetch, three-way merge, push), its per-type mappings and their plain domain tables (plus `sync_item` and `sync_meta`). Not exported through `umbrella`. `SYNC_ENGINE.md` maps it.
+- `:sync-pipelines`: DI graph, storage wiring, the sync client and scheduler (`pipeline/sync`), and `QuranDataService` with its public sync types (`SyncStatus`, `SyncError`, `SynchronizationEnvironment`).
 - `:umbrella`: iOS `Shared` XCFramework export.
 - `:demo:android`: Android Compose demo.
 - `:demo:common`: shared demo helpers/models.
-- `:mutations-definitions`: shared mutation types.
+- `:mutations-definitions`: the server's text rules (`ServerText`) and the DI scope (`AppScope`).
 - `:logging`: `MobileSyncLogging` sink for host apps and the shared Ktor HTTP logging used by `:auth` and the sync client.
 
 ## Common Commands
@@ -35,8 +34,6 @@ Core modules:
 ./gradlew allTests --stacktrace --continue
 
 # Focused tests
-./gradlew :syncengine:jvmTest
-./gradlew :syncengine:allTests
 ./gradlew :sync-v2:allTests   # JVM, Android host (JDBC SQLite driver) and iOS simulator
 ./gradlew :persistence:jvmTest
 ./gradlew :persistence:testAndroidHostTest
@@ -55,7 +52,6 @@ Core modules:
 
 Command notes:
 
-- `:syncengine:test`, `:syncengine:testDebugUnitTest`, and `:syncengine:testReleaseUnitTest` are not valid tasks.
 - `:persistence:test` is ambiguous; use a concrete task such as `jvmTest`, `testAndroidHostTest`, or `allTests`.
 - `dependencyUpdates` is not available unless a dependency-update plugin is added.
 - `installDebug` requires an attached emulator/device.
