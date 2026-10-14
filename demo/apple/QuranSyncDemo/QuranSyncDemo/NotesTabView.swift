@@ -27,7 +27,9 @@ struct NotesTabView: View {
                             VStack(alignment: .leading) {
                                 Text(note.body)
                                     .font(.body)
-                                Text("Sura \(note.startSura), Ayah \(note.startAyah) - Sura \(note.endSura), Ayah \(note.endAyah)")
+                                Text(note.ranges.map { range in
+                                    "Sura \(range.startSura), Ayah \(range.startAyah) - Sura \(range.endSura), Ayah \(range.endAyah)"
+                                }.joined(separator: "; "))
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
