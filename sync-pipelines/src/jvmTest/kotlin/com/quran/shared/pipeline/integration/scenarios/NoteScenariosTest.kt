@@ -1,10 +1,11 @@
 package com.quran.shared.pipeline.integration.scenarios
 
 import com.quran.shared.pipeline.integration.DeviceTimings
-import com.quran.shared.pipeline.integration.KnownIssue
+import com.quran.shared.pipeline.integration.KnownDuplicates
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.server.ClientTimes
+import com.quran.shared.pipeline.integration.server.ServerDuplicate
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.JsonElement
@@ -328,7 +329,10 @@ class NoteScenariosTest {
 
     @Test
     fun `NOTE-17 a lost response plus a local edit doesn't duplicate`() = syncScenario(
-        knownDuplicates = KnownIssue("S12", "A lost POST response plus a later local edit duplicates notes")
+        knownDuplicates = KnownDuplicates("S12", "A lost POST response plus a later local edit duplicates notes") {
+            // The committed CREATE and the edit's new CREATE, both created when the note was written.
+            it.kind == ServerDuplicate.Kind.NOTE && it.key.endsWith(" on [2:255-2:255]") && it.ids.size == 2
+        }
     ) {
         // No retries, so the run ends at the lost response and the edit lands before the next one.
         val phone = device("phone", DeviceTimings(maximumRetries = 0))
@@ -352,7 +356,11 @@ class NoteScenariosTest {
 
     @Test
     fun `NOTE-18 two identical pending notes plus a lost response`() = syncScenario(
-        knownDuplicates = KnownIssue("S12", "Two identical pending notes plus a lost response duplicate on the server")
+        knownDuplicates = KnownDuplicates("S12", "Two identical pending notes plus a lost response duplicate on the server") {
+            // Each of the two notes, pushed again after the lost response.
+            it.kind == ServerDuplicate.Kind.NOTE && it.ids.size == 2 &&
+                it.key in setOf("created at $T0 on [2:255-2:255]", "created at ${T0 + 60_000} on [2:255-2:255]")
+        }
     ) {
         val (phone) = signedIn("phone")
         // The catalog makes them with two imports, but an import matches a note with the same body

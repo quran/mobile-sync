@@ -3,6 +3,7 @@ package com.quran.shared.pipeline.integration
 import com.quran.shared.pipeline.SyncStatus
 import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.server.RequestRecord
+import com.quran.shared.pipeline.integration.server.ServerDuplicate
 import com.quran.shared.syncengine.SyncError
 import com.quran.shared.syncengine.SyncErrorKind
 import kotlinx.coroutines.delay
@@ -53,7 +54,7 @@ class KnownIssueTest {
 
     @Test
     fun `a known issue can cover the final duplicate check`() {
-        val duplicates = KnownIssue("S12", "A lost response plus a local edit duplicates notes")
+        val duplicates = KnownDuplicates("S12", "A lost response plus a local edit duplicates notes") { it.kind == ServerDuplicate.Kind.NOTE }
         val times = ClientTimes(createdAt = 1_700_000_000_000L)
 
         syncScenario(knownDuplicates = duplicates) {
@@ -63,6 +64,42 @@ class KnownIssueTest {
             syncScenario(knownDuplicates = duplicates) { web("alice").createNote("Only one note here", "2:255-2:255") }
         }
         assertEquals("S12 appears fixed; remove knownIssue", fixed.message)
+    }
+
+    @Test
+    fun `a known issue's duplicates don't cover other duplicates`() {
+        val duplicates = KnownDuplicates("S12", "A lost response plus a local edit duplicates notes") { it.kind == ServerDuplicate.Kind.NOTE }
+
+        val other = assertFailsWith<AssertionError> {
+            syncScenario(knownDuplicates = duplicates) {
+                web("alice").addReadingSession(18, 1)
+                // The web upserts by verse, so a second session at that verse is seeded directly.
+                val sessions = server.account("alice").sessions
+                sessions["rscopy"] = sessions.values.single().copy(id = "rscopy")
+            }
+        }
+        assertTrue("sessions at 18:1" in other.message.orEmpty(), other.message)
+    }
+
+    @Test
+    fun `allowed duplicates are skipped, and are not required`() {
+        val times = ClientTimes(createdAt = 1_700_000_000_000L)
+
+        syncScenario {
+            allowDuplicates("Expected by design in this test") { it.kind == ServerDuplicate.Kind.NOTE }
+            repeat(2) { web("alice").createNote("The same note twice", "2:255-2:255", times = times) }
+        }
+        syncScenario {
+            allowDuplicates("Expected by design in this test") { it.kind == ServerDuplicate.Kind.NOTE }
+            web("alice").createNote("Only one note here", "2:255-2:255")
+        }
+        val unexpected = assertFailsWith<AssertionError> {
+            syncScenario {
+                allowDuplicates("Expected by design in this test") { it.kind == ServerDuplicate.Kind.COLLECTION }
+                repeat(2) { web("alice").createNote("The same note twice", "2:255-2:255", times = times) }
+            }
+        }
+        assertTrue("has duplicates" in unexpected.message.orEmpty(), unexpected.message)
     }
 
     @Test

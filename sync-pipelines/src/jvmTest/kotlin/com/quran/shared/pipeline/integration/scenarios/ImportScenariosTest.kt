@@ -5,13 +5,14 @@ import com.quran.shared.persistence.input.ImportCollectionAyahBookmark
 import com.quran.shared.persistence.input.ImportNote
 import com.quran.shared.persistence.input.ImportReadingSession
 import com.quran.shared.persistence.input.PersistenceImportData
-import com.quran.shared.pipeline.integration.KnownIssue
+import com.quran.shared.pipeline.integration.KnownDuplicates
 import com.quran.shared.pipeline.integration.UserDataSnapshot
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.knownIssue
 import com.quran.shared.pipeline.integration.mutation
 import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.server.CollectionRules
+import com.quran.shared.pipeline.integration.server.ServerDuplicate
 import com.quran.shared.pipeline.integration.syncRejectedWith
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlin.test.Test
@@ -183,7 +184,9 @@ class ImportScenariosTest {
     fun `IMP-08 an edited legacy note is imported as a second note`() = syncScenario(
         // The edit keeps the legacy note's creation date, as the iOS legacy reader passes it, so the
         // server holds two notes created at the same time on the same range: the duplicate check's key.
-        knownDuplicates = KnownIssue("S14", "An edited legacy note comes back as a second note with the same creation date")
+        knownDuplicates = KnownDuplicates("S14", "An edited legacy note comes back as a second note with the same creation date") {
+            it.kind == ServerDuplicate.Kind.NOTE
+        }
     ) {
         val (phone) = signedIn("phone")
         val original = ImportNote("A legacy reflection on patience", 2, 153, 2, 153, at(0), at(0))
