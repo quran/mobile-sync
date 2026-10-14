@@ -4,6 +4,7 @@ import com.quran.shared.persistence.DuplicateCollectionNameException
 import com.quran.shared.persistence.ReadOnlyCollectionException
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.mutation
+import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.flow.first
 import kotlin.test.Test
@@ -187,6 +188,22 @@ class CollectionScenariosTest {
         syncUntilQuiescent(phone)
         assertConverged(ALICE, phone)
         assertTrue(phone.versesIn("Memorize").orEmpty().contains("3:18"), "the remote Memorize's verse on the phone")
+    }
+
+    /** The app's collection list is newest first by creation time, on every device: a synced collection keeps its own. */
+    @Test
+    fun `collections are listed newest first by creation time`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+        phone.data.addCollection("Oldest", at(1_000))
+        phone.data.addCollection("Newest", at(3_000))
+        web(ALICE).createCollection("From the web", ClientTimes(T0 + 2_000, T0 + 2_000))
+
+        syncUntilQuiescent(phone, tablet)
+
+        val expected = listOf("Favorites", "Newest", "From the web", "Oldest")
+        listOf(phone, tablet).forEach { device ->
+            assertEquals(expected, device.data.collectionsWithBookmarks.first().map { it.collection.name }, device.name)
+        }
     }
 
     @Test

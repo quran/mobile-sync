@@ -97,7 +97,7 @@ class CollectionsRepository(private val database: SyncV2Database) {
 class CollectionsType(private val database: SyncV2Database) : SyncType {
     private val queries get() = database.collectionsQueries
     override val name = "COLLECTION"
-    override val ignoredFields = setOf(UPDATED_AT.name)
+    override val ignoredFields = setOf(UPDATED_AT.name, CREATED_AT.name)
     override val forbidsItems = true
 
     override fun naturalKey(state: State) = if (isFavorites(state)) FAVORITES_KEY else collectionNameKey(state[NAME])
@@ -107,7 +107,7 @@ class CollectionsType(private val database: SyncV2Database) : SyncType {
         it.local_id to if (it.is_default == 1L) {
             FAVORITES
         } else {
-            stateOf(NAME(it.name), SYSTEM(it.is_system == 1L), READ_ONLY(it.is_read_only == 1L), UPDATED_AT(it.updated_at))
+            stateOf(NAME(it.name), SYSTEM(it.is_system == 1L), READ_ONLY(it.is_read_only == 1L), UPDATED_AT(it.updated_at), CREATED_AT(it.created_at))
         }
     }
 
@@ -116,11 +116,12 @@ class CollectionsType(private val database: SyncV2Database) : SyncType {
         val name = state[NAME]
         val system = if (state[SYSTEM]) 1L else 0L
         val readOnly = if (readOnly(state)) 1L else 0L
+        val createdAt = createdAt(state)
         if (localId != null) {
-            queries.collectionInsertWithId(localId, name, naturalKey(state), 0, system, readOnly, clock(state), clock(state))
+            queries.collectionInsertWithId(localId, name, naturalKey(state), 0, system, readOnly, createdAt, clock(state))
             return localId
         }
-        queries.collectionInsert(name, naturalKey(state), 0, system, readOnly, clock(state), clock(state))
+        queries.collectionInsert(name, naturalKey(state), 0, system, readOnly, createdAt, clock(state))
         return queries.lastInsertId().executeAsOne()
     }
 
@@ -157,7 +158,10 @@ class CollectionsType(private val database: SyncV2Database) : SyncType {
         val system = entry.data.bool("isSystem") == true
         val readOnly = system || (source in PROTECTED_SOURCES && collectionNameKey(name) in PROTECTED_COLORS)
         val updatedAt = entry.data.epochMillis("clientUpdatedAt") ?: entry.timestamp
-        return RemoteItem.Upsert(id, stateOf(NAME(name), SYSTEM(system), READ_ONLY(readOnly), UPDATED_AT(updatedAt)), entry.timestamp)
+        val createdAt = entry.data.epochMillis("clientCreatedAt") ?: updatedAt
+        return RemoteItem.Upsert(
+            id, stateOf(NAME(name), SYSTEM(system), READ_ONLY(readOnly), UPDATED_AT(updatedAt), CREATED_AT(createdAt)), entry.timestamp
+        )
     }
 
     /** Favorites waits for the GET to link it to `__default__`, which the server never lets a client mutate. */
@@ -165,7 +169,7 @@ class CollectionsType(private val database: SyncV2Database) : SyncType {
         is Change.Create -> if (isFavorites(change.state)) null else {
             OutgoingMutation("CREATE", name, null, buildJsonObject {
                 put("name", change.state[NAME].escapeServerText())
-                put("clientCreatedAt", isoTime(clock(change.state)))
+                put("clientCreatedAt", isoTime(createdAt(change.state)))
                 put("clientUpdatedAt", isoTime(clock(change.state)))
             })
         }
@@ -208,6 +212,8 @@ class CollectionsType(private val database: SyncV2Database) : SyncType {
         private val SYSTEM = Field.bool("system")
         private val READ_ONLY = Field.bool("readOnly")
         private val UPDATED_AT = Field.long("updatedAt")
+        /** When the collection was created (`clientCreatedAt`): app-facing lists order by it; not data. */
+        private val CREATED_AT = Field.long("createdAt")
         private val DEFAULT = Field.bool("default")
 
         /** The state of Favorites on both sides; it never changes. */
@@ -216,6 +222,7 @@ class CollectionsType(private val database: SyncV2Database) : SyncType {
 
         private fun isFavorites(state: State) = state.getOrNull(DEFAULT) == true
         private fun readOnly(state: State) = state.getOrNull(READ_ONLY) ?: state[SYSTEM]
+        private fun createdAt(state: State) = state.getOrNull(CREATED_AT) ?: state[UPDATED_AT]
 
         /**
          * A collection's state for a local write: [system] and [readOnly] are set for the highlight collections the app

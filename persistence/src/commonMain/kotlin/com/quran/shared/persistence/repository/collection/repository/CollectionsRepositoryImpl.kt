@@ -38,12 +38,12 @@ class CollectionsRepositoryImpl(
     private val store = CollectionStore(database)
 
     override suspend fun getAllCollections(): List<Collection> = withContext(Dispatchers.IO) {
-        store.all().map { it.toCollection() }
+        store.newestFirst().map { it.toCollection() }
     }
 
     override fun getCollectionsFlow(): Flow<List<Collection>> =
-        database.collectionsQueries.collectionsAll().asFlow().map {
-            withContext(Dispatchers.IO) { store.all().map { row -> row.toCollection() } }
+        database.collectionsQueries.collectionsNewestFirst().asFlow().map {
+            withContext(Dispatchers.IO) { store.newestFirst().map { row -> row.toCollection() } }
         }
 
     override suspend fun addCollection(name: String): Collection = addCollection(name, currentPlatformDateTime())

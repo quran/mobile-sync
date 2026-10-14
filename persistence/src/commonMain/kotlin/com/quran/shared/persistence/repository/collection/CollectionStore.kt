@@ -19,6 +19,9 @@ internal class CollectionStore(private val database: SyncV2Database) {
 
     fun all(): List<CollectionRow> = queries.collectionsAll().executeAsList()
 
+    /** The app-facing order: newest first (by creation time), ties by the newer row. */
+    fun newestFirst(): List<CollectionRow> = queries.collectionsNewestFirst().executeAsList()
+
     fun get(localId: Long): CollectionRow? = queries.collectionGet(localId).executeAsOneOrNull()
 
     fun byName(name: String): CollectionRow? = queries.collectionByKey(collectionNameKey(name)).executeAsOneOrNull()
