@@ -975,6 +975,17 @@ class QuranDataServiceLifecycleTest {
     }
 
     @Test
+    fun `clearing the service closes its sync client`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+        advanceUntilIdle()
+
+        fixture.service.clear()
+
+        assertEquals(1, fixture.syncClient.closeCount)
+        fixture.clearAndJoin()
+    }
+
+    @Test
     fun `empty replacement returns no change and skips sync when bookmark is missing`() = runTest(dispatcher) {
         val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
         fixture.bookmarksRepository.replaceAyahResultChanged = false
@@ -1223,7 +1234,14 @@ private class ServiceAuthRepository(
     }
 }
 
-private class ServiceSynchronizationClient : SynchronizationClient {
+private class ServiceSynchronizationClient : SynchronizationClient, AutoCloseable {
+    var closeCount = 0
+        private set
+
+    override fun close() {
+        closeCount += 1
+    }
+
     var localDataUpdatedCount = 0
         private set
     var applicationStartedCount = 0

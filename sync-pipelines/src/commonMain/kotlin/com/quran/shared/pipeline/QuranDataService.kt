@@ -127,9 +127,11 @@ class QuranDataService internal constructor(
     private var initialized = false
     private var syncLifecycleStarted = false
 
+    /** Stops the service for good: its work, and the sync client's scheduler and HTTP client. */
     fun clear() {
         serviceJob.cancel()
         syncClient.cancelSyncing()
+        (syncClient as? AutoCloseable)?.close()
     }
 
     @HiddenFromObjC

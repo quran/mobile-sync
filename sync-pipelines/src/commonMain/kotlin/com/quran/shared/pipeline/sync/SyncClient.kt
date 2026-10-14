@@ -19,6 +19,7 @@ import com.quran.shared.syncv2.types.syncTypes
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import io.ktor.client.HttpClient
 import kotlinx.io.IOException
 import kotlin.concurrent.Volatile
 import kotlin.time.Clock
@@ -54,8 +55,10 @@ internal class SyncClient(
     private val observer: SyncRunObserver,
     timings: SchedulerTimings,
     dispatcher: CoroutineDispatcher = Dispatchers.Default,
-    private val now: () -> Long = { Clock.System.now().toEpochMilliseconds() }
-) : SynchronizationClient {
+    private val now: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    /** Closed with this client. */
+    private val httpClient: HttpClient? = null
+) : SynchronizationClient, AutoCloseable {
     private val logger = Logger.withTag("SyncClient")
     private val scheduler = SyncScheduler(timings, dispatcher, now, ::runAttempt)
 
@@ -71,6 +74,12 @@ internal class SyncClient(
     override fun cancelSyncing() = scheduler.cancel()
 
     override suspend fun cancelSyncingAndJoin() = scheduler.cancelAndJoin()
+
+    /** Stops the scheduler for good and closes the HTTP client: the service that owns this client is gone. */
+    override fun close() {
+        scheduler.close()
+        httpClient?.close()
+    }
 
     private fun trigger(trigger: SyncTrigger) {
         if (gate.canStartSync()) scheduler.trigger(trigger) else logger.d { "Sync lifecycle unavailable, skipping $trigger" }
@@ -189,9 +198,10 @@ internal class SyncClient(
             timings: SchedulerTimings = DefaultSyncTimings
         ): SyncClient {
             lateinit var client: SyncClient
-            val api = SyncApi(HttpClientFactory.createHttpClient(), environment.endPointURL) { client.requestHeaders() }
+            val httpClient = HttpClientFactory.createHttpClient()
+            val api = SyncApi(httpClient, environment.endPointURL) { client.requestHeaders() }
             val engine = SyncEngineV2(database, api, syncTypes(database), ENGINE_VERSION)
-            client = SyncClient(engine, account, gate, observer, timings)
+            client = SyncClient(engine, account, gate, observer, timings, httpClient = httpClient)
             return client
         }
     }

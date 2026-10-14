@@ -9,7 +9,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.job
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -85,11 +88,22 @@ internal class SyncScheduler(
         commands.trySend(Command.Cancel(done = null))
     }
 
-    /** [cancel], and waits until the running attempt, if any, has stopped. */
+    /** [cancel], and waits until the running attempt, if any, has stopped. Returns at once after [close]. */
     suspend fun cancelAndJoin() {
         val done = CompletableDeferred<Unit>()
-        commands.send(Command.Cancel(done))
-        done.await()
+        if (commands.trySend(Command.Cancel(done)).isSuccess) {
+            select {
+                done.onAwait {}
+                scope.coroutineContext.job.onJoin {}
+            }
+        }
+        scope.coroutineContext.job.takeIf { it.isCancelled }?.join()
+    }
+
+    /** Stops for good: the command loop, the timers and the running attempt. Later triggers do nothing. */
+    fun close() {
+        commands.close()
+        scope.cancel()
     }
 
     private sealed interface Command {

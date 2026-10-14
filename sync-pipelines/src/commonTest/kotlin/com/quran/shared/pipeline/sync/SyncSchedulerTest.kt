@@ -192,4 +192,20 @@ class SyncSchedulerTest {
         runCurrent()
         assertEquals(2, runs.attempts.size)
     }
+
+    @Test
+    fun `close stops the command loop for good`() = schedulerTest { runs, scheduler ->
+        runs.block = CompletableDeferred()
+        scheduler.trigger(SyncTrigger.IMMEDIATE)
+        runCurrent()
+
+        scheduler.close()
+        scheduler.trigger(SyncTrigger.IMMEDIATE)
+        scheduler.trigger(SyncTrigger.LOCAL_CHANGE)
+        advanceTimeBy(60.minutes.inWholeMilliseconds)
+        runCurrent()
+
+        assertEquals(1, runs.attempts.size, "nothing runs after close")
+        scheduler.cancelAndJoin()
+    }
 }
