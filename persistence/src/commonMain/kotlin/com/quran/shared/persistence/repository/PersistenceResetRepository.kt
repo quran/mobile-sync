@@ -16,7 +16,7 @@ interface PersistenceResetRepository {
  *
  * The key-value store and the import history are kept. The history records what this device's legacy data already
  * brought in, which a logout doesn't change: clearing it would let a later tracked import bring back items the user
- * deleted while signed in, and push them as new on the next login, to this account or another one (S14).
+ * deleted while signed in, and push them as new on the next login, to this account or another one.
  */
 @Inject
 @HiddenFromObjC

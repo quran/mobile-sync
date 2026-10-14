@@ -129,7 +129,7 @@ class ImportScenariosTest {
         phone.data.importData(backup, deleteExisting = true)
         syncUntilQuiescent(phone, tablet)
 
-        // A restore deletes every synced item and uploads the backup as new, even the note in both sets (S14).
+        // A restore deletes every synced item and uploads the backup as new, even the note in both sets.
         assertEquals(
             listOf(
                 "CREATE COLLECTION", "CREATE COLLECTION_BOOKMARK", "CREATE NOTE", "CREATE NOTE", "CREATE READING_SESSION",
@@ -233,7 +233,7 @@ class ImportScenariosTest {
         assertEquals(listOf("A legacy note the user keeps"), server.state(ALICE).notes.map { it.body })
         phone.logout()
 
-        // Logout keeps the import history: it records what the legacy data already brought in (S14).
+        // Logout keeps the import history: it records what the legacy data already brought in.
         val replay = phone.data.importData(LEGACY, deleteExisting = false, trackHistory = true)
         assertSucceeded(phone.login(ALICE))
         syncUntilQuiescent(phone)

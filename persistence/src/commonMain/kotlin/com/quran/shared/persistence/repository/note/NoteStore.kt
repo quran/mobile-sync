@@ -38,7 +38,6 @@ internal class NoteStore(private val database: SyncV2Database) {
     fun batch(): Batch = Batch(CreationTimes(queries.createdAts().executeAsList()))
 
     inner class Batch internal constructor(private val times: CreationTimes) {
-        /** [NoteStore.insert]. */
         fun insert(body: String, ranges: List<NoteRange>, createdAt: Long, updatedAt: Long = createdAt): Long {
             require(ranges.isNotEmpty()) { "A note needs a verse range." }
             return write(body, ranges, times.take(createdAt), updatedAt)
