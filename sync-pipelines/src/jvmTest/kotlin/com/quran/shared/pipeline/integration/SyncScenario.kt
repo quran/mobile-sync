@@ -116,11 +116,14 @@ class SyncScenario internal constructor() {
     /**
      * Syncs [devices] round by round until a round in which every run succeeded (none skipped),
      * none POSTed, and no account's server head moved. Each round starts one device later than
-     * the previous one, so the order rotates. Fails after [maxRounds] rounds.
+     * the previous one, so the order rotates. Fails after [maxRounds] rounds; when the last round
+     * had a failed or skipped run, the failure is a [SyncRunFailure] carrying it, so [knownIssue]
+     * can pin it with [syncRejectedWith] or [syncFailedLocally].
      */
     suspend fun syncUntilQuiescent(vararg devices: SyncDevice, maxRounds: Int = 4) {
         require(devices.isNotEmpty()) { "Pass at least one device" }
         val rounds = mutableListOf<String>()
+        var lastFailed: SyncRun? = null
         repeat(maxRounds) { round ->
             val order = devices.indices.map { devices[(it + round) % devices.size] }
             val heads = heads()
@@ -130,8 +133,11 @@ class SyncScenario internal constructor() {
                 "$name ${run.status?.let { it::class.simpleName } ?: "skipped"} GET=${run.gets} POST=${run.postStatuses}"
             } + if (heads != headsAfter) " (head moved)" else ""
             if (heads == headsAfter && runs.all { (_, run) -> run.succeeded && run.posts == 0 }) return
+            lastFailed = runs.lastOrNull { (_, run) -> !run.succeeded }?.second
         }
-        fail("Devices did not quiesce in $maxRounds rounds:\n${rounds.joinToString("\n")}")
+        val message = "Devices did not quiesce in $maxRounds rounds:\n${rounds.joinToString("\n")}"
+        lastFailed?.let { throw SyncRunFailure(it, message) }
+        fail(message)
     }
 
     private fun heads(): Map<String, Long> = server.accountNames.associateWith { server.head(it) }
