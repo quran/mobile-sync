@@ -28,8 +28,8 @@ class WebActor internal constructor(private val server: FakeSyncServer, val acco
         write { collections.addBookmark(BookmarkLocation("surah", sura, null), ClientTimes()) }
 
     /** Adds an ayah to a collection; `__default__` is Favorites. Returns the membership id. */
-    fun addToCollection(collectionId: String, sura: Int, ayah: Int, mushafId: Int = 1): String =
-        write { collections.addMembership(collectionId, BookmarkLocation.ayah(sura, ayah, mushafId), ClientTimes()) }
+    fun addToCollection(collectionId: String, sura: Int, ayah: Int, mushafId: Int = 1, times: ClientTimes = ClientTimes()): String =
+        write { collections.addMembership(collectionId, BookmarkLocation.ayah(sura, ayah, mushafId), times) }
 
     fun addToFavorites(sura: Int, ayah: Int): String = addToCollection(DEFAULT_COLLECTION_ID, sura, ayah)
 

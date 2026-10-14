@@ -7,6 +7,8 @@ import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.server.CollectionRules
 import com.quran.shared.pipeline.integration.server.text
 import com.quran.shared.pipeline.integration.syncScenario
+import com.quran.shared.pipeline.integration.SyncDevice
+import com.quran.shared.persistence.util.fromPlatform
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -21,6 +23,52 @@ import kotlin.test.assertTrue
 
 /** Ayah bookmarks, Favorites and collection memberships. */
 class BookmarkScenariosTest {
+
+    /**
+     * A verse's bookmark dates come from its memberships, which arrive from the server with client times: a
+     * membership's time is its clientUpdatedAt, or its clientCreatedAt, or the server's timestamp. The bookmark was
+     * last updated when its earliest surviving saved membership was made, and added with its earliest membership.
+     */
+    @Test
+    fun `bookmark dates of verses from the web follow their memberships`() = syncScenario {
+        val (phone) = signedIn("phone")
+        val web = web(ALICE)
+        val study = web.createCollection("Study")
+        val memorize = web.createCollection("Memorize")
+        web.addToCollection(study, 2, 255, times = ClientTimes(T0 + 1_000, T0 + 3_000))
+        web.addToCollection(memorize, 2, 255, times = ClientTimes(T0 + 2_000, T0 + 2_500))
+        assertSucceeded(phone.syncNow())
+
+        assertEquals(T0 + 2_500 to T0 + 2_500, phone.bookmarkDates("Study", 2, 255), "the earliest membership, by clientUpdatedAt")
+
+        web.removeFromCollection(memorize, 2, 255)
+        assertSucceeded(phone.syncNow())
+        assertEquals(T0 + 3_000 to T0 + 3_000, phone.bookmarkDates("Study", 2, 255), "the earliest surviving membership")
+
+        server.faults.omitMembershipTimes = setOf("clientUpdatedAt")
+        web.addToCollection(study, 3, 18, times = ClientTimes(T0 + 4_000, T0 + 6_000))
+        assertSucceeded(phone.syncNow())
+        assertEquals(T0 + 4_000 to T0 + 4_000, phone.bookmarkDates("Study", 3, 18), "no clientUpdatedAt: clientCreatedAt")
+
+        server.faults.omitMembershipTimes = setOf("clientUpdatedAt", "clientCreatedAt")
+        // Logged times never go back, so the frozen server time is ahead of everything logged so far.
+        val serverTime = System.currentTimeMillis() + 3_600_000
+        server.clock.frozenAt = serverTime
+        web.addToCollection(study, 3, 19, times = ClientTimes(T0 + 5_000, T0 + 5_000))
+        assertSucceeded(phone.syncNow())
+        // The write logs the bookmark and the membership a millisecond apart (logged times are monotonic).
+        val (lastUpdated, added) = phone.bookmarkDates("Study", 3, 19)
+        assertEquals(lastUpdated, added)
+        assertTrue(lastUpdated in serverTime..serverTime + 5, "no client times: the server's timestamp, $lastUpdated vs $serverTime")
+    }
+
+    /** `bookmarkLastUpdated` to `bookmarkAddedDate` of a verse in a collection, in epoch milliseconds. */
+    private suspend fun SyncDevice.bookmarkDates(collection: String, sura: Int, ayah: Int): Pair<Long, Long> {
+        val bookmark = data.collectionsWithBookmarks.first().single { it.collection.name == collection }
+            .bookmarks.single { it.sura == sura && it.ayah == ayah }
+        return bookmark.bookmarkLastUpdated.fromPlatform().toEpochMilliseconds() to
+            bookmark.bookmarkAddedDate.fromPlatform().toEpochMilliseconds()
+    }
 
     @Test
     fun `BMK-01 add a verse to Favorites`() = syncScenario {

@@ -11,6 +11,22 @@ import kotlin.time.Instant
 /** Reading sessions, the reading history. */
 class ReadingSessionScenariosTest {
 
+    /** Sessions are listed newest first; sessions visited at the same time by verse, on every device (as the prune ranks). */
+    @Test
+    fun `sessions visited at the same time are listed by verse`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+        phone.data.addReadingSession(2, 5, at(1_000))
+        phone.data.addReadingSession(1, 7, at(1_000))
+        phone.data.addReadingSession(2, 3, at(1_000))
+        phone.data.addReadingSession(36, 1, at(2_000))
+
+        syncUntilQuiescent(phone, tablet)
+
+        listOf(phone, tablet).forEach { device ->
+            assertEquals(listOf("36:1", "1:7", "2:3", "2:5"), device.data.readingSessions.first().map { "${it.sura}:${it.ayah}" }, device.name)
+        }
+    }
+
     @Test
     fun `RS-01 adding a session`() = syncScenario {
         val (phone, tablet) = signedIn("phone", "tablet")

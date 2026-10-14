@@ -58,6 +58,12 @@ class ServerFaults internal constructor() {
     @Volatile var mutationIndex: Boolean = false
 
     /**
+     * Client times GET leaves out of COLLECTION_BOOKMARK entries (`clientUpdatedAt`, `clientCreatedAt`), as an older
+     * client's memberships can lack them, so the device falls back to the next one, then the server's timestamp.
+     */
+    @Volatile var omitMembershipTimes: Set<String> = emptySet()
+
+    /**
      * Serves at most this many entries per GET page, whatever `limit` the client asked for. The
      * real server honours the client's limit up to 1000. Today's client derives the page count
      * from its own 1000 limit, so a cap below that makes it skip pages; use it only for engines that

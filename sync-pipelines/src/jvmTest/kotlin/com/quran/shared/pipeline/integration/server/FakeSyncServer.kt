@@ -6,6 +6,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.io.IOException
@@ -231,7 +232,7 @@ class FakeSyncServer : AutoCloseable {
         val mutations = buildList {
             if (includeDefault) add(ResourceRendering.defaultCollection(account))
             rows.drop(offset).take(resourceLimit).forEach { row ->
-                add(ResourceRendering.entry(account, row, faults.takeVanished("${row.resource}:${row.resourceId}")))
+                add(ResourceRendering.entry(account, row, faults.takeVanished("${row.resource}:${row.resourceId}")).withoutMembershipTimes())
             }
         }
         return success(buildJsonObject {
@@ -242,6 +243,12 @@ class FakeSyncServer : AutoCloseable {
             put("total", total)
             put("hasMore", page.toLong() * limit < total)
         })
+    }
+    private fun JsonObject.withoutMembershipTimes(): JsonObject {
+        val omitted = faults.omitMembershipTimes
+        val data = this["data"] as? JsonObject
+        if (omitted.isEmpty() || data == null || (this["resource"] as? JsonPrimitive)?.content != "COLLECTION_BOOKMARK") return this
+        return JsonObject(this + ("data" to JsonObject(data - omitted)))
     }
     // endregion
 
