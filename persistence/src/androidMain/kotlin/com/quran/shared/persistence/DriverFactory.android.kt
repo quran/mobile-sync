@@ -10,12 +10,20 @@ actual class DriverFactory(private val context: Context) {
         return AndroidSqliteDriver(
             schema = MobileSyncSchema,
             context = context,
-            name = "quran.db",
+            name = DATABASE_NAME,
             callback = object : AndroidSqliteDriver.Callback(MobileSyncSchema) {
                 override fun onConfigure(db: SupportSQLiteDatabase) {
                     db.setForeignKeyConstraintsEnabled(true)
                 }
             }
         )
+    }
+
+    internal actual fun deleteDatabase() {
+        context.deleteDatabase(DATABASE_NAME)
+    }
+
+    private companion object {
+        const val DATABASE_NAME = "quran.db"
     }
 }

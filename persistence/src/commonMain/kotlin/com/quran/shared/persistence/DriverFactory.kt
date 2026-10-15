@@ -10,6 +10,9 @@ import kotlin.native.HiddenFromObjC
 /** Opens the app database, `quran.db`, with [MobileSyncSchema] and foreign keys on (the sync engine relies on them). */
 expect class DriverFactory {
     fun makeDriver(): SqlDriver
+
+    /** Deletes the database's files. The database must be closed. */
+    internal fun deleteDatabase()
 }
 
 /**
@@ -17,6 +20,9 @@ expect class DriverFactory {
  */
 @Volatile
 private var database: MobileSyncDatabase? = null
+
+/** The factory that opened [database], which knows its files. */
+private var databaseFactory: DriverFactory? = null
 
 @OptIn(InternalCoroutinesApi::class)
 private val lock = SynchronizedObject()
@@ -27,7 +33,10 @@ private val lock = SynchronizedObject()
 @OptIn(InternalCoroutinesApi::class)
 private fun getDatabase(driverFactory: DriverFactory): MobileSyncDatabase {
     return database ?: synchronized(lock) {
-        database ?: MobileSyncDatabase(driverFactory.makeDriver()).also { database = it }
+        database ?: MobileSyncDatabase(driverFactory.makeDriver()).also {
+            database = it
+            databaseFactory = driverFactory
+        }
     }
 }
 
@@ -45,3 +54,21 @@ fun openSharedDatabase(driverFactory: DriverFactory) {
 }
 
 internal fun makeDatabase(driverFactory: DriverFactory): MobileSyncDatabase = getDatabase(driverFactory)
+
+/**
+ * Closes the shared database and deletes its files. Does nothing when it is not open.
+ *
+ * Stop everything that uses the database first. The dependency graph keeps the closed instance, so it
+ * stops working; a later [openSharedDatabase] opens a new database.
+ */
+@HiddenFromObjC
+@OptIn(InternalCoroutinesApi::class)
+fun deleteSharedDatabase() {
+    synchronized(lock) {
+        val open = database ?: return
+        open.driver.close()
+        databaseFactory?.deleteDatabase()
+        database = null
+        databaseFactory = null
+    }
+}

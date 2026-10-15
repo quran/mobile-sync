@@ -86,6 +86,11 @@ class SyncAuthService internal constructor(
 
     fun isLoggedIn(): Boolean = authService.isLoggedIn()
 
+    /** Cancels and waits for the auth service's background work. */
+    internal suspend fun clearAndJoin() {
+        authService.clearAndJoin()
+    }
+
     private suspend fun <T> withAuthenticationErrors(operation: suspend () -> T): T =
         try {
             operation()
