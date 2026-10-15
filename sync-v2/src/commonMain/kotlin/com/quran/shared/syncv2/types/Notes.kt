@@ -1,11 +1,13 @@
 package com.quran.shared.syncv2.types
 
 import com.quran.shared.mutations.ServerTextLimit
+import com.quran.shared.mutations.collapseServerWhitespace
 import com.quran.shared.mutations.escapeServerText
 import com.quran.shared.mutations.trimLikeServer
 import com.quran.shared.mutations.unescapeServerText
 import com.quran.shared.syncv2.Change
 import com.quran.shared.syncv2.Field
+import com.quran.shared.syncv2.LinkKey
 import com.quran.shared.syncv2.OutgoingMutation
 import com.quran.shared.syncv2.Refs
 import com.quran.shared.syncv2.RemoteEntry
@@ -43,6 +45,14 @@ data class NoteRange(val startSura: Int, val startAyah: Int, val endSura: Int, v
         }
     }
 }
+
+/**
+ * When two notes are the same note, for sync linking ([NotesType.linkKey]) and the legacy importer: the set of ranges
+ * and the body with [collapseServerWhitespace]. Times don't count. Ranges hold no `|`, so the key can't be read two
+ * ways.
+ */
+fun noteIdentity(body: String, ranges: Iterable<NoteRange>): String =
+    "${ranges.map(NoteRange::toString).distinct().sorted().joinToString(",")}|${body.collapseServerWhitespace()}"
 
 /** [archivedAt]: archived on QuranReflect (a 30-day trash); the note still syncs, and app-facing queries hide it. */
 data class Note(
@@ -83,12 +93,13 @@ class NotesRepository(private val database: SyncV2Database) {
 }
 
 /**
- * NOTE: no natural key (equal notes are separate notes, and the server never upserts them). A lost CREATE is
- * recognised by [outboxKey], `(clientCreatedAt, ranges)`: both are immutable, and the body is left out so a note
- * another device edited since still matches. UPDATE sends only the body and `clientUpdatedAt`; ranges never
- * change. The body is sent escaped like the server's sanitize-html and unescaped on GET. `archivedAt` (archived on
- * QuranReflect) is a field like any other: an archived note stays a row, its edits still sync (the server's UPDATE
- * accepts them), and an unarchive brings it back. The client never sends it.
+ * NOTE: no natural key (equal notes are separate notes, and the server never upserts them). A lost CREATE is recognised
+ * by [outboxKey], `(clientCreatedAt, ranges)` exactly: both are immutable, and the body is left out so a note another
+ * device edited since still matches. Equal new notes link by [linkKey] ([noteIdentity]), whatever their times: two
+ * imports of one legacy note round its creation time differently. UPDATE sends only the body and `clientUpdatedAt`;
+ * ranges never change. The body is sent escaped like the server's sanitize-html and unescaped on GET. `archivedAt`
+ * (archived on QuranReflect) is a field like any other: an archived note stays a row, its edits still sync (the
+ * server's UPDATE accepts them), and an unarchive brings it back. The client never sends it.
  */
 class NotesType(private val database: SyncV2Database) : SyncType {
     private val queries get() = database.notesQueries
@@ -96,6 +107,9 @@ class NotesType(private val database: SyncV2Database) : SyncType {
     override val ignoredFields = setOf(UPDATED_AT.name)
 
     override fun outboxKey(state: State) = "${state[CREATED_AT]}|${state[RANGES]}"
+
+    override fun linkKey(state: State) = LinkKey(noteIdentity(state[BODY], ranges(state)), state[CREATED_AT])
+
     override fun clock(state: State) = state[UPDATED_AT]
 
     override fun readAll(): Map<Long, State> {

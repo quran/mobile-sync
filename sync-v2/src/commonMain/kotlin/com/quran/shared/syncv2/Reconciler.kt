@@ -1,6 +1,7 @@
 package com.quran.shared.syncv2
 
 import co.touchlab.kermit.Logger
+import kotlin.math.abs
 
 /**
  * Fetch side of a sync, run in one transaction with the new token: per type, in dependency order,
@@ -45,7 +46,7 @@ class Reconciler(private val store: SyncStore, private val types: List<SyncType>
         recreatedParents[type.name] = items
             .filter { it.remote is RemoteItem.Deleted && it.working != null && it.localId in ownEdits }
             .mapNotNull { it.localId }.toSet()
-        linkEqualNewItems(type, merger, items)
+        linkEqualNewItems(type, items)
         UniquenessRepair(type, merger, this::repointChildren).repair(items)
         dropOrphans(type, items)
         write(type, items)
@@ -133,20 +134,26 @@ class Reconciler(private val store: SyncStore, private val types: List<SyncType>
     }
 
     /**
-     * For types without a natural key (notes): a local item the server never saw that equals a new remote item, with
-     * the same [SyncType.outboxKey] and the same content, is the same item, created on two devices from the same
-     * data (two devices importing the same legacy notes, with their original creation times). It is linked to the
-     * remote one instead of being pushed as a duplicate. Nothing is lost: the two are equal.
+     * Links each item with no remote counterpart to an unbound new remote item with the same [SyncType.linkKey]
+     * identity instead of pushing it; the remote version wins. One to one, closest [LinkKey.time] first, then local and
+     * remote id, so the choice is deterministic.
      */
-    private fun linkEqualNewItems(type: SyncType, merger: Merger, items: List<MergeItem>) {
+    private fun linkEqualNewItems(type: SyncType, items: List<MergeItem>) {
         val newRemote = items.filter { it.localId == null && it.remoteId != null && it.working != null }
-            .groupBy { type.outboxKey(it.working!!) }
+            .mapNotNull { item -> type.linkKey(item.working!!)?.let { item to it } }
+            .groupBy { it.second.identity }
         if (newRemote.isEmpty()) return
+        val pairs = items.filter { it.localId != null && it.remoteId == null && it.base == null && it.working != null }
+            .flatMap { local ->
+                val key = type.linkKey(local.working!!) ?: return@flatMap emptyList()
+                newRemote[key.identity].orEmpty().map { (remote, remoteKey) -> LinkPair(local, remote, abs(key.time - remoteKey.time)) }
+            }
+            .sortedWith(compareBy({ it.distance }, { it.local.localId }, { it.remote.remoteId }))
         val linked = mutableSetOf<MergeItem>()
-        items.filter { it.localId != null && it.remoteId == null && it.base == null && it.working != null }.forEach { local ->
-            val key = type.outboxKey(local.working!!) ?: return@forEach
-            val target = newRemote[key].orEmpty().firstOrNull { it !in linked && merger.same(it.working, local.working) } ?: return@forEach
+        pairs.forEach { (local, target) ->
+            if (local in linked || target in linked) return@forEach
             logger.i { "${type.name}: linking new ${local.localId} to the equal remote ${target.remoteId}" }
+            linked += local
             linked += target
             target.localId = local.localId
             target.original = local.original
@@ -156,6 +163,8 @@ class Reconciler(private val store: SyncStore, private val types: List<SyncType>
             local.original = null
         }
     }
+
+    private data class LinkPair(val local: MergeItem, val remote: MergeItem, val distance: Long)
 
     /** A parent this sync restored (edit beats delete) gets back the children its local delete cascaded. */
     private fun restoreCascadedChildren(type: SyncType, items: List<MergeItem>) {

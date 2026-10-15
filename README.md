@@ -288,8 +288,16 @@ omitted slots unchanged; `deleteExisting = true` clears their locations while pr
 identities and names for sync. Imports are atomic and report the
 number of supplied reading bookmarks in `PersistenceImportResult.readingBookmarksImported`.
 An import writes through the repositories' rules: text is trimmed like the server, each note gets a
-creation time of its own (nudged by a millisecond on a clash), a verse keeps one highlight color, and
-only the newest 20 reading sessions are kept. The next sync pushes it like any other local change.
+creation time of its own (nudged by a millisecond on a clash), a verse keeps one highlight color,
+and only the newest 20 reading sessions are kept. Matching against notes already on the device and
+sync linking share one note identity (`noteIdentity`): the set of verse ranges (order and repeats
+ignored) and the body trimmed like the server, with each run of whitespace inside it (spaces, tabs,
+newlines) counted as one space. Tracked history still matches notes by the import fingerprint, which
+also ignores whitespace runs. Times don't count. An imported note equal to a note already on the
+device, archived ones included, is skipped and counted in `matched`. The next sync pushes the rest
+like any other local change, except that an imported note is linked, instead of pushed, to an equal
+note another device synced that this device hasn't fetched yet (the same legacy notes imported on
+two devices before signing in).
 With `trackHistory = true`, an import records a fingerprint of each item it handled, and later tracked
 imports skip those items, even after the user edits or deletes what they brought in. Logout keeps
 this history, so re-running a legacy import afterwards can't bring back deleted items or add the

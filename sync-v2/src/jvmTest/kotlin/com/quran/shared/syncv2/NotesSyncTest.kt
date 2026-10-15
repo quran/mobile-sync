@@ -13,7 +13,10 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
-/** Notes: a type without a natural key. No revival, linking or uniqueness repair; the outbox uses outboxKey. */
+/**
+ * Notes: a type without a natural key. No revival or uniqueness repair; the outbox uses outboxKey, and equal new notes
+ * link by linkKey (see [EqualNewNotesTest]).
+ */
 class NotesSyncTest {
     private fun t(n: Int) = 1_760_000_000_000L + n * 1_000L
 
@@ -164,29 +167,6 @@ class NotesSyncTest {
     }
 
     /**
-     * Two devices that create the same note, with the same creation time, ranges and body (both imported the same
-     * legacy data), end with one note: the second device links its new note to the first one's instead of pushing it.
-     */
-    @Test
-    fun `the same note created on two devices is linked, not duplicated`() = FakeSyncServer().use { server ->
-        Device(server).use { phone ->
-            Device(server).use { tablet ->
-                phone.addNote("Imported on both devices", "2:255", t(0))
-                tablet.addNote("Imported on both devices", "2:255", t(0))
-                tablet.addNote("Imported on both devices", "3:18", t(0))
-
-                phone.settle()
-                tablet.settle()
-                phone.settle()
-
-                assertEquals(2, Remote(server).noteIds().size, "${Remote(server).noteRanges()}")
-                assertEquals(listOf("Imported on both devices", "Imported on both devices"), tablet.noteBodies())
-                assertEquals(2, phone.noteBodies().size)
-            }
-        }
-    }
-
-    /**
      * NOTE-18: two identical notes written in the same millisecond, then a lost response. The 1 ms nudge keeps their
      * `clientCreatedAt` apart, so each echo binds its own note and nothing is pushed twice.
      */
@@ -214,11 +194,7 @@ class NotesSyncTest {
     @Test
     fun `a remote note answers one lost create only`() = FakeSyncServer().use { server ->
         Device(server).use { device ->
-            repeat(2) {
-                device.database.notesQueries.insert("Same note, same time", t(0), t(0), null)
-                val id = device.database.notesQueries.lastInsertId().executeAsOne()
-                device.database.notesQueries.insertRange(id, 0, 2, 255, 2, 255)
-            }
+            repeat(2) { device.insertRawNote("Same note, same time", listOf(NoteRange(2, 255, 2, 255)), t(0)) }
             server.loseNextPostResponse = true
 
             assertIs<SyncResult.Failed>(device.sync())
@@ -226,6 +202,32 @@ class NotesSyncTest {
 
             assertEquals(2, Remote(server).noteIds().size)
             assertEquals(1, server.postBodies.size, "nothing was pushed again")
+        }
+    }
+
+    /**
+     * Two rows share `(clientCreatedAt, ranges)` (written past the nudge); the second's create is lost and its remote
+     * copy deleted. It never takes the first row's remote note.
+     */
+    @Test
+    fun `a lost note create never binds a remote note another row holds`() = FakeSyncServer().use { server ->
+        Device(server).use { device ->
+            val synced = device.insertRawNote("Synced first", listOf(NoteRange(2, 255, 2, 255)), t(0))
+            device.settle()
+            val remote = Remote(server)
+            val syncedId = remote.noteIds().single()
+            device.insertRawNote("Written later, same time and verse", listOf(NoteRange(2, 255, 2, 255)), t(0))
+            server.loseNextPostResponse = true
+            assertIs<SyncResult.Failed>(device.sync())
+            remote.deleteNote((remote.noteIds() - syncedId).single())
+            remote.editNote(syncedId, "Synced first, edited on the web")
+
+            device.settle()
+
+            val bodies = setOf("Synced first, edited on the web", "Written later, same time and verse")
+            assertEquals(bodies, remote.noteBodies().toSet())
+            assertEquals(bodies, device.noteBodies().toSet())
+            assertEquals("Synced first, edited on the web", device.notes.notes().single { it.localId == synced }.body)
         }
     }
 
@@ -256,7 +258,7 @@ class NotesSyncTest {
         }
     }
 
-    /** Equal notes are separate notes: nothing links or disambiguates them. */
+    /** Equal notes written on one device are separate notes. */
     @Test
     fun `two equal notes stay two notes`() = FakeSyncServer().use { server ->
         Device(server).use { device ->

@@ -22,8 +22,9 @@ A run compares three states of each item, all in the same canonical shape (`Stat
 1. **Fetch:** `SyncApi` reads every page of `GET /v1/sync` since the token. A POST whose response was lost is
    resolved from the outbox (`OutboxResolver`).
 2. **Merge:** per type, in dependency order (`syncTypes`), `Reconciler` runs natural-key revival, the three-way merge
-   (`Merger`: an edit beats a delete, both ways), and `UniquenessRepair`, then writes back in one transaction with the
-   new token.
+   (`Merger`: an edit beats a delete, both ways), the linking of equal new items (`SyncType.linkKey`; notes by
+   `noteIdentity`, as the legacy importer matches), and `UniquenessRepair`, then writes back in one transaction with
+   the new token.
 3. **Push:** `PushPlanner` diffs base against working (deletes, then updates, then creates; children wait for their
    parent's remote id), and `Pusher` posts batches of at most 100. Server errors are handled as the table in
    `SyncErrors.kt` says; an item the server keeps refusing, or one that fails local validation, is held (`Holds`) with

@@ -64,6 +64,12 @@ interface Refs {
     fun localId(type: SyncType, remoteId: String): Long?
 }
 
+/**
+ * See [SyncType.linkKey]. [identity]: equal for the same item on any device. [time]: ranks several remote items with
+ * that identity, closest first.
+ */
+data class LinkKey(val identity: String, val time: Long)
+
 /** One local change to push, `diff(base, working)` for one item. */
 sealed interface Change {
     /** What the server holds once it lands: working for CREATE and UPDATE, base for DELETE. */
@@ -107,8 +113,17 @@ interface SyncType {
      * A client identity of one create that the server keeps and no other device produces, for types without a
      * natural key (notes: `(clientCreatedAt, ranges)`; the body is left out). A lost CREATE is recognised by it alone,
      * even after another device edited the item. Null: matched by natural key and content, or pushed again.
+     * It proves this device's own push only; equal items from another device are matched by [linkKey].
      */
     fun outboxKey(state: State): String? = null
+    /**
+     * For types without a natural key: an item with no remote counterpart (never synced, or recreated after a remote
+     * delete) is linked to a remote item not yet bound on this device with an equal [LinkKey.identity] instead of being
+     * pushed as a duplicate (both devices imported the same legacy notes). Equal items written separately on two
+     * devices, each before fetching the other's, become one too: accepted, they can't be told apart. Null (the
+     * default): never linked. Types with a natural key link by it instead, in [UniquenessRepair].
+     */
+    fun linkKey(state: State): LinkKey? = null
     /** The client timestamp used when both sides changed the same field. */
     fun clock(state: State): Long = 0L
 
