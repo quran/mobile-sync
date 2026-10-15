@@ -16,6 +16,7 @@ import com.quran.shared.persistence.repository.importdata.PersistenceImportRepos
 import com.quran.shared.persistence.repository.note.NoteStore
 import com.quran.shared.persistence.util.fromPlatform
 import com.quran.shared.syncv2.types.NoteRange
+import com.quran.shared.syncv2.types.NotesType
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
@@ -107,20 +108,91 @@ class ImportMergeTest {
     }
 
     @Test
-    fun `note matches the first range of a note with several`() = runTest {
-        database.synced.transaction {
-            NoteStore(database.synced).insert("Remote  text", listOf(NoteRange(2, 1, 2, 3), NoteRange(3, 1, 3, 2)), 100)
-        }
-        val before = database.synced.notesQueries.all().executeAsList()
+    fun `note on one range doesn't match a note with several that starts with it`() = runTest {
+        insertNote("Remote text", listOf(NoteRange(2, 1, 2, 3), NoteRange(3, 1, 3, 2)), 100)
 
         val result = repository.importData(
             PersistenceImportData(notes = listOf(ImportNote("Remote text", 2, 1, 2, 3, at(200))))
+        )
+
+        assertEquals(0, result.matched)
+        assertEquals(1, result.notesImported)
+        assertEquals(2, database.synced.notesQueries.all().executeAsList().size)
+    }
+
+    @Test
+    fun `note matches a note on the same range whose body differs only in surrounding whitespace`() = runTest {
+        insertNote("Remote text", listOf(NoteRange(2, 1, 2, 3)), 100)
+        val before = database.synced.notesQueries.all().executeAsList()
+
+        // Trimmed like the server: JavaScript trims the byte order mark, which Kotlin's trim() keeps.
+        val result = repository.importData(
+            PersistenceImportData(notes = listOf(ImportNote("\uFEFF Remote text\n", 2, 1, 2, 3, at(200))))
         )
 
         assertEquals(1, result.matched)
         assertEquals(0, result.notesImported)
         assertFalse(result.changed)
         assertEquals(before, database.synced.notesQueries.all().executeAsList())
+    }
+
+    @Test
+    fun `note doesn't match a note whose body differs in internal whitespace`() = runTest {
+        insertNote("Remote  text", listOf(NoteRange(2, 1, 2, 3)), 100)
+
+        val result = repository.importData(
+            PersistenceImportData(notes = listOf(ImportNote("Remote text", 2, 1, 2, 3, at(200))))
+        )
+
+        assertEquals(0, result.matched)
+        assertEquals(1, result.notesImported)
+        assertEquals(
+            listOf("Remote  text", "Remote text"),
+            database.synced.notesQueries.all().executeAsList().map { it.body }.sorted()
+        )
+    }
+
+    @Test
+    fun `note matches an archived note`() = runTest {
+        val id = insertNote("Archived text", listOf(NoteRange(2, 1, 2, 3)), 100)
+        val row = database.synced.notesQueries.all().executeAsOne()
+        database.synced.notesQueries.update(row.body, row.created_at, row.updated_at, 150, id)
+
+        val result = repository.importData(
+            PersistenceImportData(notes = listOf(ImportNote("Archived text", 2, 1, 2, 3, at(200))))
+        )
+
+        assertEquals(1, result.matched)
+        assertEquals(0, result.notesImported)
+    }
+
+    @Test
+    fun `import skips exactly the notes sync would link`() = runTest {
+        val kursi = NoteRange(2, 255, 2, 255)
+        val imported = ImportNote("Ayat al-Kursi", 2, 255, 2, 255, at(200))
+        // An existing note on the device, and whether it is the imported note.
+        val cases = listOf(
+            Triple("Ayat al-Kursi", listOf(kursi), true),
+            Triple(" Ayat al-Kursi\n", listOf(kursi), true),
+            Triple("Ayat al-Kursi", listOf(kursi, kursi), true),
+            Triple("Ayat  al-Kursi", listOf(kursi), false),
+            Triple("Ayat al-Kursi", listOf(kursi, NoteRange(3, 18, 3, 18)), false),
+            Triple("Ayat al-Kursi!", listOf(kursi), false)
+        )
+
+        cases.forEach { (body, ranges, same) ->
+            val database = createTestDatabase()
+            database.synced.transaction { NoteStore(database.synced).insert(body, ranges, 100) }
+            val sync = NotesType(database.synced)
+            val syncLinks = sync.linkKey(NotesType.noteState(body, ranges, 100, 100)).identity ==
+                sync.linkKey(NotesType.noteState(imported.body, listOf(kursi), 200, 200)).identity
+
+            val result = PersistenceImportRepositoryImpl(database.quran, database.synced)
+                .importData(PersistenceImportData(notes = listOf(imported)))
+
+            assertEquals(same, syncLinks, "sync links \"$body\" on $ranges")
+            assertEquals(same, result.matched == 1, "import skips for \"$body\" on $ranges")
+        }
     }
 
     @Test
@@ -237,6 +309,9 @@ class ImportMergeTest {
 
         assertEquals(1, database.synced.collectionsQueries.collectionsAll().executeAsList().size)
     }
+
+    private fun insertNote(body: String, ranges: List<NoteRange>, createdAt: Long): Long =
+        database.synced.transactionWithResult { NoteStore(database.synced).insert(body, ranges, createdAt) }
 
     private fun collectionId(name: String) =
         database.synced.collectionsQueries.collectionByKey(name.lowercase()).executeAsOne().local_id.toString()

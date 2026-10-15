@@ -113,6 +113,8 @@ class NotesTypeTest {
         val sameNote = type.linkKey(NotesType.noteState(" Tom & Jerry\n", listOf(imran, kursi), 7_000, 9_000))
 
         assertEquals(key.identity, sameNote.identity)
+        // The legacy importer's rule too (persistence's ImportMergeTest checks the two agree).
+        assertEquals(noteIdentity("Tom & Jerry", listOf(kursi, imran)), key.identity)
         assertEquals(1_000L to 7_000L, key.time to sameNote.time)
         assertNotEquals(key.identity, type.linkKey(NotesType.noteState("Tom & Jerry!", listOf(kursi, imran), 1_000, 1_000)).identity)
         assertNotEquals(key.identity, type.linkKey(NotesType.noteState("Tom & Jerry", listOf(kursi), 1_000, 1_000)).identity)

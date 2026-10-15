@@ -45,6 +45,17 @@ data class NoteRange(val startSura: Int, val startAyah: Int, val endSura: Int, v
     }
 }
 
+/**
+ * When two notes are the same note: the one rule for the sync engine, which links a never-synced note to an equal remote
+ * one ([NotesType.linkKey]), and for the legacy importer (persistence), which skips an imported note equal to one
+ * already on the device. The ranges as a set (order and repeats ignored), then the body as the server keeps it: trimmed
+ * like the server (escaping on push and unescaping on GET round-trip exactly). Times are left out, and nothing else is
+ * normalized: bodies that differ inside, even only in whitespace, are different notes. The ranges hold no `|`, so the
+ * identity can't be read two ways.
+ */
+fun noteIdentity(body: String, ranges: Iterable<NoteRange>): String =
+    "${ranges.map(NoteRange::toString).distinct().sorted().joinToString(",")}|${body.trimLikeServer()}"
+
 /** [archivedAt]: archived on QuranReflect (a 30-day trash); the note still syncs, and app-facing queries hide it. */
 data class Note(
     val localId: Long,
@@ -104,14 +115,8 @@ class NotesType(private val database: SyncV2Database) : SyncType {
 
     override fun outboxKey(state: State) = "${state[CREATED_AT]}|${state[RANGES]}"
 
-    /**
-     * The ranges as a set, then the body as the server keeps it: trimmed like the server (escaping on push and
-     * unescaping on GET round-trip exactly). The ranges hold no `|`, so the identity can't be read two ways.
-     */
-    override fun linkKey(state: State) = LinkKey(
-        "${state[RANGES].split(",").distinct().sorted().joinToString(",")}|${state[BODY].trimLikeServer()}",
-        state[CREATED_AT]
-    )
+    /** [noteIdentity], the importer's rule too, with the creation time to pick the closest of several equal notes. */
+    override fun linkKey(state: State) = LinkKey(noteIdentity(state[BODY], ranges(state)), state[CREATED_AT])
 
     override fun clock(state: State) = state[UPDATED_AT]
 

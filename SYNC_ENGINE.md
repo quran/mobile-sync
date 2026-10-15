@@ -24,8 +24,8 @@ A run compares three states of each item, all in the same canonical shape (`Stat
 2. **Merge:** per type, in dependency order (`syncTypes`), `Reconciler` runs natural-key revival, the three-way merge
    (`Merger`: an edit beats a delete, both ways), the linking of equal new items (notes: an item with no remote
    counterpart (never synced, or recreated after a remote delete) links to a remote one not yet bound here with the same
-   `linkKey`, body and set of ranges, instead of being pushed), and `UniquenessRepair`, then writes back in one
-   transaction with the new token.
+   `linkKey`, `noteIdentity`: the body trimmed like the server and the set of ranges, the rule the legacy importer uses
+   too, instead of being pushed), and `UniquenessRepair`, then writes back in one transaction with the new token.
 3. **Push:** `PushPlanner` diffs base against working (deletes, then updates, then creates; children wait for their
    parent's remote id), and `Pusher` posts batches of at most 100. Server errors are handled as the table in
    `SyncErrors.kt` says; an item the server keeps refusing, or one that fails local validation, is held (`Holds`) with

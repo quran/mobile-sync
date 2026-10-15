@@ -82,7 +82,7 @@ data class PersistenceImportResult(
     val readingBookmarksImported: Int = 0,
     val highlightsImported: Int = 0,
     val readingSessionsUpdated: Int = 0,
-    /** Components already represented by equivalent active data in the current database. */
+    /** Components already represented by equivalent existing data (archived notes included) in the current database. */
     val matched: Int = 0,
     /** Components ignored to preserve conflicting current data or another winning import candidate. */
     val keptExisting: Int = 0,

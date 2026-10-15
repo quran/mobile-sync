@@ -19,6 +19,7 @@ import com.quran.shared.persistence.util.toEpochMillisecondsFromPlatform
 import com.quran.shared.syncv2.db.SyncV2Database
 import com.quran.shared.syncv2.types.NoteRange
 import com.quran.shared.syncv2.types.ReadingLocation
+import com.quran.shared.syncv2.types.noteIdentity
 import kotlinx.coroutines.ensureActive
 import kotlin.coroutines.CoroutineContext
 
@@ -134,13 +135,11 @@ internal class PersistenceImportMerger(
             readingBookmarks.size + highlights.size
         alreadyProcessed = candidateCount - unseenCount
         val bookmarkedVerses = mutableSetOf<Pair<Int, Int>>()
-        val noteKeys = if (notes.isEmpty()) {
+        // Archived notes count too: an archived note is still the user's (QuranReflect's 30-day trash).
+        val noteIdentities = if (notes.isEmpty()) {
             mutableSetOf()
         } else {
-            noteStore.all().mapTo(mutableSetOf()) { note ->
-                val range = note.ranges.first()
-                NoteKey(normalizedNoteBody(note.body), range.startSura, range.startAyah, range.endSura, range.endAyah)
-            }
+            noteStore.all().mapTo(mutableSetOf()) { noteIdentity(it.body, it.ranges) }
         }
         val highlightsByPosition = highlights.groupBy { it.sura to it.ayah }
 
@@ -186,17 +185,19 @@ internal class PersistenceImportMerger(
 
         notes.forEach { note ->
             context.ensureActive()
-            val key = NoteKey(normalizedNoteBody(note.body), note.startSura, note.startAyah, note.endSura, note.endAyah)
-            if (key in noteKeys) {
+            // The sync engine's rule (noteIdentity), so the importer and sync agree on which notes are the same.
+            val ranges = listOf(NoteRange(note.startSura, note.startAyah, note.endSura, note.endAyah))
+            val identity = noteIdentity(note.body, ranges)
+            if (identity in noteIdentities) {
                 matched++
             } else {
                 newNotes.insert(
                     body = note.body,
-                    ranges = listOf(NoteRange(note.startSura, note.startAyah, note.endSura, note.endAyah)),
+                    ranges = ranges,
                     createdAt = effectiveCreatedAtMillis(note.createdAt, note.lastUpdated),
                     updatedAt = note.lastUpdated.toEpochMillisecondsFromPlatform()
                 )
-                noteKeys.add(key)
+                noteIdentities.add(identity)
                 notesImported++
                 didChange = true
             }
@@ -293,14 +294,6 @@ private data class CollectionResolution(val localId: Long, val inserted: Boolean
 private val HIGHLIGHT_PRIORITY = compareByDescending<ImportAyahHighlight> {
     it.lastUpdated.toEpochMillisecondsFromPlatform()
 }.thenBy(ImportFingerprint::highlight)
-
-private data class NoteKey(
-    val normalizedBody: String,
-    val startSura: Int,
-    val startAyah: Int,
-    val endSura: Int,
-    val endAyah: Int
-)
 
 private fun effectiveCreatedAtMillis(createdAt: PlatformDateTime?, lastUpdated: PlatformDateTime): Long =
     (createdAt ?: lastUpdated).toEpochMillisecondsFromPlatform()
