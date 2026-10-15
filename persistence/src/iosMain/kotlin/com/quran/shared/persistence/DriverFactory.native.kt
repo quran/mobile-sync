@@ -14,7 +14,17 @@ actual class DriverFactory internal constructor(
     private val name: String,
     private val onConfiguration: (DatabaseConfiguration) -> DatabaseConfiguration = { it }
 ) {
+    /** Opens the app database, `quran.db`. */
     constructor() : this(DATABASE_NAME)
+
+    /**
+     * Opens the database file [name] instead of `quran.db`, in the same directory
+     * (`Library/Application Support/databases`).
+     *
+     * For tests: processes that share a simulator share that directory, so each test process can
+     * open its own file.
+     */
+    constructor(name: String) : this(name, { it })
 
     /**
      * Opens the database. Hidden from Swift, which opens it through `SharedDependencyGraph.openDatabase`.
