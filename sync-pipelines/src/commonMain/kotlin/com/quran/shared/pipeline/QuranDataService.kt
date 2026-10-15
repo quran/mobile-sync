@@ -403,7 +403,7 @@ class QuranDataService internal constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Logger.e(e) { errorMessage }
+            logWriteFailure(errorMessage, e)
             throw e
         }
     }
