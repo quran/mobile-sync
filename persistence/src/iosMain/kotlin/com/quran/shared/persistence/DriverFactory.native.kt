@@ -55,6 +55,10 @@ actual class DriverFactory internal constructor(
      * unlock, fails to open or read instead (SQLITE_CANTOPEN or SQLITE_IOERR), so it is kept. A full
      * disk (SQLITE_FULL) is never treated as corruption.
      */
+    internal actual fun deleteDatabase() {
+        DatabaseFileContext.deleteDatabase(name)
+    }
+
     private fun openRecreatingCorruptDatabase(): SqlDriver {
         return try {
             openCheckedDriver()

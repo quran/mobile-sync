@@ -5,6 +5,7 @@ import com.quran.shared.auth.model.AuthConfig
 import com.quran.shared.auth.model.AuthRuntimeConfig
 import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.DriverFactory
+import com.quran.shared.persistence.deleteSharedDatabase
 import com.quran.shared.persistence.di.PersistenceModule
 import com.quran.shared.persistence.openSharedDatabase
 import com.quran.shared.pipeline.AppEnvironment
@@ -89,6 +90,21 @@ object SharedDependencyGraph {
     @Throws(Exception::class)
     fun openDatabase(driverFactory: DriverFactory) {
         openSharedDatabase(driverFactory)
+    }
+
+    /**
+     * Stops the graph's work, then closes its database and deletes the database's files.
+     *
+     * For tests that open their own database with `DriverFactory(name)`: call this once, when they are done.
+     * The graph and everything it returned stop working, and [init] keeps returning the stopped graph.
+     * Does nothing when [init] was never called.
+     */
+    @Throws(Exception::class)
+    suspend fun deleteDatabase() {
+        val graph = instance ?: return
+        graph.quranDataService.clearAndJoin()
+        graph.authService.clearAndJoin()
+        deleteSharedDatabase()
     }
 
     @OptIn(InternalCoroutinesApi::class)
