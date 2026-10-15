@@ -64,8 +64,7 @@ class OutboxResolver(
                 val naturalKey = type.naturalKey(state)
                 remote.filterIsInstance<RemoteItem.Upsert>().firstOrNull {
                     when {
-                        // A client identity of this create: it matches even if another device edited it since. A
-                        // remote id another local row holds is that row's, never this push's.
+                        // A client identity of this create: it matches even if another device edited it since.
                         outboxKey != null ->
                             type.outboxKey(it.state) == outboxKey && !boundToAnother(type, it.remoteId, item.localId)
                         // A natural key is anyone's: only the content proves it was this push.

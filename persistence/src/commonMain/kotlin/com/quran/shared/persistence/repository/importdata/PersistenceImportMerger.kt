@@ -135,7 +135,6 @@ internal class PersistenceImportMerger(
             readingBookmarks.size + highlights.size
         alreadyProcessed = candidateCount - unseenCount
         val bookmarkedVerses = mutableSetOf<Pair<Int, Int>>()
-        // Archived notes count too: an archived note is still the user's (QuranReflect's 30-day trash).
         val noteIdentities = if (notes.isEmpty()) {
             mutableSetOf()
         } else {
@@ -185,7 +184,6 @@ internal class PersistenceImportMerger(
 
         notes.forEach { note ->
             context.ensureActive()
-            // The sync engine's rule (noteIdentity), so the importer and sync agree on which notes are the same.
             val ranges = listOf(NoteRange(note.startSura, note.startAyah, note.endSura, note.endAyah))
             val identity = noteIdentity(note.body, ranges)
             if (identity in noteIdentities) {

@@ -1,6 +1,7 @@
 package com.quran.shared.syncv2.types
 
 import com.quran.shared.mutations.ServerTextLimit
+import com.quran.shared.mutations.collapseServerWhitespace
 import com.quran.shared.mutations.escapeServerText
 import com.quran.shared.mutations.trimLikeServer
 import com.quran.shared.mutations.unescapeServerText
@@ -46,15 +47,12 @@ data class NoteRange(val startSura: Int, val startAyah: Int, val endSura: Int, v
 }
 
 /**
- * When two notes are the same note: the one rule for the sync engine, which links a never-synced note to an equal remote
- * one ([NotesType.linkKey]), and for the legacy importer (persistence), which skips an imported note equal to one
- * already on the device. The ranges as a set (order and repeats ignored), then the body as the server keeps it: trimmed
- * like the server (escaping on push and unescaping on GET round-trip exactly). Times are left out, and nothing else is
- * normalized: bodies that differ inside, even only in whitespace, are different notes. The ranges hold no `|`, so the
- * identity can't be read two ways.
+ * When two notes are the same note, for sync linking ([NotesType.linkKey]) and the legacy importer: the set of ranges
+ * and the body with [collapseServerWhitespace]. Times don't count. Ranges hold no `|`, so the key can't be read two
+ * ways.
  */
 fun noteIdentity(body: String, ranges: Iterable<NoteRange>): String =
-    "${ranges.map(NoteRange::toString).distinct().sorted().joinToString(",")}|${body.trimLikeServer()}"
+    "${ranges.map(NoteRange::toString).distinct().sorted().joinToString(",")}|${body.collapseServerWhitespace()}"
 
 /** [archivedAt]: archived on QuranReflect (a 30-day trash); the note still syncs, and app-facing queries hide it. */
 data class Note(
@@ -97,16 +95,11 @@ class NotesRepository(private val database: SyncV2Database) {
 /**
  * NOTE: no natural key (equal notes are separate notes, and the server never upserts them). A lost CREATE is recognised
  * by [outboxKey], `(clientCreatedAt, ranges)` exactly: both are immutable, and the body is left out so a note another
- * device edited since still matches. On every sync, with no time bound, a note with no remote counterpart (never
- * synced, or recreated after a remote delete) is linked to a remote note not yet bound on this device with the same
- * [linkKey], the trimmed body and the set of ranges, whatever their times: two imports of one legacy note round its
- * creation time differently (1 ms apart, or more), so the creation time can't tell them apart. Of several equal remote
- * notes, the one created closest is taken. Two notes written separately with the same body and ranges on two devices,
- * before either synced, become one: accepted, as they are indistinguishable and duplicates from re-imports are the
- * common case. A linked note takes the remote's times and archive state. UPDATE sends only the body and
- * `clientUpdatedAt`; ranges never change. The body is sent escaped like the server's sanitize-html and unescaped on
- * GET. `archivedAt` (archived on QuranReflect) is a field like any other: an archived note stays a row, its edits still
- * sync (the server's UPDATE accepts them), and an unarchive brings it back. The client never sends it.
+ * device edited since still matches. Equal new notes link by [linkKey] ([noteIdentity]), whatever their times: two
+ * imports of one legacy note round its creation time differently. UPDATE sends only the body and `clientUpdatedAt`;
+ * ranges never change. The body is sent escaped like the server's sanitize-html and unescaped on GET. `archivedAt`
+ * (archived on QuranReflect) is a field like any other: an archived note stays a row, its edits still sync (the
+ * server's UPDATE accepts them), and an unarchive brings it back. The client never sends it.
  */
 class NotesType(private val database: SyncV2Database) : SyncType {
     private val queries get() = database.notesQueries
@@ -115,7 +108,6 @@ class NotesType(private val database: SyncV2Database) : SyncType {
 
     override fun outboxKey(state: State) = "${state[CREATED_AT]}|${state[RANGES]}"
 
-    /** [noteIdentity], the importer's rule too, with the creation time to pick the closest of several equal notes. */
     override fun linkKey(state: State) = LinkKey(noteIdentity(state[BODY], ranges(state)), state[CREATED_AT])
 
     override fun clock(state: State) = state[UPDATED_AT]

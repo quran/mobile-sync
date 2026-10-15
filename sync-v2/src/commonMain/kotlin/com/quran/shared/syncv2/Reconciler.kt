@@ -134,16 +134,9 @@ class Reconciler(private val store: SyncStore, private val types: List<SyncType>
     }
 
     /**
-     * For types without a natural key (notes): on every sync, with no time bound, an item with no remote counterpart
-     * (never synced, or recreated after a remote delete) is linked to a remote item not yet bound on this device with
-     * the same [SyncType.linkKey] (notes: the trimmed body and the set of ranges), instead of being pushed as a
-     * duplicate. It takes the remote version: nothing the user wrote is lost (the body and ranges are equal), and the
-     * local copy takes the remote's times and archive state. The common case is the same legacy notes imported on two
-     * devices, whose creation times each import may round differently. Accepted trade-off: two notes written separately
-     * with the same body and ranges on two devices, before either synced, become one; they can't be told apart.
-     *
-     * One to one: n equal copies on each side make n pairs. Pairs with the closest [LinkKey.time] are linked first,
-     * then by local and remote id, so the choice is deterministic.
+     * Links each item with no remote counterpart to an unbound new remote item with the same [SyncType.linkKey]
+     * identity instead of pushing it; the remote version wins. One to one, closest [LinkKey.time] first, then local and
+     * remote id, so the choice is deterministic.
      */
     private fun linkEqualNewItems(type: SyncType, items: List<MergeItem>) {
         val newRemote = items.filter { it.localId == null && it.remoteId != null && it.working != null }

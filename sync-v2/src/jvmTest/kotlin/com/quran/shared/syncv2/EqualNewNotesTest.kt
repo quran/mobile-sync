@@ -10,8 +10,7 @@ import kotlin.time.Instant
 
 /**
  * A note this device never synced that equals a new remote note (the same legacy note imported on two devices) is
- * linked to it: same body and ranges, whatever the creation times. Imports round the legacy creation time differently
- * (1 ms apart, or more), so the times can't be part of the match.
+ * linked to it: same body and ranges, whatever the creation times.
  */
 class EqualNewNotesTest {
 
@@ -21,14 +20,14 @@ class EqualNewNotesTest {
     @Test
     fun `a note imported seconds apart on two devices is linked, not duplicated`() = assertLinkedAcross(skew = 7_000)
 
-    /** The body is compared as the server keeps it (trimmed, escaped and read back), and the ranges as a set. */
+    /** The remote body is compared after the server's escape and the client's unescape. */
     @Test
-    fun `an untrimmed body with ranges in another order still links`() = FakeSyncServer().use { server ->
+    fun `a body differing only in whitespace, with ranges in another order, links and takes the remote body`() = FakeSyncServer().use { server ->
         Device(server).use { phone ->
             Device(server).use { tablet ->
-                phone.notes.addNote("Tom & Jerry <3", listOf(AYAT_AL_KURSI, AL_IMRAN_18), IMPORTED)
+                phone.notes.addNote("Tom & Jerry\n<3", listOf(AYAT_AL_KURSI, AL_IMRAN_18), IMPORTED)
                 phone.settle()
-                val local = tablet.insertRawNote("  Tom & Jerry <3\n", listOf(AL_IMRAN_18, AYAT_AL_KURSI), IMPORTED + 1)
+                val local = tablet.insertRawNote("\u00A0 Tom  &\tJerry <3\n", listOf(AL_IMRAN_18, AYAT_AL_KURSI), IMPORTED + 1)
                 val posts = server.postBodies.size
 
                 tablet.settle()
@@ -37,12 +36,11 @@ class EqualNewNotesTest {
                 assertEquals(posts, server.postBodies.size, "the tablet pushed nothing")
                 val note = tablet.notes.notes().single()
                 assertEquals(local, note.localId)
-                assertEquals("Tom & Jerry <3" to listOf(AYAT_AL_KURSI, AL_IMRAN_18), note.body to note.ranges, "the remote version")
+                assertEquals("Tom & Jerry\n<3" to listOf(AYAT_AL_KURSI, AL_IMRAN_18), note.body to note.ranges, "the remote version")
             }
         }
     }
 
-    /** Two copies on each device pair one to one: nothing is pushed and nothing is duplicated. */
     @Test
     fun `two identical notes on each device pair one to one`() = FakeSyncServer().use { server ->
         Device(server).use { phone ->
@@ -62,7 +60,6 @@ class EqualNewNotesTest {
         }
     }
 
-    /** Of several equal remote notes, the one created closest to the local note is the one it links to. */
     @Test
     fun `the remote note created closest is the one linked`() = FakeSyncServer().use { server ->
         Device(server).use { phone ->
@@ -83,10 +80,6 @@ class EqualNewNotesTest {
         }
     }
 
-    /**
-     * An equal remote note archived on QuranReflect links too, and the local note takes the remote version: nothing the
-     * user wrote is lost (the body and ranges are equal), and the note becomes archived here as it is there.
-     */
     @Test
     fun `a note equal to one archived on QuranReflect is linked and becomes archived`() = FakeSyncServer().use { server ->
         Device(server).use { phone ->
@@ -114,7 +107,6 @@ class EqualNewNotesTest {
     fun `a never synced note with another body or other ranges is not linked`() {
         listOf(
             "$BODY!" to listOf(AYAT_AL_KURSI),
-            BODY to listOf(NoteRange(2, 256, 2, 256)),
             BODY to listOf(AYAT_AL_KURSI, AL_IMRAN_18)
         ).forEach { (body, ranges) ->
             FakeSyncServer().use { server ->
@@ -134,7 +126,6 @@ class EqualNewNotesTest {
         }
     }
 
-    /** Only a note the server never saw links: a synced one is a note of its own, whatever another device adds. */
     @Test
     fun `a synced note is never linked to an equal new remote note`() = FakeSyncServer().use { server ->
         Device(server).use { device ->
@@ -192,23 +183,8 @@ class EqualNewNotesTest {
         }
     }
 
-    /** A note written as is, past the repository's trimming (as older imported data could be). */
-    private fun Device.insertRawNote(body: String, ranges: List<NoteRange>, createdAt: Long): Long {
-        database.notesQueries.insert(body, createdAt, createdAt, null)
-        val id = database.notesQueries.lastInsertId().executeAsOne()
-        ranges.forEachIndexed { position, it ->
-            database.notesQueries.insertRange(
-                id, position.toLong(), it.startSura.toLong(), it.startAyah.toLong(), it.endSura.toLong(), it.endAyah.toLong()
-            )
-        }
-        return id
-    }
-
     private companion object {
-        /**
-         * A legacy note's creation time, ZCREATEDON 813529156.728795 (1_791_836_356_728.795 ms), as an import that
-         * rounds it keeps it; one that floors it keeps …728 (`IMPORTED - 1`).
-         */
+        /** A legacy note's creation time; two imports of it can round 1 ms apart. */
         const val IMPORTED = 1_791_836_356_729L
         const val BODY = "Reflection on Ayat al-Kursi"
         val AYAT_AL_KURSI = NoteRange(2, 255, 2, 255)

@@ -93,6 +93,21 @@ class Device(
         return notes.addNote(body, listOf(NoteRange(sura, ayah, sura, ayah)), at)
     }
 
+    /**
+     * Writes a note as is, past the repository's trimming and creation-time nudge (as older imported data could be);
+     * returns its local id.
+     */
+    fun insertRawNote(body: String, ranges: List<NoteRange>, createdAt: Long): Long = with(database.notesQueries) {
+        insert(body, createdAt, createdAt, null)
+        lastInsertId().executeAsOne().also { id ->
+            ranges.forEachIndexed { position, it ->
+                insertRange(
+                    id, position.toLong(), it.startSura.toLong(), it.startAyah.toLong(), it.endSura.toLong(), it.endAyah.toLong()
+                )
+            }
+        }
+    }
+
     /** Slot to `sura:ayah` (or `page N`), `-` for a cleared slot. */
     fun readingSlots(): Map<Int, String> = readingBookmarks.readingBookmarks().associate { it.slot to it.location.describe() }
 

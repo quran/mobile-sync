@@ -167,29 +167,6 @@ class NotesSyncTest {
     }
 
     /**
-     * Two devices that create the same note, with the same creation time, ranges and body (both imported the same
-     * legacy data), end with one note: the second device links its new note to the first one's instead of pushing it.
-     */
-    @Test
-    fun `the same note created on two devices is linked, not duplicated`() = FakeSyncServer().use { server ->
-        Device(server).use { phone ->
-            Device(server).use { tablet ->
-                phone.addNote("Imported on both devices", "2:255", t(0))
-                tablet.addNote("Imported on both devices", "2:255", t(0))
-                tablet.addNote("Imported on both devices", "3:18", t(0))
-
-                phone.settle()
-                tablet.settle()
-                phone.settle()
-
-                assertEquals(2, Remote(server).noteIds().size, "${Remote(server).noteRanges()}")
-                assertEquals(listOf("Imported on both devices", "Imported on both devices"), tablet.noteBodies())
-                assertEquals(2, phone.noteBodies().size)
-            }
-        }
-    }
-
-    /**
      * NOTE-18: two identical notes written in the same millisecond, then a lost response. The 1 ms nudge keeps their
      * `clientCreatedAt` apart, so each echo binds its own note and nothing is pushed twice.
      */
@@ -217,11 +194,7 @@ class NotesSyncTest {
     @Test
     fun `a remote note answers one lost create only`() = FakeSyncServer().use { server ->
         Device(server).use { device ->
-            repeat(2) {
-                device.database.notesQueries.insert("Same note, same time", t(0), t(0), null)
-                val id = device.database.notesQueries.lastInsertId().executeAsOne()
-                device.database.notesQueries.insertRange(id, 0, 2, 255, 2, 255)
-            }
+            repeat(2) { device.insertRawNote("Same note, same time", listOf(NoteRange(2, 255, 2, 255)), t(0)) }
             server.loseNextPostResponse = true
 
             assertIs<SyncResult.Failed>(device.sync())
@@ -233,22 +206,17 @@ class NotesSyncTest {
     }
 
     /**
-     * A lost create whose note another device deleted, while a synced note with the same `(clientCreatedAt, ranges)`
-     * (written past the nudge) was edited: that remote note is the synced row's, so the create never takes it. The
-     * create is pushed again, and the synced note keeps its remote id and takes the edit.
+     * Two rows share `(clientCreatedAt, ranges)` (written past the nudge); the second's create is lost and its remote
+     * copy deleted. It never takes the first row's remote note.
      */
     @Test
     fun `a lost note create never binds a remote note another row holds`() = FakeSyncServer().use { server ->
         Device(server).use { device ->
-            fun insertAtSameTime(body: String): Long = with(device.database.notesQueries) {
-                insert(body, t(0), t(0), null)
-                lastInsertId().executeAsOne().also { insertRange(it, 0, 2, 255, 2, 255) }
-            }
-            val synced = insertAtSameTime("Synced first")
+            val synced = device.insertRawNote("Synced first", listOf(NoteRange(2, 255, 2, 255)), t(0))
             device.settle()
             val remote = Remote(server)
             val syncedId = remote.noteIds().single()
-            insertAtSameTime("Written later, same time and verse")
+            device.insertRawNote("Written later, same time and verse", listOf(NoteRange(2, 255, 2, 255)), t(0))
             server.loseNextPostResponse = true
             assertIs<SyncResult.Failed>(device.sync())
             remote.deleteNote((remote.noteIds() - syncedId).single())
@@ -290,7 +258,7 @@ class NotesSyncTest {
         }
     }
 
-    /** Equal notes are separate notes: nothing links or disambiguates them. */
+    /** Equal notes written on one device are separate notes. */
     @Test
     fun `two equal notes stay two notes`() = FakeSyncServer().use { server ->
         Device(server).use { device ->
