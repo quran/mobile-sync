@@ -289,7 +289,9 @@ identities and names for sync. Imports are atomic and report the
 number of supplied reading bookmarks in `PersistenceImportResult.readingBookmarksImported`.
 An import writes through the repositories' rules: text is trimmed like the server, each note gets a
 creation time of its own (nudged by a millisecond on a clash), a verse keeps one highlight color, and
-only the newest 20 reading sessions are kept. The next sync pushes it like any other local change.
+only the newest 20 reading sessions are kept. The next sync pushes it like any other local change, except
+that an imported note is linked, instead of pushed, to an equal note (body and verses) another device synced
+that this device hasn't fetched yet (the same legacy notes imported on two devices before signing in).
 With `trackHistory = true`, an import records a fingerprint of each item it handled, and later tracked
 imports skip those items, even after the user edits or deletes what they brought in. Logout keeps
 this history, so re-running a legacy import afterwards can't bring back deleted items or add the

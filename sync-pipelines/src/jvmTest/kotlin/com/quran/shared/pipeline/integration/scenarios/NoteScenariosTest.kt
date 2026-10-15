@@ -1,5 +1,7 @@
 package com.quran.shared.pipeline.integration.scenarios
 
+import com.quran.shared.persistence.input.ImportNote
+import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.pipeline.integration.DeviceTimings
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.server.ClientTimes
@@ -307,5 +309,29 @@ class NoteScenariosTest {
         syncUntilQuiescent(phone)
         assertEquals(2, server.state(ALICE).notes.size, "server notes")
         assertConverged(ALICE, phone)
+    }
+
+    /**
+     * NOTE-19: two devices import the same legacy note before signing in, and the imports round its creation time
+     * 1 ms apart (as two readers of one legacy timestamp can). The second device to sync links its copy to the
+     * first one's, equal in body and ranges, instead of pushing a duplicate.
+     */
+    @Test
+    fun `NOTE-19 the same legacy note imported on two devices before sign-in stays one note`() = syncScenario {
+        val phone = device("phone")
+        val tablet = device("tablet")
+        val legacy = ImportNote("A legacy reflection on patience", 2, 153, 2, 153, lastUpdated = at(0), createdAt = at(0))
+        phone.data.importData(PersistenceImportData(notes = listOf(legacy)))
+        tablet.data.importData(PersistenceImportData(notes = listOf(legacy.copy(lastUpdated = at(-1), createdAt = at(-1)))))
+
+        assertSucceeded(phone.login(ALICE))
+        syncUntilQuiescent(phone)
+        assertSucceeded(tablet.login(ALICE))
+        syncUntilQuiescent(phone, tablet)
+
+        assertEquals(listOf("A legacy reflection on patience"), server.state(ALICE).notes.map { it.body }, "server notes")
+        assertEquals(T0, server.state(ALICE).notes.single().clientCreatedAt, "the first device's note")
+        assertEquals(emptyList(), server.accepted("tablet").of("NOTE"), "the tablet pushed no note")
+        assertConverged(ALICE, phone, tablet)
     }
 }

@@ -15,6 +15,7 @@ import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 
 /** The notes type over each platform's SQLite driver, without a server. */
@@ -100,6 +101,24 @@ class NotesTypeTest {
         assertEquals(JsonArray(listOf(JsonPrimitive("1:1-1:7"))), create["ranges"])
         assertEquals("INVALID_RANGE", type.validate(Change.Create(NotesType.noteState("Long enough", listOf(NoteRange(1, 8, 1, 8)), 1, 1))))
         assertEquals("BODY_LENGTH", type.validate(Change.Update("n1", state, NotesType.noteState("short", emptyList(), 1, 1))))
+    }
+
+    /** Equal new notes link by the trimmed body and the set of ranges; the creation time only ranks candidates. */
+    @Test
+    fun the_link_key_is_the_body_and_the_set_of_ranges() {
+        val kursi = NoteRange(2, 255, 2, 255)
+        val imran = NoteRange(3, 18, 3, 18)
+        val key = type.linkKey(NotesType.noteState("Tom & Jerry", listOf(kursi, imran), 1_000, 1_000))
+
+        val sameNote = type.linkKey(NotesType.noteState(" Tom & Jerry\n", listOf(imran, kursi), 7_000, 9_000))
+
+        assertEquals(key.identity, sameNote.identity)
+        assertEquals(1_000L to 7_000L, key.time to sameNote.time)
+        assertNotEquals(key.identity, type.linkKey(NotesType.noteState("Tom & Jerry!", listOf(kursi, imran), 1_000, 1_000)).identity)
+        assertNotEquals(key.identity, type.linkKey(NotesType.noteState("Tom & Jerry", listOf(kursi), 1_000, 1_000)).identity)
+        // The outbox key still includes the exact creation time (EqualNewNotesTest covers lost-create resolution).
+        val pushed = NotesType.noteState("Tom & Jerry", listOf(kursi), 1_000, 1_000)
+        assertNotEquals(type.outboxKey(pushed), type.outboxKey(NotesType.noteState("Tom & Jerry", listOf(kursi), 1_001, 1_001)))
     }
 
     private fun entry(id: String, data: JsonObject) = RemoteEntry("NOTE", id, "UPDATE", data, 1L)

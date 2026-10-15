@@ -6,6 +6,7 @@ import com.quran.shared.mutations.trimLikeServer
 import com.quran.shared.mutations.unescapeServerText
 import com.quran.shared.syncv2.Change
 import com.quran.shared.syncv2.Field
+import com.quran.shared.syncv2.LinkKey
 import com.quran.shared.syncv2.OutgoingMutation
 import com.quran.shared.syncv2.Refs
 import com.quran.shared.syncv2.RemoteEntry
@@ -83,12 +84,18 @@ class NotesRepository(private val database: SyncV2Database) {
 }
 
 /**
- * NOTE: no natural key (equal notes are separate notes, and the server never upserts them). A lost CREATE is
- * recognised by [outboxKey], `(clientCreatedAt, ranges)`: both are immutable, and the body is left out so a note
- * another device edited since still matches. UPDATE sends only the body and `clientUpdatedAt`; ranges never
- * change. The body is sent escaped like the server's sanitize-html and unescaped on GET. `archivedAt` (archived on
- * QuranReflect) is a field like any other: an archived note stays a row, its edits still sync (the server's UPDATE
- * accepts them), and an unarchive brings it back. The client never sends it.
+ * NOTE: no natural key (equal notes are separate notes, and the server never upserts them). A lost CREATE is recognised
+ * by [outboxKey], `(clientCreatedAt, ranges)` exactly: both are immutable, and the body is left out so a note another
+ * device edited since still matches. On every sync, with no time bound, a note with no remote counterpart (never
+ * synced, or recreated after a remote delete) is linked to a remote note not yet bound on this device with the same
+ * [linkKey], the trimmed body and the set of ranges, whatever their times: two imports of one legacy note round its
+ * creation time differently (1 ms apart, or more), so the creation time can't tell them apart. Of several equal remote
+ * notes, the one created closest is taken. Two notes written separately with the same body and ranges on two devices,
+ * before either synced, become one: accepted, as they are indistinguishable and duplicates from re-imports are the
+ * common case. A linked note takes the remote's times and archive state. UPDATE sends only the body and
+ * `clientUpdatedAt`; ranges never change. The body is sent escaped like the server's sanitize-html and unescaped on
+ * GET. `archivedAt` (archived on QuranReflect) is a field like any other: an archived note stays a row, its edits still
+ * sync (the server's UPDATE accepts them), and an unarchive brings it back. The client never sends it.
  */
 class NotesType(private val database: SyncV2Database) : SyncType {
     private val queries get() = database.notesQueries
@@ -96,6 +103,16 @@ class NotesType(private val database: SyncV2Database) : SyncType {
     override val ignoredFields = setOf(UPDATED_AT.name)
 
     override fun outboxKey(state: State) = "${state[CREATED_AT]}|${state[RANGES]}"
+
+    /**
+     * The ranges as a set, then the body as the server keeps it: trimmed like the server (escaping on push and
+     * unescaping on GET round-trip exactly). The ranges hold no `|`, so the identity can't be read two ways.
+     */
+    override fun linkKey(state: State) = LinkKey(
+        "${state[RANGES].split(",").distinct().sorted().joinToString(",")}|${state[BODY].trimLikeServer()}",
+        state[CREATED_AT]
+    )
+
     override fun clock(state: State) = state[UPDATED_AT]
 
     override fun readAll(): Map<Long, State> {

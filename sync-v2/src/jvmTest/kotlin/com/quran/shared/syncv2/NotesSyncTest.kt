@@ -13,7 +13,10 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
-/** Notes: a type without a natural key. No revival, linking or uniqueness repair; the outbox uses outboxKey. */
+/**
+ * Notes: a type without a natural key. No revival or uniqueness repair; the outbox uses outboxKey, and equal new notes
+ * link by linkKey (see [EqualNewNotesTest]).
+ */
 class NotesSyncTest {
     private fun t(n: Int) = 1_760_000_000_000L + n * 1_000L
 
@@ -226,6 +229,37 @@ class NotesSyncTest {
 
             assertEquals(2, Remote(server).noteIds().size)
             assertEquals(1, server.postBodies.size, "nothing was pushed again")
+        }
+    }
+
+    /**
+     * A lost create whose note another device deleted, while a synced note with the same `(clientCreatedAt, ranges)`
+     * (written past the nudge) was edited: that remote note is the synced row's, so the create never takes it. The
+     * create is pushed again, and the synced note keeps its remote id and takes the edit.
+     */
+    @Test
+    fun `a lost note create never binds a remote note another row holds`() = FakeSyncServer().use { server ->
+        Device(server).use { device ->
+            fun insertAtSameTime(body: String): Long = with(device.database.notesQueries) {
+                insert(body, t(0), t(0), null)
+                lastInsertId().executeAsOne().also { insertRange(it, 0, 2, 255, 2, 255) }
+            }
+            val synced = insertAtSameTime("Synced first")
+            device.settle()
+            val remote = Remote(server)
+            val syncedId = remote.noteIds().single()
+            insertAtSameTime("Written later, same time and verse")
+            server.loseNextPostResponse = true
+            assertIs<SyncResult.Failed>(device.sync())
+            remote.deleteNote((remote.noteIds() - syncedId).single())
+            remote.editNote(syncedId, "Synced first, edited on the web")
+
+            device.settle()
+
+            val bodies = setOf("Synced first, edited on the web", "Written later, same time and verse")
+            assertEquals(bodies, remote.noteBodies().toSet())
+            assertEquals(bodies, device.noteBodies().toSet())
+            assertEquals("Synced first, edited on the web", device.notes.notes().single { it.localId == synced }.body)
         }
     }
 
