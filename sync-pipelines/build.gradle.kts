@@ -34,6 +34,8 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.datetime)
             implementation(libs.kermit)
+            // Query flows for the sync history and the held items.
+            implementation(libs.sqldelight.extensions)
             implementation(libs.androidx.datastore)
             implementation(libs.androidx.datastore.preferences)
             implementation(libs.multiplatform.settings)

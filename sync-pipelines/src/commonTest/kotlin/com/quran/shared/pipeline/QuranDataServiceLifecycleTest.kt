@@ -1248,6 +1248,8 @@ private class ServiceSynchronizationClient : SynchronizationClient, AutoCloseabl
         private set
     var triggerSyncImmediatelyCount = 0
         private set
+    var signedInCount = 0
+        private set
     var cancelSyncingCount = 0
         private set
     var cancelSyncingAndJoinCount = 0
@@ -1263,6 +1265,10 @@ private class ServiceSynchronizationClient : SynchronizationClient, AutoCloseabl
 
     override fun triggerSyncImmediately() {
         triggerSyncImmediatelyCount += 1
+    }
+
+    override fun signedIn() {
+        signedInCount += 1
     }
 
     override fun cancelSyncing() {

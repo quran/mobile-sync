@@ -38,6 +38,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.time.Instant
 
 /**
  * Runs [QuranDataService] with the real sync engine and database, signed out so no request leaves
@@ -95,17 +96,20 @@ class QuranDataServiceSyncStatusTest {
 
         events.syncStarted()
         assertEquals(SyncStatus.Syncing, service.syncStatus.value)
-        events.syncSucceeded()
-        assertIs<SyncStatus.Succeeded>(service.syncStatus.value)
+        events.syncEnded(run(SyncRunResult.SUCCEEDED))
+        assertEquals(SyncStatus.Succeeded(endedAt), service.syncStatus.value, "the run's end")
         events.syncStarted()
-        events.syncFailed(serverError)
+        events.syncEnded(run(SyncRunResult.FAILED, serverError))
         assertEquals(serverError, assertIs<SyncStatus.Failed>(service.syncStatus.value).error)
+        events.syncStarted()
+        events.syncEnded(run(SyncRunResult.PULLED_ONLY))
+        assertEquals(serverError, assertIs<SyncStatus.Failed>(service.syncStatus.value).error, "a pull keeps the failure")
     }
 
     @Test
     fun `skipped run restores the result from before it started`() = runTest(dispatcher) {
         service.awaitInitialization()
-        events.syncFailed(serverError)
+        events.syncEnded(run(SyncRunResult.FAILED, serverError))
 
         events.syncStarted()
         events.syncSkipped()
@@ -116,7 +120,7 @@ class QuranDataServiceSyncStatusTest {
     @Test
     fun `run without a session keeps the latest result`() = runTest(dispatcher) {
         service.awaitInitialization()
-        events.syncFailed(serverError)
+        events.syncEnded(run(SyncRunResult.FAILED, serverError))
         events.next()
 
         service.triggerSync(immediately = true)
@@ -128,13 +132,20 @@ class QuranDataServiceSyncStatusTest {
     @Test
     fun `logout clears the latest sync result`() = runTest(dispatcher) {
         service.awaitInitialization()
-        events.syncFailed(serverError)
+        events.syncEnded(run(SyncRunResult.FAILED, serverError))
 
         service.logout()
 
         assertEquals(SyncStatus.Idle, service.syncStatus.value)
     }
 }
+
+private val endedAt = Instant.fromEpochMilliseconds(1_760_000_000_000L)
+
+private fun run(result: SyncRunResult, error: SyncError? = null) = SyncRun(
+    startedAt = endedAt, endedAt = endedAt, trigger = SyncRunTrigger.MANUAL, result = result,
+    attempts = 1, pushed = 0, pulled = 0, held = 0, error = error
+)
 
 private val serverError = SyncError(
     kind = SyncErrorKind.SERVER,
@@ -159,9 +170,8 @@ private class SyncRunEvents : SyncRunObserver {
     private val recorded = Channel<String>(Channel.UNLIMITED)
 
     override fun syncStarted() = record("started") { service.syncStarted() }
-    override fun syncSucceeded() = record("succeeded") { service.syncSucceeded() }
     override fun syncSkipped() = record("skipped") { service.syncSkipped() }
-    override fun syncFailed(error: SyncError) = record("failed") { service.syncFailed(error) }
+    override fun syncEnded(run: SyncRun) = record(run.result.name) { service.syncEnded(run) }
 
     suspend fun next(): String =
         withContext(Dispatchers.Default) {
