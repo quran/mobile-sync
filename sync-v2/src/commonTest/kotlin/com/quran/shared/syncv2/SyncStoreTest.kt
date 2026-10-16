@@ -34,7 +34,7 @@ class SyncStoreTest {
     }
 
     @Test
-    fun `a missing field names the state's fields, not its values`() {
+    fun `a missing field names the state's fields and not its values`() {
         val body = Field.string("body")
 
         val error = assertFailsWith<IllegalStateException> { stateOf(body(SECRET))[Field.int("sura")] }
