@@ -1,5 +1,6 @@
 package com.quran.shared.pipeline.integration.scenarios
 
+import com.quran.shared.auth.model.AuthState
 import com.quran.shared.persistence.input.ImportNote
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.pipeline.HeldReason
@@ -22,6 +23,7 @@ import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -143,6 +145,30 @@ class SyncHistoryScenariosTest {
         assertNull(run.error)
         assertSucceeded(phone.syncNow(), "a sync now pushes anyway")
         assertEquals(SyncRunResult.SUCCEEDED to 2, phone.history().first().let { it.result to it.pushed })
+    }
+
+    @Test
+    fun `HIST-08 the sync a relaunch starts while signed in is the app start, not a sign-in`() = syncScenario {
+        val (phone) = signedIn("phone")
+
+        assertSucceeded(assertNotNull(phone.restart(), "still signed in"))
+
+        assertEquals(listOf(SyncRunTrigger.APP_START, SyncRunTrigger.SIGN_IN), phone.history().map { it.trigger })
+    }
+
+    @Test
+    fun `HIST-09 a token refresh that publishes the session again starts no run`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.auth.profileName = "Alice B."
+        server.expireTokens(ALICE)
+
+        val refreshed = phone.syncNow()
+        assertSucceeded(refreshed)
+        assertEquals(401, refreshed.requests.first().status, "the run refreshed the token after a 401")
+        assertEquals("Alice B.", assertIs<AuthState.Success>(phone.data.authState.value).userInfo?.name, "a new profile")
+        assertSucceeded(phone.syncNow())
+
+        assertEquals(listOf(SyncRunTrigger.MANUAL, SyncRunTrigger.MANUAL, SyncRunTrigger.SIGN_IN), phone.history().map { it.trigger })
     }
 
     private fun heldNote(id: String, reason: HeldReason) = HeldSyncItem(SyncResourceType.NOTE, id, null, reason, null, null, null)

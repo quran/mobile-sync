@@ -179,7 +179,10 @@ class FakeAuthRepository(private val device: String, private val server: FakeSyn
 
     override suspend fun isLoggedIn(): Boolean = accessToken() != null
 
-    override suspend fun getCurrentUser(): UserInfo? = account?.let { UserInfo(id = it, name = it) }
+    /** The profile name the session reads from now on (the account's by default), like a name edited on the web. */
+    @Volatile var profileName: String? = null
+
+    override suspend fun getCurrentUser(): UserInfo? = account?.let { UserInfo(id = it, name = profileName ?: it) }
 
     override suspend fun getAuthHeaders(): Map<String, String> {
         // Like OidcAuthRepository: refresh first, then read the (possibly new) token.

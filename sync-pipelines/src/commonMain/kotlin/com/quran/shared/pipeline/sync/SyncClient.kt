@@ -78,6 +78,8 @@ internal class SyncClient(
 
     override fun signedIn() = trigger(SyncTrigger.SIGN_IN)
 
+    override fun sessionRestored() = trigger(SyncTrigger.SESSION_RESTORED)
+
     override fun cancelSyncing() = scheduler.cancel()
 
     /** Also forgets a run waiting for a retry: cancelled for a logout or reset, it isn't recorded. */
@@ -323,7 +325,7 @@ private class RunTally(val trigger: SyncTrigger, val startedAt: Long, val epoch:
 }
 
 internal fun SyncTrigger.toRunTrigger(): SyncRunTrigger = when (this) {
-    SyncTrigger.APP_START -> SyncRunTrigger.APP_START
+    SyncTrigger.APP_START, SyncTrigger.SESSION_RESTORED -> SyncRunTrigger.APP_START
     SyncTrigger.LOCAL_CHANGE -> SyncRunTrigger.LOCAL_CHANGE
     SyncTrigger.PERIODIC -> SyncRunTrigger.PERIODIC
     SyncTrigger.IMMEDIATE -> SyncRunTrigger.MANUAL

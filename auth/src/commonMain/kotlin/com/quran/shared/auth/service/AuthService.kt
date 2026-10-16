@@ -49,6 +49,14 @@ fun interface AuthSessionPublicationGuard {
     }
 }
 
+/**
+ * A session as [AuthService.sessionStart] reports it when it is first published: [interactive] for a sign-in through
+ * the browser, false for a stored session restored (at launch, or lazily by the first request that needs it).
+ * [generation] tells sessions apart, so two sign-ins in a row are two values.
+ */
+@HiddenFromObjC
+data class SessionStart(val generation: Long, val interactive: Boolean)
+
 @SingleIn(AppScope::class)
 @HiddenFromObjC
 class AuthService private constructor(
@@ -80,6 +88,16 @@ class AuthService private constructor(
     private var lifecycle: AuthPublicationLifecycle = AuthPublicationLifecycle.Idle(generation = 0)
 
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
+
+    private val _sessionStart = MutableStateFlow<SessionStart?>(null)
+
+    /**
+     * How the current session began, for the sync pipeline: it changes once per session, as [authState] first shows it
+     * (set first, under the same lock), and keeps its value when a token refresh publishes the session again or the
+     * session ends. Null until a session is published.
+     */
+    @HiddenFromObjC
+    val sessionStart: StateFlow<SessionStart?> = _sessionStart.asStateFlow()
 
     init {
         scope.launch {
@@ -630,6 +648,10 @@ class AuthService private constructor(
             }
             cachedAccessToken = repositoryAccessToken
             lifecycle = AuthPublicationLifecycle.Authenticated(expectedGeneration)
+            // A new session (from idle or a sign-in), not a refresh publishing the current one again.
+            if (source != PublishSource.Authenticated) {
+                _sessionStart.value = SessionStart(expectedGeneration, interactive = source == PublishSource.ActiveLogin)
+            }
             _authState.value = AuthState.Success(currentUser)
             activeLogin?.completion?.complete(Unit)
             PublishSessionResult.Published

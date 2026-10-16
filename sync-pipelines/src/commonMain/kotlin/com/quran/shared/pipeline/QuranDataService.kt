@@ -52,6 +52,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -190,12 +191,13 @@ class QuranDataService internal constructor(
         scope.launch {
             syncClient.applicationStarted()
 
-            // Observe auth state and trigger sync when a session is published. Logged-out sync
-            // attempts no-op after fetching empty headers; managed reset owns cancellation.
-            authState.collect { state ->
-                if (state is AuthState.Success && sessionLifecycleCoordinator.canStartSync()) {
-                    syncClient.signedIn()
-                }
+            // Sync once per published session: a sign-in now (SIGN_IN), and the stored session restored at
+            // launch now instead of after the app start's delay (APP_START). A token refresh publishing the
+            // session again starts nothing. Logged-out sync attempts no-op after fetching empty headers;
+            // managed reset owns cancellation.
+            authService.sessionStart.filterNotNull().collect { start ->
+                if (!sessionLifecycleCoordinator.canStartSync()) return@collect
+                if (start.interactive) syncClient.signedIn() else syncClient.sessionRestored()
             }
         }
     }

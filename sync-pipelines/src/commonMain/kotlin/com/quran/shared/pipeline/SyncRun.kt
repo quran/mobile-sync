@@ -34,7 +34,10 @@ data class SyncRun(
 
 /** What started a sync run. */
 enum class SyncRunTrigger {
-    /** The app started, and the first sync after launch came due. */
+    /**
+     * The app started: the first sync after launch. It runs as soon as the saved session is restored, or after a
+     * short delay.
+     */
     APP_START,
 
     /** Local data changed: `triggerSync(immediately = false)`, or an edit through [QuranDataService]. */
@@ -46,7 +49,7 @@ enum class SyncRunTrigger {
     /** The app asked for a sync now: `triggerSync(immediately = true)`, such as a user's "Sync now". */
     MANUAL,
 
-    /** A session became available: a sign-in, or the saved session when the app starts signed in. */
+    /** A user signed in. A saved session restored at launch is [APP_START], and a token refresh starts no run. */
     SIGN_IN
 }
 

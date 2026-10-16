@@ -201,6 +201,23 @@ class SyncSchedulerTest {
         )
     }
 
+    /** A restored session brings the app start's run forward: one run at once, none after the app start's delay. */
+    @Test
+    fun `a restored session runs the app start sync at once and is dropped during a run`() = schedulerTest { runs, scheduler ->
+        scheduler.trigger(SyncTrigger.APP_START)
+        runCurrent()
+        runs.block = CompletableDeferred()
+        scheduler.trigger(SyncTrigger.SESSION_RESTORED)
+        runCurrent()
+        scheduler.trigger(SyncTrigger.SESSION_RESTORED)
+        runs.block!!.complete(Unit)
+        runs.block = null
+        advanceTimeBy(30_001)
+        runCurrent()
+
+        assertEquals(listOf(0L to SyncAttempt(SyncTrigger.SESSION_RESTORED, 0)), runs.attempts, "no second run, at once or at 30 s")
+    }
+
     @Test
     fun `cancel and join stops the running attempt and what was scheduled while later triggers still run`() = schedulerTest { runs, scheduler ->
         runs.block = CompletableDeferred()
