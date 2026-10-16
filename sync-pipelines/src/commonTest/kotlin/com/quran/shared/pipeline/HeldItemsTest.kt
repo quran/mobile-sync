@@ -1,5 +1,8 @@
 package com.quran.shared.pipeline
 
+import co.touchlab.kermit.LogWriter
+import co.touchlab.kermit.Logger
+import co.touchlab.kermit.Severity
 import com.quran.shared.mutations.ServerTextLimit
 import com.quran.shared.syncv2.HeldItem
 import com.quran.shared.syncv2.SyncEngineV2
@@ -9,6 +12,7 @@ import com.quran.shared.syncv2.types.CollectionsRepository
 import com.quran.shared.syncv2.types.NoteRange
 import com.quran.shared.syncv2.types.NotesRepository
 import com.quran.shared.syncv2.types.syncTypes
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -25,11 +29,15 @@ import kotlinx.coroutines.yield
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
 
 /** [HeldItems]: the engine's held items as the public API shows them, and the reason mapping. */
 class HeldItemsTest {
     private val database = inMemoryMobileSyncDatabase().synced
-    private val sharing = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /** What escaped the shared reader: on a device, a crash. */
+    private val uncaught = Channel<Throwable>(Channel.UNLIMITED)
+    private val sharing = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> uncaught.trySend(e) })
     private val held = HeldItems(database, sharing)
     private val store = SyncStore(database)
     private val notes = NotesRepository(database)
@@ -226,5 +234,40 @@ class HeldItemsTest {
         } finally {
             collector.cancel()
         }
+    }
+
+    /** A read that fails is skipped: the shared reader survives, crashes nothing, and reads again on the next write. */
+    @Test
+    fun `a held state that doesn't parse skips a list and the flow keeps going`() = runTest {
+        val short = notes.addNote("12345", listOf(NoteRange(1, 1, 1, 1)), 0)
+        hold("NOTE", short, "BODY_LENGTH")
+        val warnings = Channel<String>(Channel.UNLIMITED)
+        val writer = object : LogWriter() {
+            override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
+                if (tag == "HeldItems") warnings.trySend("$message ${throwable ?: ""}")
+            }
+        }
+        Logger.addLogWriter(writer)
+        val values = Channel<List<HeldSyncItem>>(Channel.UNLIMITED)
+        val collector = launch(Dispatchers.Default) { held.flow.collect { values.send(it) } }
+        suspend fun <T> next(channel: Channel<T>) = withContext(Dispatchers.Default) { withTimeout(5_000) { channel.receive() } }
+        try {
+            assertEquals(listOf(item(SyncResourceType.NOTE, "$short", HeldReason.TOO_SHORT)), next(values))
+
+            database.sync_itemQueries.upsert("NOTE", short, null, null, "BODY_LENGTH", "{\"body\": \"$SECRET", null)
+
+            val warning = next(warnings)
+            assertFalse(SECRET in warning, warning)
+            store.remove("NOTE", short)
+            assertEquals(emptyList(), next(values), "read again on the next write")
+            assertNull(uncaught.tryReceive().getOrNull())
+        } finally {
+            collector.cancel()
+            Logger.setLogWriters(Logger.config.logWriterList - writer)
+        }
+    }
+
+    private companion object {
+        const val SECRET = "A private reflection on mercy"
     }
 }

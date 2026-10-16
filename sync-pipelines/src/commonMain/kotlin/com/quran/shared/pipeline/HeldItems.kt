@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.shareIn
 
 /**
@@ -30,6 +30,9 @@ import kotlinx.coroutines.flow.shareIn
  * Every collector shares one reader in [scope], as each read is a transaction (the writer lock on Android and iOS).
  * It reads only while someone collects, off the main thread, and forgets the last list when the last collector
  * leaves, so a later collector never starts from a list a wipe has since emptied.
+ *
+ * A read that fails (a stored state that doesn't parse, a database error) is logged and skipped: collectors keep the
+ * last list, and the next write reads again. It never reaches [scope], where it would end the reader for everyone.
  */
 internal class HeldItems(private val database: SyncV2Database, scope: CoroutineScope) {
     private val logger = Logger.withTag("HeldItems")
@@ -39,10 +42,18 @@ internal class HeldItems(private val database: SyncV2Database, scope: CoroutineS
     private val collectionsType = types.filterIsInstance<CollectionsType>().single()
 
     val flow: Flow<List<HeldSyncItem>> = database.sync_itemQueries.holdInputs().asFlow()
-        .map { read() }
+        .mapNotNull { readOrNull() }
         .distinctUntilChanged()
         .flowOn(Dispatchers.IO)
         .shareIn(scope, SharingStarted.WhileSubscribed(replayExpirationMillis = 0), replay = 1)
+
+    private fun readOrNull(): List<HeldSyncItem>? = try {
+        read()
+    } catch (e: Exception) {
+        // The class only: a message may quote what was read.
+        logger.w { "Could not read the held items (${e::class.simpleName}); keeping the last list" }
+        null
+    }
 
     /** In one transaction, so the items and the rows they are mapped with agree. */
     fun read(): List<HeldSyncItem> = database.transactionWithResult { map(SyncEngineV2.held(database, types)) }
