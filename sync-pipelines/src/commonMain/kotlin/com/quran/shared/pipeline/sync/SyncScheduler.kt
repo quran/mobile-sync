@@ -47,8 +47,17 @@ internal val DefaultSyncTimings = SchedulerTimings(
     failureRetryingConfig = FailureRetryingConfig(baseDelay = 200.milliseconds, multiplier = 2.5, maximumRetries = 5)
 )
 
-/** What asked for a sync. */
-internal enum class SyncTrigger { APP_START, LOCAL_CHANGE, IMMEDIATE, PERIODIC }
+/**
+ * What asked for a sync. [IMMEDIATE] (a "sync now") and [SIGN_IN] (a user signed in) are immediate: they run at once,
+ * run again right after a run in flight, replace a waiting retry, and push even while pushes back off.
+ * [SESSION_RESTORED] (the stored session was restored, as at launch) is the app start's run brought forward: it runs
+ * at once in place of a pending app start (or any later run), and like [APP_START] is dropped during a run or a retry.
+ */
+internal enum class SyncTrigger {
+    APP_START, LOCAL_CHANGE, IMMEDIATE, PERIODIC, SIGN_IN, SESSION_RESTORED;
+
+    val isImmediate: Boolean get() = this == IMMEDIATE || this == SIGN_IN
+}
 
 /** One attempt of a sync run: the first is number 0, its retries count up. */
 internal data class SyncAttempt(val trigger: SyncTrigger, val number: Int)
@@ -66,7 +75,7 @@ internal sealed interface AttemptOutcome {
  * When syncs run. A trigger schedules a run after its delay ([SchedulerTimings]: an app start, a local change, or now),
  * unless one is already due sooner. Runs never overlap: a local change during a run runs again after it, and an
  * immediate trigger (a user's "sync now") during a run runs right after it; one while a retry waits replaces the retry
- * with an immediate run. An app start during a run or a pending retry is dropped. A failed attempt is retried with exponential backoff, up to
+ * with an immediate run. An app start (or a restored session) during a run or a pending retry is dropped. A failed attempt is retried with exponential backoff, up to
  * the configured number of retries, unless it is not retryable or asks for a longer backoff. After every run, whatever
  * its outcome, the next one is scheduled after the periodic interval, so sync never stops after its retries run out.
  */
@@ -89,7 +98,8 @@ internal class SyncScheduler(
     private var timerAttempt: SyncAttempt? = null
     private var running: Job? = null
     private var localChangeDuringRun = false
-    private var immediateDuringRun = false
+    /** The latest immediate trigger that arrived during the run, to run right after it. */
+    private var immediateDuringRun: SyncTrigger? = null
 
     init {
         scope.launch { for (command in commands) handle(command) }
@@ -144,7 +154,7 @@ internal class SyncScheduler(
                 running?.cancelAndJoin()
                 running = null
                 localChangeDuringRun = false
-                immediateDuringRun = false
+                immediateDuringRun = null
                 command.done?.complete(Unit)
             }
         }
@@ -152,12 +162,12 @@ internal class SyncScheduler(
 
     private fun onTrigger(trigger: SyncTrigger) {
         when {
-            running != null -> when (trigger) {
-                SyncTrigger.LOCAL_CHANGE -> localChangeDuringRun = true
-                SyncTrigger.IMMEDIATE -> immediateDuringRun = true
+            running != null -> when {
+                trigger == SyncTrigger.LOCAL_CHANGE -> localChangeDuringRun = true
+                trigger.isImmediate -> immediateDuringRun = trigger
                 else -> Unit
             }
-            (timerAttempt?.number ?: 0) > 0 -> if (trigger == SyncTrigger.IMMEDIATE) {
+            (timerAttempt?.number ?: 0) > 0 -> if (trigger.isImmediate) {
                 logger.d { "Replacing the scheduled retry with an immediate run" }
                 schedule(Duration.ZERO, SyncAttempt(trigger, 0), onlyIfSooner = false)
             } else {
@@ -179,11 +189,12 @@ internal class SyncScheduler(
 
     private fun onFinished(attempt: SyncAttempt, outcome: AttemptOutcome) {
         running = null
-        if (immediateDuringRun) {
-            // A user asked to sync while this run was going: run (and push) again right away.
-            immediateDuringRun = false
+        val immediate = immediateDuringRun
+        if (immediate != null) {
+            // A user asked to sync (or signed in) while this run was going: run (and push) again right away.
+            immediateDuringRun = null
             localChangeDuringRun = false
-            schedule(Duration.ZERO, SyncAttempt(SyncTrigger.IMMEDIATE, 0), onlyIfSooner = false)
+            schedule(Duration.ZERO, SyncAttempt(immediate, 0), onlyIfSooner = false)
         } else if (outcome is AttemptOutcome.Failed && willRetry(attempt, outcome)) {
             localChangeDuringRun = false
             val backoff = timings.failureRetryingConfig.let { it.baseDelay * it.multiplier.pow(attempt.number) }
@@ -216,7 +227,7 @@ internal class SyncScheduler(
     private fun delayOf(trigger: SyncTrigger): Duration = when (trigger) {
         SyncTrigger.APP_START -> timings.appRefreshInterval
         SyncTrigger.LOCAL_CHANGE -> timings.localDataModifiedInterval
-        SyncTrigger.IMMEDIATE -> Duration.ZERO
+        SyncTrigger.IMMEDIATE, SyncTrigger.SIGN_IN, SyncTrigger.SESSION_RESTORED -> Duration.ZERO
         SyncTrigger.PERIODIC -> timings.standardInterval
     }
 }

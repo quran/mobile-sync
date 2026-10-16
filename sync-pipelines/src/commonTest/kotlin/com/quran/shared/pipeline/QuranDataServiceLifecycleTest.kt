@@ -78,6 +78,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -115,6 +116,9 @@ class QuranDataServiceLifecycleTest {
             lifecycleStore = lifecycleStore,
             useRecordingSyncClient = useRecordingSyncClient
         ).also { fixtures += it }
+
+    /** A lifecycle store on the test scheduler, so [advanceUntilIdle] also waits for its reads. */
+    private fun virtualTimeLifecycleStore() = SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings(dispatcher))
 
     private suspend fun TestScope.advanceUntilResetCleared(
         lifecycleStore: SettingsSessionLifecycleStateStore
@@ -169,6 +173,38 @@ class QuranDataServiceLifecycleTest {
             fixture.authRepository.firstRefreshCanFinish.complete(Unit)
             advanceUntilIdle()
         }
+    }
+
+    @Test
+    fun `a stored session at launch brings the app start sync forward instead of signing in`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture(
+            authRepository = ServiceAuthRepository(accessToken = "access-token"),
+            lifecycleStore = virtualTimeLifecycleStore(),
+            useRecordingSyncClient = true
+        )
+        advanceUntilIdle()
+
+        assertIs<AuthState.Success>(fixture.service.authState.value)
+        assertEquals(1, fixture.syncClient.applicationStartedCount)
+        assertEquals(1 to 0, fixture.syncClient.sessionRestoredCount to fixture.syncClient.signedInCount, "restored, signed in")
+    }
+
+    @Test
+    fun `a sign-in syncs as one and a token refresh starts no sync`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture(lifecycleStore = virtualTimeLifecycleStore(), useRecordingSyncClient = true)
+        advanceUntilIdle()
+        val authFacade = SyncAuthService(fixture.authService, fixture.service, fixture.lifecycleCoordinator)
+
+        authFacade.login()
+        advanceUntilIdle()
+        assertEquals(0 to 1, fixture.syncClient.sessionRestoredCount to fixture.syncClient.signedInCount, "restored, signed in")
+        // A refresh that publishes the session again with a new profile, so authState emits another Success.
+        fixture.authRepository.currentUser = UserInfo(id = "user-1", name = "Renamed")
+        assertTrue(fixture.authService.forceRefreshAccessToken())
+        advanceUntilIdle()
+
+        assertEquals(UserInfo(id = "user-1", name = "Renamed"), assertIs<AuthState.Success>(fixture.service.authState.value).userInfo)
+        assertEquals(0 to 1, fixture.syncClient.sessionRestoredCount to fixture.syncClient.signedInCount, "no sync for the refresh")
     }
 
     @Test
@@ -1220,7 +1256,10 @@ private class ServiceAuthRepository(
 
     override suspend fun isLoggedIn(): Boolean = accessToken != null
 
-    override suspend fun getCurrentUser(): UserInfo? = null
+    /** The profile the session publishes; a test changes it to make a refresh publish a different one. */
+    var currentUser: UserInfo? = null
+
+    override suspend fun getCurrentUser(): UserInfo? = currentUser
 
     override suspend fun getAuthHeaders(): Map<String, String> {
         authHeadersCalls += 1
@@ -1248,6 +1287,10 @@ private class ServiceSynchronizationClient : SynchronizationClient, AutoCloseabl
         private set
     var triggerSyncImmediatelyCount = 0
         private set
+    var signedInCount = 0
+        private set
+    var sessionRestoredCount = 0
+        private set
     var cancelSyncingCount = 0
         private set
     var cancelSyncingAndJoinCount = 0
@@ -1263,6 +1306,14 @@ private class ServiceSynchronizationClient : SynchronizationClient, AutoCloseabl
 
     override fun triggerSyncImmediately() {
         triggerSyncImmediatelyCount += 1
+    }
+
+    override fun signedIn() {
+        signedInCount += 1
+    }
+
+    override fun sessionRestored() {
+        sessionRestoredCount += 1
     }
 
     override fun cancelSyncing() {

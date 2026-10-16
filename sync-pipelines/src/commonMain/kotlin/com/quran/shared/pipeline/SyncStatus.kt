@@ -1,7 +1,6 @@
 package com.quran.shared.pipeline
 
 import com.quran.shared.persistence.util.PlatformDateTime
-import com.quran.shared.persistence.util.currentPlatformDateTime
 import com.quran.shared.pipeline.sync.SyncRunObserver
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -43,16 +42,19 @@ internal class SyncStatusTracker : SyncRunObserver {
         mutableStatus.value = SyncStatus.Syncing
     }
 
-    override fun syncSucceeded() {
-        publishResult(SyncStatus.Succeeded(currentPlatformDateTime()))
-    }
-
     override fun syncSkipped() {
         mutableStatus.value = lastResult
     }
 
-    override fun syncFailed(error: SyncError) {
-        publishResult(SyncStatus.Failed(currentPlatformDateTime(), error))
+    override fun syncEnded(run: SyncRun) {
+        when (run.result) {
+            SyncRunResult.SUCCEEDED -> publishResult(SyncStatus.Succeeded(run.endedAt))
+            SyncRunResult.FAILED -> publishResult(SyncStatus.Failed(run.endedAt, checkNotNull(run.error)))
+            // A pull during a push backoff keeps the failure that started the backoff.
+            SyncRunResult.PULLED_ONLY -> mutableStatus.value = lastResult
+            // The service is going away, or an immediate run replaced a waiting retry and is starting now.
+            SyncRunResult.CANCELLED -> Unit
+        }
     }
 
     /** Forgets the previous result after a logout or reset. */

@@ -35,8 +35,12 @@ fun stateOf(vararg fields: Pair<String, JsonElement>): State = JsonObject(mapOf(
 /** A copy of the state with [fields] replaced. */
 fun State.with(vararg fields: Pair<String, JsonElement>): State = JsonObject(this + fields)
 
-/** Reads a field the type always writes: a missing one is a bug in the type's own mapping. */
-operator fun <T : Any> State.get(field: Field<T>): T = field.read(this) ?: error("${field.name} missing in $this")
+/**
+ * Reads a field the type always writes: a missing one is a bug in the type's own mapping. The error names the
+ * state's fields, never its values (a note's body, a collection's name), as it can reach the logs.
+ */
+operator fun <T : Any> State.get(field: Field<T>): T =
+    field.read(this) ?: error("${field.name} missing in a state with ${keys.sorted()}")
 
 fun <T : Any> State.getOrNull(field: Field<T>): T? = field.read(this)
 

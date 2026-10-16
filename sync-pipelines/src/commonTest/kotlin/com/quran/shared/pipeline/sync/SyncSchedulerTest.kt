@@ -171,6 +171,53 @@ class SyncSchedulerTest {
         assertEquals(listOf(5_000L to SyncAttempt(SyncTrigger.LOCAL_CHANGE, 0), 5_001L to SyncAttempt(SyncTrigger.IMMEDIATE, 0)), runs.attempts)
     }
 
+    /** A sign-in is immediate like a "sync now": at once, right after a run in flight, and in place of a waiting retry. */
+    @Test
+    fun `a sign-in runs at once and after a run in flight and in place of a waiting retry`() = schedulerTest { runs, scheduler ->
+        scheduler.trigger(SyncTrigger.SIGN_IN)
+        runCurrent()
+        runs.block = CompletableDeferred()
+        scheduler.trigger(SyncTrigger.LOCAL_CHANGE)
+        advanceTimeBy(5_001)
+        runCurrent()
+        scheduler.trigger(SyncTrigger.SIGN_IN)
+        runs.outcomes += AttemptOutcome.Done
+        runs.outcomes += AttemptOutcome.Failed(retryable = true)
+        runs.block!!.complete(Unit)
+        runs.block = null
+        runCurrent()
+        scheduler.trigger(SyncTrigger.SIGN_IN)
+        runCurrent()
+
+        assertEquals(
+            listOf(
+                0L to SyncAttempt(SyncTrigger.SIGN_IN, 0),
+                5_000L to SyncAttempt(SyncTrigger.LOCAL_CHANGE, 0),
+                5_001L to SyncAttempt(SyncTrigger.SIGN_IN, 0),
+                5_001L to SyncAttempt(SyncTrigger.SIGN_IN, 0)
+            ),
+            runs.attempts,
+            "the second sign-in ran right after the local change; the third replaced its retry"
+        )
+    }
+
+    /** A restored session brings the app start's run forward: one run at once, none after the app start's delay. */
+    @Test
+    fun `a restored session runs the app start sync at once and is dropped during a run`() = schedulerTest { runs, scheduler ->
+        scheduler.trigger(SyncTrigger.APP_START)
+        runCurrent()
+        runs.block = CompletableDeferred()
+        scheduler.trigger(SyncTrigger.SESSION_RESTORED)
+        runCurrent()
+        scheduler.trigger(SyncTrigger.SESSION_RESTORED)
+        runs.block!!.complete(Unit)
+        runs.block = null
+        advanceTimeBy(30_001)
+        runCurrent()
+
+        assertEquals(listOf(0L to SyncAttempt(SyncTrigger.SESSION_RESTORED, 0)), runs.attempts, "no second run, at once or at 30 s")
+    }
+
     @Test
     fun `cancel and join stops the running attempt and what was scheduled while later triggers still run`() = schedulerTest { runs, scheduler ->
         runs.block = CompletableDeferred()

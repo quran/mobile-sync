@@ -34,6 +34,7 @@ import com.quran.shared.pipeline.sync.SyncAccount
 import com.quran.shared.pipeline.sync.SyncClient
 import com.quran.shared.pipeline.sync.SyncLifecycleGate
 import com.quran.shared.pipeline.sync.SyncRunObserver
+import com.quran.shared.pipeline.sync.SyncRunObservers
 import com.quran.shared.pipeline.sync.SynchronizationClient
 import com.quran.shared.syncv2.db.SyncV2Database
 import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
@@ -51,6 +52,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -118,11 +120,14 @@ class QuranDataService internal constructor(
     private val persistenceResetRepository: PersistenceResetRepository,
     private val persistenceImportRepository: PersistenceImportRepository,
     private val sessionLifecycleCoordinator: SessionLifecycleCoordinator,
-    private val syncClientFactory: QuranDataServiceSynchronizationClientFactory
+    private val syncClientFactory: QuranDataServiceSynchronizationClientFactory,
+    syncDatabase: SyncV2Database
 ) {
     private val serviceJob: Job = SupervisorJob()
     private val scope = CoroutineScope(Dispatchers.Main + serviceJob)
     private val syncStatusTracker = SyncStatusTracker()
+    private val syncHistoryRecorder = SyncHistory(syncDatabase)
+    private val heldItemsReader = HeldItems(syncDatabase, scope)
     private val syncClient: SynchronizationClient
     private val initializationMutex = Mutex()
     private var initializationAttempt: Deferred<Unit>? = null
@@ -186,12 +191,13 @@ class QuranDataService internal constructor(
         scope.launch {
             syncClient.applicationStarted()
 
-            // Observe auth state and trigger sync when a session is published. Logged-out sync
-            // attempts no-op after fetching empty headers; managed reset owns cancellation.
-            authState.collect { state ->
-                if (state is AuthState.Success && sessionLifecycleCoordinator.canStartSync()) {
-                    syncClient.triggerSyncImmediately()
-                }
+            // Sync once per published session: a sign-in now (SIGN_IN), and the stored session restored at
+            // launch now instead of after the app start's delay (APP_START). A token refresh publishing the
+            // session again starts nothing. Logged-out sync attempts no-op after fetching empty headers;
+            // managed reset owns cancellation.
+            authService.sessionStart.filterNotNull().collect { start ->
+                if (!sessionLifecycleCoordinator.canStartSync()) return@collect
+                if (start.interactive) syncClient.signedIn() else syncClient.sessionRestored()
             }
         }
     }
@@ -205,6 +211,24 @@ class QuranDataService internal constructor(
      */
     @NativeCoroutinesState
     val syncStatus: StateFlow<SyncStatus> get() = syncStatusTracker.status
+
+    /**
+     * The newest sync runs first, at most 50, one entry per run (its retries included). A run is recorded when it
+     * succeeds, pulls only, fails with no retries left, or is cancelled (also when the session ends after it reached
+     * the server); a run that found no session before that, or that a logout or reset stopped, is not, nor is one
+     * waiting for a retry when [clear] tears the service down. Logout and an account switch clear the history with the
+     * rest of the data.
+     */
+    @NativeCoroutines
+    val syncHistory: Flow<List<SyncRun>> get() = syncHistoryRecorder.runs
+
+    /**
+     * The items that don't sync: held ones, then the ones waiting on them. It changes as soon as an item is held or
+     * released, without waiting for a sync: an edit that fixes a held item takes it (and what waited on it) out at
+     * once. Logout and an account switch clear it with the rest of the data.
+     */
+    @NativeCoroutines
+    val heldItems: Flow<List<HeldSyncItem>> get() = heldItemsReader.flow
 
     private val bookmarksRepository = pipeline.bookmarksRepository
     private val readingBookmarksRepository = pipeline.readingBookmarksRepository
@@ -274,7 +298,8 @@ class QuranDataService internal constructor(
             environment = environment,
             account = account,
             syncLifecycleGate = sessionLifecycleCoordinator,
-            syncRunObserver = syncStatusTracker
+            // The history first, so a run is recorded before syncStatus shows its end.
+            syncRunObserver = SyncRunObservers(syncHistoryRecorder, syncStatusTracker)
         )
 
         scope.launch {

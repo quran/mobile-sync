@@ -3,6 +3,7 @@ package com.quran.shared.syncv2
 import com.quran.shared.syncv2.fake.FakeSyncServer
 import com.quran.shared.syncv2.fake.HttpError
 import com.quran.shared.syncv2.types.NoteRange
+import com.quran.shared.syncv2.types.syncTypes
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -63,6 +64,26 @@ class NotesSyncTest {
 
             assertEquals(listOf("BODY_LENGTH", "BODY_LENGTH"), device.settle().held.map { it.reason })
             assertEquals(listOf("Long enough"), Remote(server).noteBodies())
+        }
+    }
+
+    /**
+     * A synced note edited too short is held on its UPDATE; deleting it then is a new change, not that hold: the
+     * DELETE is pushed and the note is no longer listed as held.
+     */
+    @Test
+    fun `deleting a note held for an edit pushes the delete`() = FakeSyncServer().use { server ->
+        Device(server).use { device ->
+            val note = device.addNote("Long enough to sync", "1:1", t(0))
+            device.settle()
+            device.notes.updateNote(note, "Bad", t(1))
+            assertEquals(listOf(HeldItem("NOTE", note, "BODY_LENGTH")), device.settle().held)
+
+            device.notes.deleteNote(note)
+
+            assertEquals(emptyList(), SyncEngineV2.held(device.database, syncTypes(device.database)), "released before any sync")
+            assertEquals(emptyList(), device.settle().held)
+            assertEquals(emptyList(), Remote(server).noteBodies())
         }
     }
 

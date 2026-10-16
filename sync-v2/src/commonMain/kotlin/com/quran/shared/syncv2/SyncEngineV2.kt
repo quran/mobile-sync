@@ -8,11 +8,20 @@ import kotlinx.coroutines.sync.withLock
 import kotlin.time.Clock
 
 sealed interface SyncResult {
-    /** Changes this run pushed; children it dropped because their parent was gone (a bug if ever above 0). */
+    /**
+     * Changes this run pushed; local rows it changed to take remote changes ([Reconciler.pulled]); children it dropped
+     * because their parent was gone (a bug if ever above 0).
+     */
     val pushed: Int
+    val pulled: Int
     val droppedOrphans: Int
 
-    data class Success(val held: List<HeldItem>, override val pushed: Int = 0, override val droppedOrphans: Int = 0) : SyncResult
+    data class Success(
+        val held: List<HeldItem>,
+        override val pushed: Int = 0,
+        override val droppedOrphans: Int = 0,
+        override val pulled: Int = 0
+    ) : SyncResult
     /**
      * [retryAfterMillis]: a minimum backoff the scheduler should honour before pushing again (a 403 that may be a
      * scope error); pulling may go on. [cause]: what failed, such as a [SyncHttpException] or a network error.
@@ -23,7 +32,8 @@ sealed interface SyncResult {
         override val pushed: Int = 0,
         val retryAfterMillis: Long? = null,
         override val droppedOrphans: Int = 0,
-        val cause: Throwable? = null
+        val cause: Throwable? = null,
+        override val pulled: Int = 0
     ) : SyncResult
 }
 
@@ -42,11 +52,7 @@ class SyncEngineV2(
 ) {
     private val logger = Logger.withTag("SyncEngineV2")
     val store = SyncStore(database)
-    private val refs = object : Refs {
-        override fun remoteId(type: SyncType, localId: Long): String? = store.row(type.name, localId)?.remoteId
-
-        override fun localId(type: SyncType, remoteId: String): Long? = store.rowByRemote(type.name, remoteId)?.localId
-    }
+    private val refs = StoreRefs(store)
     private val planner = PushPlanner(store, types, refs)
     private val holds = Holds(store, types, refs)
     private val mutex = Mutex()
@@ -109,19 +115,23 @@ class SyncEngineV2(
                 val reconciler = Reconciler(store, types, refs)
                 reconciler.reconcile(changes.entries)
                 memory.droppedOrphans += reconciler.droppedOrphans
+                memory.pulled += reconciler.pulled
                 store.token = changes.head
             }
-            if (!push) return SyncResult.Success(held(), droppedOrphans = memory.droppedOrphans)
+            if (!push) return SyncResult.Success(held(), droppedOrphans = memory.droppedOrphans, pulled = memory.pulled)
             when (val outcome = Pusher(generation, store, api, planner, account, memory, now).push(changes.head)) {
-                PushOutcome.Done -> return SyncResult.Success(held(), memory.pushed, memory.droppedOrphans)
+                PushOutcome.Done -> return SyncResult.Success(held(), memory.pushed, memory.droppedOrphans, memory.pulled)
                 PushOutcome.Restart -> logger.i { "Restarting sync round" }
                 PushOutcome.MorePending -> logger.i { "Pushed ${memory.pushed} so far; more local changes are pending" }
                 is PushOutcome.Failed -> return SyncResult.Failed(
-                    outcome.reason, outcome.retryable, memory.pushed, outcome.retryAfterMillis, memory.droppedOrphans, outcome.cause
+                    outcome.reason, outcome.retryable, memory.pushed, outcome.retryAfterMillis, memory.droppedOrphans, outcome.cause,
+                    memory.pulled
                 )
             }
         }
-        return SyncResult.Failed(MORE_PENDING, retryable = true, memory.pushed, droppedOrphans = memory.droppedOrphans)
+        return SyncResult.Failed(
+            MORE_PENDING, retryable = true, memory.pushed, droppedOrphans = memory.droppedOrphans, pulled = memory.pulled
+        )
     }
 
     /**
@@ -139,13 +149,25 @@ class SyncEngineV2(
         Generation(database, store, store.epoch)
     }
 
-    /** Held items and the items waiting on them. */
+    /** Held items and the items waiting on them (see [Holds.list]). */
     fun held(): List<HeldItem> = holds.list()
 
     companion object {
         /**
-         * Wipes every synced item, its sync state, the token, the account and the outbox, in one transaction, and
-         * bumps the wipe epoch, so a sync in flight can't commit (logout, a managed reset). [types] in dependency order.
+         * Held items and the items waiting on them, as [held] lists them, without an engine: a UI reads them between
+         * syncs. [types] in dependency order. Read it again when `sync_item`, `sync_meta` or a domain table changes
+         * (`sync_itemQueries.holdInputs` is a query over all of them).
+         */
+        fun held(database: SyncV2Database, types: List<SyncType>): List<HeldItem> {
+            val store = SyncStore(database)
+            // One transaction, so a sync committing meanwhile can't show half its writes.
+            return database.transactionWithResult { Holds(store, types, StoreRefs(store)).list() }
+        }
+
+        /**
+         * Wipes every synced item, its sync state, the token, the account, the outbox and the sync history, in one
+         * transaction, and bumps the wipe epoch, so a sync in flight can't commit (logout, a managed reset). [types] in
+         * dependency order.
          */
         fun wipe(database: SyncV2Database, types: List<SyncType>) = database.transaction { wipeAll(SyncStore(database), types) }
 
@@ -160,4 +182,11 @@ class SyncEngineV2(
         /** The reason of a run that made progress every phase but ran out of rounds (edits kept coming). */
         const val MORE_PENDING = "more changes than one sync can settle"
     }
+}
+
+/** Local and remote ids from `sync_item`. */
+internal class StoreRefs(private val store: SyncStore) : Refs {
+    override fun remoteId(type: SyncType, localId: Long): String? = store.row(type.name, localId)?.remoteId
+
+    override fun localId(type: SyncType, remoteId: String): Long? = store.rowByRemote(type.name, remoteId)?.localId
 }

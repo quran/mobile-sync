@@ -40,9 +40,11 @@ flowchart LR
 - **Engine (`:sync-v2`).** Each run fetches every change since the stored token, merges it three ways with the local changes (an edit beats a delete), and pushes what is left in batches of at most 100. An item the server keeps refusing is held, so the rest still syncs. [SYNC_ENGINE.md](SYNC_ENGINE.md) maps how.
 - **Persistence on plain tables.** The repositories write plain domain tables, owned by `:sync-v2`'s types, through one store per type, so the app and the importer follow the same rules. The tables carry no sync columns; the engine keeps its own state in `sync_item` and `sync_meta`.
 - **Wiring (`:sync-pipelines`).** `SyncClient` runs the engine for the signed-in account and reports each run; `SyncScheduler` decides when runs happen.
-- **When it syncs.** A run starts 30 seconds after app start, 5 seconds after a local change, and at once for `triggerSync(immediately = true)`. After every run, success or not, the next one is due in 30 minutes, so sync never stops. Runs never overlap. A failed run is retried with exponential backoff (200 ms, ×2.5, up to 5 retries). A 403 that may be the token's scope pauses pushes for a while; automatic runs keep pulling.
+- **When it syncs.** A run starts 30 seconds after app start (at once when the saved session is restored), 5 seconds after a local change, and at once for `triggerSync(immediately = true)` and a sign-in. A token refresh starts no run. After every run, success or not, the next one is due in 30 minutes, so sync never stops. Runs never overlap. A failed run is retried with exponential backoff (200 ms, ×2.5, up to 5 retries). A 403 that may be the token's scope pauses pushes for a while; automatic runs keep pulling.
 - **Auth.** The sync account is the ID token's `sub`. Signing in to a different account wipes the previous account's local data before anything is pushed. A 401 forces one token refresh and runs again; a refused refresh ends the session, while a network error, a timeout or a server error during a refresh keeps it.
 - **Status.** `QuranDataService.syncStatus` shows `Idle`, `Syncing`, or how the latest run ended: `Succeeded` with its time, or `Failed` with its time and a `SyncError`.
+- **History.** `QuranDataService.syncHistory` lists the newest 50 runs, newest first, one `SyncRun` per run (retries included): when it started and ended, its trigger (`APP_START`, `LOCAL_CHANGE`, `PERIODIC`, `MANUAL` for `triggerSync(immediately = true)`, `SIGN_IN`), its result (`SUCCEEDED`, `PULLED_ONLY` during a push backoff, `FAILED` with its `SyncError`, `CANCELLED`), its attempts, and how many items it pushed, pulled and left held. Runs that found no session before they reached the server, or that a logout or reset stopped, are not recorded; one the session's end stops after it reached the server (a refused token refresh, or a retry that finds no one signed in) is recorded as `CANCELLED` with what it did. It holds no user data; it lives in the database (`sync_run`) and is cleared with the rest of the data on logout and on an account switch.
+- **Held items.** `QuranDataService.heldItems` lists the items that don't sync, as `HeldSyncItem`s: the item's type and public id, a `HeldReason` (`TOO_SHORT`, `TOO_LONG`, `INVALID_VERSE`, `RESERVED_NAME`, `REJECTED_BY_SERVER` with the HTTP status and error code, ...), and for an item waiting on a held one (`WAITING_ON_PARENT`, `WAITING_ON_OTHER_ITEM`), that item. It updates as soon as an item is held or released: an edit that fixes a held item takes it out at once, without a sync.
 
 ## Modules
 
@@ -271,7 +273,7 @@ backup is enabled.
 ### 3. Use managed services
 
 Core API examples:
-- Observe: `authState`, `syncStatus`, `bookmarks`, `collectionsWithBookmarks`, `notes`
+- Observe: `authState`, `syncStatus`, `syncHistory`, `heldItems`, `bookmarks`, `collectionsWithBookmarks`, `notes`
 - Mutations: `addBookmark`, `deleteBookmark`, `addCollection`, `deleteCollection`, `addNote`, `deleteNote`
 - Trigger sync: `triggerSync()` after a burst of edits, or `triggerSync(immediately = true)` for a user's "Sync now"
 - Auth: use `SyncAuthService.login()`, `loginWithReauthentication()`, `logout()`, and `clearError()`

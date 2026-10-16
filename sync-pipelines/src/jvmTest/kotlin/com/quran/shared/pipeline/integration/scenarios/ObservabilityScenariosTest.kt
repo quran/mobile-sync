@@ -19,10 +19,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 
-/**
- * What the public API reports. Held items are not covered: no public API exposes them yet (IMP-06
- * and IMP-07 hold notes only locally).
- */
+/** What the public API reports. The sync history and held items are in [SyncHistoryScenariosTest]. */
 class ObservabilityScenariosTest {
 
     @Test
