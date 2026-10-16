@@ -6,7 +6,10 @@ import com.russhwolf.settings.MapSettings
 import com.russhwolf.settings.coroutines.toSuspendSettings
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -237,5 +240,67 @@ class SessionLifecycleCoordinatorLoginTest {
         assertEquals(SessionLifecycleState(epoch = 1L, resetInProgress = false), store.snapshot())
         assertEquals("signed in", coordinator.withLogin { "signed in" })
         assertEquals("allowed", coordinator.withMutatingWrite { "allowed" })
+    }
+
+    @Test
+    fun `a login that throws lets a later reset and write run`() = runTest {
+        val store = virtualTimeStore()
+        val coordinator = SessionLifecycleCoordinator(store)
+
+        assertFailsWith<IllegalStateException> {
+            coordinator.withLogin { error("the browser sign-in failed") }
+        }
+
+        assertResetThenWriteRun(coordinator, store)
+    }
+
+    @Test
+    fun `a cancelled login lets a later reset and write run`() = runTest {
+        val store = virtualTimeStore()
+        val coordinator = SessionLifecycleCoordinator(store)
+        val loginStarted = CompletableDeferred<Unit>()
+
+        val login = async {
+            coordinator.withLogin {
+                loginStarted.complete(Unit)
+                awaitCancellation()
+            }
+        }
+        loginStarted.await()
+        login.cancelAndJoin()
+
+        assertResetThenWriteRun(coordinator, store)
+    }
+
+    @Test
+    fun `a write that throws lets a later reset and write run`() = runTest {
+        val store = virtualTimeStore()
+        val coordinator = SessionLifecycleCoordinator(store)
+
+        assertFailsWith<IllegalStateException> {
+            coordinator.withMutatingWrite { error("the write failed") }
+        }
+
+        assertResetThenWriteRun(coordinator, store)
+    }
+
+    /** Settings on the test scheduler, so [runCurrent] runs a reset to its end when nothing holds it up. */
+    private fun TestScope.virtualTimeStore() =
+        SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings(StandardTestDispatcher(testScheduler)))
+
+    /** A reset that found the gate still held would wait forever, so it must finish without time passing. */
+    private suspend fun TestScope.assertResetThenWriteRun(
+        coordinator: SessionLifecycleCoordinator,
+        store: SessionLifecycleStateStore
+    ) {
+        var resetBlockRan = false
+        val reset = async { coordinator.runManagedReset { resetBlockRan = true } }
+        runCurrent()
+
+        assertTrue(reset.isCompleted, "the reset waited on a gate nothing holds")
+        reset.await()
+        assertTrue(resetBlockRan)
+        assertEquals(SessionLifecycleState(epoch = 1L, resetInProgress = false), store.snapshot())
+        assertEquals("written", coordinator.withMutatingWrite { "written" })
     }
 }

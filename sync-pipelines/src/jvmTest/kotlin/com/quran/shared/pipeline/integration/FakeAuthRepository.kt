@@ -15,8 +15,9 @@ import org.publicvalue.multiplatform.oidc.tokenstore.TokenStore
 
 /**
  * The OIDC boundary for one simulated device: the part of `OidcAuthRepository` that talks to the
- * browser login, the token endpoint and the token store. Login is not interactive; it signs in as
- * the account [signInAs] chose and gets a token from [server].
+ * browser login, the token endpoint and the token store. Login signs in as the account [signInAs]
+ * chose and gets a token from [server]. It returns at once unless a test holds it in the "browser"
+ * with [holdNextLogin], like a user who hasn't finished signing in.
  *
  * Like `OidcAuthRepository`, it keeps the session's tokens only in the graph's token store
  * ([useTokenStore]), which outlives the graph, so the session survives `SyncDevice.restart()`.

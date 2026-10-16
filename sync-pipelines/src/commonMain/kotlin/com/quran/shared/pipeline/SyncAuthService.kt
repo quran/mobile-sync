@@ -46,7 +46,8 @@ class SyncAuthService internal constructor(
      * Signs in through the browser and publishes the session, which starts a sync.
      *
      * Local writes and imports don't wait for it, however long the user takes. A logout during it
-     * ends it, and it fails with [SessionResetInProgressException] while a logout is running.
+     * cancels it, so this throws [CancellationException] rather than an auth error. Started while a
+     * logout is running, it fails with [SessionResetInProgressException].
      */
     @NativeCoroutines
     suspend fun login() {
