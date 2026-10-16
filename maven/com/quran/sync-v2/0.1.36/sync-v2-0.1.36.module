@@ -1,0 +1,311 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.quran",
+    "module": "sync-v2",
+    "version": "0.1.36",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.8.1"
+    }
+  },
+  "variants": [
+    {
+      "name": "metadataApiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-metadata",
+        "org.jetbrains.kotlin.platform.type": "common"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-serialization-json",
+          "version": {
+            "requires": "1.11.0"
+          }
+        },
+        {
+          "group": "io.ktor",
+          "module": "ktor-client-core",
+          "version": {
+            "requires": "3.6.0"
+          }
+        },
+        {
+          "group": "app.cash.sqldelight",
+          "module": "runtime",
+          "version": {
+            "requires": "2.4.1"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-core",
+          "version": {
+            "requires": "1.11.0"
+          }
+        },
+        {
+          "group": "co.touchlab",
+          "module": "kermit",
+          "version": {
+            "requires": "2.2.0"
+          }
+        },
+        {
+          "group": "com.quran",
+          "module": "mutations-definitions",
+          "version": {
+            "requires": "0.1.36"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "sync-v2-metadata-0.1.36.jar",
+          "url": "sync-v2-0.1.36.jar",
+          "size": 44424,
+          "sha512": "9333419ef189e24c83fc78383c0de163725aadb2c1c8edc7d133beb9db8f1d1251ead33b1b5e7562d0afde3ac1d244fae30277f4eb9ee21466c0328ee7afc0a4",
+          "sha256": "67da88e3c2fb6414a9d7a09caeb8a68ba72c964d21a8ab792e6d8820fc66d7bc",
+          "sha1": "c5600569e4e67f78cfce5ab527baf8043687892a",
+          "md5": "03d089c0631998c16a2802e2c921ab46"
+        }
+      ]
+    },
+    {
+      "name": "metadataSourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.platform.type": "common"
+      },
+      "files": [
+        {
+          "name": "sync-v2-kotlin-0.1.36-sources.jar",
+          "url": "sync-v2-0.1.36-sources.jar",
+          "size": 71280,
+          "sha512": "9c2795100f58128e09382654014cf08af21310ccd7d70473b852a59f55cf48206f4d19a2bcdd6101f4b60827e15a79edeabc4282f7087a58cd30f83faa935a12",
+          "sha256": "4772cd83cc3834632168e823e9cfb73d9419cb221deb490230c2301eb6d1dd4d",
+          "sha1": "1ea0c8d52f91267e75fa6c0b24d528a543bdfd48",
+          "md5": "257fc157326eb92b0e032050d8f2f91d"
+        }
+      ]
+    },
+    {
+      "name": "androidApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "available-at": {
+        "url": "../../sync-v2-android/0.1.36/sync-v2-android-0.1.36.module",
+        "group": "com.quran",
+        "module": "sync-v2-android",
+        "version": "0.1.36"
+      }
+    },
+    {
+      "name": "androidRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "available-at": {
+        "url": "../../sync-v2-android/0.1.36/sync-v2-android-0.1.36.module",
+        "group": "com.quran",
+        "module": "sync-v2-android",
+        "version": "0.1.36"
+      }
+    },
+    {
+      "name": "androidSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "available-at": {
+        "url": "../../sync-v2-android/0.1.36/sync-v2-android-0.1.36.module",
+        "group": "com.quran",
+        "module": "sync-v2-android",
+        "version": "0.1.36"
+      }
+    },
+    {
+      "name": "iosArm64ApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-api",
+        "org.jetbrains.kotlin.native.target": "ios_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../sync-v2-iosarm64/0.1.36/sync-v2-iosarm64-0.1.36.module",
+        "group": "com.quran",
+        "module": "sync-v2-iosarm64",
+        "version": "0.1.36"
+      }
+    },
+    {
+      "name": "iosArm64SourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.native.target": "ios_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../sync-v2-iosarm64/0.1.36/sync-v2-iosarm64-0.1.36.module",
+        "group": "com.quran",
+        "module": "sync-v2-iosarm64",
+        "version": "0.1.36"
+      }
+    },
+    {
+      "name": "iosArm64MetadataElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-metadata",
+        "org.jetbrains.kotlin.native.target": "ios_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../sync-v2-iosarm64/0.1.36/sync-v2-iosarm64-0.1.36.module",
+        "group": "com.quran",
+        "module": "sync-v2-iosarm64",
+        "version": "0.1.36"
+      }
+    },
+    {
+      "name": "iosSimulatorArm64ApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-api",
+        "org.jetbrains.kotlin.native.target": "ios_simulator_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../sync-v2-iossimulatorarm64/0.1.36/sync-v2-iossimulatorarm64-0.1.36.module",
+        "group": "com.quran",
+        "module": "sync-v2-iossimulatorarm64",
+        "version": "0.1.36"
+      }
+    },
+    {
+      "name": "iosSimulatorArm64SourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.native.target": "ios_simulator_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../sync-v2-iossimulatorarm64/0.1.36/sync-v2-iossimulatorarm64-0.1.36.module",
+        "group": "com.quran",
+        "module": "sync-v2-iossimulatorarm64",
+        "version": "0.1.36"
+      }
+    },
+    {
+      "name": "iosSimulatorArm64MetadataElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-metadata",
+        "org.jetbrains.kotlin.native.target": "ios_simulator_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../sync-v2-iossimulatorarm64/0.1.36/sync-v2-iossimulatorarm64-0.1.36.module",
+        "group": "com.quran",
+        "module": "sync-v2-iossimulatorarm64",
+        "version": "0.1.36"
+      }
+    },
+    {
+      "name": "jvmApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "available-at": {
+        "url": "../../sync-v2-jvm/0.1.36/sync-v2-jvm-0.1.36.module",
+        "group": "com.quran",
+        "module": "sync-v2-jvm",
+        "version": "0.1.36"
+      }
+    },
+    {
+      "name": "jvmRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "available-at": {
+        "url": "../../sync-v2-jvm/0.1.36/sync-v2-jvm-0.1.36.module",
+        "group": "com.quran",
+        "module": "sync-v2-jvm",
+        "version": "0.1.36"
+      }
+    },
+    {
+      "name": "jvmSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "available-at": {
+        "url": "../../sync-v2-jvm/0.1.36/sync-v2-jvm-0.1.36.module",
+        "group": "com.quran",
+        "module": "sync-v2-jvm",
+        "version": "0.1.36"
+      }
+    }
+  ]
+}
