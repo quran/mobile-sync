@@ -52,11 +52,7 @@ class SyncEngineV2(
 ) {
     private val logger = Logger.withTag("SyncEngineV2")
     val store = SyncStore(database)
-    private val refs = object : Refs {
-        override fun remoteId(type: SyncType, localId: Long): String? = store.row(type.name, localId)?.remoteId
-
-        override fun localId(type: SyncType, remoteId: String): Long? = store.rowByRemote(type.name, remoteId)?.localId
-    }
+    private val refs = StoreRefs(store)
     private val planner = PushPlanner(store, types, refs)
     private val holds = Holds(store, types, refs)
     private val mutex = Mutex()
@@ -153,10 +149,21 @@ class SyncEngineV2(
         Generation(database, store, store.epoch)
     }
 
-    /** Held items and the items waiting on them. */
+    /** Held items and the items waiting on them (see [Holds.list]). */
     fun held(): List<HeldItem> = holds.list()
 
     companion object {
+        /**
+         * Held items and the items waiting on them, as [held] lists them, without an engine: a UI reads them between
+         * syncs. [types] in dependency order. Read it again when `sync_item`, `sync_meta` or a domain table changes
+         * (`sync_itemQueries.holdInputs` is a query over all of them).
+         */
+        fun held(database: SyncV2Database, types: List<SyncType>): List<HeldItem> {
+            val store = SyncStore(database)
+            // One transaction, so a sync committing meanwhile can't show half its writes.
+            return database.transactionWithResult { Holds(store, types, StoreRefs(store)).list() }
+        }
+
         /**
          * Wipes every synced item, its sync state, the token, the account and the outbox, in one transaction, and
          * bumps the wipe epoch, so a sync in flight can't commit (logout, a managed reset). [types] in dependency order.
@@ -174,4 +181,11 @@ class SyncEngineV2(
         /** The reason of a run that made progress every phase but ran out of rounds (edits kept coming). */
         const val MORE_PENDING = "more changes than one sync can settle"
     }
+}
+
+/** Local and remote ids from `sync_item`. */
+internal class StoreRefs(private val store: SyncStore) : Refs {
+    override fun remoteId(type: SyncType, localId: Long): String? = store.row(type.name, localId)?.remoteId
+
+    override fun localId(type: SyncType, remoteId: String): Long? = store.rowByRemote(type.name, remoteId)?.localId
 }

@@ -55,3 +55,17 @@ DELETE FROM sync_meta WHERE key = ?;
 
 metaDeleteAll:
 DELETE FROM sync_meta;
+
+-- Reads every table a hold depends on (Holds.list), so a listener on it hears each change that can hold or
+-- release an item: sync_item, sync_meta and every domain table. Its value means nothing.
+holdInputs:
+SELECT
+  (SELECT count(*) FROM sync_item) +
+  (SELECT count(*) FROM sync_meta) +
+  (SELECT count(*) FROM collection) +
+  (SELECT count(*) FROM collection_ayah) +
+  (SELECT count(*) FROM remote_ayah_bookmark) +
+  (SELECT count(*) FROM note) +
+  (SELECT count(*) FROM note_range) +
+  (SELECT count(*) FROM reading_session) +
+  (SELECT count(*) FROM reading_bookmark);

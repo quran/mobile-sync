@@ -46,26 +46,33 @@ class Holds(private val store: SyncStore, private val types: List<SyncType>, pri
     /**
      * Held items, then the local changes waiting on them: a child whose parent is held before the server ever saw
      * it can't be pushed. [HeldItem.waitingOn] is the held item at the root, so a UI can say "N items waiting on X".
+     *
+     * It reads the items as the next push would plan them, so it changes as soon as the user edits or deletes an item:
+     * a hold whose item was edited since (working != the held state) is left out, as is a never-synced held item the
+     * user deleted, and what waited on either. Never-linked items are listed only once an account is signed in.
      */
     fun list(): List<HeldItem> {
+        val working = types.associateWith { it.readAll() }
+        val rows = types.associateWith { type -> current(type, store.rows(type.name), working.getValue(type)) }
+        val neverLinked = types.associateWith { type -> neverLinked(type, rows, working.getValue(type)) }
         val held = types.flatMap { type ->
-            store.rows(type.name).values.mapNotNull { row -> row.heldReason?.let { HeldItem(type.name, row.localId, it) } } +
-                neverLinked(type).map { HeldItem(type.name, it, HeldItem.NEVER_LINKED) }
+            rows.getValue(type).values.mapNotNull { row -> row.heldReason?.let { HeldItem(type.name, row.localId, it) } } +
+                neverLinked.getValue(type).map { HeldItem(type.name, it, HeldItem.NEVER_LINKED) }
         }
         // Per type, the items that can't reach the server, mapped to the held item they wait on.
         val blocked = mutableMapOf<SyncType, Map<Long, ItemRef>>()
         val waiting = mutableListOf<HeldItem>()
         types.forEach { type ->
-            val rows = store.rows(type.name)
-            val own = (rows.values.filter { it.heldReason != null && it.remoteId == null }.map { it.localId } + neverLinked(type))
+            val typeRows = rows.getValue(type)
+            val own = (typeRows.values.filter { it.heldReason != null && it.remoteId == null }.map { it.localId } + neverLinked.getValue(type))
                 .associate { it to ItemRef(type.name, it) }
             val parent = type.parent
             val inherited = if (parent == null) emptyMap() else {
                 val parentBlocked = blocked[parent.type].orEmpty()
                 val merger = Merger(type)
-                type.readAll().mapNotNull { (localId, state) ->
+                working.getValue(type).mapNotNull { (localId, state) ->
                     val root = parentId(state, parent)?.let(parentBlocked::get) ?: return@mapNotNull null
-                    if (rows[localId]?.heldReason != null || merger.same(state, rows[localId]?.base)) return@mapNotNull null
+                    if (typeRows[localId]?.heldReason != null || merger.same(state, typeRows[localId]?.base)) return@mapNotNull null
                     waiting += HeldItem(type.name, localId, HeldItem.WAITING_ON_PARENT, root)
                     localId to root
                 }.toMap()
@@ -73,26 +80,44 @@ class Holds(private val store: SyncStore, private val types: List<SyncType>, pri
             blocked[type] = own + inherited
         }
         val waitingOnKey = types.flatMap { type ->
-            val rows = store.rows(type.name)
-            val owners = heldKeyOwners(type, rows)
+            val typeRows = rows.getValue(type)
+            val owners = heldKeyOwners(type, typeRows)
             if (owners.isEmpty()) return@flatMap emptyList()
             val merger = Merger(type)
-            type.readAll().mapNotNull { (localId, state) ->
+            working.getValue(type).mapNotNull { (localId, state) ->
                 val owner = type.naturalKey(state)?.let(owners::get)?.takeIf { it != localId } ?: return@mapNotNull null
-                if (rows[localId]?.heldReason != null || merger.same(state, rows[localId]?.base)) return@mapNotNull null
+                if (typeRows[localId]?.heldReason != null || merger.same(state, typeRows[localId]?.base)) return@mapNotNull null
                 HeldItem(type.name, localId, HeldItem.WAITING_ON_KEY, ItemRef(type.name, owner))
             }
         }
         return held + waiting + waitingOnKey
     }
 
+    /**
+     * [type]'s sync rows as the next push sees them: [PushPlanner] releases a hold whose item was edited since, and
+     * the next merge forgets a never-synced held item the user deleted. A held DELETE (a tombstone) stays held.
+     */
+    private fun current(type: SyncType, rows: Map<Long, SyncRow>, working: Map<Long, State>): Map<Long, SyncRow> {
+        val merger = Merger(type)
+        return rows.mapValues { (localId, row) ->
+            val state = working[localId]
+            val released = when {
+                row.heldReason == null -> false
+                state == null -> row.base == null
+                else -> !merger.same(row.heldState, state)
+            }
+            if (released) row.unheld() else row
+        }
+    }
+
     /** New items with no parent to wait for, whose type defers their CREATE: only a link from a GET can bind them. */
-    private fun neverLinked(type: SyncType): List<Long> {
-        val rows = store.rows(type.name)
-        return type.readAll().filter { (localId, state) ->
-            val row = rows[localId]
+    private fun neverLinked(type: SyncType, rows: Map<SyncType, Map<Long, SyncRow>>, working: Map<Long, State>): List<Long> {
+        if (store.account == null) return emptyList()
+        val typeRows = rows.getValue(type)
+        return working.filter { (localId, state) ->
+            val row = typeRows[localId]
             row?.base == null && row?.heldReason == null &&
-                type.parent?.let { parent -> parentId(state, parent)?.let { refs.remoteId(parent.type, it) } == null } != true &&
+                type.parent?.let { parent -> parentId(state, parent)?.let { rows.getValue(parent.type)[it]?.remoteId } == null } != true &&
                 type.mutation(Change.Create(state), refs) == null
         }.keys.toList()
     }
