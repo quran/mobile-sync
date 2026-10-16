@@ -117,7 +117,9 @@ class Pusher(
         val result = try {
             api.post(head, batch.map { it.mutation })
         } catch (error: SyncHttpException) {
-            logger.w { "POST of ${batch.size} failed: ${error.message} (index=${error.mutationIndex})" }
+            // The server's message can echo user content: only for debugging.
+            logger.w { "POST of ${batch.size} failed: ${SyncErrors.summary(error)}" }
+            logger.d { "POST of ${batch.size} failed: ${error.message}" }
             // A 4xx was rejected before anything applied; a 5xx may have landed, so its outbox stays for the next GET.
             if (error.status < 500) generation.transaction { store.outboxes = store.outboxes - outbox }
             return Posted.Rejected(error)
@@ -152,7 +154,7 @@ class Pusher(
         val culprit = error.mutationIndex?.let(batch::getOrNull) ?: batch.singleOrNull()
         return when (SyncErrors.classify(error, culprit?.kind)) {
             SyncErrors.Action.RESTART -> Sent.Abort(PushOutcome.Restart)
-            SyncErrors.Action.ABORT_RETRYABLE -> Sent.Abort(PushOutcome.Failed(failure(error), retryable = true, cause = error))
+            SyncErrors.Action.ABORT_RETRYABLE -> Sent.Abort(PushOutcome.Failed(SyncErrors.summary(error), retryable = true, cause = error))
             SyncErrors.Action.ITEM -> item(error, batch, culprit, head)
             SyncErrors.Action.UNIQUE_VIOLATION ->
                 if (memory.uniqueRestarts++ == 0) Sent.Abort(PushOutcome.Restart) else item(error, batch, culprit, head)
@@ -217,7 +219,7 @@ class Pusher(
                 is Posted.Ok -> landed(posted, Sent.Changed(posted.head))
                 is Posted.Rejected -> when {
                     posted.error.code == SyncErrors.OUT_OF_SYNC -> Sent.Abort(PushOutcome.Restart)
-                    posted.error.status >= 500 -> Sent.Abort(PushOutcome.Failed(failure(posted.error), retryable = true, cause = posted.error))
+                    posted.error.status >= 500 -> Sent.Abort(PushOutcome.Failed(SyncErrors.summary(posted.error), retryable = true, cause = posted.error))
                     ambiguous(posted.error) -> forbidden(posted.error)
                     else -> rejected(posted.error, second, head)
                 }
@@ -241,7 +243,7 @@ class Pusher(
     private fun repeated(culprit: Planned, error: SyncHttpException, head: Long): Sent {
         if ((store.failures[failureKey(culprit)]?.takeIf { it.status == error.status }?.count ?: 0) > 0) return hold(culprit, error, head)
         generation.transaction { countFailure(culprit, error) }
-        return Sent.Abort(PushOutcome.Failed(failure(error), retryable = true, cause = error))
+        return Sent.Abort(PushOutcome.Failed(SyncErrors.summary(error), retryable = true, cause = error))
     }
 
     /** Holds [culprit] with the growing expiry (see [HOLD_MILLIS]). */
@@ -308,13 +310,11 @@ class Pusher(
 
     /** It may be a scope error for the whole request: keep every change and retry, but not soon. */
     private fun forbidden(error: SyncHttpException) =
-        Sent.Abort(PushOutcome.Failed("request forbidden: ${error.message}", retryable = true, FORBIDDEN_BACKOFF_MILLIS, error))
+        Sent.Abort(PushOutcome.Failed("request forbidden: ${SyncErrors.summary(error)}", retryable = true, FORBIDDEN_BACKOFF_MILLIS, error))
 
     private fun signature(batch: List<Planned>) = batch.joinToString { "${it.type.name}:${it.localId}:${it.kind}" }
 
     private fun failureKey(planned: Planned) = "${planned.type.name}:${planned.localId}"
-
-    private fun failure(error: SyncHttpException) = "HTTP ${error.status} ${error.code ?: ""}".trim()
 
     companion object {
         internal const val MAX_PHASES = 12

@@ -146,10 +146,12 @@ Graph construction does not require an Android `Activity`. Build the graph from 
 context and runtime configuration. Optionally route Mobile Sync's logs to the app's logger with
 `MobileSyncLogging.configure(sink, minSeverity)`; it must come before `SharedDependencyGraph.init`,
 because HTTP clients read the severity when they are created. At `DEBUG`, HTTP calls also log their
-headers and bodies, which hold user content such as note text. `configure` replaces Kermit's
-process-wide logger configuration, so if the app or another library also logs with Kermit, those
-logs reach the sink too. Without `configure`, logs go to the platform log, including a summary
-line for each HTTP request and response.
+headers and bodies, which hold user content such as note text. Failures reach the sink by
+exception type, HTTP status and error code, never with their messages or stack traces, which can
+hold tokens, URLs or the user's email; at `DEBUG`, sync also logs the server's error messages.
+`configure` replaces Kermit's process-wide logger configuration, so if the app or another library
+also logs with Kermit, those logs reach the sink too. Without `configure`, logs go to the platform
+log, including a summary line for each HTTP request and response.
 
 ```kotlin
 import com.quran.shared.logging.MobileSyncLogSeverity

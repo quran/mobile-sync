@@ -15,8 +15,9 @@ enum class MobileSyncLogSeverity {
 }
 
 /**
- * Receives Mobile Sync logs, possibly from several threads at once. A logged error's stack trace
- * follows the message on its own lines.
+ * Receives Mobile Sync logs, possibly from several threads at once. A logged error follows the
+ * message on its own line as the class names along its cause chain, never its messages or stack
+ * trace, which can hold tokens, URLs or the user's email.
  */
 fun interface MobileSyncLogSink {
     fun log(severity: MobileSyncLogSeverity, tag: String, message: String)
@@ -45,7 +46,7 @@ object MobileSyncLogging {
 
 internal class SinkLogWriter(private val sink: MobileSyncLogSink) : LogWriter() {
     override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
-        val text = throwable?.let { "$message\n${it.stackTraceToString()}" } ?: message
+        val text = throwable?.let { "$message\n${it.logSummary()}" } ?: message
         sink.log(severity.toMobileSyncLogSeverity(), tag, text)
     }
 }

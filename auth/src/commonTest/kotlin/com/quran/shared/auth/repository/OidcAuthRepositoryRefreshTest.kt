@@ -1,5 +1,9 @@
 package com.quran.shared.auth.repository
 
+import co.touchlab.kermit.LogWriter
+import co.touchlab.kermit.Logger
+import co.touchlab.kermit.Severity
+import co.touchlab.kermit.StaticConfig
 import com.quran.shared.auth.persistence.AuthStorage
 import com.russhwolf.settings.MapSettings
 import com.russhwolf.settings.coroutines.toSuspendSettings
@@ -8,8 +12,10 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.io.IOException
 import kotlinx.serialization.json.Json
+import org.publicvalue.multiplatform.oidc.HttpException
 import org.publicvalue.multiplatform.oidc.OpenIdConnectException
 import org.publicvalue.multiplatform.oidc.types.remote.AccessTokenResponse
+import org.publicvalue.multiplatform.oidc.types.remote.ErrorResponse
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -97,6 +103,47 @@ class OidcAuthRepositoryRefreshTest {
         assertFalse(repository.isLoggedIn())
     }
 
+    @Test
+    fun `a refused refresh logs its summary without the failure or its secrets`() = runTest(UnconfinedTestDispatcher()) {
+        val logs = mutableListOf<Pair<String, Throwable?>>()
+        val writer = object : LogWriter() {
+            override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
+                logs += message to throwable
+            }
+        }
+        val repository = oidcRepository(
+            committedSession(expiresAt = Long.MAX_VALUE),
+            refreshingClient(refusedTokenRequest()),
+            logger = Logger(StaticConfig(Severity.Verbose, listOf(writer)), "OidcAuthRepository")
+        )
+
+        assertFalse(repository.forceRefreshTokens())
+
+        assertEquals(
+            "Token refresh failed, clearing session: UnsuccessfulTokenRequest(status=400, error=invalid_grant) " +
+                "<- HttpException(status=400, error=invalid_grant)",
+            logs.single().first
+        )
+        assertNull(logs.single().second, "the failure itself is never logged")
+        listOf(ACCESS_TOKEN, AUTHORIZATION_CODE, "refresh_token=", "?code=", EMAIL).forEach { secret ->
+            assertFalse(secret in logs.single().first, "'$secret' leaked into the log")
+        }
+    }
+
+    /** A refused refresh shaped like the OIDC library's, with a secret in every message, body and error field. */
+    private fun refusedTokenRequest(): OpenIdConnectException.UnsuccessfulTokenRequest {
+        val redirectUrl = "https://app.example.com/callback?code=$AUTHORIZATION_CODE&state=secret-state"
+        val body = """{"error":"invalid_grant","error_description":"$ACCESS_TOKEN for $EMAIL"}"""
+        val error = ErrorResponse(ErrorResponse.Error.invalid_grant, "revoked for $EMAIL", redirectUrl, "secret-state")
+        val formBody = "grant_type=refresh_token&refresh_token=secret-refresh-token"
+        return OpenIdConnectException.UnsuccessfulTokenRequest(
+            message = "Refresh failed: $body",
+            statusCode = HttpStatusCode.BadRequest,
+            errorResponse = error,
+            cause = HttpException("POST $formBody", HttpStatusCode.BadRequest, body, error)
+        )
+    }
+
     private suspend fun committedSession(expiresAt: Long): AuthStorage {
         val settings = MapSettings().toSuspendSettings()
         val storage = AuthStorage(
@@ -124,3 +171,7 @@ class OidcAuthRepositoryRefreshTest {
         refreshFailure = failure
     ).also { it.refreshCanFinish.complete(Unit) }
 }
+
+private const val ACCESS_TOKEN = "secret-access-token"
+private const val AUTHORIZATION_CODE = "secret-auth-code"
+private const val EMAIL = "reader@example.com"

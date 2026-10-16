@@ -37,6 +37,8 @@ kotlin {
             api(libs.ktor.client.core)
             implementation(libs.kermit)
             implementation(projects.mutationsDefinitions)
+            // logSummary: failures are logged without their messages.
+            implementation(projects.logging)
         }
 
         commonTest.dependencies {

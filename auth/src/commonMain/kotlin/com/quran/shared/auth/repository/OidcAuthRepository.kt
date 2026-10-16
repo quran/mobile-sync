@@ -6,6 +6,7 @@ import com.quran.shared.auth.model.AuthConfig
 import com.quran.shared.auth.model.TokenResponse
 import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.auth.persistence.AuthStorage
+import com.quran.shared.auth.utils.authFailureSummary
 import com.quran.shared.auth.utils.currentTimeMillis
 import com.quran.shared.di.AppScope
 import dev.zacsweers.metro.Inject
@@ -129,7 +130,7 @@ class OidcAuthRepository(
             throw e
         } catch (e: Exception) {
             failure = e
-            logger.e(e) { "Login failed" }
+            logger.e { "Login failed: ${e.authFailureSummary()}" }
             throw e
         } finally {
             withContext(NonCancellable) {
@@ -188,10 +189,10 @@ class OidcAuthRepository(
                 throw e
             } catch (e: Exception) {
                 if (e.isTransientRefreshFailure()) {
-                    logger.w(e) { "Token refresh failed for a transient reason; keeping the session" }
+                    logger.w { "Token refresh failed for a transient reason; keeping the session: ${e.authFailureSummary()}" }
                     throw e
                 }
-                logger.e(e) { "Token refresh failed, clearing session" }
+                logger.e { "Token refresh failed, clearing session: ${e.authFailureSummary()}" }
                 // Critical: If refresh fails, session is invalid unless logout/login already moved the session on.
                 val invalidationResult = sessionMutex.withLock {
                     invalidateLocalSessionIfPersistedGenerationCurrentLocked(refreshState.generation)
@@ -460,7 +461,7 @@ class OidcAuthRepository(
             RemoteLogoutMode.TOKEN_REVOCATION_ONLY
         )
         failures.forEach { failure ->
-            logger.w(failure.exception) { "Remote logout cleanup failed: ${failure.operation}" }
+            logger.w { "Remote logout cleanup failed: ${failure.operation}: ${failure.exception.authFailureSummary()}" }
         }
     }
 
@@ -611,7 +612,7 @@ class OidcAuthRepository(
             }
             throw e
         } catch (e: Exception) {
-            logger.e(e) { "Failed to fetch user info from network" }
+            logger.e { "Failed to fetch user info from network: ${e.authFailureSummary()}" }
             // Non-critical: Login succeeded but profile fetch failed.
         }
     }

@@ -4,7 +4,7 @@ import co.touchlab.kermit.Logger
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 
 class MobileSyncLoggingTest {
     private data class Entry(val severity: MobileSyncLogSeverity, val tag: String, val message: String)
@@ -70,14 +70,25 @@ class MobileSyncLoggingTest {
     }
 
     @Test
-    fun `a logged error's stack trace follows the message`() {
+    fun `a logged error follows the message as its class names without its messages`() {
         configure()
+        val secrets = listOf(
+            "secret-access-token",
+            "secret-auth-code",
+            "grant_type=refresh_token&refresh_token=secret-refresh-token",
+            "https://auth.example.com/callback?code=secret-auth-code&state=secret-state",
+            "reader@example.com"
+        )
+        val failure = IllegalStateException(
+            "token ${secrets[0]} for ${secrets[4]}",
+            IllegalArgumentException("POST ${secrets[2]} code=${secrets[1]}", UnsupportedOperationException("GET ${secrets[3]}"))
+        )
 
-        Logger.withTag("QuranDataService").e(IllegalStateException("boom")) { "Logout failed" }
+        Logger.withTag("QuranDataService").e(failure) { "Logout failed" }
 
         val entry = entries.single()
         assertEquals(MobileSyncLogSeverity.ERROR, entry.severity)
-        assertTrue(entry.message.startsWith("Logout failed\n"))
-        assertTrue(entry.message.contains("IllegalStateException: boom"))
+        assertEquals("Logout failed\nIllegalStateException <- IllegalArgumentException <- UnsupportedOperationException", entry.message)
+        secrets.forEach { assertFalse(it in entry.message, "'$it' leaked") }
     }
 }

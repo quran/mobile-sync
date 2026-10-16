@@ -50,6 +50,9 @@ internal object SyncErrors {
 
     fun holdReason(error: SyncHttpException) = "${error.status} ${error.code ?: ""}".trim()
 
+    /** [error] without the server's message, which can echo user content: its status, code and mutation index. */
+    fun summary(error: SyncHttpException) = "HTTP ${holdReason(error)}" + (error.mutationIndex?.let { " (index=$it)" } ?: "")
+
     val UNIQUE_HOLD = "409 $UNIQUE_VIOLATION"
 
     /** Whether a failure of the whole run (a GET, or an aborted POST) is worth retrying with backoff. */

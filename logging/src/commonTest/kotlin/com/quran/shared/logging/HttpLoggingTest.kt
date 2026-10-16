@@ -19,6 +19,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.io.IOException
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -132,17 +133,22 @@ class HttpLoggingTest {
     }
 
     @Test
-    fun `failed call logs a warning`() = runTest {
-        configure(MobileSyncLogSeverity.INFO)
-        val client = HttpClient(MockEngine { error("offline") }) {
+    fun `failed call warns with only the exception class and logs the whole line at debug`() = runTest {
+        configure(MobileSyncLogSeverity.DEBUG)
+        // Like an NSError on iOS, its message holds the failing URL with its query.
+        val offline = IOException("Offline: https://example.com/callback?code=secret-code&state=secret-state")
+        val client = HttpClient(MockEngine { throw offline }) {
             installHttpLogging(tag = "TestHttp")
         }
 
         runCatching { client.get("https://example.com/v1/sync") }
 
-        val failure = entries.last()
-        assertEquals(MobileSyncLogSeverity.WARN, failure.severity)
-        assertTrue(failure.message.startsWith("<-- HTTP FAILED"))
+        val failures = entries.filter { it.message.startsWith("<-- HTTP FAILED") }
+        assertEquals(
+            listOf(MobileSyncLogSeverity.WARN to "<-- HTTP FAILED: IOException", MobileSyncLogSeverity.DEBUG to "<-- HTTP FAILED: $offline"),
+            failures.map { it.severity to it.message }
+        )
+        assertFalse(entries.any { it.severity >= MobileSyncLogSeverity.INFO && "secret" in it.message }, "$entries")
     }
 
     @Test

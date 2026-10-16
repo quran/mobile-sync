@@ -1,6 +1,7 @@
 package com.quran.shared.pipeline.sync
 
 import co.touchlab.kermit.Logger
+import com.quran.shared.auth.utils.authFailureSummary
 import com.quran.shared.logging.installHttpLogging
 import com.quran.shared.pipeline.SyncError
 import com.quran.shared.pipeline.SyncErrorKind
@@ -97,7 +98,9 @@ internal class SyncClient(
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (error: Exception) {
-            SyncResult.Failed(error.toString(), retryable = true, cause = error)
+            // Mostly a token refresh failing: its message can hold auth data, so the reason (logged) is a summary.
+            // The cause stays the failure itself, which toSyncError classifies.
+            SyncResult.Failed(error.authFailureSummary(), retryable = true, cause = error)
         }
         if (!epochIsCurrent(epoch)) return skipped("a logout or reset began during the run")
         return when (result) {

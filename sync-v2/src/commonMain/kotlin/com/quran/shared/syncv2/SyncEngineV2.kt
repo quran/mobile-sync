@@ -1,6 +1,7 @@
 package com.quran.shared.syncv2
 
 import co.touchlab.kermit.Logger
+import com.quran.shared.logging.logSummary
 import com.quran.shared.syncv2.db.SyncV2Database
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
@@ -88,14 +89,19 @@ class SyncEngineV2(
             logger.i { "Sync abandoned: ${error.message}" }
             SyncResult.Failed(error.message!!, retryable = true, cause = error)
         }
+        // Logged and reported (the reason) without their messages: a server's can echo user content, and a token
+        // refresh failure's (from the request's headers) can hold auth data. The server's is only for debugging.
         is SyncHttpException -> {
-            logger.w { "Sync failed: ${error.message}" }
-            SyncResult.Failed(error.message ?: "HTTP ${error.status}", retryable = SyncErrors.isRetryable(error.status), cause = error)
+            val reason = SyncErrors.summary(error)
+            logger.w { "Sync failed: $reason" }
+            logger.d { "Sync failed: ${error.message}" }
+            SyncResult.Failed(reason, retryable = SyncErrors.isRetryable(error.status), cause = error)
         }
         else -> {
             // Network errors: the outbox (if any) stays, and the next run resolves it.
-            logger.w { "Sync failed: $error" }
-            SyncResult.Failed(error.toString(), retryable = true, cause = error)
+            val reason = error.logSummary()
+            logger.w { "Sync failed: $reason" }
+            SyncResult.Failed(reason, retryable = true, cause = error)
         }
     }
 
