@@ -2,28 +2,43 @@ package com.quran.shared.pipeline
 
 import com.quran.shared.mutations.ServerTextLimit
 import com.quran.shared.syncv2.HeldItem
+import com.quran.shared.syncv2.SyncEngineV2
 import com.quran.shared.syncv2.SyncRow
 import com.quran.shared.syncv2.SyncStore
 import com.quran.shared.syncv2.types.CollectionsRepository
 import com.quran.shared.syncv2.types.NoteRange
 import com.quran.shared.syncv2.types.NotesRepository
 import com.quran.shared.syncv2.types.syncTypes
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /** [HeldItems]: the engine's held items as the public API shows them, and the reason mapping. */
 class HeldItemsTest {
     private val database = inMemoryMobileSyncDatabase().synced
-    private val held = HeldItems(database)
+    private val sharing = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val held = HeldItems(database, sharing)
     private val store = SyncStore(database)
     private val notes = NotesRepository(database)
     private val collections = CollectionsRepository(database)
+
+    @AfterTest
+    fun tearDown() {
+        sharing.cancel()
+    }
 
     /** Holds [localId] of [type] as a push would: the reason with the item's current state. */
     private fun hold(type: String, localId: Long, reason: String, remoteId: String? = null) {
@@ -169,6 +184,30 @@ class HeldItemsTest {
             listOf(item(SyncResourceType.COLLECTION_BOOKMARK, "3:18", HeldReason.REJECTED_BY_SERVER, "$study", null, 422, "ValidationError")),
             held.read()
         )
+    }
+
+    /** Collectors share one reader; once the last leaves, a wipe meanwhile isn't hidden behind the list it last read. */
+    @Test
+    fun `collectors share the flow and a later one never starts from a stale list`() = runTest {
+        val short = notes.addNote("12345", listOf(NoteRange(1, 1, 1, 1)), 0)
+        hold("NOTE", short, "BODY_LENGTH")
+        val expected = listOf(item(SyncResourceType.NOTE, "$short", HeldReason.TOO_SHORT))
+        suspend fun first() = withContext(Dispatchers.Default) { withTimeout(5_000) { held.flow.first() } }
+        val values = Channel<List<HeldSyncItem>>(Channel.UNLIMITED)
+        val collectors = List(2) { launch(Dispatchers.Default) { held.flow.collect { values.send(it) } } }
+        withContext(Dispatchers.Default) {
+            withTimeout(5_000) { assertEquals(listOf(expected, expected), List(2) { values.receive() }) }
+        }
+        assertEquals(expected, first(), "a third collector joins the same list")
+
+        collectors.forEach { it.cancelAndJoin() }
+        withContext(Dispatchers.Default) {
+            // The last collector left: the reader stops and drops the list it read.
+            withTimeout(5_000) { while ((held.flow as SharedFlow<*>).replayCache.isNotEmpty()) yield() }
+        }
+        SyncEngineV2.wipe(database, syncTypes(database))
+
+        assertEquals(emptyList(), first(), "read again, not the list from before the wipe")
     }
 
     @Test

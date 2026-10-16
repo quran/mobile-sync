@@ -127,7 +127,7 @@ class QuranDataService internal constructor(
     private val scope = CoroutineScope(Dispatchers.Main + serviceJob)
     private val syncStatusTracker = SyncStatusTracker()
     private val syncHistoryRecorder = SyncHistory(syncDatabase)
-    private val heldItemsReader = HeldItems(syncDatabase)
+    private val heldItemsReader = HeldItems(syncDatabase, scope)
     private val syncClient: SynchronizationClient
     private val initializationMutex = Mutex()
     private var initializationAttempt: Deferred<Unit>? = null

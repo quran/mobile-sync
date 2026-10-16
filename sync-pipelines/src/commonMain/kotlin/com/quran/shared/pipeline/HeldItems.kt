@@ -12,19 +12,26 @@ import com.quran.shared.syncv2.types.CollectionVerse
 import com.quran.shared.syncv2.types.CollectionsType
 import com.quran.shared.syncv2.types.NotesType
 import com.quran.shared.syncv2.types.syncTypes
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.shareIn
 
 /**
  * The held and waiting items of [database], for [QuranDataService.heldItems]. They are read again on every write to
  * `sync_item`, `sync_meta` or a domain table, as the next push would see them, so an edit that fixes an item takes
  * it out at once, without a sync.
+ *
+ * Every collector shares one reader in [scope], as each read is a transaction (the writer lock on Android and iOS).
+ * It reads only while someone collects, off the main thread, and forgets the last list when the last collector
+ * leaves, so a later collector never starts from a list a wipe has since emptied.
  */
-internal class HeldItems(private val database: SyncV2Database) {
+internal class HeldItems(private val database: SyncV2Database, scope: CoroutineScope) {
     private val logger = Logger.withTag("HeldItems")
     private val types = syncTypes(database)
     private val collectionAyahs = types.filterIsInstance<CollectionAyahsType>().single()
@@ -32,8 +39,10 @@ internal class HeldItems(private val database: SyncV2Database) {
     private val collectionsType = types.filterIsInstance<CollectionsType>().single()
 
     val flow: Flow<List<HeldSyncItem>> = database.sync_itemQueries.holdInputs().asFlow()
-        .map { withContext(Dispatchers.IO) { read() } }
+        .map { read() }
         .distinctUntilChanged()
+        .flowOn(Dispatchers.IO)
+        .shareIn(scope, SharingStarted.WhileSubscribed(replayExpirationMillis = 0), replay = 1)
 
     /** In one transaction, so the items and the rows they are mapped with agree. */
     fun read(): List<HeldSyncItem> = database.transactionWithResult { map(SyncEngineV2.held(database, types)) }
