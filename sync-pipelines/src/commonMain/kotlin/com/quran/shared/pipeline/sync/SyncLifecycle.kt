@@ -26,7 +26,9 @@ internal class SyncOperationInvalidatedException(message: String) : Exception(me
 
 /**
  * Observes sync runs. A run spans its first attempt and every retry, and ends with exactly one of [syncSkipped] or
- * [syncEnded], unless it is cancelled during a logout or reset, which reports nothing.
+ * [syncEnded], unless it is cancelled during a logout or reset, which reports nothing. A run the session's end stops
+ * after it reached the server (a refused token refresh, or a retry that finds no session) reports both, in order:
+ * [syncEnded], cancelled, so the history keeps what it did, then [syncSkipped], as for any run without a session.
  *
  * Calls arrive on background threads.
  */
@@ -35,8 +37,8 @@ internal interface SyncRunObserver {
     fun syncStarted() {}
 
     /**
-     * The run ended without a result, and isn't recorded: no one is signed in, the sync lifecycle is unavailable, or a
-     * logout or reset stopped it or began while it ran.
+     * The run ended without a result: no one is signed in, the sync lifecycle is unavailable, or a logout or reset
+     * stopped it or began while it ran. It isn't recorded unless [syncEnded] reported it first.
      */
     fun syncSkipped() {}
 

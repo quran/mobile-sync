@@ -6,6 +6,8 @@ import com.quran.shared.pipeline.SyncHistory
 import com.quran.shared.pipeline.SyncRun
 import com.quran.shared.pipeline.SyncRunResult
 import com.quran.shared.pipeline.SyncRunTrigger
+import com.quran.shared.pipeline.SyncStatus
+import com.quran.shared.pipeline.SyncStatusTracker
 import com.quran.shared.pipeline.SynchronizationEnvironment
 import com.quran.shared.pipeline.inMemoryMobileSyncDatabase
 import com.quran.shared.pipeline.integration.server.FakeSyncServer
@@ -38,18 +40,32 @@ class SyncClientRunRecordTest {
     private val database: MobileSyncDatabase = inMemoryMobileSyncDatabase()
     private val history = SyncHistory(database.synced)
     private val ended = Channel<SyncRun>(Channel.UNLIMITED)
+    private val skips = Channel<Unit>(Channel.UNLIMITED)
+    private val status = SyncStatusTracker()
     private val token = server.issueToken(ACCOUNT, "phone")
     private val notes = NotesRepository(database.synced)
     private val collections = CollectionsRepository(database.synced)
     private var retryBase: Duration = 5.milliseconds
     private var localChangeDelay: Duration = 1.hours
+
+    /** How many more times the session gives headers before it ends; it never ends unless set. */
+    @Volatile
+    private var headersLeft = Int.MAX_VALUE
+
+    @Volatile
+    private var refreshes = true
     private val client by lazy {
         val account = object : SyncAccount {
-            override suspend fun authHeaders() = mapOf("Authorization" to "Bearer $token")
+            override suspend fun authHeaders() =
+                if (headersLeft-- > 0) mapOf("Authorization" to "Bearer $token") else emptyMap()
             override suspend fun accountId() = ACCOUNT
-            override suspend fun forceTokenRefresh() = true
+            override suspend fun forceTokenRefresh() = refreshes.also { if (!it) headersLeft = 0 }
         }
-        val observer = SyncRunObservers(history, object : SyncRunObserver {
+        val observer = SyncRunObservers(history, status, object : SyncRunObserver {
+            override fun syncSkipped() {
+                skips.trySend(Unit)
+            }
+
             override fun syncEnded(run: SyncRun) {
                 ended.trySend(run)
             }
@@ -68,6 +84,17 @@ class SyncClientRunRecordTest {
     private fun next(): SyncRun = runBlocking { withTimeout(15.seconds) { ended.receive() } }
 
     private fun stored(): List<SyncRun> = runBlocking { history.runs.first() }
+
+    private fun awaitSkip() = runBlocking { withTimeout(15.seconds) { skips.receive() } }
+
+    /** 101 notes, so the first POST lands 100 of them before the second one fails with [status]. */
+    private fun failSecondPost(status: Int, code: String, beforeAnswer: () -> Unit = {}) {
+        repeat(101) { notes.addNote("Note number $it, pushed in two batches", listOf(NoteRange(2, 255, 2, 255)), it.toLong()) }
+        var posts = 0
+        server.faults.failRequests(status = status, code = code) { request ->
+            (request.isPost && ++posts == 2).also { second -> if (second) beforeAnswer() }
+        }
+    }
 
     /** Every stored value of every row, as text. */
     private fun storedText(): String = database.driver.executeQuery(null, "SELECT * FROM sync_run", { cursor ->
@@ -183,6 +210,55 @@ class SyncClientRunRecordTest {
         val run = next()
         assertEquals(SyncRunResult.CANCELLED to 1, run.result to run.attempts)
         assertEquals(listOf(run), stored())
+    }
+
+    /**
+     * The session ends while a retry waits: the retry finds no session. The run reached the server, so it is recorded
+     * cancelled with what it did; both attempts count. syncStatus goes back to what it was, as for any skipped run.
+     */
+    @Test
+    fun `a retry that finds no session records the run cancelled with its attempts and counts`() {
+        failSecondPost(503, "ServiceUnavailableError") { headersLeft = 0 }
+
+        client.triggerSyncImmediately()
+        val run = next()
+
+        assertEquals(SyncRunResult.CANCELLED to SyncRunTrigger.MANUAL, run.result to run.trigger)
+        assertEquals(listOf(2, 100, 0), listOf(run.attempts, run.pushed, run.pulled), "attempts, pushed, pulled")
+        assertNull(run.error)
+        assertEquals(listOf(run), stored())
+        awaitSkip()
+        assertEquals(SyncStatus.Idle, status.status.value, "as before the run")
+    }
+
+    @Test
+    fun `a refused token refresh after pushes records the run cancelled`() {
+        refreshes = false
+        failSecondPost(401, "TokenExpiredError")
+
+        client.triggerSyncImmediately()
+        val run = next()
+
+        assertEquals(SyncRunResult.CANCELLED, run.result)
+        assertEquals(listOf(1, 100), listOf(run.attempts, run.pushed), "attempts, pushed")
+        assertEquals(listOf(run), stored())
+        awaitSkip()
+        assertEquals(SyncStatus.Idle, status.status.value)
+    }
+
+    /** The session ended between the attempt's check and its first request: nothing reached the server. */
+    @Test
+    fun `a run whose session ends before its first request is not recorded`() {
+        headersLeft = 1
+        notes.addNote("A note that never leaves", listOf(NoteRange(2, 255, 2, 255)), 0)
+
+        client.triggerSyncImmediately()
+        awaitSkip()
+
+        assertEquals(emptyList(), server.requests("phone"))
+        assertEquals(emptyList(), stored())
+        assertTrue(ended.tryReceive().isFailure, "nothing ended")
+        assertEquals(SyncStatus.Idle, status.status.value)
     }
 
     private companion object {

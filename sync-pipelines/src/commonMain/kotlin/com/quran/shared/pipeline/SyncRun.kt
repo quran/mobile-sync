@@ -68,9 +68,14 @@ enum class SyncRunResult {
     FAILED,
 
     /**
-     * It was stopped before it ended: the service was cleared while an attempt ran, or a "sync now" or a sign-in
-     * replaced the retry it was waiting for. Its counts are what it did until then. A run waiting for a retry when
-     * the service is cleared (or closed) is not recorded: that only happens at teardown.
+     * It was stopped before it ended: the service was cleared while an attempt ran, a "sync now" or a sign-in
+     * replaced the retry it was waiting for, or the session ended after the run reached the server (a refused token
+     * refresh, or a retry that found no one signed in). Its counts are what it did until then, and [SyncRun.attempts]
+     * counts the attempt that was stopped. A run waiting for a retry when the service is cleared (or closed) is not
+     * recorded: that only happens at teardown. Nor is a run that found no session before it reached the server.
+     *
+     * A run the session's end stopped leaves [QuranDataService.syncStatus] as it was before the run, like any run
+     * without a session.
      */
     CANCELLED
 }

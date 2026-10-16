@@ -45,9 +45,10 @@ internal class SignedOutException : IllegalStateException("No session")
 
 /**
  * Runs [SyncEngineV2] when [SyncScheduler] says, for the signed-in account, and reports each run to [observer]:
- * [SyncRunObserver.syncStarted] once signed in (again for each retry), then exactly one of skipped (no session, a
+ * [SyncRunObserver.syncStarted] once signed in (again for each retry), then one of skipped (no session, a
  * logout or reset) or ended ([SyncRun]: succeeded, pulled only, failed when it won't be retried, or cancelled).
- * A run's record sums its attempts: their count, and what each pushed and pulled.
+ * A run's record sums its attempts: their count, and what each pushed and pulled. A run the session's end stops
+ * after it sent a request is both: recorded cancelled, then skipped (see [SyncRunObserver]).
  *
  * - A 401 forces one token refresh and runs again; a refused refresh ends the session.
  * - A failure that asks for a push backoff (a 403 that may be the token's scope) stops pushing for that long; the
@@ -156,7 +157,7 @@ internal class SyncClient(
         return again.copy(retryable = false)
     }
 
-    private fun failed(result: SyncResult.Failed, willRetry: (AttemptOutcome.Failed) -> Boolean): AttemptOutcome {
+    private suspend fun failed(result: SyncResult.Failed, willRetry: (AttemptOutcome.Failed) -> Boolean): AttemptOutcome {
         when (result.cause) {
             is SignedOutException -> return skipped("the session ended")
             is SyncOperationInvalidatedException -> return skipped("a logout or reset began during the run")
@@ -170,9 +171,20 @@ internal class SyncClient(
         return outcome
     }
 
-    private fun skipped(why: String): AttemptOutcome {
-        logger.i { "Sync skipped: $why" }
-        run = null
+    /**
+     * Ends the attempt without a result. A run that already sent a request (in this attempt, or in one before the
+     * retry that found no session) is recorded [SyncRunResult.CANCELLED] with what it did, unless a logout or reset
+     * began since; any other is forgotten. Either way it is skipped, so `syncStatus` goes back to what it was.
+     */
+    private suspend fun skipped(why: String): AttemptOutcome {
+        val open = run
+        if (open != null && open.contactedServer && gate.canStartSync() && epochIsCurrent(open.epoch)) {
+            logger.i { "Sync stopped: $why" }
+            end(SyncRunResult.CANCELLED, heldCount())
+        } else {
+            logger.i { "Sync skipped: $why" }
+            run = null
+        }
         observer.syncSkipped()
         return AttemptOutcome.Done
     }
@@ -235,11 +247,12 @@ internal class SyncClient(
 
     /**
      * Headers for each request of a run: none once a logout or reset began (admitted under the gate's lock, so a
-     * request can't slip out after a reset started), or once the session ended.
+     * request can't slip out after a reset started), or once the session ended. Headers given mark the run as one
+     * that contacted the server.
      */
     private suspend fun requestHeaders(): Map<String, String> {
         runEpoch?.let { gate.admitSyncPost(it) }
-        return account.authHeaders().ifEmpty { throw SignedOutException() }
+        return account.authHeaders().ifEmpty { throw SignedOutException() }.also { run?.contactedServer = true }
     }
 
     companion object {
@@ -300,11 +313,15 @@ private fun SyncResult.Failed.httpOrUnknown(cause: Throwable?): SyncError = when
     else -> SyncError(SyncErrorKind.UNKNOWN, null, null, "Sync failed unexpectedly (${cause::class.simpleName})")
 }
 
-/** A run's progress so far: its trigger, start, the gate epoch it started under, and its attempts' sums. */
+/**
+ * A run's progress so far: its trigger, start, the gate epoch it started under, and its attempts' sums.
+ * [contactedServer]: an attempt sent a request, so the run may have changed something here or on the server.
+ */
 private class RunTally(val trigger: SyncTrigger, val startedAt: Long, val epoch: Long) {
     var attempts = 0
     var pushed = 0
     var pulled = 0
+    var contactedServer = false
 
     fun add(result: SyncResult): SyncResult = result.also {
         pushed += it.pushed
