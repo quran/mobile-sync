@@ -1,6 +1,8 @@
 package com.quran.shared.persistence.repository
 
 import com.quran.shared.persistence.MobileSyncDatabase
+import com.quran.shared.persistence.RecordNotFoundException
+import com.quran.shared.persistence.RecordNotFoundException.RecordType
 import com.quran.shared.persistence.at
 import com.quran.shared.persistence.createTestDatabase
 import com.quran.shared.persistence.model.AyahHighlightColor
@@ -104,9 +106,11 @@ class CollectionBookmarksRepositoryTest {
 
     @Test
     fun `addAyahBookmarkToCollection rejects an unknown collection`() = runTest {
-        assertFailsWith<IllegalArgumentException> {
+        val failure = assertFailsWith<RecordNotFoundException> {
             collectionBookmarksRepository.addAyahBookmarkToCollection("999", 3, 1, at(200))
         }
+        assertEquals(RecordType.COLLECTION, failure.type)
+        assertEquals("999", failure.id)
 
         assertEquals(emptyList(), memberships(3, 1))
     }

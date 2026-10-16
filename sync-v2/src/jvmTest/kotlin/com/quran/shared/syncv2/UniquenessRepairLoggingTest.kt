@@ -54,5 +54,32 @@ class UniquenessRepairLoggingTest {
         }
     }
 
+    /**
+     * The backend never lets two collections share a name, so the clash is written into the fake's data directly, as
+     * data from before that rule would hold it: two remote collections, neither renamed here, leave only a suffix.
+     */
+    @Test
+    fun `disambiguating a clash logs the ids, not the names`() = FakeSyncServer().use { server ->
+        Device(server).use { device ->
+            val remote = Remote(server)
+            val study = remote.createCollection("Zq9x study")
+            val other = remote.createCollection("Zq9x other")
+            server.account(Device.ACCOUNT).apply {
+                collections[other] = collections.getValue(other).copy(name = "Zq9x STUDY")
+                log("COLLECTION", other, "UPDATE")
+            }
+
+            device.settle()
+
+            assertEquals(2, device.collectionNames().count { it.startsWith("Zq9x study", ignoreCase = true) })
+            assertTrue(device.collectionNames().any { it.endsWith(" (2)") }, device.collectionNames().toString())
+            synchronized(lines) {
+                val disambiguating = lines.filter { "disambiguating" in it }
+                assertTrue(disambiguating.any { "suffix 2" in it && ("remoteId=$study" in it || "remoteId=$other" in it) }, lines.toString())
+                assertEquals(emptyList(), lines.filter { it.contains("Zq9x", ignoreCase = true) })
+            }
+        }
+    }
+
     private fun t(n: Int) = 1_760_000_000_000L + n * 1_000L
 }

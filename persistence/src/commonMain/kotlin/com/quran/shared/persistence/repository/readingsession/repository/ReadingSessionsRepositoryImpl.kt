@@ -4,7 +4,7 @@ import app.cash.sqldelight.coroutines.asFlow
 import co.touchlab.kermit.Logger
 import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.RecordNotFoundException
-import com.quran.shared.persistence.RecordType
+import com.quran.shared.persistence.RecordNotFoundException.RecordType
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.repository.readingsession.ReadingSessionStore
 import com.quran.shared.persistence.util.PlatformDateTime

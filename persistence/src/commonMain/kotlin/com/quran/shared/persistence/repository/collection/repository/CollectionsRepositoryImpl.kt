@@ -6,7 +6,7 @@ import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.DuplicateCollectionNameException
 import com.quran.shared.persistence.ReadOnlyCollectionException
 import com.quran.shared.persistence.RecordNotFoundException
-import com.quran.shared.persistence.RecordType
+import com.quran.shared.persistence.RecordNotFoundException.RecordType
 import com.quran.shared.persistence.ReservedCollectionNameException
 import com.quran.shared.persistence.TextLengthField
 import com.quran.shared.persistence.model.Collection

@@ -471,6 +471,17 @@ class QuranDataService internal constructor(
         }
     }
 
+    /**
+     * Replaces an ayah bookmark's saved collection memberships and schedules sync only when
+     * memberships changed.
+     *
+     * Non-empty memberships create the bookmark if needed. Empty memberships remove the saved
+     * bookmark, or do nothing when it does not exist. Highlight collection memberships are always
+     * preserved and excluded from replacement.
+     *
+     * @throws com.quran.shared.persistence.RecordNotFoundException when an ID in [collectionIds] does not identify an
+     *   active collection.
+     */
     @NativeCoroutines
     suspend fun replaceAyahBookmarkCollections(
         sura: Int,
@@ -487,6 +498,9 @@ class QuranDataService internal constructor(
      * Non-empty memberships create the bookmark if needed. Empty memberships remove the saved
      * bookmark, or do nothing when it does not exist. Highlight collection memberships are always
      * preserved and excluded from replacement.
+     *
+     * @throws com.quran.shared.persistence.RecordNotFoundException when an ID in [collectionIds] does not identify an
+     *   active collection.
      */
     @NativeCoroutines
     suspend fun replaceAyahBookmarkCollections(
@@ -574,12 +588,22 @@ class QuranDataService internal constructor(
      * Updates a reading session, merging it into an existing destination session when needed.
      *
      * The returned session is authoritative because a merge returns the destination's ID.
+     *
+     * @throws com.quran.shared.persistence.RecordNotFoundException when [id] does not identify an active session.
      */
     @NativeCoroutines
     suspend fun updateReadingSession(id: String, sura: Int, ayah: Int): ReadingSession {
         return updateReadingSession(id, sura, ayah, currentPlatformDateTime())
     }
 
+    /**
+     * Updates a reading session using an explicit mutation timestamp, merging it into an existing
+     * destination session when needed.
+     *
+     * The returned session is authoritative because a merge returns the destination's ID.
+     *
+     * @throws com.quran.shared.persistence.RecordNotFoundException when [id] does not identify an active session.
+     */
     @NativeCoroutines
     suspend fun updateReadingSession(
         id: String,
@@ -681,6 +705,13 @@ class QuranDataService internal constructor(
         }
     }
 
+    /**
+     * Creates an ayah bookmark if missing and links it to an active saved collection, then schedules
+     * sync. Highlight collections must be changed through [setHighlight].
+     *
+     * @throws com.quran.shared.persistence.RecordNotFoundException when [collectionId] does not identify an active
+     *   collection.
+     */
     @NativeCoroutines
     suspend fun addAyahBookmarkToCollection(
         collectionId: String,
@@ -690,6 +721,14 @@ class QuranDataService internal constructor(
         return addAyahBookmarkToCollection(collectionId, sura, ayah, currentPlatformDateTime())
     }
 
+    /**
+     * Links an ayah to an active saved collection using [timestamp] for a new bookmark or its first
+     * saved membership, then schedules sync. Highlight collections must be changed through
+     * [setHighlight].
+     *
+     * @throws com.quran.shared.persistence.RecordNotFoundException when [collectionId] does not identify an active
+     *   collection.
+     */
     @NativeCoroutines
     suspend fun addAyahBookmarkToCollection(
         collectionId: String,
@@ -748,7 +787,13 @@ class QuranDataService internal constructor(
         updateNote(id, body, currentPlatformDateTime())
     }
 
-    /** @throws TextLengthLimitException when a changed [body] is outside the server's length limits. */
+    /**
+     * Updates a note's body using an explicit mutation timestamp and schedules sync for the local
+     * mutation.
+     *
+     * @throws com.quran.shared.persistence.RecordNotFoundException when [id] does not identify a note.
+     * @throws TextLengthLimitException when a changed [body] is outside the server's length limits.
+     */
     @NativeCoroutines
     suspend fun updateNote(id: String, body: String, timestamp: PlatformDateTime) {
         mutatingCall("Failed to update note") {

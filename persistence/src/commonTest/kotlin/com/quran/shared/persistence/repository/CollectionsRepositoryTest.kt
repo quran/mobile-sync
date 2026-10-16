@@ -1,6 +1,8 @@
 package com.quran.shared.persistence.repository
 
 import com.quran.shared.persistence.MobileSyncDatabase
+import com.quran.shared.persistence.RecordNotFoundException
+import com.quran.shared.persistence.RecordNotFoundException.RecordType
 import com.quran.shared.persistence.ReservedCollectionNameException
 import com.quran.shared.persistence.at
 import com.quran.shared.persistence.createTestDatabase
@@ -146,9 +148,11 @@ class CollectionsRepositoryTest {
         val collection = repository.addCollection(CUSTOM_COLLECTION_NAME, at(1000L))
         repository.deleteCollection(collection.id)
 
-        assertFailsWith<IllegalArgumentException> {
+        val failure = assertFailsWith<RecordNotFoundException> {
             repository.updateCollection(collection.id, "Renamed", at(2000L))
         }
+        assertEquals(RecordType.COLLECTION, failure.type)
+        assertEquals(collection.id, failure.id)
 
         assertNull(database.synced.collectionsQueries.collectionGet(collection.id.toLong()).executeAsOneOrNull())
         assertEquals(listOf(DEFAULT_COLLECTION_NAME), repository.getAllCollections().map { it.name })

@@ -3,7 +3,7 @@ package com.quran.shared.persistence.repository.bookmark.repository
 import co.touchlab.kermit.Logger
 import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.RecordNotFoundException
-import com.quran.shared.persistence.RecordType
+import com.quran.shared.persistence.RecordNotFoundException.RecordType
 import com.quran.shared.persistence.model.BookmarkCollectionsReplacementResult
 import com.quran.shared.persistence.repository.collection.CollectionStore
 import com.quran.shared.persistence.repository.collection.isHighlight

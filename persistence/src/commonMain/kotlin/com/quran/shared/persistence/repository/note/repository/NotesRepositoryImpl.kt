@@ -5,7 +5,7 @@ import co.touchlab.kermit.Logger
 import com.quran.shared.di.AppScope
 import com.quran.shared.mutations.trimLikeServer
 import com.quran.shared.persistence.RecordNotFoundException
-import com.quran.shared.persistence.RecordType
+import com.quran.shared.persistence.RecordNotFoundException.RecordType
 import com.quran.shared.persistence.TextLengthField
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.NoteRange

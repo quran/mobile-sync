@@ -3,7 +3,7 @@ package com.quran.shared.persistence.repository.collectionbookmark.repository
 import app.cash.sqldelight.coroutines.asFlow
 import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.RecordNotFoundException
-import com.quran.shared.persistence.RecordType
+import com.quran.shared.persistence.RecordNotFoundException.RecordType
 import com.quran.shared.persistence.model.AyahHighlight
 import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.model.CollectionAyahBookmark
