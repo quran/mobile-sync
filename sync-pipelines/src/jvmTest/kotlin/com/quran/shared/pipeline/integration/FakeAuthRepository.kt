@@ -15,8 +15,9 @@ import org.publicvalue.multiplatform.oidc.tokenstore.TokenStore
 
 /**
  * The OIDC boundary for one simulated device: the part of `OidcAuthRepository` that talks to the
- * browser login, the token endpoint and the token store. Login is not interactive; it signs in as
- * the account [signInAs] chose and gets a token from [server].
+ * browser login, the token endpoint and the token store. Login signs in as the account [signInAs]
+ * chose and gets a token from [server]. It returns at once unless a test holds it in the "browser"
+ * with [holdNextLogin], like a user who hasn't finished signing in.
  *
  * Like `OidcAuthRepository`, it keeps the session's tokens only in the graph's token store
  * ([useTokenStore]), which outlives the graph, so the session survives `SyncDevice.restart()`.
@@ -29,7 +30,8 @@ class FakeAuthRepository(private val device: String, private val server: FakeSyn
     @Volatile private var pendingAccount: String? = null
     @Volatile private var expireOnNextRefresh = false
     @Volatile private var remoteLogoutFails = false
-    @Volatile private var logoutHold: LogoutHold? = null
+    @Volatile private var logoutHold: Hold? = null
+    @Volatile private var loginHold: Hold? = null
     @Volatile private var expiredLocally = false
     @Volatile private var refuseForcedRefresh = false
     private lateinit var tokenStore: TokenStore
@@ -84,11 +86,18 @@ class FakeAuthRepository(private val device: String, private val server: FakeSyn
 
     /**
      * Holds the next logout while it captures the tokens to revoke, which is after the managed reset
-     * began. Returns the hold; complete [LogoutHold.release] to let the logout go on.
+     * began. Returns the hold; complete [Hold.release] to let the logout go on.
      */
-    fun holdNextLogout(): LogoutHold = LogoutHold().also { logoutHold = it }
+    fun holdNextLogout(): Hold = Hold().also { logoutHold = it }
 
-    class LogoutHold internal constructor() {
+    /**
+     * Holds the next login where `OidcAuthRepository` shows the browser and exchanges the code, before
+     * any token is stored. Returns the hold; complete [Hold.release] to let the login go on.
+     */
+    fun holdNextLogin(): Hold = Hold().also { loginHold = it }
+
+    /** Where a held call waits: [reached] completes when it gets there; complete [release] to let it go on. */
+    class Hold internal constructor() {
         val reached = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
     }
@@ -101,6 +110,11 @@ class FakeAuthRepository(private val device: String, private val server: FakeSyn
 
     override suspend fun login() {
         val account = checkNotNull(pendingAccount) { "Call signInAs(account) before login()" }
+        loginHold?.let { hold ->
+            loginHold = null
+            hold.reached.complete(Unit)
+            hold.release.await()
+        }
         this.account = account
         tokenStore.saveTokens(server.issueToken(account, device), null, null)
         expireOnNextRefresh = false

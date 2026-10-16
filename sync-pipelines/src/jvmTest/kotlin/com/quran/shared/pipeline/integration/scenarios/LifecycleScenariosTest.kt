@@ -461,6 +461,28 @@ class LifecycleScenariosTest {
         assertConverged(ALICE, phone)
     }
 
+    @Test
+    fun `LIFE-17 a logout while a sign-in waits in the browser ends the sign-in instead of waiting for it`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.data.addNote("Synced before the logout", 1, 1, 1, 7)
+        syncUntilQuiescent(phone)
+        val hold = phone.auth.holdNextLogin()
+
+        coroutineScope {
+            val signIn = async { runCatching { phone.authService.loginWithReauthentication() } }
+            withTimeout(10.seconds) { hold.reached.await() }
+            // The browser is never closed, so a logout that waited for the sign-in would never return.
+            withTimeout(10.seconds) { phone.logout() }
+            assertIs<kotlinx.coroutines.CancellationException>(signIn.await().exceptionOrNull(), "the sign-in outlived the logout")
+        }
+
+        assertIs<AuthState.Idle>(phone.authService.authState.value)
+        assertEquals(EMPTY_SNAPSHOT, phone.snapshot())
+        assertSucceeded(phone.login(ALICE))
+        assertEquals(listOf("Synced before the logout"), phone.noteBodies())
+        assertConverged(ALICE, phone)
+    }
+
     private class ServerBefore(val data: UserDataSnapshot, val head: Long, val logoutWarnings: List<LogoutWarning>)
 
     /** Syncs one of each type, makes unsynced edits, then logs out. Returns the server as it was before the edits. */

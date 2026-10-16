@@ -82,6 +82,17 @@ class SettingsSessionLifecycleStateStore(
     }
 }
 
+/**
+ * Orders a session reset (logout, or finishing one a crash interrupted) against the work it must
+ * not overlap, and tells sync runs when their session epoch has ended.
+ *
+ * - Local writes ([withMutatingWrite]) run one at a time.
+ * - Sign-ins ([withLogin]) run alongside writes: an interactive sign-in can keep the browser open for
+ *   as long as the user takes, and it writes nothing to the database, so writes don't wait for it.
+ * - A reset ([runManagedReset], [completePersistedResetIfNeeded]) waits for the writes and sign-ins
+ *   already running, then runs alone. Writes and sign-ins asked for while a reset runs fail with
+ *   [SessionResetInProgressException].
+ */
 @HiddenFromObjC
 @SingleIn(AppScope::class)
 @Inject
@@ -89,7 +100,8 @@ class SessionLifecycleCoordinator(
     private val stateStore: SessionLifecycleStateStore
 ) : SyncLifecycleGate {
     private val stateMutex = Mutex()
-    private val writeResetMutex = Mutex()
+    private val writeMutex = Mutex()
+    private val resetGate = SessionResetGate()
     private val syncEpochAdmissionMutex = Mutex()
     private val resetTransitionMutex = Mutex()
 
@@ -132,11 +144,39 @@ class SessionLifecycleCoordinator(
         return block()
     }
 
+    /**
+     * Runs a local write after the writes before it, and not during a reset.
+     *
+     * @throws SessionResetInProgressException when a reset has begun, before or while this waits.
+     */
     suspend fun <T> withMutatingWrite(block: suspend () -> T): T {
         if (isResetInProgress()) {
             throw SessionResetInProgressException()
         }
-        return writeResetMutex.withLock {
+        return resetGate.withShared {
+            writeMutex.withLock {
+                if (readState().resetInProgress) {
+                    throw SessionResetInProgressException()
+                }
+                block()
+            }
+        }
+    }
+
+    /**
+     * Runs a sign-in, which may wait on the user in the browser, outside any reset.
+     *
+     * Writes run alongside it. A reset waits for it to end, so the reset's clearing of the session
+     * can't be undone by tokens the sign-in stores afterwards; a logout ends a sign-in in progress
+     * first (the auth service's clearing invalidates it) instead of waiting for the user.
+     *
+     * @throws SessionResetInProgressException when a reset has begun, before or while this waits.
+     */
+    suspend fun <T> withLogin(block: suspend () -> T): T {
+        if (isResetInProgress()) {
+            throw SessionResetInProgressException()
+        }
+        return resetGate.withShared {
             if (readState().resetInProgress) {
                 throw SessionResetInProgressException()
             }
@@ -144,27 +184,31 @@ class SessionLifecycleCoordinator(
         }
     }
 
+    /**
+     * Resets the session: marks the reset (persisted, so a crash finishes it on the next launch),
+     * runs [beforeWriteDrain], waits for the writes and sign-ins already running, then runs [block]
+     * alone and clears the mark. New writes and sign-ins fail from the moment the reset is marked.
+     *
+     * [beforeWriteDrain] runs before the wait, so it can end work the wait would otherwise sit on,
+     * such as a sign-in waiting in the browser.
+     */
     suspend fun <T> runManagedReset(
         beforeWriteDrain: suspend () -> Unit = {},
         block: suspend () -> T
     ): T {
         var owner: ResetOwner? = null
         var resetFinished = false
-        var lockAcquired = false
         try {
             val resetOwner = beginReset()
             owner = resetOwner
             beforeWriteDrain()
-            writeResetMutex.lock()
-            lockAcquired = true
-            val result = block()
-            finishReset(resetOwner)
-            resetFinished = true
-            return result
-        } finally {
-            if (lockAcquired) {
-                writeResetMutex.unlock()
+            return resetGate.withExclusive {
+                val result = block()
+                finishReset(resetOwner)
+                resetFinished = true
+                result
             }
+        } finally {
             if (!resetFinished) {
                 withContext(NonCancellable) {
                     owner?.let { refreshCachedStateAfterResetFailure(it) }
@@ -173,14 +217,18 @@ class SessionLifecycleCoordinator(
         }
     }
 
+    /**
+     * Finishes a reset a crash interrupted, if one is persisted: waits for the writes and sign-ins
+     * already running, like [runManagedReset], then runs [block] alone and clears the mark.
+     */
     suspend fun completePersistedResetIfNeeded(block: suspend () -> Unit) {
         val recoveryState = capturePersistedResetForRecovery() ?: return
-        writeResetMutex.withLock {
-            val currentState = capturePersistedResetForRecovery() ?: return
+        resetGate.withExclusive {
+            val currentState = capturePersistedResetForRecovery() ?: return@withExclusive
             if (currentState.epoch != recoveryState.epoch) {
-                return
+                return@withExclusive
             }
-            val resetState = ensurePersistedResetEpochAdvancedForRecovery(currentState) ?: return
+            val resetState = ensurePersistedResetEpochAdvancedForRecovery(currentState) ?: return@withExclusive
             try {
                 block()
                 finishPersistedReset(resetState.epoch)

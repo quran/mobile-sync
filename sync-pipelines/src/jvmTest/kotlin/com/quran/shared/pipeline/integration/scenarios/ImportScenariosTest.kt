@@ -5,16 +5,23 @@ import com.quran.shared.persistence.input.ImportCollectionAyahBookmark
 import com.quran.shared.persistence.input.ImportNote
 import com.quran.shared.persistence.input.ImportReadingSession
 import com.quran.shared.persistence.input.PersistenceImportData
+import com.quran.shared.pipeline.integration.SyncDevice
 import com.quran.shared.pipeline.integration.UserDataSnapshot
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.server.CollectionRules
 import com.quran.shared.pipeline.integration.server.ServerDuplicate
 import com.quran.shared.pipeline.integration.syncScenario
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 /** Importing legacy data and restoring backups. */
 class ImportScenariosTest {
@@ -275,6 +282,77 @@ class ImportScenariosTest {
         val expected = IMPORTED.asSnapshot().let { it.copy(notes = (it.notes + "Pushed before the import | 3:7-3:7").sorted()) }
         assertEquals(expected, UserDataSnapshot.of(server.state(ALICE)))
         assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `IMP-12 an import during sign-in doesn't wait for the browser`() = syncScenario {
+        val phone = device("phone")
+
+        val import = whileSignInIsHeld(phone) {
+            phone.data.importData(IMPORTED, deleteExisting = false, trackHistory = true)
+        }
+
+        assertTrue(import.changed)
+        syncUntilQuiescent(phone)
+        assertEquals(IMPORTED.asSnapshot(), UserDataSnapshot.of(server.state(ALICE)))
+        assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `IMP-12 variant, a re-import that finds everything processed doesn't wait for the browser either`() = syncScenario {
+        val phone = device("phone")
+        // The legacy scan ran on an earlier launch, signed out; this launch's scan finds everything processed.
+        assertTrue(phone.data.importData(IMPORTED, deleteExisting = false, trackHistory = true).changed)
+
+        val import = whileSignInIsHeld(phone) {
+            phone.data.importData(IMPORTED, deleteExisting = false, trackHistory = true)
+        }
+
+        assertFalse(import.changed)
+        assertTrue(import.alreadyProcessed > 0, "alreadyProcessed = ${import.alreadyProcessed}")
+        syncUntilQuiescent(phone)
+        assertEquals(IMPORTED.asSnapshot(), UserDataSnapshot.of(server.state(ALICE)))
+        assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `IMP-13 an import while the first sync's GET is in flight doesn't wait for it`() = syncScenario {
+        val phone = device("phone")
+        val gate = server.faults.blockGet()
+
+        coroutineScope {
+            val login = async { phone.login(ALICE) }
+            withContext(Dispatchers.IO) { gate.awaitArrived() }
+            // The GET is released only after the import returns, so an import that waited for it would never return.
+            val import = try {
+                withTimeout(10.seconds) { phone.data.importData(IMPORTED, deleteExisting = false, trackHistory = true) }
+            } finally {
+                gate.release()
+            }
+            assertTrue(import.changed)
+            assertSucceeded(login.await())
+        }
+        syncUntilQuiescent(phone)
+        assertEquals(IMPORTED.asSnapshot(), UserDataSnapshot.of(server.state(ALICE)))
+        assertConverged(ALICE, phone)
+    }
+
+    /**
+     * Signs [phone] in to Alice with the login held where the real one shows the browser, runs [whileHeld],
+     * then lets the sign-in finish and returns what [whileHeld] returned. The sign-in is released only after
+     * [whileHeld] returns, so work that waited for the sign-in would never return.
+     */
+    private suspend fun <T> whileSignInIsHeld(phone: SyncDevice, whileHeld: suspend () -> T): T = coroutineScope {
+        val hold = phone.auth.holdNextLogin()
+        val login = async { phone.login(ALICE) }
+        withTimeout(10.seconds) { hold.reached.await() }
+        val result = try {
+            withTimeout(10.seconds) { whileHeld() }
+        } finally {
+            hold.release.complete(Unit)
+        }
+        assertSucceeded(login.await())
+        result
     }
 
     private companion object {
