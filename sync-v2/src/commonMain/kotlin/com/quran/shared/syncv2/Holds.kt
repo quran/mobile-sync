@@ -21,6 +21,12 @@ data class HeldItem(val type: String, val localId: Long, val reason: String, val
 
 data class ItemRef(val type: String, val localId: Long)
 
+/**
+ * Whether this tombstone's hold is a held DELETE: it holds the base, as the server refused the delete. A tombstone
+ * held with any other state was held for a create or edit the user deleted since, so the hold no longer applies.
+ */
+internal fun SyncRow.holdsDelete(merger: Merger): Boolean = heldReason != null && base != null && merger.same(heldState, base)
+
 /** Releasing and listing holds. A hold is also released when the user edits the item (see [PushPlanner]). */
 class Holds(private val store: SyncStore, private val types: List<SyncType>, private val refs: Refs) {
 
@@ -48,8 +54,9 @@ class Holds(private val store: SyncStore, private val types: List<SyncType>, pri
      * it can't be pushed. [HeldItem.waitingOn] is the held item at the root, so a UI can say "N items waiting on X".
      *
      * It reads the items as the next push would plan them, so it changes as soon as the user edits or deletes an item:
-     * a hold whose item was edited since (working != the held state) is left out, as is a never-synced held item the
-     * user deleted, and what waited on either. Never-linked items are listed only once an account is signed in.
+     * a hold whose item was edited since (working != the held state) is left out, as is a held item the user deleted
+     * (unless what is held is its DELETE), and what waited on either. Never-linked items are listed only once an
+     * account is signed in.
      */
     fun list(): List<HeldItem> {
         val working = types.associateWith { it.readAll() }
@@ -95,7 +102,8 @@ class Holds(private val store: SyncStore, private val types: List<SyncType>, pri
 
     /**
      * [type]'s sync rows as the next push sees them: [PushPlanner] releases a hold whose item was edited since, and
-     * the next merge forgets a never-synced held item the user deleted. A held DELETE (a tombstone) stays held.
+     * the next merge forgets a never-synced held item the user deleted. A held DELETE stays held; a hold on an edit
+     * the user then deleted is released, as the planner pushes the delete.
      */
     private fun current(type: SyncType, rows: Map<Long, SyncRow>, working: Map<Long, State>): Map<Long, SyncRow> {
         val merger = Merger(type)
@@ -103,7 +111,7 @@ class Holds(private val store: SyncStore, private val types: List<SyncType>, pri
             val state = working[localId]
             val released = when {
                 row.heldReason == null -> false
-                state == null -> row.base == null
+                state == null -> !row.holdsDelete(merger)
                 else -> !merger.same(row.heldState, state)
             }
             if (released) row.unheld() else row

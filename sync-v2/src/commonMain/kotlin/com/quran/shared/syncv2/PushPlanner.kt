@@ -40,7 +40,12 @@ class PushPlanner(private val store: SyncStore, private val types: List<SyncType
             val typeUpdates = mutableListOf<Planned>()
             val heldKeys = heldKeyOwners(type, rows)
             rows.values.filter { it.localId !in working && it.base != null && it.remoteId != null }.forEach { row ->
-                if (row.heldReason != null || coveredByParent(type, row, workingByType)) return@forEach
+                if (row.heldReason != null) {
+                    if (row.holdsDelete(merger)) return@forEach
+                    // Held for an edit the user then deleted: the delete is a new change.
+                    store.put(type.name, row.unheld())
+                }
+                if (coveredByParent(type, row, workingByType)) return@forEach
                 val change = Change.Delete(row.remoteId!!, row.base!!)
                 // A delete the server would refuse is undone, like a 403 on DELETE.
                 if (type.validate(change) != null) return@forEach restore(type, row.localId, row.base)
