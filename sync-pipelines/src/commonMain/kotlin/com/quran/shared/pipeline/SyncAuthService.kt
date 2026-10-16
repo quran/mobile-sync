@@ -42,18 +42,25 @@ class SyncAuthService internal constructor(
     val loggedInUser: UserInfo?
         get() = (authService.authState.value as? AuthState.Success)?.userInfo
 
+    /**
+     * Signs in through the browser and publishes the session, which starts a sync.
+     *
+     * Local writes and imports don't wait for it, however long the user takes. A logout during it
+     * ends it, and it fails with [SessionResetInProgressException] while a logout is running.
+     */
     @NativeCoroutines
     suspend fun login() {
         quranDataService.awaitInitialization()
-        sessionLifecycleCoordinator.withMutatingWrite {
+        sessionLifecycleCoordinator.withLogin {
             authService.login()
         }
     }
 
+    /** Like [login], but asks the identity provider to prompt for credentials again. */
     @NativeCoroutines
     suspend fun loginWithReauthentication() {
         quranDataService.awaitInitialization()
-        sessionLifecycleCoordinator.withMutatingWrite {
+        sessionLifecycleCoordinator.withLogin {
             authService.loginWithReauthentication()
         }
     }

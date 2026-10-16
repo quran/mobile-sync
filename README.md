@@ -306,6 +306,7 @@ legacy data to another account.
 Lifecycle note:
 - `QuranDataService` is app-scoped. Initialize once via `SharedDependencyGraph.init(...)`.
 - Prefer `SyncAuthService.logout()` for managed apps. `QuranDataService.logout()` remains available for callers that route auth and data lifecycle through one facade.
+- Writes and imports don't wait for an interactive sign-in (`SyncAuthService.login()`), however long the browser stays open. A logout ends a sign-in in progress, and a sign-in started while a logout runs fails with `SessionResetInProgressException`.
 - Do not clear app-scoped services from UI/view-model teardown.
 
 ### 4. App environment selection
