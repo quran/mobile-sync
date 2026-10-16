@@ -62,6 +62,32 @@ class HeldItemsTest {
         )
     }
 
+    /** Without its row, a length hold is measured by the state it recorded, not guessed. */
+    @Test
+    fun `a length hold on a deleted item is measured by its held state`() {
+        val short = notes.addNote("12345", listOf(NoteRange(1, 1, 1, 1)), 0)
+        val long = collections.addCollection("y".repeat(256), 1).localId
+        val noteState = syncTypes(database).single { it.name == "NOTE" }.readAll().getValue(short)
+        val collectionState = syncTypes(database).single { it.name == "COLLECTION" }.readAll().getValue(long)
+        // Tombstones that hold their base, as a held DELETE does, so the engine still lists them.
+        store.put("NOTE", SyncRow(short, "remote-note", noteState, "BODY_LENGTH", noteState))
+        store.put("COLLECTION", SyncRow(long, "remote-collection", collectionState, "NAME_LENGTH", collectionState))
+        notes.deleteNote(short)
+        database.collectionsQueries.collectionDelete(long)
+
+        assertEquals(
+            listOf(item(SyncResourceType.COLLECTION, "$long", HeldReason.TOO_LONG), item(SyncResourceType.NOTE, "$short", HeldReason.TOO_SHORT)),
+            held.read()
+        )
+    }
+
+    @Test
+    fun `a length hold whose text can't be read measures it as empty`() {
+        assertEquals(PublicHold(HeldReason.TOO_SHORT), heldReason("BODY_LENGTH") { HeldText(null, ServerTextLimit.NOTE_BODY) })
+        assertEquals(PublicHold(HeldReason.TOO_SHORT), heldReason("NAME_LENGTH") { HeldText(null, ServerTextLimit.COLLECTION_NAME) })
+        assertEquals(PublicHold(HeldReason.REJECTED_BY_SERVER, unknown = true), heldReason("BODY_LENGTH") { null }, "no known text")
+    }
+
     @Test
     fun `every engine reason maps to a public one`() {
         fun map(reason: String, text: HeldText? = null) = heldReason(reason) { text }

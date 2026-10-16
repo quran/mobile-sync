@@ -9,6 +9,8 @@ import com.quran.shared.syncv2.SyncStore
 import com.quran.shared.syncv2.db.SyncV2Database
 import com.quran.shared.syncv2.types.CollectionAyahsType
 import com.quran.shared.syncv2.types.CollectionVerse
+import com.quran.shared.syncv2.types.CollectionsType
+import com.quran.shared.syncv2.types.NotesType
 import com.quran.shared.syncv2.types.syncTypes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -26,6 +28,8 @@ internal class HeldItems(private val database: SyncV2Database) {
     private val logger = Logger.withTag("HeldItems")
     private val types = syncTypes(database)
     private val collectionAyahs = types.filterIsInstance<CollectionAyahsType>().single()
+    private val notesType = types.filterIsInstance<NotesType>().single()
+    private val collectionsType = types.filterIsInstance<CollectionsType>().single()
 
     val flow: Flow<List<HeldSyncItem>> = database.sync_itemQueries.holdInputs().asFlow()
         .map { withContext(Dispatchers.IO) { read() } }
@@ -74,15 +78,26 @@ internal class HeldItems(private val database: SyncV2Database) {
             ?.let { CollectionVerse(it.collection_local_id, it.sura.toInt(), it.ayah.toInt()) }
             ?: SyncStore(database).row(COLLECTION_AYAH, localId)?.base?.let(collectionAyahs::verseOf)
 
-    /** The text a length hold measured: a note's body, a collection's or reading bookmark's name. */
+    /**
+     * The text a length hold measured: a note's body, a collection's or reading bookmark's name. It is the item's row,
+     * or without one (it was deleted) the state the hold recorded; null [HeldText.text] when neither can be read.
+     */
     private fun text(item: HeldItem): HeldText? = when (item.type) {
-        NOTE -> database.notesQueries.get(item.localId).executeAsOneOrNull()?.body?.let { HeldText(it, ServerTextLimit.NOTE_BODY) }
-        COLLECTION -> database.collectionsQueries.collectionGet(item.localId).executeAsOneOrNull()?.name
-            ?.let { HeldText(it, ServerTextLimit.COLLECTION_NAME) }
+        NOTE -> HeldText(
+            database.notesQueries.get(item.localId).executeAsOneOrNull()?.body ?: heldState(item)?.let(notesType::bodyOf),
+            ServerTextLimit.NOTE_BODY
+        )
+        COLLECTION -> HeldText(
+            database.collectionsQueries.collectionGet(item.localId).executeAsOneOrNull()?.name
+                ?: heldState(item)?.let(collectionsType::nameOf),
+            ServerTextLimit.COLLECTION_NAME
+        )
         // A reading bookmark name has only a maximum.
         READING_BOOKMARK -> HeldText(null, null)
         else -> null
     }
+
+    private fun heldState(item: HeldItem) = SyncStore(database).row(item.type, item.localId)?.heldState
 
     companion object {
         const val NOTE = "NOTE"
@@ -93,7 +108,10 @@ internal class HeldItems(private val database: SyncV2Database) {
     }
 }
 
-/** A length hold's text and the limit it broke; a null [limit] means the type has only a maximum. */
+/**
+ * A length hold's text and the limit it broke; a null [limit] means the type has only a maximum. A null [text] (it
+ * couldn't be read) measures as empty.
+ */
 internal data class HeldText(val text: String?, val limit: ServerTextLimit?)
 
 /** A hold reason as the public API reports it. [unknown]: the engine's reason isn't one this mapping knows. */
@@ -108,13 +126,15 @@ private val SERVER_HOLD = Regex("^(\\d{3})(?: (\\S+))?$")
 
 /**
  * Maps an engine hold reason to [HeldReason]. A length reason (`BODY_LENGTH`, `NAME_LENGTH`) becomes [HeldReason.TOO_SHORT]
- * when [text] measures below its minimum, else [HeldReason.TOO_LONG]. A server hold (`"<status> <code>"`) becomes
- * [HeldReason.REJECTED_BY_SERVER] with both; any other reason too, with neither, and [PublicHold.unknown] set.
+ * when [text] measures below its minimum (a text that couldn't be read measures as empty), and [HeldReason.TOO_LONG]
+ * when it doesn't or the type has only a maximum; on a type with no known text it is unknown, as below. A server
+ * hold (`"<status> <code>"`) becomes [HeldReason.REJECTED_BY_SERVER] with both; any other reason too, with neither,
+ * and [PublicHold.unknown] set.
  */
 internal fun heldReason(reason: String, text: () -> HeldText?): PublicHold = when (reason) {
     "BODY_LENGTH", "NAME_LENGTH" -> {
-        val held = text()
-        val limit = held?.limit
+        val held = text() ?: return PublicHold(HeldReason.REJECTED_BY_SERVER, unknown = true)
+        val limit = held.limit
         val tooShort = limit != null && limit.serverLength(held.text.orEmpty()) < limit.minLength
         PublicHold(if (tooShort) HeldReason.TOO_SHORT else HeldReason.TOO_LONG)
     }
