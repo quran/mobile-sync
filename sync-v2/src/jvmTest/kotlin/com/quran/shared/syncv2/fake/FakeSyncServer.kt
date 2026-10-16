@@ -70,6 +70,8 @@ class FakeSyncServer : AutoCloseable {
     @Volatile var duringNextGet: (() -> Unit)? = null
     /** Runs before answering the next GET of that page number: another device writing between pages. */
     @Volatile var beforeGetPage: Pair<Int, () -> Unit>? = null
+    /** Cuts the next GET's body off right after this text, as a connection closing mid-response would. */
+    @Volatile var truncateNextGetAfter: String? = null
 
     init {
         server.createContext("/v1/sync") { exchange ->
@@ -136,7 +138,12 @@ class FakeSyncServer : AutoCloseable {
                 })
             })
         }
-        respond(exchange, 200, body.toString())
+        val text = body.toString()
+        val cut = truncateNextGetAfter?.let { after ->
+            truncateNextGetAfter = null
+            text.indexOf(after).also { check(it >= 0) { "the response doesn't contain the text to cut after" } } + after.length
+        }
+        respond(exchange, 200, if (cut == null) text else text.take(cut))
     }
 
     private fun defaultCollection(account: FakeAccount) = buildJsonObject {

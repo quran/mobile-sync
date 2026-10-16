@@ -56,4 +56,17 @@ class SyncErrorParsingTest {
         assertEquals(502, error.status)
         assertNull(error.code)
     }
+
+    @Test
+    fun `the error names only the status and code and never the server's message or body`() {
+        val backend = parseSyncError(
+            422,
+            """{"message":"Collection 'Secret plans' is invalid","type":"error","success":false,"requestId":"r1",
+               "details":{"success":false,"error":{"code":"ValidationError","message":"Collection 'Secret plans' is invalid"}}}"""
+        )
+        val gateway = parseSyncError(502, "<html>Secret plans</html>")
+
+        assertEquals("HTTP 422 ValidationError", backend.message)
+        assertEquals("HTTP 502", gateway.message)
+    }
 }

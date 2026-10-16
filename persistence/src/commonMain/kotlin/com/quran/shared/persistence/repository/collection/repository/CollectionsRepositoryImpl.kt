@@ -51,7 +51,7 @@ class CollectionsRepositoryImpl(
 
     /** Adding a name that is taken (trimmed, case-insensitive) returns the existing collection. */
     override suspend fun addCollection(name: String, timestamp: PlatformDateTime): Collection {
-        logger.i { "Adding collection with name=$name" }
+        logger.i { "Adding collection" }
         if (isSystemCollectionName(name)) throw ReservedCollectionNameException(name)
         requireServerTextLength(TextLengthField.COLLECTION_NAME, name)
         val at = timestamp.toEpochMillisecondsFromPlatform()
@@ -67,7 +67,7 @@ class CollectionsRepositoryImpl(
         updateCollection(id, name, currentPlatformDateTime())
 
     override suspend fun updateCollection(id: String, name: String, timestamp: PlatformDateTime): Collection {
-        logger.i { "Updating collection id=$id with name=$name" }
+        logger.i { "Renaming collection id=$id" }
         val at = timestamp.toEpochMillisecondsFromPlatform()
         return withContext(Dispatchers.IO) {
             database.transactionWithResult {

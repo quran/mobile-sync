@@ -29,13 +29,15 @@ data class RemoteChanges(val head: Long, val entries: List<RemoteEntry>)
 
 data class PostResult(val head: Long, val mutations: List<PostedMutation>)
 
-/** A non-2xx answer, classified by the server's `error.code` and `error.details.mutationIndex`. */
+/**
+ * A non-2xx answer, classified by the server's `error.code` and `error.details.mutationIndex`. It never carries the
+ * server's message or body: they can quote what was sent (a note's body, a collection's name), and this is logged.
+ */
 class SyncHttpException(
     val status: Int,
     val code: String?,
-    val mutationIndex: Int?,
-    message: String
-) : Exception("HTTP $status $code: $message")
+    val mutationIndex: Int?
+) : Exception(listOfNotNull("HTTP $status", code).joinToString(" "))
 
 /** The sync head changed between GET pages (retryable). */
 class HeadChangedException : IllegalStateException("Sync head changed during pagination")
@@ -133,7 +135,14 @@ class SyncApi(
     private suspend fun HttpResponse.successData(): JsonObject {
         val text = bodyAsText()
         if (!status.isSuccess()) throw parseSyncError(status.value, text)
-        return json.parseToJsonElement(text).jsonObject["data"]!!.jsonObject
+        val root = try {
+            json.parseToJsonElement(text)
+        } catch (e: IllegalArgumentException) {
+            // SerializationException is one, and its message quotes the response (note bodies, collection names) into
+            // whatever logs the failure: neither the message nor the cause may go along.
+            throw IllegalStateException("The sync server's response is not valid JSON")
+        }
+        return root.jsonObject["data"]!!.jsonObject
     }
 
     private fun JsonObject.long(key: String): Long = this[key]!!.jsonPrimitive.longOrNull!!
@@ -154,8 +163,7 @@ internal fun parseSyncError(status: Int, text: String): SyncHttpException {
     val root = runCatching { Json.parseToJsonElement(text) as? JsonObject }.getOrNull()
     val error = root?.obj("error") ?: root?.obj("details")?.obj("error")
     val index = (error?.obj("details")?.get("mutationIndex") as? JsonPrimitive)?.intOrNull
-    val message = error?.string("message") ?: root?.string("message") ?: text
-    return SyncHttpException(status, error?.string("code")?.takeIf { it.isNotBlank() }, index, message)
+    return SyncHttpException(status, error?.string("code")?.takeIf { it.isNotBlank() }, index)
 }
 
 private fun JsonObject.obj(key: String): JsonObject? = this[key] as? JsonObject

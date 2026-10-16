@@ -16,6 +16,7 @@ class UniquenessRepair(
     private val merger: Merger,
     private val repointChildren: (SyncType, Long, Long) -> Unit
 ) {
+    // Logs name items by id, never by key: a natural key can be what the user wrote (a collection's name).
     private val logger = Logger.withTag("SyncV2UniquenessRepair")
 
     fun repair(items: List<MergeItem>) {
@@ -49,7 +50,7 @@ class UniquenessRepair(
             // DELETE is pushed: a remote loser is never inserted, but is bound to a tombstone, so it can't stay on the
             // server if the winner's UPDATE never lands or moves on.
             group.sortedByDescending { type.clock(it.working!!) }.drop(1).forEach {
-                logger.i { "${type.name}: ${it.remoteId} loses $key to a newer item" }
+                logger.i { "${type.name}: ${it.remoteId} (local ${it.localId}) loses its key to a newer item" }
                 it.working = null
                 if (it.localId == null) it.bindAsTombstone = true
             }
@@ -57,7 +58,7 @@ class UniquenessRepair(
         }
         if (localKeyChanges.isNotEmpty()) {
             localKeyChanges.forEach {
-                logger.i { "${type.name}: reverting local key change of ${it.remoteId} that clashes on $key" }
+                logger.i { "${type.name}: reverting a local key change of ${it.remoteId} (local ${it.localId}) that clashes" }
                 it.working = it.base
             }
             return
@@ -75,7 +76,10 @@ class UniquenessRepair(
                 n += 1
                 candidate = if (n > MAX_SUFFIX) null else type.disambiguate(item.working!!, n)
             }
-            logger.i { "${type.name}: disambiguating a clash -> ${candidate?.let(type::naturalKey)}" }
+            logger.i {
+                val outcome = if (candidate == null) "dropping it" else "making it unique ($n)"
+                "${type.name}: disambiguating a clash of ${item.remoteId} (local ${item.localId}), $outcome"
+            }
             item.working = candidate
         }
     }

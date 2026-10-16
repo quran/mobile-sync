@@ -156,6 +156,9 @@ class ServerFaults internal constructor() {
     fun malformedResponse(times: Int = 1, kind: Malformed = Malformed.INVALID_JSON, match: (FakeRequest) -> Boolean = { true }) =
         add(times, match, Action.Malform(kind))
 
+    /** Cuts the next GET response off right after [after], as a connection closing mid-response would. */
+    fun truncateResponse(after: String, times: Int = 1) = add(times, { !it.isPost }, Action.Truncate(after))
+
     /**
      * The next GET that reports [resource] [resourceId] sends it as if its entity were gone while
      * its log row is alive: with `{}`, or for a COLLECTION_BOOKMARK with only its split
@@ -181,6 +184,7 @@ class ServerFaults internal constructor() {
         class Reject(val match: (ValidatedMutation) -> Boolean, val error: HttpError) : Action
         class Run(val action: () -> Unit) : Action
         class Malform(val kind: Malformed) : Action
+        class Truncate(val after: String) : Action
     }
 
     /** A registered fault; [remaining] counts down as it fires. */

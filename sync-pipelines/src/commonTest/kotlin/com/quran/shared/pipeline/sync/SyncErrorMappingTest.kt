@@ -14,7 +14,7 @@ class SyncErrorMappingTest {
     @Test
     fun `http failures map to a kind by status`() {
         val kinds = listOf(401, 403, 408, 429, 500, 503, 400, 404, 409, 422).associateWith { status ->
-            failed(SyncHttpException(status, code = null, mutationIndex = null, message = "")).toSyncError().kind
+            failed(SyncHttpException(status, code = null, mutationIndex = null)).toSyncError().kind
         }
 
         assertEquals(
@@ -36,19 +36,12 @@ class SyncErrorMappingTest {
 
     @Test
     fun `an http failure keeps its status and the server's error code`() {
-        val cause = SyncHttpException(409, "UniqueViolationError", mutationIndex = 0, message = "Collection 'Private' exists")
+        val cause = SyncHttpException(409, "UniqueViolationError", mutationIndex = 0)
 
         assertEquals(
             SyncError(SyncErrorKind.REJECTED, 409, "UniqueViolationError", "The sync server rejected the request (HTTP 409)"),
             failed(cause).toSyncError()
         )
-    }
-
-    @Test
-    fun `the message never carries the response body or the server's message`() {
-        val cause = SyncHttpException(400, "ValidationError", mutationIndex = null, message = "Collection 'Private name' already exists")
-
-        assertEquals("The sync server rejected the request (HTTP 400)", failed(cause).toSyncError().message)
     }
 
     @Test

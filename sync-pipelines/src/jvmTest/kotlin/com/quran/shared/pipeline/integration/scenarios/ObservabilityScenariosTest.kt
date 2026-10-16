@@ -1,9 +1,13 @@
 package com.quran.shared.pipeline.integration.scenarios
 
+import co.touchlab.kermit.LogWriter
+import co.touchlab.kermit.Logger
+import co.touchlab.kermit.Severity
 import com.quran.shared.persistence.TextLengthBound
 import com.quran.shared.persistence.TextLengthField
 import com.quran.shared.persistence.TextLengthLimitException
 import com.quran.shared.pipeline.SyncStatus
+import com.quran.shared.pipeline.integration.DeviceTimings
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.server.ServerFaults
 import com.quran.shared.pipeline.integration.syncScenario
@@ -102,5 +106,49 @@ class ObservabilityScenariosTest {
         assertTrue(status.at >= started && status.at > afterLogin, "last synced moved from $afterLogin to ${status.at}")
         assertEquals(listOf("Synced and reported"), server.state(ALICE).notes.map { it.body })
         assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `OBS-04 logs never carry note bodies, collection names or server messages`() = syncScenario {
+        // The host's sink sees every line, a logged error's stack trace included, and may forward it to a crash reporter.
+        val lines = CopyOnWriteArrayList<String>()
+        val writer = object : LogWriter() {
+            override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
+                lines += listOfNotNull(message, throwable?.stackTraceToString()).joinToString("\n")
+            }
+        }
+        Logger.addLogWriter(writer)
+        try {
+            // No retries, so each failure is reported as soon as its run ends.
+            val phone = device("phone", DeviceTimings(maximumRetries = 0))
+            assertSucceeded(phone.login(ALICE))
+            web(ALICE).createNote("$SECRET, written on the web", "2:255-2:255")
+            server.faults.truncateResponse(after = SECRET)
+
+            assertIs<SyncStatus.Failed>(phone.syncNow().status, "the GET was cut off in the note's body")
+
+            server.faults.rejectMutation(status = 403, code = "ForbiddenError", message = "No access to '$SECRET'") {
+                it.resource == "COLLECTION"
+            }
+            phone.data.addCollection(SECRET)
+
+            val forbidden = assertIs<SyncStatus.Failed>(phone.syncNow().status, "a lone 403 may be the scope: the run fails")
+            assertEquals(403 to "ForbiddenError", forbidden.error.httpStatus to forbidden.error.serverCode)
+        } finally {
+            Logger.setLogWriters(Logger.config.logWriterList - writer)
+        }
+        assertEquals(
+            setOf(
+                "Sync failed: java.lang.IllegalStateException: The sync server's response is not valid JSON",
+                "Sync failed: request forbidden: HTTP 403 ForbiddenError"
+            ),
+            lines.filter { it.startsWith("Sync failed:") }.toSet(),
+            "both failures were still logged"
+        )
+        assertEquals(emptyList(), lines.filter { SECRET.lowercase() in it.lowercase() }, "user text or a server message was logged")
+    }
+
+    private companion object {
+        const val SECRET = "Private prayer for Sara"
     }
 }

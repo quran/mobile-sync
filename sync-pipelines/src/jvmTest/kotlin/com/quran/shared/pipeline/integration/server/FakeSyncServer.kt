@@ -149,6 +149,14 @@ class FakeSyncServer : AutoCloseable {
                 "POST" -> handlePost(account, request, body, exchange.requestHeaders.getFirst("x-client-id") ?: "unknown-client")
                 else -> throw HttpError(404, "NotFoundError", "Not found")
             }
+            val truncated = if (request.isPost) null else faults.take<ServerFaults.Action.Truncate>(request)?.let { cut ->
+                response.take(response.indexOf(cut.after).also { check(it >= 0) { "nothing to cut after" } } + cut.after.length)
+            }
+            if (truncated != null) {
+                record(status, truncated)
+                respond(exchange, status, truncated, head ?: synchronized(lock) { request.account?.let { account(it).head } })
+                return
+            }
             val lost = if (request.isPost) faults.take<ServerFaults.Action.Lose>(request) else null
             when (lost?.how) {
                 LostResponse.CONNECTION_DROPPED -> {
