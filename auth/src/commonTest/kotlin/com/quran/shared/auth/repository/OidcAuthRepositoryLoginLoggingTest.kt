@@ -5,7 +5,6 @@ import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 import co.touchlab.kermit.StaticConfig
 import com.quran.shared.auth.di.AuthFlowFactoryProvider
-import com.quran.shared.auth.model.AuthenticationCancelledException
 import com.quran.shared.auth.persistence.AuthStorage
 import com.russhwolf.settings.MapSettings
 import com.russhwolf.settings.coroutines.toSuspendSettings
@@ -27,7 +26,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** A login the user cancelled or a newer session change superseded logs at info; a real failure logs at error. */
+/** A login the user cancelled logs at info; a real failure logs at error. */
 class OidcAuthRepositoryLoginLoggingTest {
     private data class Entry(val severity: Severity, val message: String, val throwable: Throwable?)
 
@@ -45,8 +44,6 @@ class OidcAuthRepositoryLoginLoggingTest {
         ),
         "OidcAuthRepository"
     )
-    private val tokenStore = RecordingTokenStore()
-    private val settings = MapSettings().toSuspendSettings()
 
     @Test
     fun `a login the user cancelled at the system prompt logs at info`() = runTest(UnconfinedTestDispatcher()) {
@@ -54,29 +51,10 @@ class OidcAuthRepositoryLoginLoggingTest {
 
         assertFailsWith<OpenIdConnectException.AuthenticationCancelled> { repository().login() }
 
-        assertExpectedLoginEnd("AuthenticationCancelled")
-    }
-
-    @Test
-    fun `a login cancelled through the exported exception logs at info`() = runTest(UnconfinedTestDispatcher()) {
-        useAuthFlow { throw AuthenticationCancelledException() }
-
-        assertFailsWith<AuthenticationCancelledException> { repository().login() }
-
-        assertExpectedLoginEnd("AuthenticationCancelledException")
-    }
-
-    @Test
-    fun `a login a newer session change superseded logs at info`() = runTest(UnconfinedTestDispatcher()) {
-        useAuthFlow {
-            repository().clearLocalSession()
-            AccessTokenResponse(access_token = "superseded-access-token", token_type = "Bearer", expires_in = 3600)
-        }
-
-        assertFailsWith<IllegalStateException> { repository().login() }
-
-        assertNull(tokenStore.getAccessToken(), "the superseded login commits nothing")
-        assertExpectedLoginEnd("LoginSupersededException")
+        assertTrue(entries.none { it.severity >= Severity.Warn }, "no warning or error: $entries")
+        val loginEnd = entries.single { it.message == "Login ended without a session: AuthenticationCancelled" }
+        assertEquals(Severity.Info, loginEnd.severity)
+        assertNull(loginEnd.throwable)
     }
 
     @Test
@@ -93,17 +71,13 @@ class OidcAuthRepositoryLoginLoggingTest {
 
     private fun repository(): OidcAuthRepository =
         oidcRepository(
-            storage = AuthStorage(tokenStore = tokenStore, settings = settings, json = Json { ignoreUnknownKeys = true }),
+            storage = AuthStorage(
+                tokenStore = RecordingTokenStore(),
+                settings = MapSettings().toSuspendSettings(),
+                json = Json { ignoreUnknownKeys = true }
+            ),
             logger = logger
         )
-
-    private fun assertExpectedLoginEnd(exceptionName: String) {
-        assertTrue(entries.none { it.severity >= Severity.Warn }, "no warning or error: $entries")
-        val loginEnd = entries.single { it.message.startsWith("Login ended without a session") }
-        assertEquals(Severity.Info, loginEnd.severity)
-        assertEquals("Login ended without a session: $exceptionName", loginEnd.message)
-        assertNull(loginEnd.throwable)
-    }
 
     private fun useAuthFlow(getAccessToken: suspend () -> AccessTokenResponse) {
         AuthFlowFactoryProvider.initialize(

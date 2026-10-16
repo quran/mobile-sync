@@ -3,7 +3,6 @@ package com.quran.shared.auth.repository
 import co.touchlab.kermit.Logger
 import com.quran.shared.auth.di.AuthFlowFactoryProvider
 import com.quran.shared.auth.model.AuthConfig
-import com.quran.shared.auth.model.AuthenticationCancelledException
 import com.quran.shared.auth.model.TokenResponse
 import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.auth.persistence.AuthStorage
@@ -257,9 +256,7 @@ class OidcAuthRepository(
      * Hosts forward warnings and errors to crash reporting, so it logs at info without the throwable.
      */
     private fun Exception.isExpectedLoginEnd(): Boolean =
-        this is OpenIdConnectException.AuthenticationCancelled ||
-            this is AuthenticationCancelledException ||
-            this is LoginSupersededException
+        this is OpenIdConnectException.AuthenticationCancelled || this is LoginSupersededException
 
     private suspend fun beginReplacementTokenExchange(intent: TokenExchangeIntent): TokenExchange? {
         while (true) {
