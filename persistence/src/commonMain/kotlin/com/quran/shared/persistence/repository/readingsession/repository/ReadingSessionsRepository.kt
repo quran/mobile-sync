@@ -42,6 +42,12 @@ interface ReadingSessionsRepository {
     @NativeCoroutines
     suspend fun updateReadingSession(id: String, sura: Int, ayah: Int): ReadingSession
 
+    /**
+     * Update an existing active reading session by its mobile-sync ID at [timestamp], as
+     * [updateReadingSession] without a timestamp does.
+     *
+     * @throws com.quran.shared.persistence.RecordNotFoundException when [id] does not identify an active session.
+     */
     @NativeCoroutines
     suspend fun updateReadingSession(
         id: String,
