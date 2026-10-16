@@ -255,7 +255,7 @@ val graph = SharedDependencyGraph.init(
 
 ### Android backup exclusions
 
-Sync and session lifecycle metadata is stored in the shared `quran.db` database next to the data it
+Sync and session lifecycle metadata is stored in the shared `user_data.db` database next to the data it
 describes (the sync token, account and outbox in `sync_meta`, per-item sync state in `sync_item`). Auth metadata and OAuth tokens stay outside the database, so a lost or recreated database
 does not sign the user out. Both use stable DataStore file names so apps can exclude them from backup
 or device transfer:
