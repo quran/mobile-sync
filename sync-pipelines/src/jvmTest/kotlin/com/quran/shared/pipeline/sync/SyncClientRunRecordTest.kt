@@ -92,6 +92,24 @@ class SyncClientRunRecordTest {
         assertEquals(listOf(run), stored())
     }
 
+    /** A 401 refreshes the token and runs the engine again in the same attempt: the record sums both engine runs. */
+    @Test
+    fun `a run re-run after a token refresh counts what both engine runs pushed and pulled`() {
+        repeat(101) { notes.addNote("Note number $it, pushed in two batches", listOf(NoteRange(2, 255, 2, 255)), it.toLong()) }
+        server.web(ACCOUNT).createNote("A note from the web", "1:1-1:1")
+        var posts = 0
+        // The second POST: the first 100 notes landed, the last one is left for the engine run after the refresh.
+        server.faults.failRequests(status = 401, code = "TokenExpiredError") { it.isPost && ++posts == 2 }
+
+        client.triggerSyncImmediately()
+        val run = next()
+
+        assertEquals(listOf(200, 401, 200), server.requests("phone").filter { it.method == "POST" }.map { it.status })
+        assertEquals(SyncRunResult.SUCCEEDED, run.result)
+        assertEquals(listOf(1, 101, 1), listOf(run.attempts, run.pushed, run.pulled), "attempts, pushed, pulled")
+        assertEquals(listOf(run), stored())
+    }
+
     @Test
     fun `a failing run records its status and code once, and no user text`() {
         server.faults.failRequests(
