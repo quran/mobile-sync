@@ -9,6 +9,9 @@ import com.quran.shared.auth.repository.RemoteLogoutMode
 import com.quran.shared.auth.repository.RemoteLogoutOperation
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.di.AppScope
+import com.quran.shared.persistence.DuplicateCollectionNameException
+import com.quran.shared.persistence.ReadOnlyCollectionException
+import com.quran.shared.persistence.ReservedCollectionNameException
 import com.quran.shared.persistence.TextLengthLimitException
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.PersistenceImportResult
@@ -403,10 +406,21 @@ class QuranDataService internal constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Logger.e(e) { errorMessage }
+            if (e.isRejection()) Logger.i { "$errorMessage: ${e::class.simpleName}" } else Logger.e(e) { errorMessage }
             throw e
         }
     }
+
+    /**
+     * A write the data rules reject is an answer to the user, not a fault. Hosts forward warnings and errors to crash
+     * reporting, so it logs at info, without the stack trace or the message, which may hold the user's text.
+     */
+    private fun Exception.isRejection(): Boolean =
+        this is TextLengthLimitException ||
+            this is ReservedCollectionNameException ||
+            this is DuplicateCollectionNameException ||
+            this is ReadOnlyCollectionException ||
+            this is SessionResetInProgressException
 
     @NativeCoroutines
     suspend fun importData(data: PersistenceImportData): PersistenceImportResult {
