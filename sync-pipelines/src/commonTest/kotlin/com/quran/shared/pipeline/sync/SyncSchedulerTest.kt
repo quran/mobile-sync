@@ -171,6 +171,36 @@ class SyncSchedulerTest {
         assertEquals(listOf(5_000L to SyncAttempt(SyncTrigger.LOCAL_CHANGE, 0), 5_001L to SyncAttempt(SyncTrigger.IMMEDIATE, 0)), runs.attempts)
     }
 
+    /** A sign-in is immediate like a "sync now": at once, right after a run in flight, and in place of a waiting retry. */
+    @Test
+    fun `a sign-in runs at once and after a run in flight and in place of a waiting retry`() = schedulerTest { runs, scheduler ->
+        scheduler.trigger(SyncTrigger.SIGN_IN)
+        runCurrent()
+        runs.block = CompletableDeferred()
+        scheduler.trigger(SyncTrigger.LOCAL_CHANGE)
+        advanceTimeBy(5_001)
+        runCurrent()
+        scheduler.trigger(SyncTrigger.SIGN_IN)
+        runs.outcomes += AttemptOutcome.Done
+        runs.outcomes += AttemptOutcome.Failed(retryable = true)
+        runs.block!!.complete(Unit)
+        runs.block = null
+        runCurrent()
+        scheduler.trigger(SyncTrigger.SIGN_IN)
+        runCurrent()
+
+        assertEquals(
+            listOf(
+                0L to SyncAttempt(SyncTrigger.SIGN_IN, 0),
+                5_000L to SyncAttempt(SyncTrigger.LOCAL_CHANGE, 0),
+                5_001L to SyncAttempt(SyncTrigger.SIGN_IN, 0),
+                5_001L to SyncAttempt(SyncTrigger.SIGN_IN, 0)
+            ),
+            runs.attempts,
+            "the second sign-in ran right after the local change; the third replaced its retry"
+        )
+    }
+
     @Test
     fun `cancel and join stops the running attempt and what was scheduled while later triggers still run`() = schedulerTest { runs, scheduler ->
         runs.block = CompletableDeferred()
