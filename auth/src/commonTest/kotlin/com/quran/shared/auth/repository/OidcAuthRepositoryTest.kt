@@ -1,5 +1,6 @@
 package com.quran.shared.auth.repository
 
+import co.touchlab.kermit.Logger
 import com.quran.shared.auth.di.AuthFlowFactoryProvider
 import com.quran.shared.auth.model.AuthConfig
 import com.quran.shared.auth.model.TokenResponse
@@ -2275,13 +2276,15 @@ internal fun oidcRepository(
             expires_in = 3600
         )
     ),
-    networkDataSource: AuthNetworkDataSource = defaultAuthNetworkDataSource()
+    networkDataSource: AuthNetworkDataSource = defaultAuthNetworkDataSource(),
+    logger: Logger = Logger.withTag("OidcAuthRepository")
 ): OidcAuthRepository =
     OidcAuthRepository(
         authConfig = AuthConfig(clientId = "client-id"),
         authStorage = storage,
         oidcClient = oidcClient,
-        networkDataSource = networkDataSource
+        networkDataSource = networkDataSource,
+        logger = logger
     )
 
 private fun defaultAuthNetworkDataSource(): AuthNetworkDataSource =

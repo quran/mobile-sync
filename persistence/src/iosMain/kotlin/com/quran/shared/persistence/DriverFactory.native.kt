@@ -14,11 +14,11 @@ actual class DriverFactory internal constructor(
     private val name: String,
     private val onConfiguration: (DatabaseConfiguration) -> DatabaseConfiguration = { it }
 ) {
-    /** Opens the app database, `quran.db`. */
+    /** Opens the app database, `user_data.db`. */
     constructor() : this(DATABASE_NAME)
 
     /**
-     * Opens the database file [name] instead of `quran.db`, in the same directory
+     * Opens the database file [name] instead of `user_data.db`, in the same directory
      * (`Library/Application Support/databases`).
      *
      * For tests: processes that share a simulator share that directory, so each test process can
@@ -101,7 +101,7 @@ actual class DriverFactory internal constructor(
     }
 
     private companion object {
-        const val DATABASE_NAME = "quran.db"
+        const val DATABASE_NAME = "user_data.db"
         const val QUICK_CHECK_OK = "ok"
         val logger = Logger.withTag("DriverFactory")
     }

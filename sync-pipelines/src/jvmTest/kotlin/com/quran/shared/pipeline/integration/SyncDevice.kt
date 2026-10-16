@@ -236,7 +236,7 @@ internal class DeviceBindings(
 ) {
     /**
      * Replaces the app's database binding with this device's in-memory one. It cannot go through
-     * [DriverFactory] yet: the JVM `DriverFactory` is a final class that always opens `quran.db` in
+     * [DriverFactory] yet: the JVM `DriverFactory` is a final class that always opens `user_data.db` in
      * the working directory, and the production binding caches one database for the whole process.
      * So Metro reports the `DriverFactory` graph input as unused for device graphs.
      */

@@ -129,7 +129,11 @@ class OidcAuthRepository(
             throw e
         } catch (e: Exception) {
             failure = e
-            logger.e(e) { "Login failed" }
+            if (e.isExpectedLoginEnd()) {
+                logger.i { "Login ended without a session: ${e::class.simpleName}" }
+            } else {
+                logger.e(e) { "Login failed" }
+            }
             throw e
         } finally {
             withContext(NonCancellable) {
@@ -246,6 +250,13 @@ class OidcAuthRepository(
     }
 
     private class LoginSupersededException : IllegalStateException("Login was superseded by a newer session lifecycle change")
+
+    /**
+     * A login the user cancelled at the system prompt, or one a newer session change superseded, is not a fault.
+     * Hosts forward warnings and errors to crash reporting, so it logs at info without the throwable.
+     */
+    private fun Exception.isExpectedLoginEnd(): Boolean =
+        this is OpenIdConnectException.AuthenticationCancelled || this is LoginSupersededException
 
     private suspend fun beginReplacementTokenExchange(intent: TokenExchangeIntent): TokenExchange? {
         while (true) {
