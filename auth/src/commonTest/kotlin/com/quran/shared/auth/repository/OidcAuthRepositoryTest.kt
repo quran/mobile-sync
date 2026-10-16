@@ -2414,7 +2414,7 @@ private class FailingLoginAuthFlow(
     ): AccessTokenResponse = unsupportedAuthTest()
 }
 
-private class StaticCodeAuthFlowFactory(
+internal class StaticCodeAuthFlowFactory(
     private val authFlow: CodeAuthFlow
 ) : CodeAuthFlowFactory {
     override fun createAuthFlow(client: OpenIdConnectClient): CodeAuthFlow = authFlow

@@ -24,7 +24,7 @@ interface CollectionsRepository {
     /**
      * Update the name of a collection identified by its mobile-sync ID.
      *
-     * @throws IllegalArgumentException when [id] does not identify an active collection.
+     * @throws com.quran.shared.persistence.RecordNotFoundException when [id] does not identify an active collection.
      * @throws com.quran.shared.persistence.ReservedCollectionNameException when [name] is reserved.
      */
     suspend fun updateCollection(id: String, name: String): Collection
@@ -32,7 +32,7 @@ interface CollectionsRepository {
     /**
      * Update the name of a collection identified by its mobile-sync ID using an explicit mutation timestamp.
      *
-     * @throws IllegalArgumentException when [id] does not identify an active collection.
+     * @throws com.quran.shared.persistence.RecordNotFoundException when [id] does not identify an active collection.
      * @throws com.quran.shared.persistence.ReservedCollectionNameException when [name] is reserved.
      */
     suspend fun updateCollection(id: String, name: String, timestamp: PlatformDateTime): Collection

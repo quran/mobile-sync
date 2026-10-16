@@ -49,7 +49,7 @@ class UniquenessRepair(
             // DELETE is pushed: a remote loser is never inserted, but is bound to a tombstone, so it can't stay on the
             // server if the winner's UPDATE never lands or moves on.
             group.sortedByDescending { type.clock(it.working!!) }.drop(1).forEach {
-                logger.i { "${type.name}: ${it.remoteId} loses $key to a newer item" }
+                logger.i { "${type.name}: ${it.ids()} loses its key to a newer item" }
                 it.working = null
                 if (it.localId == null) it.bindAsTombstone = true
             }
@@ -57,7 +57,7 @@ class UniquenessRepair(
         }
         if (localKeyChanges.isNotEmpty()) {
             localKeyChanges.forEach {
-                logger.i { "${type.name}: reverting local key change of ${it.remoteId} that clashes on $key" }
+                logger.i { "${type.name}: reverting the clashing local key change of ${it.ids()}" }
                 it.working = it.base
             }
             return
@@ -75,10 +75,14 @@ class UniquenessRepair(
                 n += 1
                 candidate = if (n > MAX_SUFFIX) null else type.disambiguate(item.working!!, n)
             }
-            logger.i { "${type.name}: disambiguating a clash -> ${candidate?.let(type::naturalKey)}" }
+            val outcome = if (candidate == null) "dropping it" else "suffix $n"
+            logger.i { "${type.name}: disambiguating ${item.ids()}: $outcome" }
             item.working = candidate
         }
     }
+
+    /** Natural keys hold user text (a collection's name), so logs name items by id only. */
+    private fun MergeItem.ids() = "remoteId=$remoteId localId=$localId"
 
     /** Merges a local-only row into the remote-backed row with the same key, as "both changed". */
     private fun link(local: MergeItem, target: MergeItem) {

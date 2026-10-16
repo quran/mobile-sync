@@ -37,6 +37,7 @@ interface ReadingSessionsRepository {
      * @param sura the new sura number of the session
      * @param ayah the new ayah number of the session
      * @return the updated [ReadingSession], whose ID may be the existing destination's ID
+     * @throws com.quran.shared.persistence.RecordNotFoundException when [id] does not identify an active session.
      */
     @NativeCoroutines
     suspend fun updateReadingSession(id: String, sura: Int, ayah: Int): ReadingSession

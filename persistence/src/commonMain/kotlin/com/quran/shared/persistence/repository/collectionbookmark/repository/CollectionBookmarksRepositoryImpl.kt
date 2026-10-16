@@ -2,6 +2,8 @@ package com.quran.shared.persistence.repository.collectionbookmark.repository
 
 import app.cash.sqldelight.coroutines.asFlow
 import com.quran.shared.di.AppScope
+import com.quran.shared.persistence.RecordNotFoundException
+import com.quran.shared.persistence.RecordType
 import com.quran.shared.persistence.model.AyahHighlight
 import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.model.CollectionAyahBookmark
@@ -105,9 +107,8 @@ class CollectionBookmarksRepositoryImpl(
         val at = timestamp.toEpochMillisecondsFromPlatform()
         return withContext(Dispatchers.IO) {
             database.transactionWithResult {
-                val collection = requireNotNull(collectionId.toLongOrNull()?.let(store::get)) {
-                    "Collection not found for id=$collectionId."
-                }
+                val collection = collectionId.toLongOrNull()?.let(store::get)
+                    ?: throw RecordNotFoundException(RecordType.COLLECTION, collectionId)
                 require(!collection.isHighlight) { "Highlight collections must be changed through setHighlight." }
                 store.addVerse(collection.local_id, sura, ayah, at)
                 dates().collectionAyahBookmark(requireNotNull(store.membership(collection.local_id, sura, ayah)))

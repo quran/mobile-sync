@@ -56,6 +56,9 @@ interface CollectionBookmarksRepository {
      * Atomically creates an ayah bookmark (if missing) and links it to an active saved collection.
      * Highlight collections must be changed through [setHighlight]. This operation must not leave
      * partial state if linking fails, and later saved memberships do not rewrite the bookmark time.
+     *
+     * @throws com.quran.shared.persistence.RecordNotFoundException when [collectionId] does not identify an active
+     *   collection.
      */
     suspend fun addAyahBookmarkToCollection(
         collectionId: String,
@@ -66,6 +69,9 @@ interface CollectionBookmarksRepository {
     /**
      * Links an ayah to an active saved collection using [timestamp] for a new bookmark or its first
      * saved membership. Highlight collections must be changed through [setHighlight].
+     *
+     * @throws com.quran.shared.persistence.RecordNotFoundException when [collectionId] does not identify an active
+     *   collection.
      */
     suspend fun addAyahBookmarkToCollection(
         collectionId: String,

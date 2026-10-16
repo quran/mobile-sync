@@ -5,6 +5,8 @@ import co.touchlab.kermit.Logger
 import com.quran.shared.di.AppScope
 import com.quran.shared.persistence.DuplicateCollectionNameException
 import com.quran.shared.persistence.ReadOnlyCollectionException
+import com.quran.shared.persistence.RecordNotFoundException
+import com.quran.shared.persistence.RecordType
 import com.quran.shared.persistence.ReservedCollectionNameException
 import com.quran.shared.persistence.TextLengthField
 import com.quran.shared.persistence.model.Collection
@@ -71,9 +73,8 @@ class CollectionsRepositoryImpl(
         val at = timestamp.toEpochMillisecondsFromPlatform()
         return withContext(Dispatchers.IO) {
             database.transactionWithResult {
-                val existing = requireNotNull(id.toLongOrNull()?.let(store::get)) {
-                    "Expected active collection id=$id before update."
-                }
+                val existing = id.toLongOrNull()?.let(store::get)
+                    ?: throw RecordNotFoundException(RecordType.COLLECTION, id)
                 if (existing.isReadOnly) throw ReadOnlyCollectionException(id)
                 if (isSystemCollectionName(name)) throw ReservedCollectionNameException(name)
                 requireServerTextLength(TextLengthField.COLLECTION_NAME, name)

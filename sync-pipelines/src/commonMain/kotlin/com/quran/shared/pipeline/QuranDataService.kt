@@ -635,7 +635,7 @@ class QuranDataService internal constructor(
      * @param id the mobile-sync identifier of the collection to update.
      * @param name the new collection name.
      * @return the updated collection.
-     * @throws IllegalArgumentException when [id] does not identify an active collection.
+     * @throws com.quran.shared.persistence.RecordNotFoundException when [id] does not identify an active collection.
      * @throws com.quran.shared.persistence.ReadOnlyCollectionException when the collection can't be renamed.
      * @throws com.quran.shared.persistence.DuplicateCollectionNameException when another collection has [name].
      * @throws com.quran.shared.persistence.ReservedCollectionNameException when [name] is reserved.
@@ -653,7 +653,7 @@ class QuranDataService internal constructor(
      * @param name the new collection name.
      * @param timestamp the timestamp to persist for the mutation.
      * @return the updated collection.
-     * @throws IllegalArgumentException when [id] does not identify an active collection.
+     * @throws com.quran.shared.persistence.RecordNotFoundException when [id] does not identify an active collection.
      * @throws com.quran.shared.persistence.ReadOnlyCollectionException when the collection can't be renamed.
      * @throws com.quran.shared.persistence.DuplicateCollectionNameException when another collection has [name].
      * @throws com.quran.shared.persistence.ReservedCollectionNameException when [name] is reserved.
@@ -740,7 +740,7 @@ class QuranDataService internal constructor(
      *
      * @param id the mobile-sync identifier of the note to update.
      * @param body the updated note body.
-     * @throws IllegalArgumentException when [id] does not identify a note.
+     * @throws com.quran.shared.persistence.RecordNotFoundException when [id] does not identify a note.
      * @throws TextLengthLimitException when a changed [body] is outside the server's length limits.
      */
     @NativeCoroutines

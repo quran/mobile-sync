@@ -4,6 +4,8 @@ import app.cash.sqldelight.coroutines.asFlow
 import co.touchlab.kermit.Logger
 import com.quran.shared.di.AppScope
 import com.quran.shared.mutations.trimLikeServer
+import com.quran.shared.persistence.RecordNotFoundException
+import com.quran.shared.persistence.RecordType
 import com.quran.shared.persistence.TextLengthField
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.NoteRange
@@ -74,9 +76,7 @@ class NotesRepositoryImpl(
         val at = timestamp.toEpochMillisecondsFromPlatform()
         return withContext(Dispatchers.IO) {
             database.transactionWithResult {
-                val localId = id.toLongOrNull()
-                val existing = localId?.let(store::get)
-                requireNotNull(existing) { "Expected note id=$id before update." }
+                val existing = id.toLongOrNull()?.let(store::get) ?: throw RecordNotFoundException(RecordType.NOTE, id)
                 // Only a changed body is checked, so a legacy note outside the limits can still be saved unchanged.
                 if (existing.body != body.trimLikeServer()) requireServerTextLength(TextLengthField.NOTE_BODY, body)
                 store.updateBody(existing.localId, body, at)

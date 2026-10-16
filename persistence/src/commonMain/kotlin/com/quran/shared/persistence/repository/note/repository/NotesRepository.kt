@@ -27,7 +27,7 @@ interface NotesRepository {
     /**
      * Updates a note's body by its mobile-sync ID. A note's verse ranges never change, as on the server.
      *
-     * @throws IllegalArgumentException when [id] does not identify a note.
+     * @throws com.quran.shared.persistence.RecordNotFoundException when [id] does not identify a note.
      */
     suspend fun updateNote(id: String, body: String): Note
 

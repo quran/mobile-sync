@@ -12,8 +12,10 @@ import com.quran.shared.auth.service.AuthService
 import com.quran.shared.persistence.DuplicateCollectionNameException
 import com.quran.shared.persistence.MobileSyncDatabase
 import com.quran.shared.persistence.ReadOnlyCollectionException
+import com.quran.shared.persistence.RecordNotFoundException
 import com.quran.shared.persistence.ReservedCollectionNameException
 import com.quran.shared.persistence.TextLengthLimitException
+import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.repository.PersistenceResetRepositoryImpl
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepositoryImpl
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepositoryImpl
@@ -39,7 +41,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -58,6 +59,7 @@ class QuranDataServiceWriteLoggingTest {
         }
     }
     private val dispatcher = StandardTestDispatcher()
+    private var previousMinSeverity = Severity.Verbose
     private lateinit var database: MobileSyncDatabase
     private lateinit var authService: AuthService
     private lateinit var lifecycleCoordinator: SessionLifecycleCoordinator
@@ -65,6 +67,8 @@ class QuranDataServiceWriteLoggingTest {
 
     @BeforeTest
     fun setUp() {
+        previousMinSeverity = Logger.config.minSeverity
+        Logger.setMinSeverity(Severity.Verbose)
         Logger.addLogWriter(writer)
         Dispatchers.setMain(dispatcher)
         database = inMemoryMobileSyncDatabase()
@@ -95,13 +99,21 @@ class QuranDataServiceWriteLoggingTest {
 
     @AfterTest
     fun tearDown() {
-        runTest(dispatcher) {
-            service.clearAndJoin()
-            authService.clearAndJoin()
+        // setUp may have failed part way, and a failed step must not leave Main or the logger set for other tests.
+        try {
+            try {
+                runTest(dispatcher) {
+                    if (::service.isInitialized) service.clearAndJoin()
+                    if (::authService.isInitialized) authService.clearAndJoin()
+                }
+            } finally {
+                if (::database.isInitialized) database.driver.close()
+            }
+        } finally {
+            Dispatchers.resetMain()
+            Logger.setLogWriters(Logger.config.logWriterList - writer)
+            Logger.setMinSeverity(previousMinSeverity)
         }
-        database.driver.close()
-        Dispatchers.resetMain()
-        Logger.setLogWriters(Logger.config.logWriterList - writer)
     }
 
     @Test
@@ -170,12 +182,29 @@ class QuranDataServiceWriteLoggingTest {
     }
 
     @Test
-    fun `an id that names no note logs at error with the throwable`() = runTest(dispatcher) {
-        assertFailsWith<IllegalArgumentException> { service.updateNote("404", "A reflection on mercy") }
+    fun `an id that names no note logs at info without the throwable or the body`() = runTest(dispatcher) {
+        assertFailsWith<RecordNotFoundException> { service.updateNote("404", "Zq9x reflection") }
 
         val entry = failure("Failed to update note")
+        assertEquals(Severity.Info, entry.severity)
+        assertNull(entry.throwable)
+        assertTrue("NOTE id=404 not found" in entry.message, entry.message)
+        assertNothingLogged("Zq9x")
+    }
+
+    @Test
+    fun `a highlight collection passed to a collection API logs at error with the throwable`() = runTest(dispatcher) {
+        service.setHighlight(2, 255, AyahHighlightColor.BLUE)
+        val blue = CollectionsRepositoryImpl(database.synced).getAllCollections().single {
+            it.name == "system:highlights:blue"
+        }
+
+        val thrown = assertFailsWith<IllegalArgumentException> { service.addAyahBookmarkToCollection(blue.id, 2, 255) }
+
+        val entry = failure("Failed to add ayah bookmark to collection")
         assertEquals(Severity.Error, entry.severity)
-        assertIs<IllegalArgumentException>(entry.throwable)
+        assertEquals(thrown, entry.throwable)
+        assertFalse(thrown is RecordNotFoundException, thrown.toString())
     }
 
     @Test
