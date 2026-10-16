@@ -215,7 +215,8 @@ class QuranDataService internal constructor(
     /**
      * The newest sync runs first, at most 50, one entry per run (its retries included). A run is recorded when it
      * succeeds, pulls only, fails with no retries left, or is cancelled; a run that found no session, or that a
-     * logout or reset stopped, is not. Logout and an account switch clear the history with the rest of the data.
+     * logout or reset stopped, is not, nor is one waiting for a retry when [clear] tears the service down. Logout and
+     * an account switch clear the history with the rest of the data.
      */
     @NativeCoroutines
     val syncHistory: Flow<List<SyncRun>> get() = syncHistoryRecorder.runs

@@ -2,8 +2,9 @@ package com.quran.shared.pipeline
 
 /**
  * A local item that does not sync, as [QuranDataService.heldItems] lists it: held because the server would refuse it
- * (or did), or waiting on a held item. It stays on the device and syncs again once the user edits it, the hold
- * expires, or the app is updated.
+ * (or did), or waiting on a held item. It stays on the device and syncs again once the user edits it into something
+ * the server accepts, the hold expires (holds for repeated server failures), or an update of this library releases
+ * every hold (a new sync engine version); updating the app alone does not.
  *
  * It never carries user data or server messages: only the item's id, and for [HeldReason.REJECTED_BY_SERVER] the
  * HTTP status and the server's error code.

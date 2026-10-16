@@ -68,8 +68,9 @@ enum class SyncRunResult {
     FAILED,
 
     /**
-     * It was stopped before it ended: the service was cleared while it ran, or a "sync now" replaced the retry it
-     * was waiting for. Its counts are what it did until then.
+     * It was stopped before it ended: the service was cleared while an attempt ran, or a "sync now" or a sign-in
+     * replaced the retry it was waiting for. Its counts are what it did until then. A run waiting for a retry when
+     * the service is cleared (or closed) is not recorded: that only happens at teardown.
      */
     CANCELLED
 }
