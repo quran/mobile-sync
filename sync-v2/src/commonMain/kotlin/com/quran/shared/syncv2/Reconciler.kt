@@ -15,6 +15,12 @@ class Reconciler(private val store: SyncStore, private val types: List<SyncType>
     /** Children dropped because their parent was gone: a last resort that should never happen (see [dropOrphans]). */
     var droppedOrphans = 0
         private set
+    /**
+     * Local rows the write-back created, changed or deleted: remote changes taken, and the local edits they caused
+     * (a clash renamed, a parent restored). A change only in [SyncType.ignoredFields] doesn't count.
+     */
+    var pulled = 0
+        private set
 
     fun reconcile(entries: List<RemoteEntry>) {
         restoredParents.clear()
@@ -229,6 +235,9 @@ class Reconciler(private val store: SyncStore, private val types: List<SyncType>
 
     private fun write(type: SyncType, items: List<MergeItem>) {
         val restored = mutableSetOf<Long>()
+        val merger = Merger(type)
+        // A local row linked into a remote one (localId gone, nothing to delete) is not a change.
+        pulled += items.count { (it.localId != null || it.working != null) && !merger.same(it.original, it.working) }
         items.forEach { item ->
             if (item.localId != null && item.original != null && item.working == null) type.delete(item.localId!!)
         }

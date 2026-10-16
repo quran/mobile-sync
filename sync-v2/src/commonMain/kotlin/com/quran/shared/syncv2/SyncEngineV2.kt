@@ -8,11 +8,20 @@ import kotlinx.coroutines.sync.withLock
 import kotlin.time.Clock
 
 sealed interface SyncResult {
-    /** Changes this run pushed; children it dropped because their parent was gone (a bug if ever above 0). */
+    /**
+     * Changes this run pushed; local rows it changed to take remote changes ([Reconciler.pulled]); children it dropped
+     * because their parent was gone (a bug if ever above 0).
+     */
     val pushed: Int
+    val pulled: Int
     val droppedOrphans: Int
 
-    data class Success(val held: List<HeldItem>, override val pushed: Int = 0, override val droppedOrphans: Int = 0) : SyncResult
+    data class Success(
+        val held: List<HeldItem>,
+        override val pushed: Int = 0,
+        override val droppedOrphans: Int = 0,
+        override val pulled: Int = 0
+    ) : SyncResult
     /**
      * [retryAfterMillis]: a minimum backoff the scheduler should honour before pushing again (a 403 that may be a
      * scope error); pulling may go on. [cause]: what failed, such as a [SyncHttpException] or a network error.
@@ -23,7 +32,8 @@ sealed interface SyncResult {
         override val pushed: Int = 0,
         val retryAfterMillis: Long? = null,
         override val droppedOrphans: Int = 0,
-        val cause: Throwable? = null
+        val cause: Throwable? = null,
+        override val pulled: Int = 0
     ) : SyncResult
 }
 
@@ -109,19 +119,23 @@ class SyncEngineV2(
                 val reconciler = Reconciler(store, types, refs)
                 reconciler.reconcile(changes.entries)
                 memory.droppedOrphans += reconciler.droppedOrphans
+                memory.pulled += reconciler.pulled
                 store.token = changes.head
             }
-            if (!push) return SyncResult.Success(held(), droppedOrphans = memory.droppedOrphans)
+            if (!push) return SyncResult.Success(held(), droppedOrphans = memory.droppedOrphans, pulled = memory.pulled)
             when (val outcome = Pusher(generation, store, api, planner, account, memory, now).push(changes.head)) {
-                PushOutcome.Done -> return SyncResult.Success(held(), memory.pushed, memory.droppedOrphans)
+                PushOutcome.Done -> return SyncResult.Success(held(), memory.pushed, memory.droppedOrphans, memory.pulled)
                 PushOutcome.Restart -> logger.i { "Restarting sync round" }
                 PushOutcome.MorePending -> logger.i { "Pushed ${memory.pushed} so far; more local changes are pending" }
                 is PushOutcome.Failed -> return SyncResult.Failed(
-                    outcome.reason, outcome.retryable, memory.pushed, outcome.retryAfterMillis, memory.droppedOrphans, outcome.cause
+                    outcome.reason, outcome.retryable, memory.pushed, outcome.retryAfterMillis, memory.droppedOrphans, outcome.cause,
+                    memory.pulled
                 )
             }
         }
-        return SyncResult.Failed(MORE_PENDING, retryable = true, memory.pushed, droppedOrphans = memory.droppedOrphans)
+        return SyncResult.Failed(
+            MORE_PENDING, retryable = true, memory.pushed, droppedOrphans = memory.droppedOrphans, pulled = memory.pulled
+        )
     }
 
     /**
