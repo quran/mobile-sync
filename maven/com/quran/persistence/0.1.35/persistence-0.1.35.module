@@ -1,0 +1,353 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.quran",
+    "module": "persistence",
+    "version": "0.1.35",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.8.1"
+    }
+  },
+  "variants": [
+    {
+      "name": "metadataApiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-metadata",
+        "org.jetbrains.kotlin.platform.type": "common"
+      },
+      "dependencies": [
+        {
+          "group": "com.quran",
+          "module": "mutations-definitions",
+          "version": {
+            "requires": "0.1.35"
+          }
+        },
+        {
+          "group": "app.cash.sqldelight",
+          "module": "runtime",
+          "version": {
+            "requires": "2.4.1"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        },
+        {
+          "group": "dev.zacsweers.metro",
+          "module": "runtime",
+          "version": {
+            "requires": "1.4.5"
+          }
+        },
+        {
+          "group": "com.rickclephas.kmp",
+          "module": "kmp-nativecoroutines-core",
+          "version": {
+            "requires": "1.0.6"
+          }
+        },
+        {
+          "group": "com.rickclephas.kmp",
+          "module": "kmp-nativecoroutines-annotations",
+          "version": {
+            "requires": "1.0.6"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-core",
+          "version": {
+            "requires": "1.11.0"
+          }
+        },
+        {
+          "group": "app.cash.sqldelight",
+          "module": "coroutines-extensions",
+          "version": {
+            "requires": "2.4.1"
+          }
+        },
+        {
+          "group": "co.touchlab",
+          "module": "kermit",
+          "version": {
+            "requires": "2.2.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-datetime",
+          "version": {
+            "requires": "0.8.0-0.6.x-compat"
+          }
+        },
+        {
+          "group": "org.kotlincrypto.hash",
+          "module": "sha2",
+          "version": {
+            "requires": "0.8.0"
+          }
+        },
+        {
+          "group": "com.quran",
+          "module": "sync-v2",
+          "version": {
+            "requires": "0.1.35"
+          }
+        },
+        {
+          "group": "app.cash.sqldelight",
+          "module": "native-driver",
+          "version": {
+            "requires": "2.4.1"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "persistence-metadata-0.1.35.jar",
+          "url": "persistence-0.1.35.jar",
+          "size": 49980,
+          "sha512": "b80206a93a21b8bd74e7318e40d48b46b2b9efa648a11cfb68e2fb278e1547132fc7acbed9b2179a222be5e7cf7791a1243a3114a605a3a44add7b2371630c91",
+          "sha256": "9496a6fca9374231463bfbf589dc65ca1073576365b0a502ffcef10062538add",
+          "sha1": "4be56bbae19a6f5c68a0a3dd70ba8f80bf4828bc",
+          "md5": "1ad278e948570d1cd70eb7231385544c"
+        }
+      ]
+    },
+    {
+      "name": "metadataSourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.platform.type": "common"
+      },
+      "files": [
+        {
+          "name": "persistence-kotlin-0.1.35-sources.jar",
+          "url": "persistence-0.1.35-sources.jar",
+          "size": 57387,
+          "sha512": "ba95c02e330e9eb4baeb083b38aae5542c556ba1374a337e2622d3bfe4ae3680cfbedd3a15aeb853fc844c1589b84787606c9959128de765e3eb4b90cc74c6a8",
+          "sha256": "40785c3bebd456b361a154b3e4c869db40e66c5590631a7132df69151ad02b84",
+          "sha1": "9ba6c3eba6c3ae92bfcf93797584035f534f4820",
+          "md5": "d85ef285b90ddbd7613f348a4b4e112f"
+        }
+      ]
+    },
+    {
+      "name": "androidApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "available-at": {
+        "url": "../../persistence-android/0.1.35/persistence-android-0.1.35.module",
+        "group": "com.quran",
+        "module": "persistence-android",
+        "version": "0.1.35"
+      }
+    },
+    {
+      "name": "androidRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "available-at": {
+        "url": "../../persistence-android/0.1.35/persistence-android-0.1.35.module",
+        "group": "com.quran",
+        "module": "persistence-android",
+        "version": "0.1.35"
+      }
+    },
+    {
+      "name": "androidSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "available-at": {
+        "url": "../../persistence-android/0.1.35/persistence-android-0.1.35.module",
+        "group": "com.quran",
+        "module": "persistence-android",
+        "version": "0.1.35"
+      }
+    },
+    {
+      "name": "iosArm64ApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-api",
+        "org.jetbrains.kotlin.native.target": "ios_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../persistence-iosarm64/0.1.35/persistence-iosarm64-0.1.35.module",
+        "group": "com.quran",
+        "module": "persistence-iosarm64",
+        "version": "0.1.35"
+      }
+    },
+    {
+      "name": "iosArm64SourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.native.target": "ios_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../persistence-iosarm64/0.1.35/persistence-iosarm64-0.1.35.module",
+        "group": "com.quran",
+        "module": "persistence-iosarm64",
+        "version": "0.1.35"
+      }
+    },
+    {
+      "name": "iosArm64MetadataElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-metadata",
+        "org.jetbrains.kotlin.native.target": "ios_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../persistence-iosarm64/0.1.35/persistence-iosarm64-0.1.35.module",
+        "group": "com.quran",
+        "module": "persistence-iosarm64",
+        "version": "0.1.35"
+      }
+    },
+    {
+      "name": "iosSimulatorArm64ApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-api",
+        "org.jetbrains.kotlin.native.target": "ios_simulator_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../persistence-iossimulatorarm64/0.1.35/persistence-iossimulatorarm64-0.1.35.module",
+        "group": "com.quran",
+        "module": "persistence-iossimulatorarm64",
+        "version": "0.1.35"
+      }
+    },
+    {
+      "name": "iosSimulatorArm64SourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.native.target": "ios_simulator_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../persistence-iossimulatorarm64/0.1.35/persistence-iossimulatorarm64-0.1.35.module",
+        "group": "com.quran",
+        "module": "persistence-iossimulatorarm64",
+        "version": "0.1.35"
+      }
+    },
+    {
+      "name": "iosSimulatorArm64MetadataElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-metadata",
+        "org.jetbrains.kotlin.native.target": "ios_simulator_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../persistence-iossimulatorarm64/0.1.35/persistence-iossimulatorarm64-0.1.35.module",
+        "group": "com.quran",
+        "module": "persistence-iossimulatorarm64",
+        "version": "0.1.35"
+      }
+    },
+    {
+      "name": "jvmApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "available-at": {
+        "url": "../../persistence-jvm/0.1.35/persistence-jvm-0.1.35.module",
+        "group": "com.quran",
+        "module": "persistence-jvm",
+        "version": "0.1.35"
+      }
+    },
+    {
+      "name": "jvmRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "available-at": {
+        "url": "../../persistence-jvm/0.1.35/persistence-jvm-0.1.35.module",
+        "group": "com.quran",
+        "module": "persistence-jvm",
+        "version": "0.1.35"
+      }
+    },
+    {
+      "name": "jvmSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "available-at": {
+        "url": "../../persistence-jvm/0.1.35/persistence-jvm-0.1.35.module",
+        "group": "com.quran",
+        "module": "persistence-jvm",
+        "version": "0.1.35"
+      }
+    }
+  ]
+}
