@@ -129,6 +129,7 @@ class OidcAuthRepository(
             throw e
         } catch (e: Exception) {
             failure = e
+            e.rethrowIfCallerCancelled()
             logger.e(e) { "Login failed" }
             throw e
         } finally {
@@ -187,6 +188,7 @@ class OidcAuthRepository(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                e.rethrowIfCallerCancelled()
                 if (e.isTransientRefreshFailure()) {
                     logger.w(e) { "Token refresh failed for a transient reason; keeping the session" }
                     throw e
@@ -676,12 +678,23 @@ private fun Throwable.cancellationCauseOrNull(): CancellationException? {
 }
 
 /**
- * A refresh that failed without the authorization server refusing the refresh token: no network, a timeout, or a
- * server error. Only a refusal (an OAuth error response such as `invalid_grant`) ends the session.
+ * The OIDC library wraps every failure in TechnicalFailure, the caller's cancellation too: that is rethrown as the
+ * caller's cancellation. A cancellation that isn't the caller's, such as a timeout inside the library, stays a failure.
+ */
+private suspend fun Exception.rethrowIfCallerCancelled() {
+    if (cancellationCauseOrNull() != null) currentCoroutineContext().ensureActive()
+}
+
+/**
+ * A refresh that failed without the authorization server refusing the refresh token: no network, a timeout, a
+ * cancellation that isn't the caller's, or a server error. Only a refusal (an OAuth error response such as
+ * `invalid_grant`) ends the session.
  */
 internal fun Exception.isTransientRefreshFailure(): Boolean = when (this) {
-    // The OIDC library wraps every non-HTTP failure in TechnicalFailure; only a network error or a timeout is transient.
-    is OpenIdConnectException.TechnicalFailure -> generateSequence(cause) { it.cause }.any { it.isNetworkOrTimeout() }
+    // The OIDC library wraps every non-HTTP failure in TechnicalFailure; only a network error, a timeout or a
+    // cancellation is transient.
+    is OpenIdConnectException.TechnicalFailure ->
+        cancellationCauseOrNull() != null || generateSequence(cause) { it.cause }.any { it.isNetworkOrTimeout() }
     is OpenIdConnectException.UnsuccessfulTokenRequest ->
         statusCode.value >= 500 || statusCode.value == 408 || statusCode.value == 429
     is kotlinx.io.IOException -> true

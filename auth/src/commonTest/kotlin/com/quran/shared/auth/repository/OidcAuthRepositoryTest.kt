@@ -1,5 +1,9 @@
 package com.quran.shared.auth.repository
 
+import co.touchlab.kermit.LogWriter
+import co.touchlab.kermit.Logger
+import co.touchlab.kermit.Severity
+import co.touchlab.kermit.StaticConfig
 import com.quran.shared.auth.di.AuthFlowFactoryProvider
 import com.quran.shared.auth.model.AuthConfig
 import com.quran.shared.auth.model.TokenResponse
@@ -34,6 +38,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import org.publicvalue.multiplatform.oidc.OpenIdConnectClient
 import org.publicvalue.multiplatform.oidc.OpenIdConnectClientConfig
+import org.publicvalue.multiplatform.oidc.OpenIdConnectException
 import org.publicvalue.multiplatform.oidc.flows.CodeAuthFlow
 import org.publicvalue.multiplatform.oidc.flows.CodeAuthFlowFactory
 import org.publicvalue.multiplatform.oidc.flows.EndSessionFlow
@@ -1330,6 +1335,35 @@ class OidcAuthRepositoryTest {
         }
 
     @Test
+    fun `a cancelled caller's login the OIDC library wraps is a cancellation and logs nothing`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val unusedTokens = AccessTokenResponse(
+                access_token = "unused-access-token",
+                token_type = "Bearer",
+                expires_in = 3600
+            )
+            val authFlow = BlockingLoginAuthFlow(unusedTokens, unusedTokens, wrapsCancellation = true)
+            AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
+            val logs = WarningLogs()
+            val repository = oidcRepository(
+                AuthStorage(
+                    tokenStore = RecordingTokenStore(),
+                    settings = MapSettings().toSuspendSettings(),
+                    json = Json { ignoreUnknownKeys = true }
+                ),
+                logger = logs.logger
+            )
+            val login = async(start = CoroutineStart.UNDISPATCHED) { repository.login() }
+            authFlow.loginStarted.await()
+
+            login.cancel()
+
+            assertFailsWith<CancellationException> { login.await() }
+            assertNull(repository.getAccessToken())
+            assertEquals(emptyList(), logs.entries, "a cancellation is not a login failure")
+        }
+
+    @Test
     fun `local clear still removes tokens when session generation write fails`() =
         runTest(UnconfinedTestDispatcher()) {
             val baseSettings = MapSettings().toSuspendSettings()
@@ -2275,14 +2309,26 @@ internal fun oidcRepository(
             expires_in = 3600
         )
     ),
-    networkDataSource: AuthNetworkDataSource = defaultAuthNetworkDataSource()
+    networkDataSource: AuthNetworkDataSource = defaultAuthNetworkDataSource(),
+    logger: Logger = Logger.withTag("OidcAuthRepository")
 ): OidcAuthRepository =
     OidcAuthRepository(
         authConfig = AuthConfig(clientId = "client-id"),
         authStorage = storage,
         oidcClient = oidcClient,
-        networkDataSource = networkDataSource
+        networkDataSource = networkDataSource,
+        logger = logger
     )
+
+/** Records what a repository logs at warning or above, the severities host apps send to crash reporting. */
+internal class WarningLogs : LogWriter() {
+    val entries = mutableListOf<String>()
+    val logger = Logger(StaticConfig(minSeverity = Severity.Warn, logWriterList = listOf(this)), "OidcAuthRepository")
+
+    override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
+        entries += "$severity: $message"
+    }
+}
 
 private fun defaultAuthNetworkDataSource(): AuthNetworkDataSource =
     AuthNetworkDataSource(
@@ -2340,7 +2386,8 @@ private class BlockingUserInfoNetwork(
 
 private class BlockingLoginAuthFlow(
     private val pendingResponse: AccessTokenResponse,
-    private val loginResponse: AccessTokenResponse
+    private val loginResponse: AccessTokenResponse,
+    private val wrapsCancellation: Boolean = false
 ) : CodeAuthFlow {
     val continueStarted = CompletableDeferred<Unit>()
     val continueCanFinish = CompletableDeferred<Unit>()
@@ -2364,7 +2411,7 @@ private class BlockingLoginAuthFlow(
             promptLoginCalls += 1
         }
         loginStarted.complete(Unit)
-        loginCanFinish.await()
+        wrappingFailures(wrapsCancellation) { loginCanFinish.await() }
         return loginResponse
     }
 
@@ -2452,6 +2499,17 @@ private object NoOpEndSessionFlow : EndSessionFlow {
     override suspend fun continueLogout() = Unit
 }
 
+/**
+ * Runs [block], [wrapping][enabled] its failures like the OIDC library's `wrapExceptions` does: in a TechnicalFailure,
+ * the caller's cancellation too.
+ */
+private suspend fun <T> wrappingFailures(enabled: Boolean, block: suspend () -> T): T = try {
+    block()
+} catch (e: Throwable) {
+    if (enabled && e !is OpenIdConnectException) throw OpenIdConnectException.TechnicalFailure(e.message ?: "Unknown error", e)
+    throw e
+}
+
 private fun unsupportedAuthTest(): Nothing =
     throw UnsupportedOperationException("Not needed for this test")
 
@@ -2502,7 +2560,8 @@ private class FailingSettings(
 internal class BlockingRefreshOidcClient(
     private val refreshResponse: AccessTokenResponse,
     private val refreshFailure: Exception? = null,
-    private val revokeFailure: Exception? = null
+    private val revokeFailure: Exception? = null,
+    private val wrapsCancellation: Boolean = false
 ) : OpenIdConnectClient {
     val refreshStarted = CompletableDeferred<Unit>()
     val refreshCanFinish = CompletableDeferred<Unit>()
@@ -2552,7 +2611,7 @@ internal class BlockingRefreshOidcClient(
         configure: (HttpRequestBuilder.() -> Unit)?
     ): AccessTokenResponse {
         refreshStarted.complete(Unit)
-        refreshCanFinish.await()
+        wrappingFailures(wrapsCancellation) { refreshCanFinish.await() }
         refreshFailure?.let { throw it }
         return refreshResponse
     }

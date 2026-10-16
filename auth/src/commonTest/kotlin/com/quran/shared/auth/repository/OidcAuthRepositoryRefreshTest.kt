@@ -4,6 +4,9 @@ import com.quran.shared.auth.persistence.AuthStorage
 import com.russhwolf.settings.MapSettings
 import com.russhwolf.settings.coroutines.toSuspendSettings
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.io.IOException
@@ -17,7 +20,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** A forced refresh after a 401, and a refresh that fails for a transient reason. */
+/** A forced refresh after a 401, a refresh that fails for a transient reason, and a cancelled refresh. */
 class OidcAuthRepositoryRefreshTest {
 
     @Test
@@ -96,6 +99,43 @@ class OidcAuthRepositoryRefreshTest {
         assertNull(repository.getAccessToken())
         assertFalse(repository.isLoggedIn())
     }
+
+    /** The OIDC library wraps the caller's cancellation in TechnicalFailure, as when logout cancels a sync. */
+    @Test
+    fun `a cancelled caller's refresh the OIDC library wraps is a cancellation that keeps the session`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val logs = WarningLogs()
+            val client = BlockingRefreshOidcClient(unusedTokens, wrapsCancellation = true)
+            val repository = oidcRepository(committedSession(expiresAt = 0), client, logger = logs.logger)
+            val refresh = async(start = CoroutineStart.UNDISPATCHED) { repository.refreshTokensIfNeeded() }
+            client.refreshStarted.await()
+
+            refresh.cancel()
+
+            assertFailsWith<CancellationException> { refresh.await() }
+            assertEquals("old-access-token", repository.getAccessToken(), "the session is kept")
+            assertTrue(repository.isLoggedIn())
+            assertEquals(emptyList(), logs.entries, "a cancellation is not a refresh failure")
+        }
+
+    /** A cancellation inside the library while the caller is still active, such as its own timeout. */
+    @Test
+    fun `a cancellation that is not the caller's keeps the session and fails the refresh`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val failure = OpenIdConnectException.TechnicalFailure("cancelled", CancellationException("cancelled"))
+            val repository = oidcRepository(committedSession(expiresAt = 0), refreshingClient(failure))
+
+            assertFailsWith<OpenIdConnectException.TechnicalFailure> { repository.refreshTokensIfNeeded() }
+
+            assertEquals("old-access-token", repository.getAccessToken(), "the session is kept")
+            assertTrue(repository.isLoggedIn())
+        }
+
+    private val unusedTokens = AccessTokenResponse(
+        access_token = "unused-access-token",
+        token_type = "Bearer",
+        expires_in = 3600
+    )
 
     private suspend fun committedSession(expiresAt: Long): AuthStorage {
         val settings = MapSettings().toSuspendSettings()
