@@ -2,8 +2,6 @@ package com.quran.shared.persistence.repository.bookmark.repository
 
 import co.touchlab.kermit.Logger
 import com.quran.shared.di.AppScope
-import com.quran.shared.persistence.RecordNotFoundException
-import com.quran.shared.persistence.RecordNotFoundException.RecordType
 import com.quran.shared.persistence.model.BookmarkCollectionsReplacementResult
 import com.quran.shared.persistence.repository.collection.CollectionStore
 import com.quran.shared.persistence.repository.collection.isHighlight
@@ -47,8 +45,7 @@ class BookmarksRepositoryImpl(
         return withContext(Dispatchers.IO) {
             database.transactionWithResult {
                 val desired = requested.mapNotNull { id ->
-                    val collection = id.toLongOrNull()?.let(store::get)
-                        ?: throw RecordNotFoundException(RecordType.COLLECTION, id)
+                    val collection = requireNotNull(id.toLongOrNull()?.let(store::get)) { "Collection not found for localId=$id." }
                     // Highlights are kept as they are, whatever the request says.
                     collection.local_id.takeUnless { collection.isHighlight }
                 }.toSet()

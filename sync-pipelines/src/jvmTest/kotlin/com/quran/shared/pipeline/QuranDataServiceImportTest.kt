@@ -145,13 +145,13 @@ class QuranDataServiceImportTest {
 }
 
 @BindingContainer
-private class ImportSyncBindings(private val client: ImportSyncClientSpy) {
+internal class ImportSyncBindings(private val client: ImportSyncClientSpy) {
     @Provides
     fun synchronizationClientFactory(): QuranDataServiceSynchronizationClientFactory =
         QuranDataServiceSynchronizationClientFactory { _, _, _, _ -> client }
 }
 
-private class ImportSyncClientSpy : SynchronizationClient {
+internal class ImportSyncClientSpy : SynchronizationClient {
     var localDataUpdatedCount = 0
         private set
 
@@ -162,7 +162,7 @@ private class ImportSyncClientSpy : SynchronizationClient {
     override suspend fun cancelSyncingAndJoin() = Unit
 }
 
-private class LoggedOutAuthRepository : AuthRepository {
+internal class LoggedOutAuthRepository : AuthRepository {
     override suspend fun login(): Unit = error("Login is not used by import tests")
     override suspend fun loginWithReauthentication(): Unit = error("Login is not used by import tests")
     override suspend fun refreshTokensIfNeeded() = false

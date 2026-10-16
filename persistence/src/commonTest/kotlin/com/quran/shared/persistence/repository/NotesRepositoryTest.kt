@@ -1,8 +1,6 @@
 package com.quran.shared.persistence.repository
 
 import com.quran.shared.persistence.MobileSyncDatabase
-import com.quran.shared.persistence.RecordNotFoundException
-import com.quran.shared.persistence.RecordNotFoundException.RecordType
 import com.quran.shared.persistence.at
 import com.quran.shared.persistence.createTestDatabase
 import com.quran.shared.persistence.model.NoteRange as PublicNoteRange
@@ -122,11 +120,8 @@ class NotesRepositoryTest {
 
     @Test
     fun `updateNote rejects an id that names no note`() = runTest {
-        listOf("999", "not-a-number").forEach { id ->
-            val failure = assertFailsWith<RecordNotFoundException> { repository.updateNote(id, "updated note", at(2_000L)) }
-            assertEquals(RecordType.NOTE, failure.type)
-            assertEquals(id, failure.id)
-        }
+        assertFailsWith<IllegalArgumentException> { repository.updateNote("999", "updated note", at(2_000L)) }
+        assertFailsWith<IllegalArgumentException> { repository.updateNote("not-a-number", "updated note", at(2_000L)) }
     }
 
     @Test

@@ -3,8 +3,6 @@
 package com.quran.shared.persistence.repository
 
 import com.quran.shared.persistence.MobileSyncDatabase
-import com.quran.shared.persistence.RecordNotFoundException
-import com.quran.shared.persistence.RecordNotFoundException.RecordType
 import com.quran.shared.persistence.at
 import com.quran.shared.persistence.createTestDatabase
 import com.quran.shared.persistence.model.ReadingSession
@@ -135,11 +133,9 @@ class ReadingSessionsRepositoryTest {
         val deleted = repository.addReadingSession(2, 255, at(1000L))
         assertTrue(repository.deleteReadingSession(2, 255))
 
-        listOf(deleted.id, "999", "not-a-number").forEach { id ->
-            val failure = assertFailsWith<RecordNotFoundException> { repository.updateReadingSession(id, 3, 10, at(2000L)) }
-            assertEquals(RecordType.READING_SESSION, failure.type)
-            assertEquals(id, failure.id)
-        }
+        assertFailsWith<IllegalArgumentException> { repository.updateReadingSession(deleted.id, 3, 10, at(2000L)) }
+        assertFailsWith<IllegalArgumentException> { repository.updateReadingSession("999", 3, 10, at(2000L)) }
+        assertFailsWith<IllegalArgumentException> { repository.updateReadingSession("not-a-number", 3, 10, at(2000L)) }
         assertEquals(emptyList(), repository.getReadingSessions(), "the deleted session is not resurrected")
     }
 

@@ -3,10 +3,8 @@ package com.quran.shared.auth.repository
 import co.touchlab.kermit.Logger
 import com.quran.shared.auth.di.AuthFlowFactoryProvider
 import com.quran.shared.auth.model.AuthConfig
-import com.quran.shared.auth.model.AuthenticationCancelledException
 import com.quran.shared.auth.model.TokenResponse
 import com.quran.shared.auth.model.UserInfo
-import com.quran.shared.auth.model.asAuthenticationException
 import com.quran.shared.auth.persistence.AuthStorage
 import com.quran.shared.auth.utils.currentTimeMillis
 import com.quran.shared.di.AppScope
@@ -131,25 +129,12 @@ class OidcAuthRepository(
             throw e
         } catch (e: Exception) {
             failure = e
-            logLoginFailure(e)
+            logger.e(e) { "Login failed" }
             throw e
         } finally {
             withContext(NonCancellable) {
                 endTokenExchange(exchange.id, failure)
             }
-        }
-    }
-
-    /**
-     * A login the user cancelled (closing the browser sheet) or that a newer logout or login superseded is expected:
-     * it logs at info without the throwable, since hosts forward warnings and errors to crash reporting. Any other
-     * failure logs at error with its throwable.
-     */
-    private fun logLoginFailure(failure: Exception) {
-        when {
-            failure is LoginSupersededException -> logger.i { "Login superseded by a newer session change" }
-            failure.asAuthenticationException() is AuthenticationCancelledException -> logger.i { "Login cancelled" }
-            else -> logger.e(failure) { "Login failed" }
         }
     }
 

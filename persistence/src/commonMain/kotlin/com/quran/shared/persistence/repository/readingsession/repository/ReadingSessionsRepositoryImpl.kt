@@ -3,8 +3,6 @@ package com.quran.shared.persistence.repository.readingsession.repository
 import app.cash.sqldelight.coroutines.asFlow
 import co.touchlab.kermit.Logger
 import com.quran.shared.di.AppScope
-import com.quran.shared.persistence.RecordNotFoundException
-import com.quran.shared.persistence.RecordNotFoundException.RecordType
 import com.quran.shared.persistence.model.ReadingSession
 import com.quran.shared.persistence.repository.readingsession.ReadingSessionStore
 import com.quran.shared.persistence.util.PlatformDateTime
@@ -71,8 +69,9 @@ class ReadingSessionsRepositoryImpl(
         val at = timestamp.toEpochMillisecondsFromPlatform()
         return withContext(Dispatchers.IO) {
             database.transactionWithResult {
-                val existing = id.toLongOrNull()?.let(store::get)
-                    ?: throw RecordNotFoundException(RecordType.READING_SESSION, id)
+                val existing = requireNotNull(id.toLongOrNull()?.let(store::get)) {
+                    "Expected active reading session id=$id before update."
+                }
                 val kept = store.move(existing.local_id, sura, ayah, at)
                 requireNotNull(store.get(kept)) { "Expected active reading session id=$kept after update." }.toReadingSession()
             }

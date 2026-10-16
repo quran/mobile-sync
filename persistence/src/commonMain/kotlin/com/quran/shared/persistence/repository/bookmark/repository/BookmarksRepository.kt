@@ -12,9 +12,6 @@ interface BookmarksRepository {
      * bookmark, or do nothing when it does not exist. Highlight collection memberships are always
      * preserved and excluded from replacement. The first transition from no saved memberships to
      * at least one updates the bookmark modification time without changing its creation time.
-     *
-     * @throws com.quran.shared.persistence.RecordNotFoundException when an ID in [collectionIds] does not identify an
-     *   active collection.
      */
     @NativeCoroutines
     suspend fun replaceAyahBookmarkCollections(
@@ -32,9 +29,6 @@ interface BookmarksRepository {
      * preserved and excluded from replacement. The first transition from no saved memberships to
      * at least one uses [timestamp] as the bookmark modification time without changing the creation
      * time of an existing row.
-     *
-     * @throws com.quran.shared.persistence.RecordNotFoundException when an ID in [collectionIds] does not identify an
-     *   active collection.
      */
     @NativeCoroutines
     suspend fun replaceAyahBookmarkCollections(

@@ -9,6 +9,9 @@ import com.quran.shared.auth.repository.RemoteLogoutMode
 import com.quran.shared.auth.repository.RemoteLogoutOperation
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.di.AppScope
+import com.quran.shared.persistence.DuplicateCollectionNameException
+import com.quran.shared.persistence.ReadOnlyCollectionException
+import com.quran.shared.persistence.ReservedCollectionNameException
 import com.quran.shared.persistence.TextLengthLimitException
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.PersistenceImportResult
@@ -403,10 +406,21 @@ class QuranDataService internal constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            logWriteFailure(errorMessage, e)
+            if (e.isRejection()) Logger.i { "$errorMessage: ${e::class.simpleName}" } else Logger.e(e) { errorMessage }
             throw e
         }
     }
+
+    /**
+     * A write the data rules reject is an answer to the user, not a fault. Hosts forward warnings and errors to crash
+     * reporting, so it logs at info, without the stack trace or the message, which may hold the user's text.
+     */
+    private fun Exception.isRejection(): Boolean =
+        this is TextLengthLimitException ||
+            this is ReservedCollectionNameException ||
+            this is DuplicateCollectionNameException ||
+            this is ReadOnlyCollectionException ||
+            this is SessionResetInProgressException
 
     @NativeCoroutines
     suspend fun importData(data: PersistenceImportData): PersistenceImportResult {
@@ -471,17 +485,6 @@ class QuranDataService internal constructor(
         }
     }
 
-    /**
-     * Replaces an ayah bookmark's saved collection memberships and schedules sync only when
-     * memberships changed.
-     *
-     * Non-empty memberships create the bookmark if needed. Empty memberships remove the saved
-     * bookmark, or do nothing when it does not exist. Highlight collection memberships are always
-     * preserved and excluded from replacement.
-     *
-     * @throws com.quran.shared.persistence.RecordNotFoundException when an ID in [collectionIds] does not identify an
-     *   active collection.
-     */
     @NativeCoroutines
     suspend fun replaceAyahBookmarkCollections(
         sura: Int,
@@ -498,9 +501,6 @@ class QuranDataService internal constructor(
      * Non-empty memberships create the bookmark if needed. Empty memberships remove the saved
      * bookmark, or do nothing when it does not exist. Highlight collection memberships are always
      * preserved and excluded from replacement.
-     *
-     * @throws com.quran.shared.persistence.RecordNotFoundException when an ID in [collectionIds] does not identify an
-     *   active collection.
      */
     @NativeCoroutines
     suspend fun replaceAyahBookmarkCollections(
@@ -588,22 +588,12 @@ class QuranDataService internal constructor(
      * Updates a reading session, merging it into an existing destination session when needed.
      *
      * The returned session is authoritative because a merge returns the destination's ID.
-     *
-     * @throws com.quran.shared.persistence.RecordNotFoundException when [id] does not identify an active session.
      */
     @NativeCoroutines
     suspend fun updateReadingSession(id: String, sura: Int, ayah: Int): ReadingSession {
         return updateReadingSession(id, sura, ayah, currentPlatformDateTime())
     }
 
-    /**
-     * Updates a reading session using an explicit mutation timestamp, merging it into an existing
-     * destination session when needed.
-     *
-     * The returned session is authoritative because a merge returns the destination's ID.
-     *
-     * @throws com.quran.shared.persistence.RecordNotFoundException when [id] does not identify an active session.
-     */
     @NativeCoroutines
     suspend fun updateReadingSession(
         id: String,
@@ -659,7 +649,7 @@ class QuranDataService internal constructor(
      * @param id the mobile-sync identifier of the collection to update.
      * @param name the new collection name.
      * @return the updated collection.
-     * @throws com.quran.shared.persistence.RecordNotFoundException when [id] does not identify an active collection.
+     * @throws IllegalArgumentException when [id] does not identify an active collection.
      * @throws com.quran.shared.persistence.ReadOnlyCollectionException when the collection can't be renamed.
      * @throws com.quran.shared.persistence.DuplicateCollectionNameException when another collection has [name].
      * @throws com.quran.shared.persistence.ReservedCollectionNameException when [name] is reserved.
@@ -677,7 +667,7 @@ class QuranDataService internal constructor(
      * @param name the new collection name.
      * @param timestamp the timestamp to persist for the mutation.
      * @return the updated collection.
-     * @throws com.quran.shared.persistence.RecordNotFoundException when [id] does not identify an active collection.
+     * @throws IllegalArgumentException when [id] does not identify an active collection.
      * @throws com.quran.shared.persistence.ReadOnlyCollectionException when the collection can't be renamed.
      * @throws com.quran.shared.persistence.DuplicateCollectionNameException when another collection has [name].
      * @throws com.quran.shared.persistence.ReservedCollectionNameException when [name] is reserved.
@@ -705,13 +695,6 @@ class QuranDataService internal constructor(
         }
     }
 
-    /**
-     * Creates an ayah bookmark if missing and links it to an active saved collection, then schedules
-     * sync. Highlight collections must be changed through [setHighlight].
-     *
-     * @throws com.quran.shared.persistence.RecordNotFoundException when [collectionId] does not identify an active
-     *   collection.
-     */
     @NativeCoroutines
     suspend fun addAyahBookmarkToCollection(
         collectionId: String,
@@ -721,14 +704,6 @@ class QuranDataService internal constructor(
         return addAyahBookmarkToCollection(collectionId, sura, ayah, currentPlatformDateTime())
     }
 
-    /**
-     * Links an ayah to an active saved collection using [timestamp] for a new bookmark or its first
-     * saved membership, then schedules sync. Highlight collections must be changed through
-     * [setHighlight].
-     *
-     * @throws com.quran.shared.persistence.RecordNotFoundException when [collectionId] does not identify an active
-     *   collection.
-     */
     @NativeCoroutines
     suspend fun addAyahBookmarkToCollection(
         collectionId: String,
@@ -779,7 +754,7 @@ class QuranDataService internal constructor(
      *
      * @param id the mobile-sync identifier of the note to update.
      * @param body the updated note body.
-     * @throws com.quran.shared.persistence.RecordNotFoundException when [id] does not identify a note.
+     * @throws IllegalArgumentException when [id] does not identify a note.
      * @throws TextLengthLimitException when a changed [body] is outside the server's length limits.
      */
     @NativeCoroutines
@@ -787,13 +762,7 @@ class QuranDataService internal constructor(
         updateNote(id, body, currentPlatformDateTime())
     }
 
-    /**
-     * Updates a note's body using an explicit mutation timestamp and schedules sync for the local
-     * mutation.
-     *
-     * @throws com.quran.shared.persistence.RecordNotFoundException when [id] does not identify a note.
-     * @throws TextLengthLimitException when a changed [body] is outside the server's length limits.
-     */
+    /** @throws TextLengthLimitException when a changed [body] is outside the server's length limits. */
     @NativeCoroutines
     suspend fun updateNote(id: String, body: String, timestamp: PlatformDateTime) {
         mutatingCall("Failed to update note") {
