@@ -17,6 +17,6 @@ actual class DriverFactory {
     }
 
     private companion object {
-        const val DATABASE_NAME = "quran.db"
+        const val DATABASE_NAME = "user_data.db"
     }
 }

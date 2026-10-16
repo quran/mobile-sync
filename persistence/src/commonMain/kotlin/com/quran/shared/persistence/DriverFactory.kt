@@ -7,7 +7,7 @@ import kotlinx.coroutines.internal.synchronized
 import kotlin.concurrent.Volatile
 import kotlin.native.HiddenFromObjC
 
-/** Opens the app database, `quran.db`, with [MobileSyncSchema] and foreign keys on (the sync engine relies on them). */
+/** Opens the app database, `user_data.db`, with [MobileSyncSchema] and foreign keys on (the sync engine relies on them). */
 expect class DriverFactory {
     fun makeDriver(): SqlDriver
 

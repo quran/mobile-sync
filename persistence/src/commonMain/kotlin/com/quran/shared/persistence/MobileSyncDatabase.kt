@@ -21,13 +21,12 @@ class MobileSyncDatabase(val driver: SqlDriver) {
 }
 
 /**
- * The schema of [MobileSyncDatabase]. mobile-sync is pre-release with no backward compatibility, so a database from an
- * earlier schema version is dropped and created again (its user data is lost). Version 1 was the schema of the old
- * sync engine (pending columns on every domain table); version 2 is the plain tables of sync-v2.
+ * The schema of [MobileSyncDatabase]. mobile-sync is pre-release, so the schema stays at version 1 and has no
+ * migrations: a schema change edits the tables in place, and testers reinstall the app.
  */
 @HiddenFromObjC
 object MobileSyncSchema : SqlSchema<QueryResult.Value<Unit>> {
-    override val version: Long = 2
+    override val version: Long = 1
 
     override fun create(driver: SqlDriver): QueryResult.Value<Unit> {
         QuranDatabase.Schema.create(driver)
@@ -41,24 +40,5 @@ object MobileSyncSchema : SqlSchema<QueryResult.Value<Unit>> {
         oldVersion: Long,
         newVersion: Long,
         vararg callbacks: AfterVersion
-    ): QueryResult.Value<Unit> {
-        dropEverything(driver)
-        return create(driver)
-    }
-
-    /** Drops every table; tables that reference others go first, so foreign keys never block a drop. */
-    private fun dropEverything(driver: SqlDriver) {
-        val tables = driver.executeQuery(
-            identifier = null,
-            sql = "SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
-            mapper = { cursor ->
-                val rows = mutableListOf<Pair<String, String>>()
-                while (cursor.next().value) rows += cursor.getString(0)!! to cursor.getString(1).orEmpty()
-                QueryResult.Value(rows)
-            },
-            parameters = 0
-        ).value
-        tables.sortedByDescending { (_, sql) -> "REFERENCES" in sql.uppercase() }
-            .forEach { (name, _) -> driver.execute(null, "DROP TABLE IF EXISTS \"$name\"", 0) }
-    }
+    ): QueryResult.Value<Unit> = QueryResult.Unit
 }
