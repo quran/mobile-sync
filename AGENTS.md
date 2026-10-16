@@ -17,7 +17,7 @@ Core modules:
 - `:auth`: OIDC login/logout, auth state, token handling.
 - `:persistence`: the app database (`MobileSyncDatabase`: `QuranDatabase` for app metadata plus `:sync-v2`'s `SyncV2Database` on one driver, schema `MobileSyncSchema`) and the repositories for bookmarks, collections, notes, and reading sessions. Repositories write plain domain rows through one store per type (`NoteStore`, `CollectionStore`, `ReadingSessionStore`, `ReadingBookmarkStore`), which the importer uses too.
 - `:sync-v2`: the generic sync engine (fetch, three-way merge, push), its per-type mappings and their plain domain tables (plus `sync_item` and `sync_meta`). Not exported through `umbrella`. `SYNC_ENGINE.md` maps it.
-- `:sync-pipelines`: DI graph, storage wiring, the sync client and scheduler (`pipeline/sync`), and `QuranDataService` with its public sync types (`SyncStatus`, `SyncError`, `SynchronizationEnvironment`).
+- `:sync-pipelines`: DI graph, storage wiring, the sync client and scheduler (`pipeline/sync`), and `QuranDataService` with its public sync types (`SyncStatus`, `SyncError`, `SyncRun` for `syncHistory`, `HeldSyncItem` for `heldItems`, `SynchronizationEnvironment`).
 - `:umbrella`: iOS `Shared` XCFramework export.
 - `:demo:android`: Android Compose demo.
 - `:demo:common`: shared demo helpers/models.
@@ -75,9 +75,10 @@ Synced types (`sync-v2` `syncTypes`, in dependency order): collections, verses i
 
 `SyncScheduler` (`sync-pipelines`) runs one sync at a time. Default timings (`DefaultSyncTimings`):
 
-- app start: 30 seconds; local change: 5 seconds; immediate: 0 seconds
+- app start: 30 seconds; local change: 5 seconds; immediate ("sync now", and a sign-in, `SIGN_IN`): 0 seconds
 - after every run, success or not: the next one in 30 minutes, so sync never stops after its retries
-- retry backoff: 200 ms base, 2.5x multiplier, maximum 5 retries; a failure that asks for a longer backoff (a 403 that may be the token's scope) stops pushes for that long, while automatic runs keep pulling and "sync now" pushes again
+- retry backoff: 200 ms base, 2.5x multiplier, maximum 5 retries; a failure that asks for a longer backoff (a 403 that may be the token's scope) stops pushes for that long, while automatic runs keep pulling and "sync now" (or a sign-in) pushes again
+- every run that ends is reported once to `SyncRunObserver.syncEnded` as a `SyncRun`: `SyncHistory` stores it (`sync_run`, newest 50) before `SyncStatusTracker` publishes `syncStatus`. Skipped runs (no session, a logout or reset) are not recorded
 
 ## sync-v2
 
