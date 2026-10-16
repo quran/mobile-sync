@@ -54,9 +54,9 @@ class Holds(private val store: SyncStore, private val types: List<SyncType>, pri
      * it can't be pushed. [HeldItem.waitingOn] is the held item at the root, so a UI can say "N items waiting on X".
      *
      * It reads the items as the next push would plan them, so it changes as soon as the user edits or deletes an item:
-     * a hold whose item was edited since (working != the held state) is left out, as is a held item the user deleted
-     * (unless what is held is its DELETE), and what waited on either. Never-linked items are listed only once an
-     * account is signed in.
+     * a hold whose item was edited since (working != the held state) is left out, unless the edit is still invalid
+     * (it is listed with the new reason), as is a held item the user deleted (unless what is held is its DELETE), and
+     * what waited on either. Never-linked items are listed only once an account is signed in.
      */
     fun list(): List<HeldItem> {
         val working = types.associateWith { it.readAll() }
@@ -101,21 +101,34 @@ class Holds(private val store: SyncStore, private val types: List<SyncType>, pri
     }
 
     /**
-     * [type]'s sync rows as the next push sees them: [PushPlanner] releases a hold whose item was edited since, and
-     * the next merge forgets a never-synced held item the user deleted. A held DELETE stays held; a hold on an edit
-     * the user then deleted is released, as the planner pushes the delete.
+     * [type]'s sync rows as the next push sees them. [PushPlanner] releases a hold whose item was edited since, then
+     * validates the edit and holds it again, with the new reason, if the server would still refuse it; the next merge
+     * forgets a never-synced held item the user deleted. A held DELETE stays held; a hold on an edit the user then
+     * deleted is released, as the planner pushes the delete.
      */
     private fun current(type: SyncType, rows: Map<Long, SyncRow>, working: Map<Long, State>): Map<Long, SyncRow> {
         val merger = Merger(type)
+        val heldKeys = heldKeyOwners(type, rows)
         return rows.mapValues { (localId, row) ->
             val state = working[localId]
-            val released = when {
-                row.heldReason == null -> false
-                state == null -> !row.holdsDelete(merger)
-                else -> !merger.same(row.heldState, state)
+            when {
+                row.heldReason == null -> row
+                state == null -> if (row.holdsDelete(merger)) row else row.unheld()
+                merger.same(row.heldState, state) -> row
+                else -> replanned(type, merger, row, state, heldKeys)
             }
-            if (released) row.unheld() else row
         }
+    }
+
+    /** A held item edited since, as [PushPlanner.plan] plans it: released, or held again if still invalid. */
+    private fun replanned(type: SyncType, merger: Merger, row: SyncRow, state: State, heldKeys: Map<String, Long>): SyncRow {
+        val base = row.base
+        // Back to the server's state (nothing to push), or waiting on a held item's key: not validated.
+        if (base != null && merger.same(state, base)) return row.unheld()
+        if (type.naturalKey(state)?.let(heldKeys::get)?.let { it != row.localId } == true) return row.unheld()
+        val change = if (base == null) Change.Create(state) else Change.Update(row.remoteId!!, base, state)
+        val reason = type.validate(change) ?: return row.unheld()
+        return SyncRow(row.localId, row.remoteId, base, reason, state)
     }
 
     /** New items with no parent to wait for, whose type defers their CREATE: only a link from a GET can bind them. */

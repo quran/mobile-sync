@@ -4,6 +4,7 @@ import app.cash.sqldelight.Query
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.quran.shared.syncv2.db.SyncV2Database
 import com.quran.shared.syncv2.fake.FakeSyncServer
+import com.quran.shared.syncv2.fake.HttpError
 import com.quran.shared.syncv2.types.syncTypes
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -29,6 +30,36 @@ class LiveHoldsTest {
 
             assertEquals(emptyList(), device.liveHeld())
             assertEquals(emptyList(), device.settle().held, "the next push agrees")
+        }
+    }
+
+    /** The next push validates the edit and holds the note again, so it stays listed until an edit makes it valid. */
+    @Test
+    fun `an edit that leaves a held note invalid keeps it held`() = FakeSyncServer().use { server ->
+        Device(server).use { device ->
+            val short = device.addNote("12345", "1:1", t(0))
+            assertEquals(listOf(HeldItem("NOTE", short, "BODY_LENGTH")), device.settle().held)
+
+            device.notes.updateNote(short, "1234", t(1))
+
+            assertEquals(listOf(HeldItem("NOTE", short, "BODY_LENGTH")), device.liveHeld(), "still too short")
+            assertEquals(listOf(HeldItem("NOTE", short, "BODY_LENGTH")), device.settle().held, "the next push agrees")
+            device.notes.updateNote(short, "Long enough now", t(2))
+            assertEquals(emptyList(), device.liveHeld())
+        }
+    }
+
+    /** A server hold ends with an edit, but an edit the server would refuse is held again for its own reason. */
+    @Test
+    fun `an invalid edit of a server-held note is held for the new reason`() = FakeSyncServer().use { server ->
+        Device(server).use { device ->
+            server.rejectMutation = { HttpError(422, "ValidationError", "refused") }
+            val note = device.addNote("Refused by the server", "1:1", t(0))
+            assertEquals(listOf(HeldItem("NOTE", note, "422 ValidationError")), device.settle().held)
+
+            device.notes.updateNote(note, "1234", t(1))
+
+            assertEquals(listOf(HeldItem("NOTE", note, "BODY_LENGTH")), device.liveHeld())
         }
     }
 
