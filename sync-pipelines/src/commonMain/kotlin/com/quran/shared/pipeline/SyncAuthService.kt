@@ -45,9 +45,11 @@ class SyncAuthService internal constructor(
     /**
      * Signs in through the browser and publishes the session, which starts a sync.
      *
-     * Local writes and imports don't wait for it, however long the user takes. A logout during it
-     * cancels it, so this throws [CancellationException] rather than an auth error. Started while a
-     * logout is running, it fails with [SessionResetInProgressException].
+     * Local writes and imports don't wait for it, however long the user takes. A logout during it ends
+     * the sign-in: the call that opened the browser throws [CancellationException], and a call made
+     * while it ran, which waits on it, throws
+     * [AuthenticationFailedException][com.quran.shared.auth.model.AuthenticationFailedException].
+     * Started while a logout is running, it fails with [SessionResetInProgressException].
      */
     @NativeCoroutines
     suspend fun login() {

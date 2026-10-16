@@ -473,7 +473,7 @@ class LifecycleScenariosTest {
             withTimeout(10.seconds) { hold.reached.await() }
             // The browser is never closed, so a logout that waited for the sign-in would never return.
             withTimeout(10.seconds) { phone.logout() }
-            assertTrue(signIn.await().isFailure, "the sign-in outlived the logout")
+            assertIs<kotlinx.coroutines.CancellationException>(signIn.await().exceptionOrNull(), "the sign-in outlived the logout")
         }
 
         assertIs<AuthState.Idle>(phone.authService.authState.value)

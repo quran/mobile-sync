@@ -25,7 +25,7 @@ import kotlin.test.assertTrue
 class SessionLifecycleCoordinatorLoginTest {
     @Test
     fun `writes run while a login waits for the user`() = runTest {
-        val coordinator = SessionLifecycleCoordinator(SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings()))
+        val coordinator = SessionLifecycleCoordinator(virtualTimeStore())
         val loginStarted = CompletableDeferred<Unit>()
         val finishLogin = CompletableDeferred<Unit>()
 
@@ -48,7 +48,7 @@ class SessionLifecycleCoordinatorLoginTest {
 
     @Test
     fun `writes still run one at a time while a login waits`() = runTest {
-        val coordinator = SessionLifecycleCoordinator(SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings()))
+        val coordinator = SessionLifecycleCoordinator(virtualTimeStore())
         val loginStarted = CompletableDeferred<Unit>()
         val finishLogin = CompletableDeferred<Unit>()
         val firstWriteStarted = CompletableDeferred<Unit>()
@@ -91,7 +91,7 @@ class SessionLifecycleCoordinatorLoginTest {
 
     @Test
     fun `reset waits for an in-flight login and the writes running beside it`() = runTest {
-        val store = SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings())
+        val store = virtualTimeStore()
         val coordinator = SessionLifecycleCoordinator(store)
         val loginStarted = CompletableDeferred<Unit>()
         val finishLogin = CompletableDeferred<Unit>()
@@ -138,7 +138,7 @@ class SessionLifecycleCoordinatorLoginTest {
 
     @Test
     fun `persisted reset recovery waits for an in-flight login`() = runTest {
-        val store = SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings())
+        val store = virtualTimeStore()
         val coordinator = SessionLifecycleCoordinator(store)
         val loginStarted = CompletableDeferred<Unit>()
         val finishLogin = CompletableDeferred<Unit>()
@@ -170,7 +170,7 @@ class SessionLifecycleCoordinatorLoginTest {
 
     @Test
     fun `login fails without starting while a reset runs or waits to run`() = runTest {
-        val store = SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings())
+        val store = virtualTimeStore()
         val coordinator = SessionLifecycleCoordinator(store)
         val writeStarted = CompletableDeferred<Unit>()
         val finishWrite = CompletableDeferred<Unit>()
@@ -213,7 +213,7 @@ class SessionLifecycleCoordinatorLoginTest {
 
     @Test
     fun `cancelled reset waiting for a login lets later logins and writes run after recovery`() = runTest {
-        val store = SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings())
+        val store = virtualTimeStore()
         val coordinator = SessionLifecycleCoordinator(store)
         val loginStarted = CompletableDeferred<Unit>()
         val finishLogin = CompletableDeferred<Unit>()
@@ -284,7 +284,10 @@ class SessionLifecycleCoordinatorLoginTest {
         assertResetThenWriteRun(coordinator, store)
     }
 
-    /** Settings on the test scheduler, so [runCurrent] runs a reset to its end when nothing holds it up. */
+    /**
+     * Settings on the test scheduler, so [runCurrent] runs every coroutine as far as it can go: one still
+     * running afterwards is held at the gate, not on a settings thread. Every test uses it.
+     */
     private fun TestScope.virtualTimeStore() =
         SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings(StandardTestDispatcher(testScheduler)))
 
