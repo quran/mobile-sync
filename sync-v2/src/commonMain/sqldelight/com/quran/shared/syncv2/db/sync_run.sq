@@ -1,0 +1,34 @@
+-- The newest sync runs, one row per run (sync-pipelines' sync history), wiped with the rest of the sync state.
+-- Only what is safe to show and log: enums, counts, times, and the failure's status, error code and short message.
+-- Never user data, server messages or responses.
+CREATE TABLE sync_run(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  started_at INTEGER NOT NULL,
+  ended_at INTEGER NOT NULL,
+  triggered_by TEXT NOT NULL,
+  result TEXT NOT NULL,
+  attempts INTEGER NOT NULL,
+  pushed INTEGER NOT NULL,
+  pulled INTEGER NOT NULL,
+  held INTEGER NOT NULL,
+  error_kind TEXT,
+  error_http_status INTEGER,
+  error_server_code TEXT,
+  error_message TEXT
+);
+
+insert:
+INSERT INTO sync_run(
+  started_at, ended_at, triggered_by, result, attempts, pushed, pulled, held,
+  error_kind, error_http_status, error_server_code, error_message
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Keeps the newest :keep runs.
+prune:
+DELETE FROM sync_run WHERE id NOT IN (SELECT id FROM sync_run ORDER BY id DESC LIMIT :keep);
+
+newest:
+SELECT * FROM sync_run ORDER BY id DESC LIMIT :limit;
+
+deleteAll:
+DELETE FROM sync_run;

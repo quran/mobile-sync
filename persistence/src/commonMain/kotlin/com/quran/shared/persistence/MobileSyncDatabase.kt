@@ -23,11 +23,12 @@ class MobileSyncDatabase(val driver: SqlDriver) {
 /**
  * The schema of [MobileSyncDatabase]. mobile-sync is pre-release with no backward compatibility, so a database from an
  * earlier schema version is dropped and created again (its user data is lost). Version 1 was the schema of the old
- * sync engine (pending columns on every domain table); version 2 is the plain tables of sync-v2.
+ * sync engine (pending columns on every domain table); version 2 is the plain tables of sync-v2; version 3 adds the
+ * sync history (`sync_run`).
  */
 @HiddenFromObjC
 object MobileSyncSchema : SqlSchema<QueryResult.Value<Unit>> {
-    override val version: Long = 2
+    override val version: Long = 3
 
     override fun create(driver: SqlDriver): QueryResult.Value<Unit> {
         QuranDatabase.Schema.create(driver)
