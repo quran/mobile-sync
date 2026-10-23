@@ -20,8 +20,8 @@ import org.publicvalue.multiplatform.oidc.types.remote.AccessTokenResponse
  * Persists authentication token material and non-secret session metadata across app restarts.
  *
  * The OIDC token response is stored through [TokenStore] so each platform can use its secure
- * storage implementation. App-specific commit markers, normalized expiry, scope, and cached
- * profile data remain in settings.
+ * storage implementation. App-specific commit markers, normalized expiry, scope, and the session's
+ * user (read from its ID token) remain in settings.
  */
 @SingleIn(AppScope::class)
 @HiddenFromObjC
@@ -74,7 +74,7 @@ class AuthStorage(
     }
 
     /**
-     * Retrieves cached user profile data from non-token session metadata.
+     * Retrieves the session's user (read from its ID token) from non-token session metadata.
      */
     suspend fun retrieveUserInfo(): UserInfo? {
         val userInfoJson = settings.getStringOrNull(KEY_USER_INFO) ?: return null
@@ -94,9 +94,10 @@ class AuthStorage(
      * existing secure token values first and keeps them unless replacements are present.
      *
      * @param tokenResponse token response returned from a refresh or same-session update.
+     * @param userInfo the user read from the response's ID token, stored in the same write; null keeps the stored user.
      */
-    suspend fun storeTokens(tokenResponse: TokenResponse) {
-        storeTokens(tokenResponse, preserveExistingTokens = true)
+    suspend fun storeTokens(tokenResponse: TokenResponse, userInfo: UserInfo? = null) {
+        storeTokens(tokenResponse, preserveExistingTokens = true, userInfo = userInfo)
     }
 
     /**
@@ -107,12 +108,13 @@ class AuthStorage(
      * the new token material is stored.
      *
      * @param tokenResponse token response returned from a successful interactive login.
+     * @param userInfo the session's user read from the response's ID token, stored in the same write.
      */
-    suspend fun storeNewSessionTokens(tokenResponse: TokenResponse) {
+    suspend fun storeNewSessionTokens(tokenResponse: TokenResponse, userInfo: UserInfo) {
         val previousMetadata = snapshotSessionMetadata()
         try {
             clearSessionMetadata()
-            storeTokens(tokenResponse, preserveExistingTokens = false)
+            storeTokens(tokenResponse, preserveExistingTokens = false, userInfo = userInfo)
         } catch (e: Exception) {
             try {
                 withContext(NonCancellable) {
@@ -127,7 +129,8 @@ class AuthStorage(
 
     private suspend fun storeTokens(
         tokenResponse: TokenResponse,
-        preserveExistingTokens: Boolean
+        preserveExistingTokens: Boolean,
+        userInfo: UserInfo?
     ) {
         // OIDC 0.18 stores tokens as one record. A single snapshot keeps preservation and rollback
         // on the same version if another token-store implementation updates the record atomically.
@@ -136,6 +139,7 @@ class AuthStorage(
         val previousExpiration = settings.getLongOrNull(KEY_TOKEN_EXPIRATION)
         val previousRetrievedAt = settings.getLongOrNull(KEY_TOKEN_RETRIEVED_AT)
         val previousTokenWriteGeneration = settings.getLongOrNull(KEY_TOKEN_WRITE_GENERATION)
+        val previousUserInfo = settings.getStringOrNull(KEY_USER_INFO)
         try {
             markTokenWriteStarted(previousTokenWriteGeneration)
             val expirationTime = if (tokenResponse.expiresAt != null) {
@@ -160,18 +164,21 @@ class AuthStorage(
             tokenResponse.scope?.let { settings.putString(KEY_SCOPE, it) }
             settings.putLong(KEY_TOKEN_EXPIRATION, expirationTime)
             settings.putLong(KEY_TOKEN_RETRIEVED_AT, currentTimeMillis())
+            userInfo?.let { storeUserInfo(it) }
         } catch (e: Exception) {
             rollbackTokenWrite(
                 tokens = previousTokens,
                 scope = previousScope,
                 expiration = previousExpiration,
                 retrievedAt = previousRetrievedAt,
-                tokenWriteGeneration = previousTokenWriteGeneration
+                tokenWriteGeneration = previousTokenWriteGeneration,
+                userInfo = previousUserInfo
             )
             throw e
         }
     }
 
+    /** Stores the session's user on its own; token writes store it with [storeTokens] or [storeNewSessionTokens]. */
     suspend fun storeUserInfo(userInfo: UserInfo) {
         settings.putString(KEY_USER_INFO, json.encodeToString(userInfo))
     }
@@ -242,7 +249,8 @@ class AuthStorage(
         scope: String?,
         expiration: Long?,
         retrievedAt: Long?,
-        tokenWriteGeneration: Long?
+        tokenWriteGeneration: Long?,
+        userInfo: String?
     ) {
         try {
             withContext(NonCancellable) {
@@ -252,6 +260,7 @@ class AuthStorage(
                     expiration = expiration,
                     retrievedAt = retrievedAt
                 )
+                restoreUserInfo(userInfo)
                 if (tokenWriteGeneration == null) {
                     settings.remove(KEY_TOKEN_WRITE_GENERATION)
                 } else {
@@ -277,10 +286,14 @@ class AuthStorage(
             expiration = metadata.expiration,
             retrievedAt = metadata.retrievedAt
         )
-        if (metadata.userInfo == null) {
+        restoreUserInfo(metadata.userInfo)
+    }
+
+    private suspend fun restoreUserInfo(userInfo: String?) {
+        if (userInfo == null) {
             settings.remove(KEY_USER_INFO)
         } else {
-            settings.putString(KEY_USER_INFO, metadata.userInfo)
+            settings.putString(KEY_USER_INFO, userInfo)
         }
     }
 
