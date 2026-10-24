@@ -6,6 +6,7 @@ import com.quran.shared.auth.model.AuthConfig
 import com.quran.shared.auth.model.IdTokenUser
 import com.quran.shared.auth.model.TokenResponse
 import com.quran.shared.auth.model.UserInfo
+import com.quran.shared.auth.model.parseIdTokenUser
 import com.quran.shared.auth.persistence.AuthStorage
 import com.quran.shared.auth.utils.currentTimeMillis
 import com.quran.shared.di.AppScope
@@ -57,8 +58,6 @@ class OidcAuthRepository(
             header(HttpHeaders.Authorization, "Basic $auth")
         }
     }
-
-    private val idTokenAccounts = IdTokenAccounts(authConfig, authStorage, oidcClient, configureTokenExchange, logger)
 
     override suspend fun getAuthHeaders(): Map<String, String> {
         if (!refreshTokensIfNeeded()) {
@@ -115,10 +114,10 @@ class OidcAuthRepository(
                 configureTokenExchange = configureTokenExchange
             )
             // The account comes from the ID token, so a session is stored only with a user it can sync for.
-            val userInfo = when (val idTokenUser = idTokenAccounts.userOf(response)) {
+            val userInfo = when (val idTokenUser = response.id_token?.let { parseIdTokenUser(it, authConfig) }) {
                 is IdTokenUser.Valid -> idTokenUser.userInfo
-                is IdTokenUser.Rejected -> rejectLoginResponse(response, exchange, idTokenUser.reason)
-                null -> rejectLoginResponse(response, exchange, "the token response has no ID token")
+                is IdTokenUser.Rejected -> throw InvalidIdTokenException(idTokenUser.reason)
+                null -> throw InvalidIdTokenException("the token response has no ID token")
             }
             val storedGeneration = storeTokenResponseIfGenerationCurrent(
                 response = response,
@@ -149,22 +148,6 @@ class OidcAuthRepository(
         }
     }
 
-    /**
-     * Discards a login response whose ID token can't name the account and revokes its refresh token. A login a newer
-     * session change already superseded ends as superseded, not as a failed sign-in.
-     */
-    private suspend fun rejectLoginResponse(
-        response: AccessTokenResponse,
-        exchange: TokenExchange,
-        reason: String
-    ): Nothing {
-        idTokenAccounts.revokeUnusableGrant(response)
-        if (!isTokenExchangeActive(exchange.generation)) {
-            throw LoginSupersededException()
-        }
-        throw InvalidIdTokenException(reason)
-    }
-
     override suspend fun refreshTokensIfNeeded(): Boolean = refreshTokens(force = false)
 
     override suspend fun forceRefreshTokens(): Boolean = refreshTokens(force = true)
@@ -193,9 +176,7 @@ class OidcAuthRepository(
                     RefreshState(
                         refreshToken = authStorage.retrieveStoredRefreshToken(),
                         generation = sessionGeneration,
-                        accountId = (
-                            authStorage.retrieveUserInfo() ?: idTokenAccounts.storedIdTokenUser(sessionGeneration)
-                        )?.id
+                        accountId = authStorage.retrieveUserInfo()?.id
                     )
                 }
             }
@@ -231,19 +212,15 @@ class OidcAuthRepository(
                 return@refreshLock false
             }
 
-            val refreshedUser = when (val idTokenUser = idTokenAccounts.userOf(response)) {
+            val refreshedUser = when (val idTokenUser = response.id_token?.let { parseIdTokenUser(it, authConfig) }) {
                 null -> null
                 is IdTokenUser.Valid -> idTokenUser.userInfo
-                is IdTokenUser.Rejected -> return@refreshLock endSessionForUnusableRefresh(
-                    refreshState.generation,
-                    response,
-                    idTokenUser.reason
-                )
+                is IdTokenUser.Rejected ->
+                    return@refreshLock endSessionForUnusableRefresh(refreshState.generation, idTokenUser.reason)
             }
             if (refreshedUser != null && refreshState.accountId != null && refreshedUser.id != refreshState.accountId) {
                 return@refreshLock endSessionForUnusableRefresh(
                     refreshState.generation,
-                    response,
                     "the refreshed ID token names another account"
                 )
             }
@@ -259,27 +236,19 @@ class OidcAuthRepository(
             true
         }
 
-    /**
-     * Ends the session, unless logout or login already moved it on, after a refresh whose ID token is unusable, and
-     * revokes the refresh token [response] brought.
-     */
-    private suspend fun endSessionForUnusableRefresh(
-        generation: Long,
-        response: AccessTokenResponse,
-        reason: String
-    ): Boolean {
+    /** Ends the session, unless logout or login already moved it on, after a refresh whose ID token is unusable. */
+    private suspend fun endSessionForUnusableRefresh(generation: Long, reason: String): Boolean {
         logger.e { "Token refresh returned an unusable ID token, clearing session: $reason" }
         val invalidationResult = sessionMutex.withLock {
             invalidateLocalSessionIfPersistedGenerationCurrentLocked(generation)
         }
-        idTokenAccounts.revokeUnusableGrant(response)
         invalidationResult?.failure?.let { throw it }
         return false
     }
 
     /**
-     * [accountId] is the session's stored account. It is null only for a session an older version stored without a
-     * user and with an unreadable ID token; a refreshed ID token then becomes its user, as `/userinfo` used to.
+     * [accountId] is the stored user's id. It is null only for a session stored before the user came from the ID token;
+     * a valid refreshed ID token then becomes its user.
      */
     private data class RefreshState(
         val refreshToken: String?,
@@ -324,7 +293,6 @@ class OidcAuthRepository(
 
     private class LoginSupersededException : IllegalStateException("Login was superseded by a newer session lifecycle change")
 
-    /** The token response's ID token can't name the signed-in account; [reason] never contains the token. */
     private class InvalidIdTokenException(reason: String) : IllegalStateException("Sign-in failed: $reason")
 
     /**
@@ -433,16 +401,6 @@ class OidcAuthRepository(
         }
     }
 
-    private suspend fun isTokenExchangeActive(generation: Long): Boolean =
-        tokenExchangeMutex.withLock {
-            isTokenExchangeActiveLocked(generation)
-        }
-
-    private fun isTokenExchangeActiveLocked(generation: Long): Boolean =
-        activeTokenExchanges.values.any { exchange ->
-            exchange.generation == generation && !exchange.completion.isCompleted
-        }
-
     private suspend fun storeTokenResponseIfGenerationCurrent(
         response: AccessTokenResponse,
         write: TokenWrite,
@@ -454,7 +412,10 @@ class OidcAuthRepository(
                     refreshSessionStateFromStorageLocked()
                     val replaceSession = write is TokenWrite.NewSession
                     val canStore = if (replaceSession) {
-                        isTokenExchangeActiveLocked(expectedGeneration)
+                        activeTokenExchanges.values.any { exchange ->
+                            exchange.generation == expectedGeneration &&
+                                !exchange.completion.isCompleted
+                        }
                     } else {
                         sessionGeneration == expectedGeneration &&
                             committedTokenGeneration == expectedGeneration &&
@@ -526,7 +487,6 @@ class OidcAuthRepository(
         )
     }
 
-    /** Stores the tokens with the [write]'s user in one write. */
     private suspend fun storeTokenResponseLocked(
         response: AccessTokenResponse,
         write: TokenWrite,
@@ -664,11 +624,6 @@ class OidcAuthRepository(
 
     override suspend fun isLoggedIn(): Boolean = getAccessToken() != null
 
-    /**
-     * The stored user. A session an older version stored without one (its `/userinfo` fetch failed) gets it from the
-     * stored ID token once, persisted so the account stays stable. A user an older version stored from `/userinfo` is
-     * kept as it is.
-     */
     override suspend fun getCurrentUser(): UserInfo? =
         sessionMutex.withLock {
             persistedSessionWriteMutex.withLock {
@@ -676,13 +631,7 @@ class OidcAuthRepository(
                 if (!isCurrentSessionCommittedAndPublishableLocked()) {
                     return@withLock null
                 }
-                authStorage.retrieveUserInfo() ?: idTokenAccounts.storedIdTokenUser(sessionGeneration)?.also { user ->
-                    try {
-                        authStorage.storeUserInfo(user)
-                    } catch (e: Exception) {
-                        logger.w(e) { "Failed to store the user read from the stored ID token" }
-                    }
-                }
+                authStorage.retrieveUserInfo()
             }
         }
 
@@ -727,7 +676,7 @@ class OidcAuthRepository(
     }
 }
 
-internal fun Throwable.cancellationCauseOrNull(): CancellationException? {
+private fun Throwable.cancellationCauseOrNull(): CancellationException? {
     var current: Throwable? = this
     while (current != null) {
         if (current is CancellationException) {

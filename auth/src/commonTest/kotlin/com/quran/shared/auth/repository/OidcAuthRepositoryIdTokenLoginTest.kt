@@ -20,7 +20,6 @@ import com.russhwolf.settings.coroutines.toSuspendSettings
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockEngineConfig
 import io.ktor.client.engine.mock.respond
-import io.ktor.client.engine.mock.toByteArray
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -35,7 +34,6 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlinx.io.IOException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -57,10 +55,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/**
- * Sign-in reads the account from the token response's ID token. It used to wait on `GET /userinfo` and, when that
- * failed, finished without a known account, so every sync was skipped until the next refresh.
- */
+/** Sign-in reads the account from the token response's ID token. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class OidcAuthRepositoryIdTokenLoginTest {
     private val authConfig = AuthConfig(clientId = TEST_CLIENT_ID)
@@ -71,7 +66,6 @@ class OidcAuthRepositoryIdTokenLoginTest {
         json = Json { ignoreUnknownKeys = true }
     )
     private val requests = mutableListOf<String>()
-    private val revocationBodies = mutableListOf<String>()
     private val logs = mutableListOf<Pair<Severity, String>>()
     private val logger = Logger(
         StaticConfig(
@@ -149,7 +143,6 @@ class OidcAuthRepositoryIdTokenLoginTest {
 
         assertTrue("no ID token" in failure.message.orEmpty(), failure.message)
         assertNoSession(repository)
-        assertEquals(listOf("token=refresh-token&client_id=client-id"), revocationBodies, "the unusable grant is revoked")
         assertTrue(logs.any { (severity, message) -> severity == Severity.Error && "no ID token" in message }, "$logs")
     }
 
@@ -199,35 +192,6 @@ class OidcAuthRepositoryIdTokenLoginTest {
             assertEquals(UserInfo(id = TEST_SUBJECT, name = "Old Name"), repository.getCurrentUser())
         }
 
-    @Test
-    fun `login with an unusable ID token revokes the refresh token it received`() =
-        runTest(UnconfinedTestDispatcher()) {
-            val repository = repositoryAnsweringTokenRequestsWith(idToken = testIdToken(audience = listOf("other")))
-
-            assertFailsWith<IllegalStateException> { repository.login() }
-
-            assertEquals(listOf(authConfig.tokenEndpoint, authConfig.revocationEndpoint), requests)
-            assertEquals(listOf("token=refresh-token&client_id=client-id"), revocationBodies)
-            assertNoSession(repository)
-        }
-
-    @Test
-    fun `a failed revoke leaves the same sign-in failure`() = runTest(UnconfinedTestDispatcher()) {
-        val repository = repositoryAnsweringTokenRequestsWith(
-            idToken = testIdToken(audience = listOf("other")),
-            revocationFails = true
-        )
-
-        val failure = assertFailsWith<IllegalStateException> { repository.login() }
-
-        assertTrue(failure.message.orEmpty().startsWith("Sign-in failed: the ID token's audience"), failure.message)
-        assertEquals(listOf(authConfig.tokenEndpoint, authConfig.revocationEndpoint), requests)
-        assertNoSession(repository)
-        assertTrue(logs.any { (severity, message) -> severity == Severity.Warn && "revoke" in message }, "$logs")
-        assertTrue(logs.any { (severity, message) -> severity == Severity.Error && "audience" in message }, "$logs")
-        assertTrue(logs.none { (_, message) -> "refresh-token" in message }, "token strings are never logged: $logs")
-    }
-
     private suspend fun assertNoSession(repository: OidcAuthRepository) {
         assertFalse(repository.isLoggedIn())
         assertNull(repository.getCurrentUser())
@@ -238,25 +202,14 @@ class OidcAuthRepositoryIdTokenLoginTest {
 
     /**
      * A repository on the production auth HTTP client and the real OIDC client, whose authorization server answers
-     * every request: the token endpoint with [idToken] (or none), the revocation endpoint with 200 (or a network
-     * failure when [revocationFails]), anything else with 404.
+     * every request: the token endpoint with [idToken] (or none), anything else with 404.
      */
-    private fun repositoryAnsweringTokenRequestsWith(
-        idToken: String?,
-        revocationFails: Boolean = false
-    ): OidcAuthRepository {
+    private fun repositoryAnsweringTokenRequestsWith(idToken: String?): OidcAuthRepository {
         val engine = MockEngine(
             MockEngineConfig().apply {
                 addHandler { request ->
                     val url = request.url.toString()
                     requests += url
-                    if (url == authConfig.revocationEndpoint) {
-                        revocationBodies += request.body.toByteArray().decodeToString()
-                        if (revocationFails) {
-                            throw IOException("revocation endpoint unreachable")
-                        }
-                        return@addHandler respond("", HttpStatusCode.OK)
-                    }
                     if (url != authConfig.tokenEndpoint) {
                         return@addHandler respond("", HttpStatusCode.NotFound)
                     }

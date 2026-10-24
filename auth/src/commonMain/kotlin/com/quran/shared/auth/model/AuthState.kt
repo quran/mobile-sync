@@ -18,9 +18,8 @@ sealed class AuthState {
     /**
      * Successfully authenticated.
      *
-     * [userInfo] comes from the session's ID token and is stored with the tokens, so a session
-     * signed in by this version always has it. It is null only for a session stored by an older
-     * version whose ID token cannot be read.
+     * [userInfo] comes from the session's ID token and is stored with the tokens. It is null only
+     * for a session stored before this version, until its next token refresh.
      */
     data class Success(val userInfo: UserInfo?) : AuthState()
 

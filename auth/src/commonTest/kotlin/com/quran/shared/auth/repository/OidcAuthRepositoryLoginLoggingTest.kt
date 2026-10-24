@@ -6,15 +6,10 @@ import co.touchlab.kermit.Severity
 import co.touchlab.kermit.StaticConfig
 import com.quran.shared.auth.di.AuthFlowFactoryProvider
 import com.quran.shared.auth.persistence.AuthStorage
-import com.quran.shared.auth.testIdToken
 import com.russhwolf.settings.MapSettings
 import com.russhwolf.settings.coroutines.toSuspendSettings
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.http.URLBuilder
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.async
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -28,12 +23,10 @@ import org.publicvalue.multiplatform.oidc.types.remote.AccessTokenResponse
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** A login the user cancelled, or one a newer session change superseded, logs at info; a real failure logs at error. */
-@OptIn(ExperimentalCoroutinesApi::class)
+/** A login the user cancelled logs at info; a real failure logs at error. */
 class OidcAuthRepositoryLoginLoggingTest {
     private data class Entry(val severity: Severity, val message: String, val throwable: Throwable?)
 
@@ -76,44 +69,12 @@ class OidcAuthRepositoryLoginLoggingTest {
         assertEquals(failure, loginFailure.throwable)
     }
 
-    @Test
-    fun `a superseded login whose ID token is unusable ends as superseded`() = runTest(UnconfinedTestDispatcher()) {
-        val response = CompletableDeferred<AccessTokenResponse>()
-        useAuthFlow { response.await() }
-        val oidcClient = BlockingRefreshOidcClient(
-            refreshResponse = AccessTokenResponse(access_token = "unused", token_type = "Bearer", expires_in = 3600)
-        )
-        val repository = repository(oidcClient)
-        val login = async(start = CoroutineStart.UNDISPATCHED) { runCatching { repository.login() } }
-
-        repository.clearLocalSession()
-        response.complete(
-            AccessTokenResponse(
-                access_token = "access-token",
-                token_type = "Bearer",
-                expires_in = 3600,
-                refresh_token = "refresh-token",
-                id_token = testIdToken(audience = listOf("other-client"))
-            )
-        )
-
-        val failure = login.await().exceptionOrNull()
-        assertEquals("LoginSupersededException", failure?.let { it::class.simpleName })
-        assertTrue(entries.none { it.severity >= Severity.Warn }, "no warning or error: $entries")
-        assertEquals(Severity.Info, entries.single { "LoginSupersededException" in it.message }.severity)
-        assertEquals(listOf("refresh-token"), oidcClient.revokedTokens, "the unusable grant is still revoked")
-        assertFalse(repository.isLoggedIn())
-    }
-
-    private fun repository(oidcClient: OpenIdConnectClient? = null): OidcAuthRepository =
+    private fun repository(): OidcAuthRepository =
         oidcRepository(
             storage = AuthStorage(
                 tokenStore = RecordingTokenStore(),
                 settings = MapSettings().toSuspendSettings(),
                 json = Json { ignoreUnknownKeys = true }
-            ),
-            oidcClient = oidcClient ?: BlockingRefreshOidcClient(
-                refreshResponse = AccessTokenResponse(access_token = "unused", token_type = "Bearer", expires_in = 3600)
             ),
             logger = logger
         )

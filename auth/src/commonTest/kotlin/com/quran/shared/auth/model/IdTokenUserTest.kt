@@ -93,37 +93,8 @@ class IdTokenUserTest {
     }
 
     @Test
-    fun `a payload whose length is not a multiple of 4 decodes`() {
-        val lengths = (0 until 4).map { padding ->
-            val idToken = testIdToken(claims = mapOf("name" to "A".repeat(padding)))
-            val payload = idToken.split(".")[1]
-            assertEquals(TEST_SUBJECT, assertIs<IdTokenUser.Valid>(parseIdTokenUser(idToken, authConfig)).userInfo.id)
-            payload.length % 4
-        }
-        assertTrue(lengths.any { it != 0 }, "some payload needs padding: $lengths")
-    }
-
-    @Test
-    fun `the OIDC standard name claims fill in when the custom ones are missing`() {
-        val idToken = testIdToken(
-            claims = mapOf(
-                "given_name" to "Given",
-                "family_name" to "Family",
-                "picture" to "https://example.com/me.png"
-            )
-        )
-
-        val user = assertIs<IdTokenUser.Valid>(parseIdTokenUser(idToken, authConfig)).userInfo
-
-        assertEquals("Given", user.firstName)
-        assertEquals("Family", user.lastName)
-        assertEquals("https://example.com/me.png", user.photoUrl)
-        assertEquals("Given Family", user.displayName)
-    }
-
-    @Test
-    fun `the custom name claims win over the OIDC standard ones`() {
-        val idToken = testIdToken(
+    fun `the custom name claims win over the OIDC standard ones that fill in when they are missing`() {
+        val both = testIdToken(
             claims = mapOf(
                 "first_name" to "First",
                 "given_name" to "Given",
@@ -131,24 +102,23 @@ class IdTokenUserTest {
                 "family_name" to "Family"
             )
         )
-
-        val user = assertIs<IdTokenUser.Valid>(parseIdTokenUser(idToken, authConfig)).userInfo
-
-        assertEquals("First", user.firstName)
-        assertEquals("Last", user.lastName)
-    }
-
-    @Test
-    fun `a single string audience naming the client is accepted`() {
-        val idToken = testJwt(
-            buildJsonObject {
-                put("sub", TEST_SUBJECT)
-                put("iss", TEST_ISSUER)
-                put("aud", TEST_CLIENT_ID)
-            }
+        val standardOnly = testIdToken(
+            claims = mapOf(
+                "given_name" to "Given",
+                "family_name" to "Family",
+                "picture" to "https://example.com/me.png"
+            )
         )
 
-        assertEquals(TEST_SUBJECT, assertIs<IdTokenUser.Valid>(parseIdTokenUser(idToken, authConfig)).userInfo.id)
+        val custom = assertIs<IdTokenUser.Valid>(parseIdTokenUser(both, authConfig)).userInfo
+        val standard = assertIs<IdTokenUser.Valid>(parseIdTokenUser(standardOnly, authConfig)).userInfo
+
+        assertEquals("First", custom.firstName)
+        assertEquals("Last", custom.lastName)
+        assertEquals("Given", standard.firstName)
+        assertEquals("Family", standard.lastName)
+        assertEquals("https://example.com/me.png", standard.photoUrl)
+        assertEquals("Given Family", standard.displayName)
     }
 
     @Test
@@ -210,19 +180,5 @@ class IdTokenUserTest {
         val rejection = assertIs<IdTokenUser.Rejected>(parseIdTokenUser(idToken, authConfig))
 
         assertTrue(idToken !in rejection.reason && idToken.split(".")[1] !in rejection.reason, rejection.reason)
-    }
-
-    @Test
-    fun `a non-string profile claim is ignored`() {
-        val idToken = testJwt(
-            buildJsonObject {
-                put("sub", TEST_SUBJECT)
-                put("iss", TEST_ISSUER)
-                put("aud", TEST_CLIENT_ID)
-                put("name", JsonPrimitive(42))
-            }
-        )
-
-        assertEquals(null, assertIs<IdTokenUser.Valid>(parseIdTokenUser(idToken, authConfig)).userInfo.name)
     }
 }

@@ -2333,7 +2333,6 @@ internal class BlockingRefreshOidcClient(
 ) : OpenIdConnectClient {
     val refreshStarted = CompletableDeferred<Unit>()
     val refreshCanFinish = CompletableDeferred<Unit>()
-    val revokedTokens = mutableListOf<String>()
 
     override val config: OpenIdConnectClientConfig = OpenIdConnectClientConfig {
         clientId = "client-id"
@@ -2365,9 +2364,8 @@ internal class BlockingRefreshOidcClient(
         token: String,
         configure: (HttpRequestBuilder.() -> Unit)?
     ): HttpStatusCode {
-        revokedTokens += token
         revokeFailure?.let { throw it }
-        return HttpStatusCode.OK
+        return unsupported()
     }
 
     override suspend fun exchangeToken(

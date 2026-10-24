@@ -178,7 +178,6 @@ class AuthStorage(
         }
     }
 
-    /** Stores the session's user on its own; token writes store it with [storeTokens] or [storeNewSessionTokens]. */
     suspend fun storeUserInfo(userInfo: UserInfo) {
         settings.putString(KEY_USER_INFO, json.encodeToString(userInfo))
     }

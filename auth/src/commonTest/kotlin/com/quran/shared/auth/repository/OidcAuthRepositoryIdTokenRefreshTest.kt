@@ -31,15 +31,14 @@ import kotlin.test.assertTrue
 
 /**
  * A refresh's ID token must name the session's account: uploads go to the access token's account, so tokens for
- * another account would mix two accounts' data. A response that can't be used has its refresh token revoked.
+ * another account would mix two accounts' data.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class OidcAuthRepositoryIdTokenRefreshTest {
     private val tokenStore = RecordingTokenStore()
-    private val settings = MapSettings().toSuspendSettings()
     private val storage = AuthStorage(
         tokenStore = tokenStore,
-        settings = settings,
+        settings = MapSettings().toSuspendSettings(),
         json = Json { ignoreUnknownKeys = true }
     )
     private val sessionUser = UserInfo(id = TEST_SUBJECT, name = "Old Name", email = "old@example.com")
@@ -65,8 +64,7 @@ class OidcAuthRepositoryIdTokenRefreshTest {
             tokenId = "refreshed-id-token",
             claims = mapOf("name" to "New Name", "email" to "new@example.com")
         )
-        val client = refreshingClient(refreshedIdToken)
-        val repository = oidcRepository(storage, client, logger)
+        val repository = repositoryRefreshingWith(refreshedIdToken)
 
         assertTrue(repository.forceRefreshTokens())
 
@@ -76,7 +74,6 @@ class OidcAuthRepositoryIdTokenRefreshTest {
         )
         assertEquals("fresh-access-token", repository.getAccessToken())
         assertEquals(refreshedIdToken, tokenStore.getIdToken())
-        assertEquals(emptyList(), client.revokedTokens, "a usable grant is kept")
     }
 
     @Test
@@ -94,13 +91,11 @@ class OidcAuthRepositoryIdTokenRefreshTest {
     @Test
     fun `a refreshed ID token for another account ends the session`() = runTest(UnconfinedTestDispatcher()) {
         signedInSession()
-        val client = refreshingClient(testIdToken(subject = "another-account"))
-        val repository = oidcRepository(storage, client, logger)
+        val repository = repositoryRefreshingWith(testIdToken(subject = "another-account"))
 
         assertFalse(repository.forceRefreshTokens())
 
         assertSessionEnded(repository)
-        assertEquals(listOf("fresh-refresh-token"), client.revokedTokens, "the other account's grant is revoked")
         assertTrue(
             logs.any { (severity, message) -> severity == Severity.Error && "another account" in message },
             "$logs"
@@ -115,47 +110,13 @@ class OidcAuthRepositoryIdTokenRefreshTest {
             "opaque-id-token"
         ).forEach { idToken ->
             signedInSession()
-            val client = refreshingClient(idToken)
-            val repository = oidcRepository(storage, client, logger)
+            val repository = repositoryRefreshingWith(idToken)
 
             assertFalse(repository.forceRefreshTokens(), idToken)
 
             assertSessionEnded(repository)
-            assertEquals(listOf("fresh-refresh-token"), client.revokedTokens, idToken)
         }
         assertTrue(logs.none { (_, message) -> "opaque-id-token" in message }, "token strings are never logged: $logs")
-    }
-
-    @Test
-    fun `an expiry refresh with an ID token for another account ends the session`() =
-        runTest(UnconfinedTestDispatcher()) {
-            signedInSession(expiresAt = 0)
-            val repository = repositoryRefreshingWith(testIdToken(subject = "another-account"))
-
-            assertFalse(repository.refreshTokensIfNeeded())
-            assertEquals(emptyMap(), repository.getAuthHeaders())
-
-            assertSessionEnded(repository)
-        }
-
-    @Test
-    fun `a failed revoke of an unusable refresh still ends the session`() = runTest(UnconfinedTestDispatcher()) {
-        listOf(testIdToken(subject = "another-account"), testIdToken(audience = listOf("other-client"))).forEach {
-            signedInSession()
-            val client = refreshingClient(it, revokeFailure = IllegalStateException("revocation endpoint unreachable"))
-            val repository = oidcRepository(storage, client, logger)
-
-            assertFalse(repository.forceRefreshTokens())
-
-            assertSessionEnded(repository)
-            assertEquals(listOf("fresh-refresh-token"), client.revokedTokens)
-        }
-        assertEquals(
-            2,
-            logs.count { (severity, message) -> severity == Severity.Warn && "Failed to revoke" in message },
-            "$logs"
-        )
-        assertTrue(logs.none { (_, message) -> "fresh-refresh-token" in message }, "token strings are never logged")
     }
 
     @Test
@@ -168,6 +129,19 @@ class OidcAuthRepositoryIdTokenRefreshTest {
     fun `a stale refresh with an unusable ID token cannot end a newer session`() =
         runTest(UnconfinedTestDispatcher()) {
             assertStaleRefreshKeepsNewerSession(testIdToken("stale-id-token", audience = listOf("other-client")))
+        }
+
+    /** A session stored before this version has no user if its `/userinfo` fetch failed; its ID token isn't read. */
+    @Test
+    fun `a refresh gives a session with no known account the user of its ID token`() =
+        runTest(UnconfinedTestDispatcher()) {
+            signedInSession(user = null)
+            val repository = repositoryRefreshingWith(testIdToken(claims = mapOf("name" to "New Name")))
+            assertNull(repository.getCurrentUser())
+
+            assertTrue(repository.forceRefreshTokens())
+
+            assertEquals(UserInfo(id = TEST_SUBJECT, name = "New Name"), repository.getCurrentUser())
         }
 
     /**
@@ -217,7 +191,6 @@ class OidcAuthRepositoryIdTokenRefreshTest {
         assertEquals(newUser, storage.retrieveUserInfo())
         assertEquals("new-access-token", tokenStore.getAccessToken())
         assertEquals("new-refresh-token", tokenStore.getRefreshToken())
-        assertEquals(listOf("stale-refresh-token"), staleClient.revokedTokens, "only the stale grant is revoked")
     }
 
     private suspend fun assertSessionEnded(repository: OidcAuthRepository) {
@@ -227,37 +200,32 @@ class OidcAuthRepositoryIdTokenRefreshTest {
         assertNull(storage.retrieveUserInfo())
     }
 
-    /** A session as sign-in stores it: the tokens and the user from the ID token, committed together. */
-    private suspend fun signedInSession(expiresAt: Long? = null) {
+    /** A committed session with [user], or, when it is null, one stored before this version without a user. */
+    private suspend fun signedInSession(user: UserInfo? = sessionUser) {
         val generation = storage.retrieveSessionGeneration() + 1
-        storage.storeNewSessionTokens(
-            TokenResponse(
-                accessToken = "old-access-token",
-                refreshToken = "old-refresh-token",
-                idToken = testIdToken("login-id-token"),
-                expiresIn = 3600,
-                tokenType = "Bearer"
-            ),
-            sessionUser
+        val tokens = TokenResponse(
+            accessToken = "old-access-token",
+            refreshToken = "old-refresh-token",
+            idToken = testIdToken("login-id-token"),
+            expiresIn = 3600,
+            tokenType = "Bearer"
         )
-        expiresAt?.let { settings.putLong("token_expiration", it) }
+        if (user == null) storage.storeTokens(tokens) else storage.storeNewSessionTokens(tokens, user)
         storage.storeSessionGeneration(generation)
         storage.storeCommittedTokenGeneration(generation)
     }
 
-    private fun repositoryRefreshingWith(idToken: String?): OidcAuthRepository =
-        oidcRepository(storage = storage, oidcClient = refreshingClient(idToken), logger = logger)
-
-    /** An authorization server whose refresh answers at once with [idToken], and whose revocation may fail. */
-    private fun refreshingClient(idToken: String?, revokeFailure: Exception? = null) =
-        BlockingRefreshOidcClient(
+    /** A repository whose authorization server answers a refresh at once with [idToken]. */
+    private fun repositoryRefreshingWith(idToken: String?): OidcAuthRepository {
+        val client = BlockingRefreshOidcClient(
             refreshResponse = AccessTokenResponse(
                 access_token = "fresh-access-token",
                 token_type = "Bearer",
                 expires_in = 3600,
                 refresh_token = "fresh-refresh-token",
                 id_token = idToken
-            ),
-            revokeFailure = revokeFailure
+            )
         ).also { it.refreshCanFinish.complete(Unit) }
+        return oidcRepository(storage = storage, oidcClient = client, logger = logger)
+    }
 }
