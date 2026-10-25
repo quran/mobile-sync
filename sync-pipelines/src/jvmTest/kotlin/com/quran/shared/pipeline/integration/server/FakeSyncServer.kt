@@ -217,6 +217,9 @@ class FakeSyncServer : AutoCloseable {
             throw validationError("Invalid resources: ${it.joinToString(", ")}. Valid resources are: ${RESOURCE_SCOPES.keys.joinToString(", ")}")
         }
         runCallbacks(request)
+        if (page > 1 && query["lastMutationAt"]?.toLongOrNull() != account.head) {
+            throw HttpError(409, "OutOfSyncError", "Invalid lastMutationAt, please re-sync your data and try again.")
+        }
         val limit = faults.pageSizeCap?.let { minOf(it, requestedLimit) } ?: requestedLimit
 
         val excluded = RESOURCE_SCOPES.filter { (_, scopes) -> !account.scopes.containsAll(scopes) }.keys

@@ -37,7 +37,7 @@ class SyncHttpException(
     message: String
 ) : Exception("HTTP $status $code: $message")
 
-/** The sync head changed between GET pages (retryable). */
+/** The sync head changed while fetching GET pages (retryable). */
 class HeadChangedException : IllegalStateException("Sync head changed during pagination")
 
 /** `/v1/sync` over Ktor. Network failures surface as the engine's exceptions (IOException on JVM). */
@@ -51,14 +51,15 @@ class SyncApi(
 
     /**
      * Every page since [since]. Pages are offset-based, so they describe one state only if the head stays the same:
-     * when another device writes between pages, the fetch starts over, up to [GET_ATTEMPTS] times.
+     * continuations pin page one's body head. A GET 409 or a changed response head restarts the fetch from
+     * the original watermark, up to [GET_ATTEMPTS] attempts, without returning partial entries.
      */
     suspend fun get(since: Long): RemoteChanges {
         repeat(GET_ATTEMPTS - 1) {
             try {
                 return fetch(since)
             } catch (changed: HeadChangedException) {
-                // Another device wrote between pages: fetch again from the first page.
+                // A page was invalidated: discard this attempt and fetch again from the first page.
             }
         }
         return fetch(since)
@@ -75,8 +76,14 @@ class SyncApi(
                 parameter("mutationsSince", since)
                 parameter("page", page)
                 parameter("limit", pageSize)
+                head?.let { parameter("lastMutationAt", it) }
             }
-            val data = response.successData()
+            val data = try {
+                response.successData()
+            } catch (error: SyncHttpException) {
+                if (error.status == 409) throw HeadChangedException()
+                throw error
+            }
             val pageHead = data.long("lastMutationAt")
             if (head != null && head != pageHead) throw HeadChangedException()
             head = pageHead

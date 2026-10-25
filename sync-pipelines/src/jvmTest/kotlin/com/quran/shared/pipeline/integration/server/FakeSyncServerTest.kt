@@ -140,13 +140,44 @@ class FakeSyncServerTest {
         repeat(5) { server.web(ALICE).addReadingSession(1, it + 1) }
 
         val page1 = get(since = 0, page = 1, limit = 3)
-        val page2 = get(since = 0, page = 2, limit = 3)
+        val page2 = get(since = 0, page = 2, limit = 3, lastMutationAt = server.head(ALICE))
 
         assertEquals("__default__", page1.first().str("resourceId"))
         assertEquals(3, page1.size)
         assertEquals(3, page2.size)
         assertEquals(5, (page1 + page2).count { it.str("resource") == "READING_SESSION" })
         assertFalse((page1 + page2).groupBy { it.str("resourceId") }.any { it.value.size > 1 })
+    }
+
+    @Test
+    fun `continuations require the pinned head but page one ignores a retained stale head`() {
+        repeat(3) { server.web(ALICE).addReadingSession(1, it + 1) }
+        val head = server.head(ALICE)
+
+        val missing = getResponse(0, page = 2, limit = 2)
+        val stale = getResponse(0, page = 2, limit = 2, lastMutationAt = head - 1)
+        val pinned = getResponse(0, page = 2, limit = 2, lastMutationAt = head)
+        val fresh = getResponse(0, page = 1, limit = 2, lastMutationAt = head - 1)
+
+        for (rejected in listOf(missing, stale)) {
+            assertEquals(409, rejected.statusCode())
+            assertEquals("OutOfSyncError", errorOf(rejected).str("code"))
+        }
+        assertEquals(200, pinned.statusCode())
+        assertEquals(200, fresh.statusCode())
+        assertEquals(head, Json.parseToJsonElement(fresh.body()).jsonObject["data"]!!.jsonObject["lastMutationAt"]!!.jsonPrimitive.long)
+    }
+
+    @Test
+    fun `a write between pages invalidates a formerly correct continuation head`() {
+        repeat(3) { server.web(ALICE).addReadingSession(1, it + 1) }
+        val head = server.head(ALICE)
+        server.faults.betweenPages { server.web(ALICE).addReadingSession(18, 1) }
+
+        val response = getResponse(0, page = 2, limit = 2, lastMutationAt = head)
+
+        assertEquals(409, response.statusCode())
+        assertEquals("OutOfSyncError", errorOf(response).str("code"))
     }
 
     @Test
@@ -191,16 +222,19 @@ class FakeSyncServerTest {
         HttpResponse.BodyHandlers.ofString()
     )
 
-    private fun get(since: Long, page: Int = 1, limit: Int = 1000): List<JsonObject> {
-        val response = http.send(
-            HttpRequest.newBuilder(URI("${server.url}/v1/sync?mutationsSince=$since&page=$page&limit=$limit"))
-                .header("x-auth-token", token).GET().build(),
-            HttpResponse.BodyHandlers.ofString()
-        )
+    private fun get(since: Long, page: Int = 1, limit: Int = 1000, lastMutationAt: Long? = null): List<JsonObject> {
+        val response = getResponse(since, page, limit, lastMutationAt)
         assertEquals(200, response.statusCode(), response.body())
         val data = Json.parseToJsonElement(response.body()).jsonObject["data"]!!.jsonObject
         return (data["mutations"] as JsonArray).map { it.jsonObject }
     }
+
+    private fun getResponse(since: Long, page: Int, limit: Int, lastMutationAt: Long? = null): HttpResponse<String> = http.send(
+        HttpRequest.newBuilder(URI("${server.url}/v1/sync?mutationsSince=$since&page=$page&limit=$limit" +
+            (lastMutationAt?.let { "&lastMutationAt=$it" } ?: "")))
+            .header("x-auth-token", token).GET().build(),
+        HttpResponse.BodyHandlers.ofString()
+    )
 
     /** The backend's `error` inside the gateway envelope. */
     private fun errorOf(response: HttpResponse<String>): JsonObject =

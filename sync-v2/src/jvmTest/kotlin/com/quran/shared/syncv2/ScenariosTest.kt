@@ -91,6 +91,9 @@ class ScenariosTest {
     fun `a head that keeps changing during pagination fails the run without merging`() = FakeSyncServer().use { server ->
         Device(server, pageSize = 2).use { device ->
             val remote = Remote(server)
+            remote.createSession(18, 1, t(0))
+            device.syncOk()
+            val previousToken = device.engine.store.token
             repeat(4) { remote.createSession(1, it + 1, t(it)) }
             var writes = 0
             fun writeBetweenPages() {
@@ -104,10 +107,11 @@ class ScenariosTest {
             val failed = assertIs<SyncResult.Failed>(device.sync())
 
             assertTrue(failed.retryable, failed.reason)
-            assertEquals(emptyList(), device.sessionVerses(), "no page was merged")
-            assertEquals(0L, device.engine.store.token)
+            assertEquals(listOf("18:1"), device.sessionVerses(), "no partial page was merged")
+            assertEquals(previousToken, device.engine.store.token)
+            assertEquals(1 + 3 * 2, server.getCount, "three failed pulls after the successful baseline")
             device.settle()
-            assertEquals(7, device.sessionVerses().size)
+            assertEquals(8, device.sessionVerses().size)
         }
     }
 

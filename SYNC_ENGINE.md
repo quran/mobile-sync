@@ -19,8 +19,12 @@ A run compares three states of each item, all in the same canonical shape (`Stat
 
 `SyncEngineV2.sync` (one at a time):
 
-1. **Fetch:** `SyncApi` reads every page of `GET /v1/sync` since the token. A POST whose response was lost is
-   resolved from the outbox (`OutboxResolver`).
+1. **Fetch:** `SyncApi` reads every page of `GET /v1/sync` since the token. Page one establishes the body's
+   `lastMutationAt`; every continuation sends that head while retaining the original `mutationsSince` and limit.
+   A GET 409 (including page one) or a changed response head discards the incomplete attempt and restarts from
+   page one, up to three attempts. Exhaustion fails the run as retryable without merging pages or advancing the
+   saved token. Other HTTP errors and cancellation propagate without this restart. Once the complete pull arrives,
+   a POST whose response was lost is resolved from the outbox (`OutboxResolver`).
 2. **Merge:** per type, in dependency order (`syncTypes`), `Reconciler` runs natural-key revival, the three-way merge
    (`Merger`: an edit beats a delete, both ways), the linking of equal new items (`SyncType.linkKey`; notes by
    `noteIdentity`, as the legacy importer matches), and `UniquenessRepair`, then writes back in one transaction with

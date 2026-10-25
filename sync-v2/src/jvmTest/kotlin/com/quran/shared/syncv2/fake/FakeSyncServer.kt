@@ -15,7 +15,7 @@ import java.net.InetSocketAddress
 /**
  * An in-process stand-in for quran.com `/v1/sync`, at the network boundary only. Per account (the bearer token):
  * - GET returns one collapsed entry per changed resource with its current data, ordered by lastChangeAt, and the
- *   virtual Favorites collection on page 1; `lastMutationAt` is the account head.
+ *   virtual Favorites collection on page 1; `lastMutationAt` is the account head. Continuations must pin that head.
  * - POST requires `lastMutationAt == head` (409 OutOfSyncError), applies the batch atomically, and echoes the request
  *   data. Errors are the backend's `{success:false, error:{code, message, details}}` wrapped in the API gateway's
  *   `{message, type, success, requestId, details}`, with `error.details.mutationIndex` when enabled.
@@ -117,6 +117,10 @@ class FakeSyncServer : AutoCloseable {
         val since = query.getValue("mutationsSince").toLong()
         val page = query["page"]?.toInt() ?: 1
         beforeGetPage?.takeIf { it.first == page }?.let { beforeGetPage = null; it.second() }
+        if (page > 1 && query["lastMutationAt"]?.toLongOrNull() != account.head) {
+            respond(exchange, 409, errorBody(HttpError(409, "OutOfSyncError", "Invalid lastMutationAt, please re-sync your data and try again."), null))
+            return
+        }
         val limit = query["limit"]?.toInt() ?: 100
         val includeDefault = account.defaultCollectionAt > since && !omitDefaultCollection
         val rows = account.logs.values.filter { it.lastChangeAt > since }.sortedBy { it.lastChangeAt }

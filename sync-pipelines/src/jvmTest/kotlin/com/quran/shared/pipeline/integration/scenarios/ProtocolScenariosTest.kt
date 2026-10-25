@@ -95,6 +95,10 @@ class ProtocolScenariosTest {
         val pages = run.requests.filter { it.method == "GET" }
         assertTrue(pages.size >= 2, "GET pages: ${pages.size}")
         assertEquals((1..pages.size).map { it.toString() }, pages.map { it.query["page"] })
+        assertEquals(null, pages.first().query["lastMutationAt"])
+        assertTrue(pages.drop(1).all { it.query["lastMutationAt"] == pages.first().responseHead().toString() })
+        assertEquals(setOf("0"), pages.map { it.query["mutationsSince"] }.toSet())
+        assertEquals(setOf("1000"), pages.map { it.query["limit"] }.toSet())
         val total = Json.parseToJsonElement(pages.first().response!!).jsonObject["data"]!!.jsonObject["total"]!!.jsonPrimitive.int
         assertEquals(server.state(ALICE).log.size + 1, total, "total counts Favorites")
         assertEquals(995, phone.data.notes.first().size)
@@ -115,9 +119,44 @@ class ProtocolScenariosTest {
         val run = phone.syncNow()
 
         assertSucceeded(run)
-        assertTrue(run.gets > 2, "the paging was retried: ${run.gets} GETs")
+        val pages = run.requests.filter { it.method == "GET" }
+        assertEquals(listOf(200, 409, 200, 200), pages.map { it.status })
+        assertEquals(listOf("1", "2", "1", "2"), pages.map { it.query["page"] })
+        assertEquals(1, pages.map { it.query["mutationsSince"] }.distinct().size)
+        assertEquals(null, pages[2].query["lastMutationAt"], "the restarted page one has no stale head")
         assertEquals(1_051, phone.data.notes.first().size)
         assertTrue("Written between pages" in phone.noteBodies())
+        assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `ERR-21 exhausted pinned pulls preserve data and the original watermark for recovery`() = syncScenario {
+        val web = web(ALICE)
+        web.createNote("Already synced", "1:1-1:1")
+        val phone = device("phone", DeviceTimings(maximumRetries = 0))
+        val baseline = phone.login(ALICE)
+        assertSucceeded(baseline)
+        val previousHead = baseline.requests.last { it.method == "GET" }.responseHead().toString()
+        repeat(3) { web.createNote("Waiting note $it", "2:1-2:1", times = ClientTimes(createdAt = T0 + it)) }
+        server.faults.pageSizeCap = 2
+        var writes = 0
+        server.faults.betweenPages(times = 3) {
+            web.createNote("Concurrent note ${++writes}", "3:18-3:18", times = ClientTimes(createdAt = T0 + 100 + writes))
+        }
+
+        val failed = phone.syncNow()
+
+        assertIs<SyncStatus.Failed>(failed.status)
+        assertEquals(listOf(200, 409, 200, 409, 200, 409), failed.requests.map { it.status })
+        assertEquals(setOf(previousHead), failed.requests.map { it.query["mutationsSince"] }.toSet())
+        assertEquals(0, failed.posts)
+        assertEquals(listOf("Already synced"), phone.noteBodies(), "no partial page was applied")
+
+        val recovered = phone.syncNow()
+
+        assertSucceeded(recovered)
+        assertEquals(setOf(previousHead), recovered.requests.filter { it.method == "GET" }.map { it.query["mutationsSince"] }.toSet())
+        assertEquals(7, phone.noteBodies().size)
         assertConverged(ALICE, phone)
     }
 
