@@ -79,6 +79,11 @@ class AuthService private constructor(
     private val sessionPublicationMutex = Mutex()
     private var lifecycle: AuthPublicationLifecycle = AuthPublicationLifecycle.Idle(generation = 0)
 
+    /**
+     * The session's state. A token refresh can change the stored user (its ID token's profile claims replace the
+     * stored ones), so [AuthState.Success] is republished with the new user after a refresh, whether it ran through
+     * [refreshAccessTokenIfNeeded], [forceRefreshAccessToken] or [getAuthHeaders].
+     */
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
     init {
@@ -474,6 +479,14 @@ class AuthService private constructor(
 
     fun getAccessToken(): String? = cachedAccessToken
 
+    /**
+     * The headers for an authorized request, refreshing the token first when it is near expiry. When the token was
+     * refreshed, the session is republished so [authState] carries the refreshed user.
+     *
+     * @return an empty map when there is no session or it ended, while a login or logout is in progress, or when the
+     * session publication guard blocks the stored session.
+     * @throws Exception when a refresh failed for a transient reason (network, server error); the session is kept.
+     */
     suspend fun getAuthHeaders(): Map<String, String> {
         return when (val current = lifecycleSnapshot()) {
             is AuthPublicationLifecycle.Authenticated -> getAuthHeadersForAuthenticated(current.generation)
@@ -515,9 +528,15 @@ class AuthService private constructor(
             clearAuthenticatedIfGenerationCurrent(generation)
             return emptyMap()
         }
-        if (!cacheAccessTokenIfAuthenticated(generation)) {
-            clearAuthenticatedIfGenerationCurrent(generation)
-            return emptyMap()
+        when (cacheAccessTokenIfAuthenticated(generation)) {
+            CachedAccessToken.Unchanged -> Unit
+            CachedAccessToken.Rotated -> if (!republishRefreshedSession(generation)) {
+                return emptyMap()
+            }
+            CachedAccessToken.NotCurrent -> {
+                clearAuthenticatedIfGenerationCurrent(generation)
+                return emptyMap()
+            }
         }
         return if (isAuthenticatedGenerationCurrent(generation)) {
             headers
@@ -763,17 +782,49 @@ class AuthService private constructor(
             lifecycle.matchesPublishSource(expectedGeneration, source)
         }
 
-    private suspend fun cacheAccessTokenIfAuthenticated(expectedGeneration: Long): Boolean {
+    /**
+     * Caches the repository's access token for the authenticated [expectedGeneration]. A token other than the cached
+     * one means it was refreshed since the session was last published; it is then left for [republishRefreshedSession]
+     * to cache with the user, so a republish that fails or is cancelled is retried on the next call.
+     */
+    private suspend fun cacheAccessTokenIfAuthenticated(expectedGeneration: Long): CachedAccessToken {
         val accessToken = authRepository.getAccessToken()
         return sessionPublicationMutex.withLock {
             val current = lifecycle
             if (current is AuthPublicationLifecycle.Authenticated && current.generation == expectedGeneration) {
-                if (accessToken == null) {
-                    return@withLock false
+                when (accessToken) {
+                    null -> CachedAccessToken.NotCurrent
+                    cachedAccessToken -> CachedAccessToken.Unchanged
+                    else -> CachedAccessToken.Rotated
                 }
-                cachedAccessToken = accessToken
-                true
             } else {
+                CachedAccessToken.NotCurrent
+            }
+        }
+    }
+
+    /**
+     * Republishes the authenticated [generation] after [getAuthHeaders] found its token refreshed: a refresh's ID token
+     * replaces the stored user, so the published one may be out of date. [publishCurrentSession]'s guards keep it out
+     * of a session that logout or login has moved on. Publishing also caches the new token. A failure to read the
+     * session keeps the published user and the old cached token, since the headers are still valid; the next
+     * [getAuthHeaders] call then sees the token as refreshed again and retries.
+     *
+     * @return false when the repository no longer has a session, which is then cleared.
+     */
+    private suspend fun republishRefreshedSession(generation: Long): Boolean {
+        val result = try {
+            publishCurrentSession(generation, PublishSource.Authenticated)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return true
+        }
+        return when (result) {
+            // A stale generation is caught by the caller's final generation check.
+            PublishSessionResult.Published, PublishSessionResult.Stale -> true
+            PublishSessionResult.NoSession -> {
+                clearAuthenticatedIfGenerationCurrent(generation)
                 false
             }
         }
@@ -787,6 +838,16 @@ private enum class PublishSessionResult {
     Published,
     NoSession,
     Stale
+}
+
+private enum class CachedAccessToken {
+    Unchanged,
+
+    /** The token was refreshed since the session was last published. */
+    Rotated,
+
+    /** The repository has no access token, or the session moved on from the expected generation. */
+    NotCurrent
 }
 
 private enum class LoginIntent {
