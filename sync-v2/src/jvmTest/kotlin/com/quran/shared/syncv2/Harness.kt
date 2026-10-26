@@ -2,6 +2,7 @@ package com.quran.shared.syncv2
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.quran.shared.syncv2.db.SyncV2Database
+import com.quran.shared.syncv2.fake.FReadingBookmark
 import com.quran.shared.syncv2.fake.FakeSyncServer
 import com.quran.shared.syncv2.fake.int
 import com.quran.shared.syncv2.fake.str
@@ -237,6 +238,13 @@ class Remote(private val server: FakeSyncServer, private val account: String = D
     fun readingBookmarkName(slot: Int): String? = data.readingBookmarks.values.single { it.slot == slot }.name
     /** The verse of the bookmark carrying `isReading` (slot 1's location), if any. */
     fun readingVerse(): String? = data.bookmarks.values.singleOrNull { it.isReading }?.let { "${it.key}:${it.verse}" }
+
+    /** A page filed under [group] directly, as the backend would hold one of a layout this library doesn't know. */
+    fun fileReadingPage(slot: Int, page: Int, group: String) {
+        val id = data.newId("rb")
+        data.readingBookmarks[id] = FReadingBookmark(slot, null, "page", page, null, group, null, data.now(), data.now())
+        data.log("READING_BOOKMARK", id, "CREATE")
+    }
 
     /** The row is gone, but its log stays: GET sends it as `{}` (a resource that vanished between queries). */
     fun vanish(resource: String, id: String) {

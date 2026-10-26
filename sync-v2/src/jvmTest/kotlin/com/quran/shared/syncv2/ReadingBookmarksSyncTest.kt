@@ -4,6 +4,7 @@ import com.quran.shared.syncv2.Device.Companion.FAVORITES
 import com.quran.shared.syncv2.fake.FakeSyncServer
 import com.quran.shared.syncv2.fake.int
 import com.quran.shared.syncv2.fake.str
+import com.quran.shared.syncv2.types.PageGroup
 import com.quran.shared.syncv2.types.ReadingLocation
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -107,6 +108,35 @@ class ReadingBookmarksSyncTest {
 
             assertEquals(listOf("INVALID_VERSE"), device.settle().held.map { it.reason })
             assertEquals(mapOf(2 to "1:7"), Remote(server).readingSlots())
+        }
+    }
+
+    /** The upcoming backend renders `pages_604` with stand-in 1; the group decides, so the echo is still a no-op. */
+    @Test
+    fun `a pages_604 echo with mushaf 1 pushes nothing`() = FakeSyncServer().use { server ->
+        Device(server).use { device ->
+            server.account(Device.ACCOUNT).pages604StandIn = 1
+            device.readingBookmarks.set(1, ReadingLocation.page(300, PageGroup.PAGES_604), t(0))
+
+            device.settle()
+            device.settle()
+
+            assertEquals(1, server.postBodies.size, "only the set; its echo pushed nothing")
+            assertEquals(ReadingLocation.page(300, PageGroup.PAGES_604), device.readingBookmarks.readingBookmarks().single().location)
+        }
+    }
+
+    @Test
+    fun `a rename of a page in an unknown group is held`() = FakeSyncServer().use { server ->
+        Device(server).use { device ->
+            Remote(server).fileReadingPage(1, 700, "pages_720")
+            device.settle()
+
+            device.readingBookmarks.rename(1, "Khatm", t(1))
+
+            assertEquals(listOf("UNKNOWN_PAGE_GROUP"), device.settle().held.map { it.reason })
+            assertEquals(0, server.postBodies.size, "nothing pushed")
+            assertEquals("pages_720", device.readingBookmarks.readingBookmarks().single().location!!.group)
         }
     }
 

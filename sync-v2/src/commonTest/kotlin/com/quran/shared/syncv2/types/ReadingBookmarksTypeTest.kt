@@ -74,22 +74,24 @@ class ReadingBookmarksTypeTest {
         )
     }
 
-    /** A group this library doesn't know is never read as 604 pages: it's kept, and written back with its mushaf. */
     @Test
-    fun an_unknown_page_group_is_kept_as_the_server_sent_it() {
-        val item = assertIs<RemoteItem.Upsert>(type.fromRemote(listOf(page("rb1", key = 700, mushafId = 9, group = "pages_720")), refs).single())
+    fun an_unknown_page_group_is_kept_and_never_written_back() {
+        val item = assertIs<RemoteItem.Upsert>(type.fromRemote(listOf(page("rb1", key = 700, mushafId = 5, group = "pages_720")), refs).single())
         val local = type.insert(item.state)
 
         val location = ReadingBookmarksType.toBookmark(local, type.readAll().getValue(local)).location!!
-        repository.rename(1, "Khatm", 2)
-        val renamed = repository.readingBookmarks().single()
-        val sent = type.mutation(Change.Update("rb1", item.state, type.readAll().getValue(local)), refs).data!!
 
-        assertEquals(Triple("pages_720", 9, null), Triple(location.group, location.mushafId, location.pageGroup))
-        assertEquals(location, renamed.location)
-        assertEquals(JsonPrimitive(9), sent["mushafId"])
-        assertEquals(JsonPrimitive(700), sent["key"])
-        assertNull(type.validate(Change.Create(item.state)), "an unknown group's page count is unknown")
+        assertEquals(Triple("pages_720", 5, null), Triple(location.group, location.mushafId, location.pageGroup))
+        assertEquals("UNKNOWN_PAGE_GROUP", type.validate(Change.Create(item.state)))
+    }
+
+    @Test
+    fun a_group_with_a_colon_survives_the_location_value() {
+        val location = ReadingLocation.fromServer("page", 3, null, 5, "pages:v2:720")
+
+        val state = ReadingBookmarksType.bookmarkState(1, null, location, null, 1, 1)
+
+        assertEquals(location, ReadingBookmarksType.toBookmark(0, state).location)
     }
 
     @Test

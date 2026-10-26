@@ -29,10 +29,9 @@ import kotlinx.serialization.json.put
  * Where a slot points: `ayah` (key = sura, verse = ayah), or `page`, `surah` or `juz` (key only). The server keeps
  * only the bookmark group, which the mushaf picks, and answers with the group and a stand-in mushaf for it.
  *
- * A page carries its server [group] and that group's stand-in mushaf ([PageGroup.standInMushafId]), which picks the
- * same group again when written, so a location round-trips unchanged. A group this library doesn't know is kept as the
- * server named it, with the mushaf the server sent, and written back with that mushaf. Every other type uses
- * [STANDARD] and has no group.
+ * A page carries its server [group] and that group's stand-in mushaf ([PageGroup.standInMushafId]). A group this
+ * library doesn't know is kept as the server named it, with the mushaf the server sent; [ReadingBookmarksType.validate]
+ * holds any write of it. Every other type uses [STANDARD] and has no group.
  */
 data class ReadingLocation private constructor(
     val type: String,
@@ -109,7 +108,9 @@ class ReadingBookmarksRepository(private val database: SyncV2Database) {
  * survives a location change on another. A clear is an UPDATE with every location field null, as the backend
  * expects (its DELETE would also reset the slot's client timestamps). Entries without a slot (`{}`, a vanished row)
  * are skipped, never read as a clear. The mushaf key is `mushafId`, the only one this resource accepts; a page is read
- * by its `group` ([ReadingLocation.fromServer]) and must fit in it ([PageGroup.pageCount]), as the server checks.
+ * by its `group` ([ReadingLocation.fromServer]) and must fit in it ([PageGroup.pageCount]), as the server checks. A
+ * page of a group this library doesn't know is held (`UNKNOWN_PAGE_GROUP`) on any create or update: the server picks
+ * the group from `mushafId` alone and would file it under `pages_604`, so a rename must not resend it.
  * `metadata` round-trips (the server replaces it on every write), except `source`, which the server keeps.
  */
 class ReadingBookmarksType(private val database: SyncV2Database) : SyncType {
@@ -201,7 +202,10 @@ class ReadingBookmarksType(private val database: SyncV2Database) : SyncType {
             location == null -> null
             location.type !in TYPES -> "INVALID_LOCATION"
             location.type == AYAH -> if (Verses.exists(location.key, location.verse ?: 0)) null else "INVALID_VERSE"
-            location.type == PAGE -> if (location.key in 1..(location.pageGroup?.pageCount ?: Int.MAX_VALUE)) null else "INVALID_PAGE"
+            location.type == PAGE -> when (val group = location.pageGroup) {
+                null -> "UNKNOWN_PAGE_GROUP"
+                else -> if (location.key in 1..group.pageCount) null else "INVALID_PAGE"
+            }
             location.key < 1 -> "INVALID_LOCATION"
             else -> null
         }
@@ -263,7 +267,7 @@ class ReadingBookmarksType(private val database: SyncV2Database) : SyncType {
             )
         }
 
-        private fun location(state: State): ReadingLocation? = state.getOrNull(LOCATION)?.split(":")?.let { parts ->
+        private fun location(state: State): ReadingLocation? = state.getOrNull(LOCATION)?.split(":", limit = 5)?.let { parts ->
             val (type, key, verse, mushaf) = parts
             ReadingLocation.fromServer(type, key.toInt(), verse.toIntOrNull(), mushaf.toInt(), parts.getOrNull(4)?.ifEmpty { null })
         }

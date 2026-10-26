@@ -177,10 +177,14 @@ class FakeAccount(
         else -> null
     } ?: JsonObject(emptyMap())
 
+    /** The stand-in GET renders for `pages_604`: 5 today, 1 on the upcoming backend. */
+    @Volatile var pages604StandIn = 5
+
     /** `getRepresentativeMushafIdForGroup`: 7 and 6 for the IndoPak page groups, 5 (KFGQPC Hafs) for every other. */
     private fun representativeMushaf(group: String) = when (group) {
         "pages_548" -> 7
         "pages_610" -> 6
+        "pages_604" -> pages604StandIn
         else -> 5
     }
 
