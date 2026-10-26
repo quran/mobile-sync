@@ -1,6 +1,7 @@
 package com.quran.shared.pipeline.integration.scenarios
 
 import com.quran.shared.pipeline.integration.assertSucceeded
+import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.flow.first
 import kotlin.test.Test
@@ -276,5 +277,64 @@ class ReadingSessionScenariosTest {
             assertEquals("2:255" to at(2_000), "${session.sura}:${session.ayah}" to session.lastUpdated, device.name)
         }
         assertEquals(listOf("2:255"), server.state(ALICE).sessionVerses)
+    }
+
+    @Test
+    fun `RS-15 a remote move onto a verse with a pending local create`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.data.addReadingSession(2, 255, at(1_000))
+        syncUntilQuiescent(phone)
+        val web = web(ALICE)
+
+        web.moveReadingSession(web.sessionId(2, 255)!!, 3, 7, ClientTimes(updatedAt = T0 + 2_000))
+        phone.data.addReadingSession(3, 7, at(3_000))
+
+        // The phone's unsent 3:7 and the moved session meet on one verse: they are one session, and
+        // the newer visit's time wins.
+        assertSucceeded(phone.syncNow())
+        syncUntilQuiescent(phone)
+        assertEquals(listOf("3:7"), phone.sessionVerses())
+        assertEquals("3:7" to T0 + 3_000, server.state(ALICE).sessions.single().let { it.verseKey to it.clientUpdatedAt })
+        assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `RS-16 a remote move onto a verse the device deleted locally`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.data.addReadingSession(3, 7, at(0))
+        phone.data.addReadingSession(2, 255, at(1_000))
+        syncUntilQuiescent(phone)
+        val web = web(ALICE)
+
+        phone.data.deleteReadingSession(3, 7)
+        web.moveReadingSession(web.sessionId(2, 255)!!, 3, 7)
+
+        // The server already deleted the phone's 3:7 for the move, so the local delete has nothing
+        // left to push, and the moved session lands on 3:7.
+        assertSucceeded(phone.syncNow())
+        syncUntilQuiescent(phone)
+        assertEquals(listOf("3:7"), phone.sessionVerses())
+        assertEquals(listOf("3:7"), server.state(ALICE).sessionVerses)
+        assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `RS-17 a remote move and a local move onto the same verse`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.data.addReadingSession(2, 255, at(0))
+        val local = phone.data.addReadingSession(18, 1, at(1_000))
+        syncUntilQuiescent(phone)
+        val web = web(ALICE)
+
+        web.moveReadingSession(web.sessionId(2, 255)!!, 3, 7, ClientTimes(updatedAt = T0 + 2_000))
+        phone.data.updateReadingSession(local.id, 3, 7, at(3_000))
+
+        // Both sessions move onto 3:7: the newer move keeps the verse and the other session goes,
+        // as the server's move replaces the session at its target.
+        assertSucceeded(phone.syncNow())
+        syncUntilQuiescent(phone)
+        assertEquals(listOf("3:7"), phone.sessionVerses())
+        assertEquals("3:7" to T0 + 3_000, server.state(ALICE).sessions.single().let { it.verseKey to it.clientUpdatedAt })
+        assertConverged(ALICE, phone)
     }
 }
