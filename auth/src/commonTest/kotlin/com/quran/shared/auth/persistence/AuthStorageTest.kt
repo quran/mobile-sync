@@ -69,7 +69,7 @@ class AuthStorageTest {
     }
 
     @Test
-    fun `storeNewSessionTokens clears stale identity metadata and does not preserve old tokens`() = runTest {
+    fun `storeNewSessionTokens replaces the stored user and does not preserve old tokens`() = runTest {
         val tokenStore = RecordingTokenStore(
             accessToken = "old-access-token",
             refreshToken = "old-refresh-token",
@@ -85,13 +85,14 @@ class AuthStorageTest {
                 idToken = null,
                 expiresIn = 3600,
                 tokenType = "Bearer"
-            )
+            ),
+            UserInfo(id = "new-user", name = "New User")
         )
 
         assertEquals("new-access-token", tokenStore.accessToken)
         assertNull(tokenStore.refreshToken)
         assertNull(tokenStore.idToken)
-        assertNull(storage.retrieveUserInfo())
+        assertEquals(UserInfo(id = "new-user", name = "New User"), storage.retrieveUserInfo())
     }
 
     @Test
@@ -368,7 +369,8 @@ class AuthStorageTest {
                     expiresIn = 7200,
                     tokenType = "Bearer",
                     scope = "new-scope"
-                )
+                ),
+                UserInfo(id = "new-user", name = "New User")
             )
         }
 

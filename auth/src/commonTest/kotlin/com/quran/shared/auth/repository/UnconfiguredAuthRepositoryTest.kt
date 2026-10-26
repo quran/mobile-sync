@@ -3,6 +3,7 @@ package com.quran.shared.auth.repository
 import com.quran.shared.auth.di.AuthModule
 import com.quran.shared.auth.model.AuthRuntimeConfig
 import com.quran.shared.auth.model.TokenResponse
+import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.auth.persistence.AuthStorage
 import com.russhwolf.settings.MapSettings
 import com.russhwolf.settings.coroutines.toSuspendSettings
@@ -73,7 +74,8 @@ class UnconfiguredAuthRepositoryTest {
                 expiresIn = 3600,
                 tokenType = "Bearer",
                 scope = "openid"
-            )
+            ),
+            UserInfo(id = "user-id")
         )
 
         UnconfiguredAuthRepository(storage).clearLocalSession()
@@ -82,6 +84,7 @@ class UnconfiguredAuthRepositoryTest {
         assertNull(tokenStore.refreshToken)
         assertNull(tokenStore.idToken)
         assertNull(storage.retrieveStoredScope())
+        assertNull(storage.retrieveUserInfo())
         assertNull(storage.retrieveCommittedTokenGeneration())
     }
 
@@ -97,7 +100,8 @@ class UnconfiguredAuthRepositoryTest {
                 expiresIn = 3600,
                 tokenType = "Bearer",
                 scope = "openid"
-            )
+            ),
+            UserInfo(id = "user-id")
         )
 
         assertFalse(UnconfiguredAuthRepository(storage).refreshTokensIfNeeded())

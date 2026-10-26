@@ -25,7 +25,6 @@ graph TD
     end
 
     subgraph "Data Layer (Shared)"
-        NDS[AuthNetworkDataSource]
         Storage[AuthStorage]
     end
 
@@ -40,11 +39,11 @@ graph TD
     AVM --> Service
     IVM --> Service
     Service --> Repo
-    Repo --> NDS
     Repo --> Storage
     Storage --> TokenStore
     Storage --> DataStore
     Repo --> OIDC
+    OIDC --> Ktor
     IVM -.-> NC
 ```
 
@@ -60,6 +59,23 @@ The central hub for authentication logic and state.
 ### 3. **Repository Layer (`OidcAuthRepository`)**
 Coordinates token lifecycles and automated refreshes. OAuth token material is persisted through the
 OIDC `TokenStore`; non-token session metadata is stored in the app-provided DataStore settings.
+
+The signed-in user comes from the ID token the token endpoint returns; there is no `/userinfo` call.
+Its `sub` is the account id that sync uses, and its `name`, `first_name`/`given_name`,
+`last_name`/`family_name`, `email` and `picture` claims fill in `UserInfo`. The repository checks
+that `iss` is the environment's base URL and that `aud` contains the client id; the signature is not
+checked, as OIDC Core §3.1.3.7 allows for a token received from the token endpoint over TLS. The user
+is stored with the tokens in one write.
+
+- Sign-in fails with `AuthenticationFailedException` when the response has no ID token or the
+  token fails those checks, and no session is stored.
+- A refresh that returns an ID token updates the stored profile. If that token is invalid or names
+  another account, the session ends, because uploads would go to the access token's account while
+  local data belongs to the stored one. A refresh without an ID token keeps the stored user. A
+  session stored before this version without a user takes the refreshed ID token's user.
+
+The auth HTTP client, used for the token exchange, refresh and revocation, times out after 15
+seconds to connect and 30 seconds per request or socket read.
 
 ---
 

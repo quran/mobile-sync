@@ -6,19 +6,13 @@ import com.quran.shared.auth.model.AuthConfig
 import com.quran.shared.auth.model.TokenResponse
 import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.auth.persistence.AuthStorage
+import com.quran.shared.auth.testIdToken
 import com.russhwolf.settings.MapSettings
 import com.russhwolf.settings.coroutines.SuspendSettings
 import com.russhwolf.settings.coroutines.toSuspendSettings
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.mock.MockEngine
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.HttpRequestBuilder
-import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.URLBuilder
-import io.ktor.http.headersOf
-import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -58,7 +52,7 @@ class OidcAuthRepositoryTest {
         val tokenStore = RecordingTokenStore(
             accessToken = "old-access-token",
             refreshToken = "refresh-token",
-            idToken = "old-id-token"
+            idToken = testIdToken("old-id-token")
         )
         val storage = AuthStorage(
             tokenStore = tokenStore,
@@ -73,27 +67,13 @@ class OidcAuthRepositoryTest {
                 token_type = "Bearer",
                 expires_in = 3600,
                 refresh_token = "new-refresh-token",
-                id_token = "new-id-token"
+                id_token = testIdToken("new-id-token")
             )
         )
         val repository = OidcAuthRepository(
             authConfig = AuthConfig(clientId = "client-id"),
             authStorage = storage,
-            oidcClient = oidcClient,
-            networkDataSource = AuthNetworkDataSource(
-                authConfig = AuthConfig(clientId = "client-id"),
-                httpClient = HttpClient(MockEngine) {
-                    engine {
-                        addHandler {
-                            respond(
-                                content = "{}",
-                                status = HttpStatusCode.OK,
-                                headers = headersOf("Content-Type", ContentType.Application.Json.toString())
-                            )
-                        }
-                    }
-                }
-            )
+            oidcClient = oidcClient
         )
 
         val refresh = async(start = CoroutineStart.UNDISPATCHED) {
@@ -119,7 +99,7 @@ class OidcAuthRepositoryTest {
             val tokenStore = RecordingTokenStore(
                 accessToken = "old-access-token",
                 refreshToken = "old-refresh-token",
-                idToken = "old-id-token",
+                idToken = testIdToken("old-id-token"),
                 failRemoveTokens = true
             )
             val storage = AuthStorage(
@@ -159,7 +139,7 @@ class OidcAuthRepositoryTest {
                     token_type = "Bearer",
                     expires_in = 3600,
                     refresh_token = "fresh-refresh-token",
-                    id_token = "fresh-id-token"
+                    id_token = testIdToken("fresh-id-token")
                 )
             )
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
@@ -169,7 +149,7 @@ class OidcAuthRepositoryTest {
 
             assertEquals("fresh-access-token", restartedRepository.getAccessToken())
             assertEquals("fresh-refresh-token", tokenStore.getRefreshToken())
-            assertEquals("fresh-id-token", tokenStore.getIdToken())
+            assertEquals(testIdToken("fresh-id-token"), tokenStore.getIdToken())
         }
 
     @Test
@@ -179,7 +159,7 @@ class OidcAuthRepositoryTest {
             val tokenStore = RecordingTokenStore(
                 accessToken = "old-access-token",
                 refreshToken = "old-refresh-token",
-                idToken = "old-id-token",
+                idToken = testIdToken("old-id-token"),
                 failRemoveTokens = true
             )
             val storage = AuthStorage(
@@ -232,7 +212,7 @@ class OidcAuthRepositoryTest {
                     token_type = "Bearer",
                     expires_in = 3600,
                     refresh_token = "fresh-refresh-token",
-                    id_token = "fresh-id-token"
+                    id_token = testIdToken("fresh-id-token")
                 )
             )
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(successfulAuthFlow))
@@ -242,7 +222,7 @@ class OidcAuthRepositoryTest {
 
             assertEquals("fresh-access-token", restartedRepository.getAccessToken())
             assertEquals("fresh-refresh-token", tokenStore.getRefreshToken())
-            assertEquals("fresh-id-token", tokenStore.getIdToken())
+            assertEquals(testIdToken("fresh-id-token"), tokenStore.getIdToken())
         }
 
     @Test
@@ -251,7 +231,7 @@ class OidcAuthRepositoryTest {
             val tokenStore = RecordingTokenStore(
                 accessToken = "old-access-token",
                 refreshToken = "refresh-token",
-                idToken = "old-id-token"
+                idToken = testIdToken("old-id-token")
             )
             val storage = AuthStorage(
                 tokenStore = tokenStore,
@@ -271,7 +251,7 @@ class OidcAuthRepositoryTest {
                     token_type = "Bearer",
                     expires_in = 3600,
                     refresh_token = "fresh-refresh-token",
-                    id_token = "fresh-id-token"
+                    id_token = testIdToken("fresh-id-token")
                 )
             )
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
@@ -286,21 +266,7 @@ class OidcAuthRepositoryTest {
             val repository = OidcAuthRepository(
                 authConfig = AuthConfig(clientId = "client-id"),
                 authStorage = storage,
-                oidcClient = oidcClient,
-                networkDataSource = AuthNetworkDataSource(
-                    authConfig = AuthConfig(clientId = "client-id"),
-                    httpClient = HttpClient(MockEngine) {
-                        engine {
-                            addHandler {
-                                respond(
-                                    content = "{}",
-                                    status = HttpStatusCode.OK,
-                                    headers = headersOf("Content-Type", ContentType.Application.Json.toString())
-                                )
-                            }
-                        }
-                    }
-                )
+                oidcClient = oidcClient
             )
 
             val refresh = async(start = CoroutineStart.UNDISPATCHED) {
@@ -329,7 +295,7 @@ class OidcAuthRepositoryTest {
 
             assertEquals("fresh-access-token", storage.retrieveStoredAccessToken())
             assertEquals("fresh-refresh-token", storage.retrieveStoredRefreshToken())
-            assertEquals("fresh-id-token", storage.retrieveStoredIdToken())
+            assertEquals(testIdToken("fresh-id-token"), storage.retrieveStoredIdToken())
         }
 
     @Test
@@ -351,7 +317,7 @@ class OidcAuthRepositoryTest {
                     token_type = "Bearer",
                     expires_in = 3600,
                     refresh_token = "stale-login-refresh-token",
-                    id_token = "stale-login-id-token"
+                    id_token = testIdToken("stale-login-id-token")
                 )
             )
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
@@ -364,20 +330,6 @@ class OidcAuthRepositoryTest {
                         token_type = "Bearer",
                         expires_in = 3600
                     )
-                ),
-                networkDataSource = AuthNetworkDataSource(
-                    authConfig = AuthConfig(clientId = "client-id"),
-                    httpClient = HttpClient(MockEngine) {
-                        engine {
-                            addHandler {
-                                respond(
-                                    content = "{}",
-                                    status = HttpStatusCode.OK,
-                                    headers = headersOf("Content-Type", ContentType.Application.Json.toString())
-                                )
-                            }
-                        }
-                    }
                 )
             )
 
@@ -487,7 +439,7 @@ class OidcAuthRepositoryTest {
                     token_type = "Bearer",
                     expires_in = 3600,
                     refresh_token = "stale-login-refresh-token",
-                    id_token = "stale-login-id-token"
+                    id_token = testIdToken("stale-login-id-token")
                 )
             )
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
@@ -528,14 +480,14 @@ class OidcAuthRepositoryTest {
                     token_type = "Bearer",
                     expires_in = 3600,
                     refresh_token = "stale-pending-refresh-token",
-                    id_token = "stale-pending-id-token"
+                    id_token = testIdToken("stale-pending-id-token")
                 ),
                 loginResponse = AccessTokenResponse(
                     access_token = "fresh-access-token",
                     token_type = "Bearer",
                     expires_in = 3600,
                     refresh_token = "fresh-refresh-token",
-                    id_token = "fresh-id-token"
+                    id_token = testIdToken("fresh-id-token")
                 )
             )
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
@@ -548,20 +500,6 @@ class OidcAuthRepositoryTest {
                         token_type = "Bearer",
                         expires_in = 3600
                     )
-                ),
-                networkDataSource = AuthNetworkDataSource(
-                    authConfig = AuthConfig(clientId = "client-id"),
-                    httpClient = HttpClient(MockEngine) {
-                        engine {
-                            addHandler {
-                                respond(
-                                    content = "{}",
-                                    status = HttpStatusCode.OK,
-                                    headers = headersOf("Content-Type", ContentType.Application.Json.toString())
-                                )
-                            }
-                        }
-                    }
                 )
             )
 
@@ -572,7 +510,7 @@ class OidcAuthRepositoryTest {
             assertEquals(0, authFlow.continueLoginCalls)
             assertEquals("fresh-access-token", storage.retrieveStoredAccessToken())
             assertEquals("fresh-refresh-token", storage.retrieveStoredRefreshToken())
-            assertEquals("fresh-id-token", storage.retrieveStoredIdToken())
+            assertEquals(testIdToken("fresh-id-token"), storage.retrieveStoredIdToken())
         }
 
     @Test
@@ -591,7 +529,7 @@ class OidcAuthRepositoryTest {
                     token_type = "Bearer",
                     expires_in = 3600,
                     refresh_token = "fresh-refresh-token",
-                    id_token = "fresh-id-token"
+                    id_token = testIdToken("fresh-id-token")
                 )
             )
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
@@ -618,7 +556,7 @@ class OidcAuthRepositoryTest {
             assertEquals(1, authFlow.getAccessTokenCalls)
             assertEquals("fresh-access-token", tokenStore.getAccessToken())
             assertEquals("fresh-refresh-token", tokenStore.getRefreshToken())
-            assertEquals("fresh-id-token", tokenStore.getIdToken())
+            assertEquals(testIdToken("fresh-id-token"), tokenStore.getIdToken())
         }
 
     @Test
@@ -628,7 +566,7 @@ class OidcAuthRepositoryTest {
             val tokenStore = RecordingTokenStore(
                 accessToken = "legacy-access-token",
                 refreshToken = "legacy-refresh-token",
-                idToken = "legacy-id-token"
+                idToken = testIdToken("legacy-id-token")
             )
             val storage = AuthStorage(
                 tokenStore = tokenStore,
@@ -657,7 +595,7 @@ class OidcAuthRepositoryTest {
             val tokenStore = RecordingTokenStore(
                 accessToken = "uncommitted-access-token",
                 refreshToken = "uncommitted-refresh-token",
-                idToken = "uncommitted-id-token"
+                idToken = testIdToken("uncommitted-id-token")
             )
 
             val restartedRepository = oidcRepository(
@@ -698,7 +636,7 @@ class OidcAuthRepositoryTest {
                     token_type = "Bearer",
                     expires_in = 3600,
                     refresh_token = "partial-refresh-token",
-                    id_token = "partial-id-token"
+                    id_token = testIdToken("partial-id-token")
                 )
             )
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
@@ -731,7 +669,7 @@ class OidcAuthRepositoryTest {
             val tokenStore = RecordingTokenStore(
                 accessToken = "old-access-token",
                 refreshToken = "old-refresh-token",
-                idToken = "old-id-token"
+                idToken = testIdToken("old-id-token")
             )
             val storage = AuthStorage(
                 tokenStore = tokenStore,
@@ -773,7 +711,7 @@ class OidcAuthRepositoryTest {
             val tokenStore = RecordingTokenStore(
                 accessToken = "old-access-token",
                 refreshToken = "old-refresh-token",
-                idToken = "old-id-token"
+                idToken = testIdToken("old-id-token")
             )
             val committedStorage = AuthStorage(
                 tokenStore = tokenStore,
@@ -788,7 +726,7 @@ class OidcAuthRepositoryTest {
                     token_type = "Bearer",
                     expires_in = 3600,
                     refresh_token = "partial-refresh-token",
-                    id_token = "partial-refresh-id-token"
+                    id_token = testIdToken("partial-refresh-id-token")
                 )
             )
             val repository = oidcRepository(
@@ -832,7 +770,7 @@ class OidcAuthRepositoryTest {
             val tokenStore = RecordingTokenStore(
                 accessToken = "old-access-token",
                 refreshToken = "old-refresh-token",
-                idToken = "old-id-token"
+                idToken = testIdToken("old-id-token")
             )
             val storage = AuthStorage(
                 tokenStore = tokenStore,
@@ -863,7 +801,7 @@ class OidcAuthRepositoryTest {
             assertEquals("old-access-token", oidcRepository(storage).getAccessToken())
             assertEquals("old-access-token", tokenStore.getAccessToken())
             assertEquals("old-refresh-token", tokenStore.getRefreshToken())
-            assertEquals("old-id-token", tokenStore.getIdToken())
+            assertEquals(testIdToken("old-id-token"), tokenStore.getIdToken())
         }
 
     @Test
@@ -873,7 +811,7 @@ class OidcAuthRepositoryTest {
             val tokenStore = RecordingTokenStore(
                 accessToken = "old-access-token",
                 refreshToken = "old-refresh-token",
-                idToken = "old-id-token",
+                idToken = testIdToken("old-id-token"),
                 failRemoveTokens = true
             )
             val committedStorage = AuthStorage(
@@ -928,7 +866,7 @@ class OidcAuthRepositoryTest {
             val tokenStore = RecordingTokenStore(
                 accessToken = "old-access-token",
                 refreshToken = null,
-                idToken = "old-id-token",
+                idToken = testIdToken("old-id-token"),
                 failRemoveTokens = true
             )
             val committedStorage = AuthStorage(
@@ -940,7 +878,7 @@ class OidcAuthRepositoryTest {
                 TokenResponse(
                     accessToken = "old-access-token",
                     refreshToken = null,
-                    idToken = "old-id-token",
+                    idToken = testIdToken("old-id-token"),
                     expiresIn = 0,
                     tokenType = "Bearer"
                 )
@@ -979,7 +917,7 @@ class OidcAuthRepositoryTest {
             val tokenStore = RecordingTokenStore(
                 accessToken = "old-access-token",
                 refreshToken = "old-refresh-token",
-                idToken = "old-id-token",
+                idToken = testIdToken("old-id-token"),
                 failRemoveTokens = true
             )
             val committedStorage = AuthStorage(
@@ -1026,7 +964,7 @@ class OidcAuthRepositoryTest {
             val tokenStore = RecordingTokenStore(
                 accessToken = "old-access-token",
                 refreshToken = "old-refresh-token",
-                idToken = "old-id-token",
+                idToken = testIdToken("old-id-token"),
                 cancelBeforeSaveTokens = true
             )
             val storage = AuthStorage(
@@ -1045,7 +983,7 @@ class OidcAuthRepositoryTest {
                     TokenResponse(
                         accessToken = "new-access-token",
                         refreshToken = "new-refresh-token",
-                        idToken = "new-id-token",
+                        idToken = testIdToken("new-id-token"),
                         expiresIn = 3600,
                         tokenType = "Bearer"
                     )
@@ -1072,7 +1010,7 @@ class OidcAuthRepositoryTest {
             val tokenStore = RecordingTokenStore(
                 accessToken = "old-access-token",
                 refreshToken = "old-refresh-token",
-                idToken = "old-id-token",
+                idToken = testIdToken("old-id-token"),
                 cancelBeforeSaveTokens = true
             )
             val storage = AuthStorage(
@@ -1088,7 +1026,7 @@ class OidcAuthRepositoryTest {
                     token_type = "Bearer",
                     expires_in = 3600,
                     refresh_token = "new-refresh-token",
-                    id_token = "new-id-token"
+                    id_token = testIdToken("new-id-token")
                 )
             )
             val repository = oidcRepository(storage, refreshClient)
@@ -1121,7 +1059,7 @@ class OidcAuthRepositoryTest {
             val tokenStore = RecordingTokenStore(
                 accessToken = "old-access-token",
                 refreshToken = "old-refresh-token",
-                idToken = "old-id-token",
+                idToken = testIdToken("old-id-token"),
                 cancelAfterPartialSaveTokens = true
             )
             val storage = AuthStorage(
@@ -1137,7 +1075,7 @@ class OidcAuthRepositoryTest {
                     token_type = "Bearer",
                     expires_in = 3600,
                     refresh_token = "partial-refresh-token",
-                    id_token = "partial-id-token"
+                    id_token = testIdToken("partial-id-token")
                 )
             )
             val repository = oidcRepository(storage, refreshClient)
@@ -1183,7 +1121,7 @@ class OidcAuthRepositoryTest {
                     token_type = "Bearer",
                     expires_in = 3600,
                     refresh_token = "login-refresh-token",
-                    id_token = "login-id-token"
+                    id_token = testIdToken("login-id-token")
                 )
             )
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
@@ -1242,7 +1180,7 @@ class OidcAuthRepositoryTest {
                     token_type = "Bearer",
                     expires_in = 3600,
                     refresh_token = "partial-refresh-token",
-                    id_token = "partial-id-token"
+                    id_token = testIdToken("partial-id-token")
                 )
             )
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
@@ -1285,7 +1223,7 @@ class OidcAuthRepositoryTest {
                 tokenStore = RecordingTokenStore(
                     accessToken = "old-access-token",
                     refreshToken = "old-refresh-token",
-                    idToken = "old-id-token"
+                    idToken = testIdToken("old-id-token")
                 ),
                 settings = MapSettings().toSuspendSettings(),
                 json = Json { ignoreUnknownKeys = true }
@@ -1301,7 +1239,8 @@ class OidcAuthRepositoryTest {
                 loginResponse = AccessTokenResponse(
                     access_token = "new-access-token",
                     token_type = "Bearer",
-                    expires_in = 3600
+                    expires_in = 3600,
+                    id_token = testIdToken("login-id-token")
                 )
             )
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
@@ -1337,7 +1276,7 @@ class OidcAuthRepositoryTest {
             val tokenStore = RecordingTokenStore(
                 accessToken = "old-access-token",
                 refreshToken = "old-refresh-token",
-                idToken = "old-id-token"
+                idToken = testIdToken("old-id-token")
             )
             val committedStorage = AuthStorage(
                 tokenStore = tokenStore,
@@ -1383,7 +1322,7 @@ class OidcAuthRepositoryTest {
             val tokenStore = RecordingTokenStore(
                 accessToken = "old-access-token",
                 refreshToken = "old-refresh-token",
-                idToken = "old-id-token",
+                idToken = testIdToken("old-id-token"),
                 failRemoveTokens = true
             )
             val committedStorage = AuthStorage(
@@ -1444,7 +1383,7 @@ class OidcAuthRepositoryTest {
                     token_type = "Bearer",
                     expires_in = 3600,
                     refresh_token = "login-refresh-token",
-                    id_token = "login-id-token"
+                    id_token = testIdToken("login-id-token")
                 )
             )
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
@@ -1488,7 +1427,8 @@ class OidcAuthRepositoryTest {
                 loginResponse = AccessTokenResponse(
                     access_token = "stale-access-token",
                     token_type = "Bearer",
-                    expires_in = 3600
+                    expires_in = 3600,
+                    id_token = testIdToken("login-id-token")
                 )
             )
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
@@ -1533,7 +1473,8 @@ class OidcAuthRepositoryTest {
                 loginResponse = AccessTokenResponse(
                     access_token = "stale-access-token",
                     token_type = "Bearer",
-                    expires_in = 3600
+                    expires_in = 3600,
+                    id_token = testIdToken("login-id-token")
                 )
             )
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(staleAuthFlow))
@@ -1566,7 +1507,8 @@ class OidcAuthRepositoryTest {
                 loginResponse = AccessTokenResponse(
                     access_token = "fresh-access-token",
                     token_type = "Bearer",
-                    expires_in = 3600
+                    expires_in = 3600,
+                    id_token = testIdToken("login-id-token")
                 )
             )
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(freshAuthFlow))
@@ -1607,7 +1549,8 @@ class OidcAuthRepositoryTest {
                 loginResponse = AccessTokenResponse(
                     access_token = "stale-access-token",
                     token_type = "Bearer",
-                    expires_in = 3600
+                    expires_in = 3600,
+                    id_token = testIdToken("login-id-token")
                 )
             )
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
@@ -1647,12 +1590,13 @@ class OidcAuthRepositoryTest {
                     token_type = "Bearer",
                     expires_in = 3600,
                     refresh_token = "pending-refresh-token",
-                    id_token = "pending-id-token"
+                    id_token = testIdToken("pending-id-token")
                 ),
                 loginResponse = AccessTokenResponse(
                     access_token = "unused-login-access-token",
                     token_type = "Bearer",
-                    expires_in = 3600
+                    expires_in = 3600,
+                    id_token = testIdToken("login-id-token")
                 )
             )
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
@@ -1707,7 +1651,7 @@ class OidcAuthRepositoryTest {
                     token_type = "Bearer",
                     expires_in = 3600,
                     refresh_token = "stale-login-refresh-token",
-                    id_token = "stale-login-id-token"
+                    id_token = testIdToken("stale-login-id-token")
                 )
             )
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
@@ -1761,7 +1705,7 @@ class OidcAuthRepositoryTest {
                     token_type = "Bearer",
                     expires_in = 3600,
                     refresh_token = "login-refresh-token",
-                    id_token = "login-id-token"
+                    id_token = testIdToken("login-id-token")
                 )
             )
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
@@ -1802,7 +1746,7 @@ class OidcAuthRepositoryTest {
             assertEquals(1, authFlow.getAccessTokenCalls)
             assertEquals("login-access-token", tokenStore.getAccessToken())
             assertEquals("login-refresh-token", tokenStore.getRefreshToken())
-            assertEquals("login-id-token", tokenStore.getIdToken())
+            assertEquals(testIdToken("login-id-token"), tokenStore.getIdToken())
         }
 
     @Test
@@ -1812,7 +1756,7 @@ class OidcAuthRepositoryTest {
             val tokenStore = RecordingTokenStore(
                 accessToken = "old-access-token",
                 refreshToken = "old-refresh-token",
-                idToken = "old-id-token"
+                idToken = testIdToken("old-id-token")
             )
             val staleRefreshClient = BlockingRefreshOidcClient(
                 refreshResponse = AccessTokenResponse(
@@ -1820,7 +1764,7 @@ class OidcAuthRepositoryTest {
                     token_type = "Bearer",
                     expires_in = 3600,
                     refresh_token = "stale-refresh-refresh-token",
-                    id_token = "stale-refresh-id-token"
+                    id_token = testIdToken("stale-refresh-id-token")
                 )
             )
             val staleStorage = AuthStorage(
@@ -1855,7 +1799,7 @@ class OidcAuthRepositoryTest {
                     token_type = "Bearer",
                     expires_in = 3600,
                     refresh_token = "fresh-refresh-token",
-                    id_token = "fresh-id-token"
+                    id_token = testIdToken("fresh-id-token")
                 )
             )
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
@@ -1871,24 +1815,24 @@ class OidcAuthRepositoryTest {
 
             assertEquals("fresh-access-token", tokenStore.getAccessToken())
             assertEquals("fresh-refresh-token", tokenStore.getRefreshToken())
-            assertEquals("fresh-id-token", tokenStore.getIdToken())
+            assertEquals(testIdToken("fresh-id-token"), tokenStore.getIdToken())
 
             staleRefreshClient.refreshCanFinish.complete(Unit)
 
             assertFalse(staleRefresh.await())
             assertEquals("fresh-access-token", tokenStore.getAccessToken())
             assertEquals("fresh-refresh-token", tokenStore.getRefreshToken())
-            assertEquals("fresh-id-token", tokenStore.getIdToken())
+            assertEquals(testIdToken("fresh-id-token"), tokenStore.getIdToken())
         }
 
     @Test
-    fun `stale user info fetch cannot overwrite newer session metadata`() =
+    fun `stale refresh cannot overwrite the user of a newer session`() =
         runTest(UnconfinedTestDispatcher()) {
             val settings = MapSettings().toSuspendSettings()
             val tokenStore = RecordingTokenStore(
                 accessToken = "old-access-token",
                 refreshToken = "old-refresh-token",
-                idToken = "old-id-token"
+                idToken = testIdToken("old-id-token", subject = "old-user")
             )
             val staleRefreshClient = BlockingRefreshOidcClient(
                 refreshResponse = AccessTokenResponse(
@@ -1896,11 +1840,8 @@ class OidcAuthRepositoryTest {
                     token_type = "Bearer",
                     expires_in = 3600,
                     refresh_token = "old-refresh-token",
-                    id_token = "old-id-token"
+                    id_token = testIdToken("refreshed-old-id-token", subject = "old-user")
                 )
-            )
-            val staleUserInfo = BlockingUserInfoNetwork(
-                userInfo = UserInfo(id = "old-user", name = "Old User")
             )
             val staleStorage = AuthStorage(
                 tokenStore = tokenStore,
@@ -1911,8 +1852,7 @@ class OidcAuthRepositoryTest {
             staleStorage.storeCommittedTokenGeneration(1)
             val staleRepository = oidcRepository(
                 storage = staleStorage,
-                oidcClient = staleRefreshClient,
-                networkDataSource = staleUserInfo.networkDataSource()
+                oidcClient = staleRefreshClient
             )
 
             val staleRefresh = async(start = CoroutineStart.UNDISPATCHED) {
@@ -1921,12 +1861,6 @@ class OidcAuthRepositoryTest {
             withContext(Dispatchers.Default) {
                 withTimeout(1_000) {
                     staleRefreshClient.refreshStarted.await()
-                }
-            }
-            staleRefreshClient.refreshCanFinish.complete(Unit)
-            withContext(Dispatchers.Default) {
-                withTimeout(1_000) {
-                    staleUserInfo.fetchStarted.await()
                 }
             }
 
@@ -1941,35 +1875,35 @@ class OidcAuthRepositoryTest {
                     token_type = "Bearer",
                     expires_in = 3600,
                     refresh_token = "fresh-refresh-token",
-                    id_token = "fresh-id-token"
+                    id_token = testIdToken(
+                        "fresh-id-token",
+                        subject = "fresh-user",
+                        claims = mapOf("name" to "Fresh User")
+                    )
                 )
             )
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(freshAuthFlow))
-            val freshUserInfo = BlockingUserInfoNetwork(
-                userInfo = UserInfo(id = "fresh-user", name = "Fresh User"),
-                initiallyUnblocked = true
-            )
             val freshRepository = oidcRepository(
-                storage = AuthStorage(
+                AuthStorage(
                     tokenStore = tokenStore,
                     settings = settings,
                     json = Json { ignoreUnknownKeys = true }
-                ),
-                networkDataSource = freshUserInfo.networkDataSource()
+                )
             )
             freshAuthFlow.loginCanFinish.complete(Unit)
             freshRepository.login()
 
             assertEquals("fresh-user", freshRepository.getCurrentUser()?.id)
 
-            staleUserInfo.fetchCanFinish.complete(Unit)
+            staleRefreshClient.refreshCanFinish.complete(Unit)
 
             assertFalse(staleRefresh.await())
-            assertEquals("fresh-user", freshRepository.getCurrentUser()?.id)
+            assertEquals(UserInfo(id = "fresh-user", name = "Fresh User"), freshRepository.getCurrentUser())
+            assertEquals("fresh-access-token", tokenStore.getAccessToken())
         }
 
     @Test
-    fun `login superseded during user info fetch fails after committed tokens are cleared`() =
+    fun `login superseded during its durable commit callback fails after committed tokens are cleared`() =
         runTest(UnconfinedTestDispatcher()) {
             val settings = MapSettings().toSuspendSettings()
             val tokenStore = RecordingTokenStore()
@@ -1984,28 +1918,17 @@ class OidcAuthRepositoryTest {
                     token_type = "Bearer",
                     expires_in = 3600,
                     refresh_token = "login-refresh-token",
-                    id_token = "login-id-token"
+                    id_token = testIdToken("login-id-token")
                 )
             )
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
-            val userInfo = BlockingUserInfoNetwork(
-                userInfo = UserInfo(id = "login-user", name = "Login User")
-            )
             val repository = oidcRepository(
-                storage = AuthStorage(
+                AuthStorage(
                     tokenStore = tokenStore,
                     settings = settings,
                     json = Json { ignoreUnknownKeys = true }
-                ),
-                networkDataSource = userInfo.networkDataSource()
+                )
             )
-
-            val login = async(start = CoroutineStart.UNDISPATCHED) {
-                runCatching { repository.login() }
-            }
-            authFlow.loginCanFinish.complete(Unit)
-            userInfo.fetchStarted.await()
-
             val clearingRepository = oidcRepository(
                 AuthStorage(
                     tokenStore = tokenStore,
@@ -2013,61 +1936,15 @@ class OidcAuthRepositoryTest {
                     json = Json { ignoreUnknownKeys = true }
                 )
             )
-            clearingRepository.clearLocalSession()
-
-            userInfo.fetchCanFinish.complete(Unit)
-
-            assertTrue(login.await().isFailure)
-            assertNull(tokenStore.getAccessToken())
-        }
-
-    @Test
-    fun `user info cancellation after token commit leaves login publishable`() =
-        runTest(UnconfinedTestDispatcher()) {
-            val storage = AuthStorage(
-                tokenStore = RecordingTokenStore(),
-                settings = MapSettings().toSuspendSettings(),
-                json = Json { ignoreUnknownKeys = true }
-            )
-            val authFlow = BlockingLoginAuthFlow(
-                pendingResponse = AccessTokenResponse(
-                    access_token = "unused-pending-access-token",
-                    token_type = "Bearer",
-                    expires_in = 3600
-                ),
-                loginResponse = AccessTokenResponse(
-                    access_token = "login-access-token",
-                    token_type = "Bearer",
-                    expires_in = 3600
-                )
-            )
-            AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
-            val userInfo = BlockingUserInfoNetwork(
-                userInfo = UserInfo(id = "login-user", name = "Login User"),
-                failure = CancellationException("user info canceled")
-            )
-            val repository = oidcRepository(
-                storage = storage,
-                networkDataSource = userInfo.networkDataSource()
-            )
-
-            val login = async(start = CoroutineStart.UNDISPATCHED) {
-                runCatching { repository.login() }
-            }
             authFlow.loginCanFinish.complete(Unit)
-            userInfo.fetchStarted.await()
 
-            val duplicateLogin = async(start = CoroutineStart.UNDISPATCHED) {
-                runCatching { repository.login() }
+            val login = runCatching {
+                repository.login(onDurableCommit = { clearingRepository.clearLocalSession() })
             }
-            assertFalse(duplicateLogin.isCompleted)
 
-            userInfo.fetchCanFinish.complete(Unit)
-
-            assertTrue(login.await().isSuccess)
-            assertTrue(duplicateLogin.await().isSuccess)
-            assertEquals("login-access-token", repository.getAccessToken())
-            assertTrue(repository.isLoggedIn())
+            assertTrue(login.isFailure)
+            assertNull(tokenStore.getAccessToken())
+            assertNull(repository.getCurrentUser())
         }
 
     @Test
@@ -2087,23 +1964,19 @@ class OidcAuthRepositoryTest {
                 loginResponse = AccessTokenResponse(
                     access_token = "login-access-token",
                     token_type = "Bearer",
-                    expires_in = 3600
+                    expires_in = 3600,
+                    id_token = testIdToken("login-id-token")
                 )
             )
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
-            val userInfo = BlockingUserInfoNetwork(
-                userInfo = UserInfo(id = "login-user", name = "Login User")
-            )
-            val repository = oidcRepository(
-                storage = storage,
-                networkDataSource = userInfo.networkDataSource()
-            )
+            val repository = oidcRepository(storage)
+            val commit = BlockingDurableCommit()
 
             val firstLogin = async(start = CoroutineStart.UNDISPATCHED) {
-                repository.login()
+                repository.login(onDurableCommit = commit::run)
             }
             authFlow.loginCanFinish.complete(Unit)
-            userInfo.fetchStarted.await()
+            commit.started.await()
 
             val duplicateLogin = async(start = CoroutineStart.UNDISPATCHED) {
                 runCatching { repository.login() }
@@ -2111,7 +1984,7 @@ class OidcAuthRepositoryTest {
             assertFalse(duplicateLogin.isCompleted)
 
             firstLogin.cancel()
-            userInfo.fetchCanFinish.complete(Unit)
+            commit.canFinish.complete(Unit)
 
             val duplicateResult = withContext(Dispatchers.Default) {
                 withTimeout(1_000) {
@@ -2130,7 +2003,7 @@ class OidcAuthRepositoryTest {
                 tokenStore = RecordingTokenStore(
                     accessToken = "same-access-token",
                     refreshToken = "old-refresh-token",
-                    idToken = "old-id-token"
+                    idToken = testIdToken("old-id-token")
                 ),
                 settings = MapSettings().toSuspendSettings(),
                 json = Json { ignoreUnknownKeys = true }
@@ -2146,23 +2019,19 @@ class OidcAuthRepositoryTest {
                 loginResponse = AccessTokenResponse(
                     access_token = "same-access-token",
                     token_type = "Bearer",
-                    expires_in = 3600
+                    expires_in = 3600,
+                    id_token = testIdToken("login-id-token")
                 )
             )
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
-            val userInfo = BlockingUserInfoNetwork(
-                userInfo = UserInfo(id = "login-user", name = "Login User")
-            )
-            val repository = oidcRepository(
-                storage = storage,
-                networkDataSource = userInfo.networkDataSource()
-            )
+            val repository = oidcRepository(storage)
+            val commit = BlockingDurableCommit()
 
             val firstLogin = async(start = CoroutineStart.UNDISPATCHED) {
-                repository.login()
+                repository.login(onDurableCommit = commit::run)
             }
             authFlow.loginCanFinish.complete(Unit)
-            userInfo.fetchStarted.await()
+            commit.started.await()
 
             val duplicateLogin = async(start = CoroutineStart.UNDISPATCHED) {
                 runCatching { repository.login() }
@@ -2170,7 +2039,7 @@ class OidcAuthRepositoryTest {
             assertFalse(duplicateLogin.isCompleted)
 
             firstLogin.cancel()
-            userInfo.fetchCanFinish.complete(Unit)
+            commit.canFinish.complete(Unit)
 
             val duplicateResult = withContext(Dispatchers.Default) {
                 withTimeout(1_000) {
@@ -2189,7 +2058,7 @@ class OidcAuthRepositoryTest {
             val tokenStore = RecordingTokenStore(
                 accessToken = "old-access-token",
                 refreshToken = "old-refresh-token",
-                idToken = "old-id-token",
+                idToken = testIdToken("old-id-token"),
                 failRemoveTokens = true
             )
             val loadedStorage = AuthStorage(
@@ -2227,7 +2096,7 @@ class OidcAuthRepositoryTest {
             val tokenStore = RecordingTokenStore(
                 accessToken = "old-access-token",
                 refreshToken = "old-refresh-token",
-                idToken = "old-id-token",
+                idToken = testIdToken("old-id-token"),
                 failRemoveTokens = true,
                 suspendAccessTokenReadOnCall = 1
             )
@@ -2276,72 +2145,27 @@ internal fun oidcRepository(
             expires_in = 3600
         )
     ),
-    networkDataSource: AuthNetworkDataSource = defaultAuthNetworkDataSource(),
     logger: Logger = Logger.withTag("OidcAuthRepository")
 ): OidcAuthRepository =
     OidcAuthRepository(
         authConfig = AuthConfig(clientId = "client-id"),
         authStorage = storage,
         oidcClient = oidcClient,
-        networkDataSource = networkDataSource,
         logger = logger
     )
 
-private fun defaultAuthNetworkDataSource(): AuthNetworkDataSource =
-    AuthNetworkDataSource(
-        authConfig = AuthConfig(clientId = "client-id"),
-        httpClient = HttpClient(MockEngine) {
-            install(ContentNegotiation) {
-                json(Json { ignoreUnknownKeys = true })
-            }
-            engine {
-                addHandler {
-                    respond(
-                        content = """{"sub":"default-user"}""",
-                        status = HttpStatusCode.OK,
-                        headers = headersOf("Content-Type", ContentType.Application.Json.toString())
-                    )
-                }
-            }
-        }
-    )
+/** A durable commit (the host's sync reset) that runs until the test lets it finish. */
+private class BlockingDurableCommit {
+    val started = CompletableDeferred<Unit>()
+    val canFinish = CompletableDeferred<Unit>()
 
-private class BlockingUserInfoNetwork(
-    private val userInfo: UserInfo,
-    initiallyUnblocked: Boolean = false,
-    private val failure: Exception? = null
-) {
-    val fetchStarted = CompletableDeferred<Unit>()
-    val fetchCanFinish = CompletableDeferred<Unit>().apply {
-        if (initiallyUnblocked) {
-            complete(Unit)
-        }
+    suspend fun run() {
+        started.complete(Unit)
+        canFinish.await()
     }
-
-    fun networkDataSource(): AuthNetworkDataSource =
-        AuthNetworkDataSource(
-            authConfig = AuthConfig(clientId = "client-id"),
-            httpClient = HttpClient(MockEngine) {
-                install(ContentNegotiation) {
-                    json(Json { ignoreUnknownKeys = true })
-                }
-                engine {
-                    addHandler {
-                        fetchStarted.complete(Unit)
-                        fetchCanFinish.await()
-                        failure?.let { throw it }
-                        respond(
-                            content = """{"sub":"${userInfo.id}","name":"${userInfo.name.orEmpty()}"}""",
-                            status = HttpStatusCode.OK,
-                            headers = headersOf("Content-Type", ContentType.Application.Json.toString())
-                        )
-                    }
-                }
-            }
-        )
 }
 
-private class BlockingLoginAuthFlow(
+internal class BlockingLoginAuthFlow(
     private val pendingResponse: AccessTokenResponse,
     private val loginResponse: AccessTokenResponse
 ) : CodeAuthFlow {
@@ -2417,7 +2241,7 @@ private class FailingLoginAuthFlow(
     ): AccessTokenResponse = unsupportedAuthTest()
 }
 
-private class StaticCodeAuthFlowFactory(
+internal class StaticCodeAuthFlowFactory(
     private val authFlow: CodeAuthFlow
 ) : CodeAuthFlowFactory {
     override fun createAuthFlow(client: OpenIdConnectClient): CodeAuthFlow = authFlow

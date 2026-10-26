@@ -18,9 +18,8 @@ sealed class AuthState {
     /**
      * Successfully authenticated.
      *
-     * [userInfo] is optional because OAuth token validity and profile availability are separate
-     * concerns. A profile request can fail or cached profile data can be unavailable while the
-     * stored token session is still valid for authenticated sync calls.
+     * [userInfo] comes from the session's ID token and is stored with the tokens. It is null only
+     * for a session stored before this version, until its next token refresh.
      */
     data class Success(val userInfo: UserInfo?) : AuthState()
 
