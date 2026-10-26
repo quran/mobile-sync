@@ -25,6 +25,7 @@ import com.quran.shared.persistence.model.AyahReadingBookmark
 import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.model.EmptyReadingBookmark
+import com.quran.shared.persistence.model.Mushaf
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.NoteRange
 import com.quran.shared.persistence.model.PageReadingBookmark
@@ -1350,38 +1351,43 @@ private class ServiceBookmarksRepository : BookmarksRepository {
 
 private class ServiceReadingBookmarksRepository :
     ReadingBookmarksRepository {
-    override suspend fun getReadingBookmarks(): List<ReadingBookmark> = emptyList()
-    override fun getReadingBookmarksFlow(): Flow<List<ReadingBookmark>> = MutableStateFlow(emptyList())
+    override suspend fun getReadingBookmarks(mushaf: Mushaf): List<ReadingBookmark> = emptyList()
+    override fun getReadingBookmarksFlow(mushaf: Mushaf): Flow<List<ReadingBookmark>> = MutableStateFlow(emptyList())
     override suspend fun setAyahReadingBookmark(
         slot: ReadingBookmarkSlot,
         sura: Int,
-        ayah: Int
+        ayah: Int,
+        mushaf: Mushaf
     ): ReadingBookmark =
         AyahReadingBookmark(sura, ayah, testTimestamp(), "reading-ayah-$slot", slot)
     override suspend fun setAyahReadingBookmark(
         slot: ReadingBookmarkSlot,
         sura: Int,
         ayah: Int,
+        mushaf: Mushaf,
         timestamp: PlatformDateTime
     ): ReadingBookmark = AyahReadingBookmark(sura, ayah, timestamp, "reading-ayah-$slot", slot)
-    override suspend fun setPageReadingBookmark(slot: ReadingBookmarkSlot, page: Int): ReadingBookmark =
-        PageReadingBookmark(page, testTimestamp(), "reading-page-$slot", slot)
+    override suspend fun setPageReadingBookmark(slot: ReadingBookmarkSlot, page: Int, mushaf: Mushaf): ReadingBookmark =
+        PageReadingBookmark(page, mushaf, testTimestamp(), "reading-page-$slot", slot)
     override suspend fun setPageReadingBookmark(
         slot: ReadingBookmarkSlot,
         page: Int,
+        mushaf: Mushaf,
         timestamp: PlatformDateTime
-    ): ReadingBookmark = PageReadingBookmark(page, timestamp, "reading-page-$slot", slot)
-    override suspend fun renameReadingBookmark(slot: ReadingBookmarkSlot, name: String?): ReadingBookmark =
+    ): ReadingBookmark = PageReadingBookmark(page, mushaf, timestamp, "reading-page-$slot", slot)
+    override suspend fun renameReadingBookmark(slot: ReadingBookmarkSlot, name: String?, mushaf: Mushaf): ReadingBookmark =
         EmptyReadingBookmark(slot, name, testTimestamp(), "reading-$slot")
     override suspend fun renameReadingBookmark(
         slot: ReadingBookmarkSlot,
         name: String?,
+        mushaf: Mushaf,
         timestamp: PlatformDateTime
     ): ReadingBookmark = EmptyReadingBookmark(slot, name, timestamp, "reading-$slot")
-    override suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot): ReadingBookmark =
+    override suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot, mushaf: Mushaf): ReadingBookmark =
         EmptyReadingBookmark(slot, null, testTimestamp(), "reading-$slot")
     override suspend fun clearReadingBookmark(
         slot: ReadingBookmarkSlot,
+        mushaf: Mushaf,
         timestamp: PlatformDateTime
     ): ReadingBookmark =
         EmptyReadingBookmark(slot, null, timestamp, "reading-$slot")

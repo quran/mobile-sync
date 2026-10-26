@@ -8,6 +8,7 @@ import com.quran.shared.persistence.input.ImportReadingBookmark
 import com.quran.shared.persistence.input.ImportReadingSession
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.model.AyahHighlightColor
+import com.quran.shared.persistence.model.Mushaf
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.pipeline.integration.SyncDevice
 import com.quran.shared.pipeline.integration.UserDataSnapshot
@@ -59,5 +60,5 @@ internal suspend fun SyncDevice.writeOneOfEach() {
     addToFavorites(1, 1)
     data.setHighlight(2, 255, AyahHighlightColor.BLUE)
     data.addReadingSession(18, 1)
-    data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10)
+    data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, Mushaf.QCF_V2)
 }

@@ -1,6 +1,7 @@
 package com.quran.shared.pipeline.integration.scenarios
 
 import com.quran.shared.persistence.model.AyahHighlightColor
+import com.quran.shared.persistence.model.Mushaf
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.pipeline.integration.DeviceTimings
 import com.quran.shared.pipeline.integration.SyncDevice
@@ -54,7 +55,7 @@ class ConvergenceScenariosTest {
         phone.addToFavorites(1, 1)
         phone.data.setHighlight(2, 255, AyahHighlightColor.BLUE)
         phone.data.addReadingSession(18, 1)
-        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10)
+        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, Mushaf.QCF_V2)
 
         assertSucceeded(phone.syncNow())
         val second = phone.syncNow()
@@ -64,10 +65,10 @@ class ConvergenceScenariosTest {
         assertConverged(ALICE, phone)
 
         // The server trims reading bookmark names; the client trims them the same way before pushing.
-        phone.data.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "  Juz 30  ")
+        phone.data.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "  Juz 30  ", Mushaf.QCF_V2)
         assertSucceeded(phone.syncNow())
         assertEquals(listOf("Juz 30"), server.state(ALICE).readingBookmarks.map { it.name })
-        assertEquals(listOf("Juz 30"), phone.data.readingBookmarks.first().map { it.name }, "name after the push")
+        assertEquals(listOf("Juz 30"), phone.data.readingBookmarks(Mushaf.QCF_V2).first().map { it.name }, "name after the push")
 
         val again = phone.syncNow()
         assertSucceeded(again)
@@ -83,11 +84,11 @@ class ConvergenceScenariosTest {
         d1.data.addAyahBookmarkToCollection(d1.data.addCollection("Study").id, 2, 255)
         d1.addToFavorites(1, 1)
         d1.data.addReadingSession(18, 1, at(1_000))
-        d1.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, at(1_000))
+        d1.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, Mushaf.QCF_V2, at(1_000))
         d2.data.addNote("Second device note", 2, 153, 2, 153)
         d2.addToFavorites(2, 3)
         d2.data.addReadingSession(3, 7, at(2_000))
-        d2.data.setPageReadingBookmark(ReadingBookmarkSlot.ORANGE, 300, at(2_000))
+        d2.data.setPageReadingBookmark(ReadingBookmarkSlot.ORANGE, 300, Mushaf.QCF_V2, at(2_000))
         d2.data.addCollection("Temporary")
         d3.data.addAyahBookmarkToCollection(d3.data.addCollection("Memorize").id, 3, 18)
         d3.data.addNote("Third device note", 36, 1, 36, 1)
@@ -126,7 +127,7 @@ class ConvergenceScenariosTest {
         d1.data.addReadingSession(18, 1, at(1_000))
         d2.data.addNote("Second device note", 2, 153, 2, 153)
         d2.addToFavorites(2, 3)
-        d2.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, at(2_000))
+        d2.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, Mushaf.QCF_V2, at(2_000))
         d3.data.addNote("Third device note", 36, 1, 36, 1)
         d3.data.setHighlight(5, 3, AyahHighlightColor.BLUE)
         web(ALICE).createNote("Written on the web", "67:1-67:2")
@@ -198,7 +199,7 @@ class ConvergenceScenariosTest {
             phone.data.addCollection("Study")
             phone.addToFavorites(2, 255)
             phone.data.addReadingSession(18, 1)
-            phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 36, 1)
+            phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 36, 1, Mushaf.QCF_V2)
             run.await()
         }
 

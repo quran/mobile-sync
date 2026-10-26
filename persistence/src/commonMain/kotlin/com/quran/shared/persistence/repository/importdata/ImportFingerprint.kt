@@ -8,6 +8,7 @@ import com.quran.shared.persistence.input.ImportReadingBookmark
 import com.quran.shared.persistence.input.ImportReadingSession
 import com.quran.shared.persistence.model.AyahHighlightColor
 import com.quran.shared.persistence.model.DEFAULT_COLLECTION_NAME
+import com.quran.shared.persistence.model.Mushaf
 import com.quran.shared.persistence.model.toStorageValue
 import com.quran.shared.persistence.util.toEpochMillisecondsFromPlatform
 import org.kotlincrypto.hash.sha2.SHA256
@@ -53,6 +54,7 @@ internal object ImportFingerprint {
             is ImportReadingBookmark.Page -> {
                 byte(2)
                 long(bookmark.page)
+                byte(bookmark.mushaf.fingerprintTag())
             }
         }
         nullableString(bookmark.name)
@@ -131,6 +133,12 @@ internal object ImportFingerprint {
         AyahHighlightColor.GREEN -> 3
         AyahHighlightColor.YELLOW -> 4
         AyahHighlightColor.PURPLE -> 5
+    }
+
+    private fun Mushaf.fingerprintTag(): Int = when (this) {
+        Mushaf.QCF_V1 -> 1
+        Mushaf.QCF_V2 -> 2
+        Mushaf.INDOPAK_15_LINES -> 3
     }
 
     private val FORMAT_TAG = "quran-mobile-sync-import".encodeToByteArray()

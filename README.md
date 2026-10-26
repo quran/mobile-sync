@@ -276,13 +276,30 @@ Core API examples:
 - Trigger sync: `triggerSync()` after a burst of edits, or `triggerSync(immediately = true)` for a user's "Sync now"
 - Auth: use `SyncAuthService.login()`, `loginWithReauthentication()`, `logout()`, and `clearError()`
 
+Reading bookmarks are three slots (`ReadingBookmarkSlot`), each an ayah, a page, or empty. Page
+bookmarks work across mushafs: tell the library which `Mushaf` the app shows, and it does the page
+mapping.
+
+- `Mushaf.QCF_V1` (1405 Madani) and `Mushaf.QCF_V2` (1440 Madani) have pages 1 to 604.
+- `Mushaf.INDOPAK_15_LINES` has app pages 2 to 611: apps skip a cover page, so app page N is the
+  server's page N - 1.
+- `setPageReadingBookmark(slot, page, mushaf)` throws `IllegalArgumentException` for a page the
+  mushaf doesn't have.
+- `readingBookmarks(mushaf)` and every set, rename, and clear call take the app's mushaf and return
+  `PageReadingBookmark`s as pages of it. A page
+  set in a mushaf of the same page count keeps its number, even between the two Madani layouts;
+  another becomes the page holding its middle verse. A page of a layout this library doesn't know
+  reads as `EmptyReadingBookmark`; its location is kept.
+- Ayah bookmarks need no mapping: every supported mushaf numbers verses the same way.
+
 Import local data through `QuranDataService.importData(PersistenceImportData(...))`.
 Each `ImportCollectionAyahBookmark.collectionName` must name an `ImportCollection` in the same
 batch. Names match exactly, except that any case or surrounding-whitespace variant of Favorites
 resolves to the default collection; entries sharing a name describe one destination.
 Use `readingBookmarks` with `ImportReadingBookmark.Ayah` or `.Page`, each specifying a
-`ReadingBookmarkSlot` (`TEAL`, `ORANGE`, or `RED`), `lastUpdated`, and an optional `name`.
-Each slot may appear once; page numbers must be in `1..604`. An imported slot replaces its
+`ReadingBookmarkSlot` (`TEAL`, `ORANGE`, or `RED`), `lastUpdated`, and an optional `name`; a page
+also names its `Mushaf` and is stored like `setPageReadingBookmark`, so a page the mushaf doesn't
+have fails the import with `IllegalArgumentException`. Each slot may appear once. An imported slot replaces its
 location, name (including clearing it when null), and modification time. Merge imports leave
 omitted slots unchanged; `deleteExisting = true` clears their locations while preserving slot
 identities and names for sync. Imports are atomic and report the

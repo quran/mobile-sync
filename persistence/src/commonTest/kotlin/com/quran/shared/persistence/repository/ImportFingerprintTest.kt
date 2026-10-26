@@ -7,6 +7,7 @@ import com.quran.shared.persistence.input.ImportNote
 import com.quran.shared.persistence.input.ImportReadingBookmark
 import com.quran.shared.persistence.input.ImportReadingSession
 import com.quran.shared.persistence.model.AyahHighlightColor
+import com.quran.shared.persistence.model.Mushaf
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.persistence.repository.importdata.ImportFingerprint
 import com.quran.shared.persistence.util.toPlatform
@@ -64,6 +65,16 @@ class ImportFingerprintTest {
                 )
             )
         )
+    }
+
+    @Test
+    fun `a page fingerprint is stable and carries its mushaf`() {
+        assertEquals(
+            "v1:e22942e0fa961250135cecf13590120d8d84820ee06e663a4bf5977113dbf94d",
+            ImportFingerprint.readingBookmark(ImportReadingBookmark.Page(300, Mushaf.INDOPAK_15_LINES, at(0), ReadingBookmarkSlot.TEAL))
+        )
+        val fingerprints = Mushaf.entries.map { ImportFingerprint.readingBookmark(ImportReadingBookmark.Page(300, it, at(0), ReadingBookmarkSlot.TEAL)) }
+        assertEquals(Mushaf.entries.size, fingerprints.toSet().size)
     }
 
     private fun at(millis: Long) = Instant.fromEpochMilliseconds(millis).toPlatform()

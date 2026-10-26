@@ -8,11 +8,11 @@ import com.quran.shared.persistence.input.ImportReadingBookmark
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.input.PersistenceImportResult
 import com.quran.shared.persistence.model.DEFAULT_COLLECTION_NAME
-import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.isSystemCollectionName
 import com.quran.shared.persistence.repository.collection.CollectionStore
 import com.quran.shared.persistence.repository.note.NoteStore
 import com.quran.shared.persistence.repository.readingbookmark.ReadingBookmarkStore
+import com.quran.shared.persistence.repository.readingbookmark.mapping.ReadingBookmarkPageMapper
 import com.quran.shared.persistence.repository.readingsession.ReadingSessionStore
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.toEpochMillisecondsFromPlatform
@@ -250,7 +250,7 @@ internal class PersistenceImportMerger(
             val at = bookmark.lastUpdated.toEpochMillisecondsFromPlatform()
             val location = when (bookmark) {
                 is ImportReadingBookmark.Ayah -> ReadingLocation.ayah(bookmark.sura, bookmark.ayah)
-                is ImportReadingBookmark.Page -> ReadingLocation.page(bookmark.page, PageReadingBookmark.MADANI_MUSHAF_ID)
+                is ImportReadingBookmark.Page -> ReadingBookmarkPageMapper.serverLocation(bookmark.page, bookmark.mushaf)
             }
             readingBookmarkStore.setLocation(bookmark.slot, location, at)
             readingBookmarkStore.rename(bookmark.slot, bookmark.name, at)

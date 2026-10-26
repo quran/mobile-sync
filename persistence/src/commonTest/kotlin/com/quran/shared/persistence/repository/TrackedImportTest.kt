@@ -14,6 +14,7 @@ import com.quran.shared.persistence.input.ImportReadingBookmark
 import com.quran.shared.persistence.input.PersistenceImportData
 import com.quran.shared.persistence.model.AyahHighlight
 import com.quran.shared.persistence.model.AyahHighlightColor
+import com.quran.shared.persistence.model.Mushaf
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepositoryImpl
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepositoryImpl
@@ -74,8 +75,8 @@ class TrackedImportTest {
     @Test
     fun `duplicate reading bookmark content applies newest timestamp only once`() = runTest {
         val data = PersistenceImportData(readingBookmarks = listOf(
-            ImportReadingBookmark.Page(42, at(200), ReadingBookmarkSlot.TEAL),
-            ImportReadingBookmark.Page(42, at(100), ReadingBookmarkSlot.TEAL)
+            ImportReadingBookmark.Page(42, Mushaf.QCF_V2, at(200), ReadingBookmarkSlot.TEAL),
+            ImportReadingBookmark.Page(42, Mushaf.QCF_V2, at(100), ReadingBookmarkSlot.TEAL)
         ))
 
         val first = repository.importData(data, false, true)

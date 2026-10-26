@@ -1,5 +1,6 @@
 package com.quran.shared.pipeline.integration.scenarios
 
+import com.quran.shared.persistence.model.Mushaf
 import kotlin.test.assertNotNull
 import kotlin.test.assertIs
 import com.quran.shared.auth.model.AuthState
@@ -120,7 +121,7 @@ class LifecycleScenariosTest {
         phone.data.addAyahBookmarkToCollection(phone.favoritesId(), 2, 255, at(2_000))
         phone.data.setHighlight(2, 255, AyahHighlightColor.BLUE, at(2_000))
         phone.data.addReadingSession(18, 1, at(5_000))
-        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, at(5_000))
+        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, Mushaf.QCF_V2, at(5_000))
 
         assertSucceeded(phone.login(ALICE))
         syncUntilQuiescent(phone)
@@ -214,7 +215,7 @@ class LifecycleScenariosTest {
         assertEquals(listOf("1:1"), phone.favoriteVerses())
         assertEquals(listOf("2:255 blue"), phone.highlightList())
         assertEquals(listOf("18:1"), phone.sessionVerses())
-        assertEquals(1, phone.data.readingBookmarks.first().size)
+        assertEquals(1, phone.data.readingBookmarks(Mushaf.QCF_V2).first().size)
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.quran.shared.pipeline.integration.scenarios
 import com.quran.shared.persistence.TextLengthBound
 import com.quran.shared.persistence.TextLengthField
 import com.quran.shared.persistence.TextLengthLimitException
+import com.quran.shared.persistence.model.Mushaf
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.pipeline.integration.SyncDevice
 import com.quran.shared.pipeline.integration.SyncScenario
@@ -210,11 +211,11 @@ class TextScenariosTest {
     fun `TXT-11 reading bookmark names are trimmed like the server`() = syncScenario {
         val (phone, tablet) = signedIn("phone", "tablet")
 
-        phone.data.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "  Juz 30  ")
+        phone.data.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "  Juz 30  ", Mushaf.QCF_V2)
         syncAll(phone, tablet).forEach(::assertSucceeded)
         assertEquals(listOf("Juz 30", "Juz 30", "Juz 30"), slotOneNames(phone, tablet), "server, phone and tablet")
 
-        phone.data.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "   ")
+        phone.data.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "   ", Mushaf.QCF_V2)
         syncAll(phone, tablet).forEach(::assertSucceeded)
         assertEquals(listOf(null, null, null), slotOneNames(phone, tablet), "server, phone and tablet")
     }
@@ -222,7 +223,7 @@ class TextScenariosTest {
     /** Slot 1's name on the server, then on each device. */
     private suspend fun SyncScenario.slotOneNames(vararg devices: SyncDevice): List<String?> =
         listOf(server.state(ALICE).readingBookmarks.singleOrNull { it.slot == 1 }?.name) +
-            devices.map { device -> device.data.readingBookmarks.first().singleOrNull { it.slot == ReadingBookmarkSlot.TEAL }?.name }
+            devices.map { device -> device.data.readingBookmarks(Mushaf.QCF_V2).first().singleOrNull { it.slot == ReadingBookmarkSlot.TEAL }?.name }
 
     private fun TextLengthLimitException.parts(): List<Any> = listOf(field, bound, limit, length)
 }

@@ -2,6 +2,7 @@ package com.quran.shared.pipeline.integration.scenarios
 
 import com.quran.shared.persistence.model.AyahReadingBookmark
 import com.quran.shared.persistence.model.EmptyReadingBookmark
+import com.quran.shared.persistence.model.Mushaf
 import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.pipeline.integration.assertSucceeded
@@ -12,7 +13,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertNotEquals
 
 /** Reading bookmarks, the three colored slots. */
 class ReadingBookmarkScenariosTest {
@@ -21,13 +21,13 @@ class ReadingBookmarkScenariosTest {
     fun `RB-01 setting an ayah reading bookmark`() = syncScenario {
         val (phone, tablet) = signedIn("phone", "tablet")
 
-        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10)
+        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, Mushaf.QCF_V2)
         assertSucceeded(phone.syncNow())
         assertSucceeded(tablet.syncNow())
 
         val slot = server.state(ALICE).readingBookmarks.single { it.slot == 1 }
         assertEquals(Triple("ayah", 18, 10), Triple(slot.type, slot.key, slot.verse))
-        val onTablet = assertIs<AyahReadingBookmark>(tablet.data.readingBookmarks.first().single())
+        val onTablet = assertIs<AyahReadingBookmark>(tablet.data.readingBookmarks(Mushaf.QCF_V2).first().single())
         assertEquals(Triple(ReadingBookmarkSlot.TEAL, 18, 10), Triple(onTablet.slot, onTablet.sura, onTablet.ayah))
         assertConverged(ALICE, phone, tablet)
     }
@@ -35,18 +35,18 @@ class ReadingBookmarkScenariosTest {
     @Test
     fun `RB-04 clearing a slot keeps its name`() = syncScenario {
         val (phone, tablet) = signedIn("phone", "tablet")
-        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10)
-        phone.data.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "Khatm")
+        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, Mushaf.QCF_V2)
+        phone.data.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "Khatm", Mushaf.QCF_V2)
         syncUntilQuiescent(phone, tablet)
 
-        phone.data.clearReadingBookmark(ReadingBookmarkSlot.TEAL)
+        phone.data.clearReadingBookmark(ReadingBookmarkSlot.TEAL, Mushaf.QCF_V2)
         assertSucceeded(phone.syncNow())
         assertSucceeded(tablet.syncNow())
 
         val slot = server.state(ALICE).readingBookmarks.single { it.slot == 1 }
         assertFalse(slot.isPlaced)
         assertEquals("Khatm", slot.name)
-        val onTablet = assertIs<EmptyReadingBookmark>(tablet.data.readingBookmarks.first().single())
+        val onTablet = assertIs<EmptyReadingBookmark>(tablet.data.readingBookmarks(Mushaf.QCF_V2).first().single())
         assertEquals(ReadingBookmarkSlot.TEAL to "Khatm", onTablet.slot to onTablet.name)
         assertEquals(emptyList(), server.requests.filter { it.status == 404 }, "no 404")
         assertConverged(ALICE, phone, tablet)
@@ -56,13 +56,13 @@ class ReadingBookmarkScenariosTest {
     fun `RB-02 setting a page reading bookmark`() = syncScenario {
         val (phone, tablet) = signedIn("phone", "tablet")
 
-        phone.data.setPageReadingBookmark(ReadingBookmarkSlot.ORANGE, 300)
+        phone.data.setPageReadingBookmark(ReadingBookmarkSlot.ORANGE, 300, Mushaf.QCF_V2)
         assertSucceeded(phone.syncNow())
         assertSucceeded(tablet.syncNow())
 
         val slot = server.state(ALICE).readingBookmarks.single { it.slot == 2 }
         assertEquals(Triple("page", "pages_604", 300), Triple(slot.type, slot.group, slot.key))
-        val onTablet = assertIs<PageReadingBookmark>(tablet.data.readingBookmarks.first().single())
+        val onTablet = assertIs<PageReadingBookmark>(tablet.data.readingBookmarks(Mushaf.QCF_V2).first().single())
         assertEquals(ReadingBookmarkSlot.ORANGE to 300, onTablet.slot to onTablet.page)
         assertConverged(ALICE, phone, tablet)
     }
@@ -71,12 +71,12 @@ class ReadingBookmarkScenariosTest {
     fun `RB-03 renaming a slot`() = syncScenario {
         val (phone, tablet) = signedIn("phone", "tablet")
 
-        phone.data.renameReadingBookmark(ReadingBookmarkSlot.RED, "Khatm")
+        phone.data.renameReadingBookmark(ReadingBookmarkSlot.RED, "Khatm", Mushaf.QCF_V2)
         assertSucceeded(phone.syncNow())
         assertSucceeded(tablet.syncNow())
 
         assertEquals("Khatm", server.state(ALICE).readingBookmarks.single { it.slot == 3 }.name)
-        val onTablet = tablet.data.readingBookmarks.first().single()
+        val onTablet = tablet.data.readingBookmarks(Mushaf.QCF_V2).first().single()
         assertEquals(ReadingBookmarkSlot.RED to "Khatm", onTablet.slot to onTablet.name)
         assertConverged(ALICE, phone, tablet)
     }
@@ -85,8 +85,8 @@ class ReadingBookmarkScenariosTest {
     fun `RB-05 concurrent sets on one slot keep the newest`() = syncScenario {
         val (phone, tablet) = signedIn("phone", "tablet")
 
-        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, at(1_000))
-        tablet.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 36, 1, at(2_000))
+        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, Mushaf.QCF_V2, at(1_000))
+        tablet.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 36, 1, Mushaf.QCF_V2, at(2_000))
         assertSucceeded(phone.syncNow())
         assertSucceeded(tablet.syncNow())
         syncUntilQuiescent(phone, tablet)
@@ -94,7 +94,7 @@ class ReadingBookmarkScenariosTest {
         val slot = server.state(ALICE).readingBookmarks.single { it.slot == 1 }
         assertEquals(36 to 1, slot.key to slot.verse)
         listOf(phone, tablet).forEach {
-            val bookmark = assertIs<AyahReadingBookmark>(it.data.readingBookmarks.first().single(), it.name)
+            val bookmark = assertIs<AyahReadingBookmark>(it.data.readingBookmarks(Mushaf.QCF_V2).first().single(), it.name)
             assertEquals(36 to 1, bookmark.sura to bookmark.ayah, it.name)
         }
         assertConverged(ALICE, phone, tablet)
@@ -111,30 +111,70 @@ class ReadingBookmarkScenariosTest {
         assertEquals(0, runs.sumOf { it.posts }, "nothing pushed back")
         val slot = server.state(ALICE).readingBookmarks.single { it.slot == 1 }
         assertEquals(Triple("page", "pages_548", 300), Triple(slot.type, slot.group, slot.key), "the server keeps the IndoPak page")
-        // The public model carries the page's mushaf, so page 300 of the 548-page IndoPak (mushaf 7) is not
-        // shown as Madani page 300 (mushaf 5).
-        val onPhone = assertIs<PageReadingBookmark>(phone.data.readingBookmarks.first().single())
-        assertEquals(300 to 7, onPhone.page to onPhone.mushafId, "page 300 of the 548-page IndoPak")
-        assertNotEquals(PageReadingBookmark.MADANI_MUSHAF_ID, onPhone.mushafId, "not the Madani mushaf")
+        val onPhone = assertIs<PageReadingBookmark>(phone.data.readingBookmarks(Mushaf.QCF_V2).first().single())
+        assertEquals(333 to Mushaf.QCF_V2, onPhone.page to onPhone.mushaf, "the Madani page with page 300's verses")
     }
 
     @Test
     fun `RB-07 a local slot edit during an in-flight sync isn't lost`() = syncScenario {
         val (phone) = signedIn("phone")
-        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, at(0))
+        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, Mushaf.QCF_V2, at(0))
         syncUntilQuiescent(phone)
         web(ALICE).setAyahReadingBookmark(1, 36, 1, times = ClientTimes(T0 + 1_000, T0 + 1_000))
         // Something to push, so the run has a POST to hold after its GET.
         phone.data.addNote("Pushed while the slot changes", 1, 1, 1, 7)
         val gate = server.faults.blockPost { it.carries("NOTE") }
 
-        assertSucceeded(phone.syncWhileHeld(gate) { phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 67, 1, at(2_000)) })
+        assertSucceeded(phone.syncWhileHeld(gate) { phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 67, 1, Mushaf.QCF_V2, at(2_000)) })
 
         syncUntilQuiescent(phone)
-        val onPhone = assertIs<AyahReadingBookmark>(phone.data.readingBookmarks.first().single())
+        val onPhone = assertIs<AyahReadingBookmark>(phone.data.readingBookmarks(Mushaf.QCF_V2).first().single())
         assertEquals(67 to 1, onPhone.sura to onPhone.ayah, "the latest slot on the phone")
         val slot = server.state(ALICE).readingBookmarks.single { it.slot == 1 }
         assertEquals(67 to 1, slot.key to slot.verse, "the latest slot on the server")
         assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `RB-08 a web 16-line IndoPak page reads as the page with its verses in each mushaf`() = syncScenario {
+        val (phone) = signedIn("phone")
+
+        web(ALICE).setPageReadingBookmark(1, 334, mushafId = 7)
+        assertSucceeded(phone.syncNow())
+
+        val madani = assertIs<PageReadingBookmark>(phone.data.readingBookmarks(Mushaf.QCF_V2).first().single())
+        val indoPak = assertIs<PageReadingBookmark>(phone.data.readingBookmarks(Mushaf.INDOPAK_15_LINES).first().single())
+        assertEquals(371 to Mushaf.QCF_V2, madani.page to madani.mushaf)
+        assertEquals(372 to Mushaf.INDOPAK_15_LINES, indoPak.page to indoPak.mushaf)
+    }
+
+    @Test
+    fun `RB-09 a 15-line IndoPak page is stored as the server numbers it and read in each mushaf`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+
+        val set = assertIs<PageReadingBookmark>(phone.data.setPageReadingBookmark(ReadingBookmarkSlot.ORANGE, 537, Mushaf.INDOPAK_15_LINES))
+        assertSucceeded(phone.syncNow())
+        assertSucceeded(tablet.syncNow())
+
+        assertEquals(537 to Mushaf.INDOPAK_15_LINES, set.page to set.mushaf)
+        val slot = server.state(ALICE).readingBookmarks.single { it.slot == 2 }
+        assertEquals("pages_610" to 536, slot.group to slot.key)
+        val onTablet = assertIs<PageReadingBookmark>(tablet.data.readingBookmarks(Mushaf.QCF_V2).first().single())
+        assertEquals(536 to Mushaf.QCF_V2, onTablet.page to onTablet.mushaf)
+    }
+
+    @Test
+    fun `RB-10 a page of one Madani layout keeps its number in the other`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+
+        phone.data.setPageReadingBookmark(ReadingBookmarkSlot.RED, 584, Mushaf.QCF_V1)
+        assertSucceeded(phone.syncNow())
+        assertSucceeded(tablet.syncNow())
+
+        val slot = server.state(ALICE).readingBookmarks.single { it.slot == 3 }
+        assertEquals("pages_604" to 584, slot.group to slot.key)
+        val onTablet = assertIs<PageReadingBookmark>(tablet.data.readingBookmarks(Mushaf.QCF_V2).first().single())
+        assertEquals(584 to Mushaf.QCF_V2, onTablet.page to onTablet.mushaf)
+        assertConverged(ALICE, phone, tablet)
     }
 }
