@@ -55,7 +55,7 @@ class ConvergenceScenariosTest {
         phone.addToFavorites(1, 1)
         phone.data.setHighlight(2, 255, AyahHighlightColor.BLUE)
         phone.data.addReadingSession(18, 1)
-        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, Mushaf.QCF_V2)
+        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10)
 
         assertSucceeded(phone.syncNow())
         val second = phone.syncNow()
@@ -84,7 +84,7 @@ class ConvergenceScenariosTest {
         d1.data.addAyahBookmarkToCollection(d1.data.addCollection("Study").id, 2, 255)
         d1.addToFavorites(1, 1)
         d1.data.addReadingSession(18, 1, at(1_000))
-        d1.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, Mushaf.QCF_V2, at(1_000))
+        d1.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, at(1_000))
         d2.data.addNote("Second device note", 2, 153, 2, 153)
         d2.addToFavorites(2, 3)
         d2.data.addReadingSession(3, 7, at(2_000))
@@ -127,7 +127,7 @@ class ConvergenceScenariosTest {
         d1.data.addReadingSession(18, 1, at(1_000))
         d2.data.addNote("Second device note", 2, 153, 2, 153)
         d2.addToFavorites(2, 3)
-        d2.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, Mushaf.QCF_V2, at(2_000))
+        d2.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, at(2_000))
         d3.data.addNote("Third device note", 36, 1, 36, 1)
         d3.data.setHighlight(5, 3, AyahHighlightColor.BLUE)
         web(ALICE).createNote("Written on the web", "67:1-67:2")
@@ -199,7 +199,7 @@ class ConvergenceScenariosTest {
             phone.data.addCollection("Study")
             phone.addToFavorites(2, 255)
             phone.data.addReadingSession(18, 1)
-            phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 36, 1, Mushaf.QCF_V2)
+            phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 36, 1)
             run.await()
         }
 

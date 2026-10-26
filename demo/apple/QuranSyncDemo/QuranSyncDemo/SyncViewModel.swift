@@ -172,7 +172,7 @@ class SyncViewModel: ObservableObject {
     ) async -> Shared.ReadingBookmark? {
         do {
             return try await asyncFunction(
-                for: quranDataService.setAyahReadingBookmark(slot: slot, sura: sura, ayah: ayah, mushaf: mushaf)
+                for: quranDataService.setAyahReadingBookmark(slot: slot, sura: sura, ayah: ayah)
             )
         } catch {
             print("SyncViewModel: Failed to set reading ayah bookmark: \(error)")
@@ -203,7 +203,7 @@ class SyncViewModel: ObservableObject {
 
     func clearReadingBookmark(slot: Shared.ReadingBookmarkSlot) async {
         do {
-            _ = try await asyncFunction(for: quranDataService.clearReadingBookmark(slot: slot, mushaf: mushaf))
+            _ = try await asyncFunction(for: quranDataService.clearReadingBookmark(slot: slot))
         } catch {
             print("SyncViewModel: Failed to clear reading bookmark: \(error)")
         }

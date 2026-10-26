@@ -88,7 +88,7 @@ class ReadingBookmarksImportTest {
     fun `replacement restores supplied slots and clears omitted slots keeping their names`() = runTest {
         insertSlot(1, "Green")
         insertSlot(2, "Purple")
-        readingBookmarks.setAyahReadingBookmark(ReadingBookmarkSlot.RED, 2, 255, Mushaf.QCF_V2, at(100))
+        readingBookmarks.setAyahReadingBookmark(ReadingBookmarkSlot.RED, 2, 255, at(100))
         val before = rows()
 
         val result = repository.importData(

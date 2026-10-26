@@ -121,7 +121,7 @@ class LifecycleScenariosTest {
         phone.data.addAyahBookmarkToCollection(phone.favoritesId(), 2, 255, at(2_000))
         phone.data.setHighlight(2, 255, AyahHighlightColor.BLUE, at(2_000))
         phone.data.addReadingSession(18, 1, at(5_000))
-        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, Mushaf.QCF_V2, at(5_000))
+        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, at(5_000))
 
         assertSucceeded(phone.login(ALICE))
         syncUntilQuiescent(phone)

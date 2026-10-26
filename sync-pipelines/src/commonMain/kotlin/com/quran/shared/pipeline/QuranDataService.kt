@@ -522,24 +522,21 @@ class QuranDataService internal constructor(
         }
     }
 
-    /** Sets [slot] to an ayah. Like every reading bookmark write, it returns the slot read in [mushaf]. */
     @NativeCoroutines
     suspend fun setAyahReadingBookmark(
         slot: ReadingBookmarkSlot,
         sura: Int,
-        ayah: Int,
-        mushaf: Mushaf
-    ): ReadingBookmark = setAyahReadingBookmark(slot, sura, ayah, mushaf, currentPlatformDateTime())
+        ayah: Int
+    ): ReadingBookmark = setAyahReadingBookmark(slot, sura, ayah, currentPlatformDateTime())
 
     @NativeCoroutines
     suspend fun setAyahReadingBookmark(
         slot: ReadingBookmarkSlot,
         sura: Int,
         ayah: Int,
-        mushaf: Mushaf,
         timestamp: PlatformDateTime
     ): ReadingBookmark = mutatingCall("Failed to set reading ayah bookmark") {
-        readingBookmarksRepository.setAyahReadingBookmark(slot, sura, ayah, mushaf, timestamp)
+        readingBookmarksRepository.setAyahReadingBookmark(slot, sura, ayah, timestamp)
     }
 
     /**
@@ -562,6 +559,7 @@ class QuranDataService internal constructor(
             readingBookmarksRepository.setPageReadingBookmark(slot, page, mushaf, timestamp)
         }
 
+    /** Renames [slot] and returns it read in [mushaf], like [readingBookmarks]. */
     @NativeCoroutines
     suspend fun renameReadingBookmark(slot: ReadingBookmarkSlot, name: String?, mushaf: Mushaf): ReadingBookmark =
         renameReadingBookmark(slot, name, mushaf, currentPlatformDateTime())
@@ -578,13 +576,13 @@ class QuranDataService internal constructor(
         }
 
     @NativeCoroutines
-    suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot, mushaf: Mushaf): ReadingBookmark =
-        clearReadingBookmark(slot, mushaf, currentPlatformDateTime())
+    suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot): ReadingBookmark =
+        clearReadingBookmark(slot, currentPlatformDateTime())
 
     @NativeCoroutines
-    suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot, mushaf: Mushaf, timestamp: PlatformDateTime): ReadingBookmark =
+    suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot, timestamp: PlatformDateTime): ReadingBookmark =
         mutatingCall("Failed to clear reading bookmark") {
-            readingBookmarksRepository.clearReadingBookmark(slot, mushaf, timestamp)
+            readingBookmarksRepository.clearReadingBookmark(slot, timestamp)
         }
 
     @NativeCoroutines

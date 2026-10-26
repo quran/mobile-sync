@@ -173,7 +173,7 @@ class ProtocolScenariosTest {
         val (phone) = signedIn("phone")
         phone.data.addAyahBookmarkToCollection(phone.data.addCollection("Study").id, 2, 255)
         phone.data.addReadingSession(18, 1, at(0))
-        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 36, 1, Mushaf.QCF_V2, at(0))
+        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 36, 1, at(0))
         syncUntilQuiescent(phone)
         val before = phone.snapshot()
         val web = web(ALICE)
@@ -225,8 +225,8 @@ class ProtocolScenariosTest {
     fun `ERR-20 the client never sends two creates for one reading-bookmark slot in one POST`() = syncScenario {
         val (phone) = signedIn("phone")
 
-        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, Mushaf.QCF_V2, at(0))
-        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 36, 1, Mushaf.QCF_V2, at(1_000))
+        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, at(0))
+        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 36, 1, at(1_000))
         phone.data.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 300, Mushaf.QCF_V2, at(2_000))
         val run = phone.syncNow()
 

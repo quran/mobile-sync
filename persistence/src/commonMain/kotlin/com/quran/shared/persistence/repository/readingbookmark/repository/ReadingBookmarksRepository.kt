@@ -8,9 +8,8 @@ import com.rickclephas.kmp.nativecoroutines.NativeCoroutines
 import kotlinx.coroutines.flow.Flow
 
 /**
- * The three reading bookmark slots. Every call that returns slots takes the [Mushaf] the app shows: page bookmarks
- * come back as pages of that mushaf, mapped from whichever mushaf they were set in, and a page of a layout this
- * library doesn't know comes back as an empty slot (its location is kept). Ayah bookmarks need no mapping.
+ * The three reading bookmark slots. Every call that can return a page bookmark takes the [Mushaf] the app shows and
+ * returns pages of it, mapped from whichever mushaf they were set in.
  */
 interface ReadingBookmarksRepository {
     @NativeCoroutines
@@ -23,8 +22,7 @@ interface ReadingBookmarksRepository {
     suspend fun setAyahReadingBookmark(
         slot: ReadingBookmarkSlot,
         sura: Int,
-        ayah: Int,
-        mushaf: Mushaf
+        ayah: Int
     ): ReadingBookmark
 
     @NativeCoroutines
@@ -32,7 +30,6 @@ interface ReadingBookmarksRepository {
         slot: ReadingBookmarkSlot,
         sura: Int,
         ayah: Int,
-        mushaf: Mushaf,
         timestamp: PlatformDateTime
     ): ReadingBookmark
 
@@ -64,8 +61,8 @@ interface ReadingBookmarksRepository {
     ): ReadingBookmark
 
     @NativeCoroutines
-    suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot, mushaf: Mushaf): ReadingBookmark
+    suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot): ReadingBookmark
 
     @NativeCoroutines
-    suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot, mushaf: Mushaf, timestamp: PlatformDateTime): ReadingBookmark
+    suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot, timestamp: PlatformDateTime): ReadingBookmark
 }

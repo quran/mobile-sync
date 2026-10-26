@@ -56,7 +56,7 @@ class SyncViewModel(
     }
 
     suspend fun setAyahReadingBookmark(slot: ReadingBookmarkSlot, sura: Int, ayah: Int): ReadingBookmark {
-        return service.setAyahReadingBookmark(slot, sura, ayah, mushaf)
+        return service.setAyahReadingBookmark(slot, sura, ayah)
     }
 
     suspend fun setPageReadingBookmark(slot: ReadingBookmarkSlot, page: Int): ReadingBookmark {
@@ -64,7 +64,7 @@ class SyncViewModel(
     }
 
     suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot) {
-        service.clearReadingBookmark(slot, mushaf)
+        service.clearReadingBookmark(slot)
     }
 
     suspend fun addCollection(name: String) {

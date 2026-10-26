@@ -1356,15 +1356,13 @@ private class ServiceReadingBookmarksRepository :
     override suspend fun setAyahReadingBookmark(
         slot: ReadingBookmarkSlot,
         sura: Int,
-        ayah: Int,
-        mushaf: Mushaf
+        ayah: Int
     ): ReadingBookmark =
         AyahReadingBookmark(sura, ayah, testTimestamp(), "reading-ayah-$slot", slot)
     override suspend fun setAyahReadingBookmark(
         slot: ReadingBookmarkSlot,
         sura: Int,
         ayah: Int,
-        mushaf: Mushaf,
         timestamp: PlatformDateTime
     ): ReadingBookmark = AyahReadingBookmark(sura, ayah, timestamp, "reading-ayah-$slot", slot)
     override suspend fun setPageReadingBookmark(slot: ReadingBookmarkSlot, page: Int, mushaf: Mushaf): ReadingBookmark =
@@ -1383,11 +1381,10 @@ private class ServiceReadingBookmarksRepository :
         mushaf: Mushaf,
         timestamp: PlatformDateTime
     ): ReadingBookmark = EmptyReadingBookmark(slot, name, timestamp, "reading-$slot")
-    override suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot, mushaf: Mushaf): ReadingBookmark =
+    override suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot): ReadingBookmark =
         EmptyReadingBookmark(slot, null, testTimestamp(), "reading-$slot")
     override suspend fun clearReadingBookmark(
         slot: ReadingBookmarkSlot,
-        mushaf: Mushaf,
         timestamp: PlatformDateTime
     ): ReadingBookmark =
         EmptyReadingBookmark(slot, null, timestamp, "reading-$slot")

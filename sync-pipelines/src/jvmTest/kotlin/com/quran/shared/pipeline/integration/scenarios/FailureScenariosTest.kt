@@ -1,6 +1,5 @@
 package com.quran.shared.pipeline.integration.scenarios
 
-import com.quran.shared.persistence.model.Mushaf
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.pipeline.SyncStatus
 import com.quran.shared.pipeline.integration.DeviceTimings
@@ -70,7 +69,7 @@ class FailureScenariosTest {
 
         phone.addToFavorites(2, 255)
         phone.data.addReadingSession(18, 1)
-        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 36, 1, Mushaf.QCF_V2)
+        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 36, 1)
         syncUntilQuiescent(phone)
 
         assertEquals(1, server.posts("phone").count { it.status == 504 }, "the response was lost once")
@@ -208,7 +207,7 @@ class FailureScenariosTest {
         phone.data.addNote(POISON, 2, 255, 2, 255)
         phone.data.addCollection("Study")
         phone.data.addReadingSession(18, 1)
-        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 36, 1, Mushaf.QCF_V2)
+        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 36, 1)
         val run = phone.syncNow()
 
         assertSucceeded(run)
@@ -357,7 +356,7 @@ class FailureScenariosTest {
         data.addNote(POISON, 2, 255, 2, 255)
         data.addCollection("Study")
         data.addReadingSession(18, 1)
-        data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 36, 1, Mushaf.QCF_V2)
+        data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 36, 1)
     }
 
     private suspend fun SyncScenario.assertPoisonHeld(phone: SyncDevice) {

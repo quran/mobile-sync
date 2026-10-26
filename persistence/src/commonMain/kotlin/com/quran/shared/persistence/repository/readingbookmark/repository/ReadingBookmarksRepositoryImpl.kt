@@ -46,16 +46,15 @@ class ReadingBookmarksRepositoryImpl(
             withContext(Dispatchers.IO) { store.all().mapNotNull { row -> row.toReadingBookmark(mushaf) } }
         }
 
-    override suspend fun setAyahReadingBookmark(slot: ReadingBookmarkSlot, sura: Int, ayah: Int, mushaf: Mushaf): ReadingBookmark =
-        setAyahReadingBookmark(slot, sura, ayah, mushaf, currentPlatformDateTime())
+    override suspend fun setAyahReadingBookmark(slot: ReadingBookmarkSlot, sura: Int, ayah: Int): ReadingBookmark =
+        setAyahReadingBookmark(slot, sura, ayah, currentPlatformDateTime())
 
     override suspend fun setAyahReadingBookmark(
         slot: ReadingBookmarkSlot,
         sura: Int,
         ayah: Int,
-        mushaf: Mushaf,
         timestamp: PlatformDateTime
-    ): ReadingBookmark = write(mushaf) {
+    ): ReadingBookmark = write(mushaf = null) {
         store.setLocation(slot, ReadingLocation.ayah(sura, ayah), timestamp.toEpochMillisecondsFromPlatform())
     }
 
@@ -82,13 +81,14 @@ class ReadingBookmarksRepositoryImpl(
         timestamp: PlatformDateTime
     ): ReadingBookmark = write(mushaf) { store.rename(slot, name, timestamp.toEpochMillisecondsFromPlatform()) }
 
-    override suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot, mushaf: Mushaf): ReadingBookmark =
-        clearReadingBookmark(slot, mushaf, currentPlatformDateTime())
+    override suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot): ReadingBookmark =
+        clearReadingBookmark(slot, currentPlatformDateTime())
 
-    override suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot, mushaf: Mushaf, timestamp: PlatformDateTime): ReadingBookmark =
-        write(mushaf) { store.setLocation(slot, null, timestamp.toEpochMillisecondsFromPlatform()) }
+    override suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot, timestamp: PlatformDateTime): ReadingBookmark =
+        write(mushaf = null) { store.setLocation(slot, null, timestamp.toEpochMillisecondsFromPlatform()) }
 
-    private suspend fun write(mushaf: Mushaf, block: () -> Reading_bookmark): ReadingBookmark = withContext(Dispatchers.IO) {
+    /** Writes a slot and returns it read in [mushaf]; null for a write that can't leave a page (an ayah or a clear). */
+    private suspend fun write(mushaf: Mushaf?, block: () -> Reading_bookmark): ReadingBookmark = withContext(Dispatchers.IO) {
         database.transactionWithResult { block() }.toReadingBookmark(mushaf) ?: error("Expected a reading bookmark slot 1 to 3.")
     }
 }
@@ -96,18 +96,18 @@ class ReadingBookmarksRepositoryImpl(
 /**
  * A slot as the app shows it, page bookmarks as pages of [mushaf]. A location the app has no model for (a surah or juz
  * set on the web, or a page of a group this library doesn't know) shows as an empty slot; the row keeps it. Slots
- * outside 1 to 3 are not shown.
+ * outside 1 to 3 are not shown. [mushaf] is null only for a row that can't hold a page.
  */
-internal fun Reading_bookmark.toReadingBookmark(mushaf: Mushaf): ReadingBookmark? {
+internal fun Reading_bookmark.toReadingBookmark(mushaf: Mushaf?): ReadingBookmark? {
     if (slot !in 1L..3L) return null
     val lastUpdated = Instant.fromEpochMilliseconds(updated_at).toPlatform()
     val slot = slot.toInt().toReadingBookmarkSlot()
     val id = local_id.toString()
     val location = location()
-    val page = location?.takeIf { it.type == "page" }?.let { ReadingBookmarkPageMapper.appPage(it, mushaf) }
+    val page = location?.takeIf { it.type == "page" && mushaf != null }?.let { ReadingBookmarkPageMapper.appPage(it, mushaf!!) }
     return when {
         location?.type == "ayah" -> AyahReadingBookmark(location.key, location.verse!!, lastUpdated, id, slot, name)
-        page != null -> PageReadingBookmark(page, mushaf, lastUpdated, id, slot, name)
+        page != null && mushaf != null -> PageReadingBookmark(page, mushaf, lastUpdated, id, slot, name)
         else -> EmptyReadingBookmark(slot, name, lastUpdated, id)
     }
 }

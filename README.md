@@ -285,12 +285,13 @@ mapping.
   server's page N - 1.
 - `setPageReadingBookmark(slot, page, mushaf)` throws `IllegalArgumentException` for a page the
   mushaf doesn't have.
-- `readingBookmarks(mushaf)` and every set, rename, and clear call take the app's mushaf and return
-  `PageReadingBookmark`s as pages of it. A page
+- `readingBookmarks(mushaf)`, `setPageReadingBookmark`, and `renameReadingBookmark` take the app's
+  mushaf and return `PageReadingBookmark`s as pages of it. A page
   set in a mushaf of the same page count keeps its number, even between the two Madani layouts;
   another becomes the page holding its middle verse. A page of a layout this library doesn't know
   reads as `EmptyReadingBookmark`; its location is kept.
-- Ayah bookmarks need no mapping: every supported mushaf numbers verses the same way.
+- Ayah bookmarks need no mapping: every supported mushaf numbers verses the same way, so
+  `setAyahReadingBookmark` and `clearReadingBookmark` take no mushaf.
 
 Import local data through `QuranDataService.importData(PersistenceImportData(...))`.
 Each `ImportCollectionAyahBookmark.collectionName` must name an `ImportCollection` in the same

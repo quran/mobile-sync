@@ -21,7 +21,7 @@ class ReadingBookmarkScenariosTest {
     fun `RB-01 setting an ayah reading bookmark`() = syncScenario {
         val (phone, tablet) = signedIn("phone", "tablet")
 
-        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, Mushaf.QCF_V2)
+        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10)
         assertSucceeded(phone.syncNow())
         assertSucceeded(tablet.syncNow())
 
@@ -35,11 +35,11 @@ class ReadingBookmarkScenariosTest {
     @Test
     fun `RB-04 clearing a slot keeps its name`() = syncScenario {
         val (phone, tablet) = signedIn("phone", "tablet")
-        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, Mushaf.QCF_V2)
+        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10)
         phone.data.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "Khatm", Mushaf.QCF_V2)
         syncUntilQuiescent(phone, tablet)
 
-        phone.data.clearReadingBookmark(ReadingBookmarkSlot.TEAL, Mushaf.QCF_V2)
+        phone.data.clearReadingBookmark(ReadingBookmarkSlot.TEAL)
         assertSucceeded(phone.syncNow())
         assertSucceeded(tablet.syncNow())
 
@@ -85,8 +85,8 @@ class ReadingBookmarkScenariosTest {
     fun `RB-05 concurrent sets on one slot keep the newest`() = syncScenario {
         val (phone, tablet) = signedIn("phone", "tablet")
 
-        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, Mushaf.QCF_V2, at(1_000))
-        tablet.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 36, 1, Mushaf.QCF_V2, at(2_000))
+        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, at(1_000))
+        tablet.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 36, 1, at(2_000))
         assertSucceeded(phone.syncNow())
         assertSucceeded(tablet.syncNow())
         syncUntilQuiescent(phone, tablet)
@@ -118,14 +118,14 @@ class ReadingBookmarkScenariosTest {
     @Test
     fun `RB-07 a local slot edit during an in-flight sync isn't lost`() = syncScenario {
         val (phone) = signedIn("phone")
-        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, Mushaf.QCF_V2, at(0))
+        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, at(0))
         syncUntilQuiescent(phone)
         web(ALICE).setAyahReadingBookmark(1, 36, 1, times = ClientTimes(T0 + 1_000, T0 + 1_000))
         // Something to push, so the run has a POST to hold after its GET.
         phone.data.addNote("Pushed while the slot changes", 1, 1, 1, 7)
         val gate = server.faults.blockPost { it.carries("NOTE") }
 
-        assertSucceeded(phone.syncWhileHeld(gate) { phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 67, 1, Mushaf.QCF_V2, at(2_000)) })
+        assertSucceeded(phone.syncWhileHeld(gate) { phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 67, 1, at(2_000)) })
 
         syncUntilQuiescent(phone)
         val onPhone = assertIs<AyahReadingBookmark>(phone.data.readingBookmarks(Mushaf.QCF_V2).first().single())

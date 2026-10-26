@@ -30,7 +30,7 @@ class ReadingBookmarksRepositoryTest {
 
     @Test
     fun `three slots support only ayah and page locations`() = runTest {
-        repository.setAyahReadingBookmark(slot = ReadingBookmarkSlot.TEAL, sura = 2, ayah = 255, mushaf = Mushaf.QCF_V2)
+        repository.setAyahReadingBookmark(slot = ReadingBookmarkSlot.TEAL, sura = 2, ayah = 255)
         repository.setPageReadingBookmark(slot = ReadingBookmarkSlot.ORANGE, page = 42, mushaf = Mushaf.QCF_V2)
         repository.renameReadingBookmark(slot = ReadingBookmarkSlot.RED, name = "Resume", mushaf = Mushaf.QCF_V2)
 
@@ -53,7 +53,7 @@ class ReadingBookmarksRepositoryTest {
     fun `a slot keeps one row and its id across writes`() = runTest {
         val first = repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 1, Mushaf.QCF_V2, at(100))
 
-        val second = repository.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 2, 255, Mushaf.QCF_V2, at(200))
+        val second = repository.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 2, 255, at(200))
 
         assertEquals(first.id, second.id)
         assertEquals(1, rows().size)
@@ -65,7 +65,7 @@ class ReadingBookmarksRepositoryTest {
         repository.setPageReadingBookmark(slot = ReadingBookmarkSlot.ORANGE, page = 88, mushaf = Mushaf.QCF_V2, timestamp = at(100))
         val named = repository.renameReadingBookmark(ReadingBookmarkSlot.ORANGE, "Study", Mushaf.QCF_V2, at(150))
 
-        val cleared = assertIs<EmptyReadingBookmark>(repository.clearReadingBookmark(ReadingBookmarkSlot.ORANGE, Mushaf.QCF_V2, at(200)))
+        val cleared = assertIs<EmptyReadingBookmark>(repository.clearReadingBookmark(ReadingBookmarkSlot.ORANGE, at(200)))
 
         val row = rows().single()
         assertEquals(named.id, cleared.id)
@@ -80,15 +80,15 @@ class ReadingBookmarksRepositoryTest {
     fun `a write keeps the slot's server metadata`() = runTest {
         database.synced.readingBookmarksQueries.insert(1, "Daily", "page", 88, null, 5, "pages_604", METADATA, 50, 100)
 
-        repository.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 2, 255, Mushaf.QCF_V2, at(200))
-        repository.clearReadingBookmark(ReadingBookmarkSlot.TEAL, Mushaf.QCF_V2, at(300))
+        repository.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 2, 255, at(200))
+        repository.clearReadingBookmark(ReadingBookmarkSlot.TEAL, at(300))
 
         assertEquals(METADATA, rows().single().metadata)
     }
 
     @Test
     fun `explicit timestamps are stored for every reading bookmark mutation`() = runTest {
-        repository.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 2, 255, Mushaf.QCF_V2, at(100))
+        repository.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 2, 255, at(100))
         assertEquals(100L, slotRow(1).updated_at)
 
         repository.setPageReadingBookmark(ReadingBookmarkSlot.ORANGE, 42, Mushaf.QCF_V2, at(200))
@@ -97,7 +97,7 @@ class ReadingBookmarksRepositoryTest {
         repository.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "Resume", Mushaf.QCF_V2, at(300))
         assertEquals(300L, slotRow(1).updated_at)
 
-        repository.clearReadingBookmark(ReadingBookmarkSlot.ORANGE, Mushaf.QCF_V2, at(400))
+        repository.clearReadingBookmark(ReadingBookmarkSlot.ORANGE, at(400))
         assertEquals(400L, slotRow(2).updated_at)
     }
 
@@ -193,7 +193,7 @@ class ReadingBookmarksRepositoryTest {
 
     @Test
     fun `reading bookmarks flow emits the slots`() = runTest {
-        repository.setAyahReadingBookmark(ReadingBookmarkSlot.ORANGE, 2, 255, Mushaf.QCF_V2, at(100))
+        repository.setAyahReadingBookmark(ReadingBookmarkSlot.ORANGE, 2, 255, at(100))
 
         val bookmark = assertIs<AyahReadingBookmark>(repository.getReadingBookmarksFlow(Mushaf.QCF_V2).first().single())
 
