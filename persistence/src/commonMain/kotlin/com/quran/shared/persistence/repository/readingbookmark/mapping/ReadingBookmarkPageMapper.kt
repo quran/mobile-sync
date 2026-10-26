@@ -18,10 +18,11 @@ import kotlin.math.abs
 internal object ReadingBookmarkPageMapper {
 
     /** The location of [appPage] of [mushaf]; throws [IllegalArgumentException] for a page the mushaf doesn't have. */
-    fun serverLocation(appPage: Int, mushaf: Mushaf): ReadingLocation {
-        require(appPage in mushaf.appPages) { "Page $appPage is outside $mushaf's pages ${mushaf.appPages}" }
-        return ReadingLocation.page(mushaf.toServerPage(appPage), mushaf.pageGroup)
-    }
+    fun serverLocation(appPage: Int, mushaf: Mushaf): ReadingLocation =
+        requireNotNull(serverLocationOrNull(appPage, mushaf)) { "Page $appPage is outside $mushaf's pages ${mushaf.appPages}" }
+
+    fun serverLocationOrNull(appPage: Int, mushaf: Mushaf): ReadingLocation? =
+        if (appPage in mushaf.appPages) ReadingLocation.page(mushaf.toServerPage(appPage), mushaf.pageGroup) else null
 
     /**
      * The page of [mushaf] showing [location]'s page, or null when its group is unknown. A page of the mushaf's own

@@ -1,5 +1,6 @@
 package com.quran.shared.persistence.repository.importdata
 
+import co.touchlab.kermit.Logger
 import com.quran.shared.persistence.QuranDatabase
 import com.quran.shared.persistence.input.ImportAyahHighlight
 import com.quran.shared.persistence.input.ImportCollection
@@ -36,6 +37,7 @@ internal class PersistenceImportMerger(
     private val newNotes by lazy { noteStore.batch() }
     private val sessionStore = ReadingSessionStore(synced)
     private val readingBookmarkStore = ReadingBookmarkStore(synced)
+    private val logger = Logger.withTag("PersistenceImport")
     private val notesQueries = synced.notesQueries
     private var bookmarksImported = 0
     private var collectionsImported = 0
@@ -250,7 +252,11 @@ internal class PersistenceImportMerger(
             val at = bookmark.lastUpdated.toEpochMillisecondsFromPlatform()
             val location = when (bookmark) {
                 is ImportReadingBookmark.Ayah -> ReadingLocation.ayah(bookmark.sura, bookmark.ayah)
-                is ImportReadingBookmark.Page -> ReadingBookmarkPageMapper.serverLocation(bookmark.page, bookmark.mushaf)
+                is ImportReadingBookmark.Page -> ReadingBookmarkPageMapper.serverLocationOrNull(bookmark.page, bookmark.mushaf)
+            }
+            if (location == null) {
+                logger.w { "Skipping an imported page reading bookmark outside its mushaf's pages" }
+                return@forEach
             }
             readingBookmarkStore.setLocation(bookmark.slot, location, at)
             readingBookmarkStore.rename(bookmark.slot, bookmark.name, at)

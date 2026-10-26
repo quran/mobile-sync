@@ -13,8 +13,8 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class ReadingBookmarksImportTest {
     private lateinit var database: MobileSyncDatabase
@@ -146,23 +146,20 @@ class ReadingBookmarksImportTest {
     }
 
     @Test
-    fun `an imported page outside its mushaf fails the whole import`() = runTest {
-        insertSlot(1, "Keep")
-        val before = rows()
-
-        listOf(Mushaf.QCF_V2 to 0, Mushaf.QCF_V1 to 605, Mushaf.INDOPAK_15_LINES to 1).forEach { (mushaf, page) ->
-            assertFailsWith<IllegalArgumentException>("$mushaf $page") {
-                repository.importData(
-                    PersistenceImportData(
-                        readingBookmarks = listOf(
-                            ImportReadingBookmark.Ayah(2, 255, at(200), ReadingBookmarkSlot.ORANGE),
-                            ImportReadingBookmark.Page(page, mushaf, at(300), ReadingBookmarkSlot.RED)
-                        )
-                    )
+    fun `an imported page outside its mushaf is skipped and the rest is imported`() = runTest {
+        val result = repository.importData(
+            PersistenceImportData(
+                readingBookmarks = listOf(
+                    ImportReadingBookmark.Page(300, Mushaf.QCF_V2, at(200), ReadingBookmarkSlot.TEAL),
+                    ImportReadingBookmark.Page(1, Mushaf.INDOPAK_15_LINES, at(300), ReadingBookmarkSlot.ORANGE)
                 )
-            }
-        }
-        assertEquals(before, rows())
+            )
+        )
+
+        assertEquals(1, result.readingBookmarksImported)
+        assertTrue(result.changed)
+        val row = rows().single()
+        assertEquals(Triple(1L, "page", 300L), Triple(row.slot, row.location_type, row.location_key))
     }
 
     @Test

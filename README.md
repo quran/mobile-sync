@@ -299,12 +299,12 @@ batch. Names match exactly, except that any case or surrounding-whitespace varia
 resolves to the default collection; entries sharing a name describe one destination.
 Use `readingBookmarks` with `ImportReadingBookmark.Ayah` or `.Page`, each specifying a
 `ReadingBookmarkSlot` (`TEAL`, `ORANGE`, or `RED`), `lastUpdated`, and an optional `name`; a page
-also names its `Mushaf` and is stored like `setPageReadingBookmark`, so a page the mushaf doesn't
-have fails the import with `IllegalArgumentException`. Each slot may appear once. An imported slot replaces its
+also names its `Mushaf`. A page the mushaf doesn't have
+is skipped with a warning. Each slot may appear once. An imported slot replaces its
 location, name (including clearing it when null), and modification time. Merge imports leave
 omitted slots unchanged; `deleteExisting = true` clears their locations while preserving slot
 identities and names for sync. Imports are atomic and report the
-number of supplied reading bookmarks in `PersistenceImportResult.readingBookmarksImported`.
+number of imported reading bookmarks in `PersistenceImportResult.readingBookmarksImported`.
 An import writes through the repositories' rules: text is trimmed like the server, each note gets a
 creation time of its own (nudged by a millisecond on a clash), a verse keeps one highlight color,
 and only the newest 20 reading sessions are kept. Matching against notes already on the device and

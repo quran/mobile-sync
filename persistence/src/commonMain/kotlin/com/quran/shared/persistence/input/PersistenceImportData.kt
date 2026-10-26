@@ -49,8 +49,8 @@ sealed class ImportReadingBookmark {
     ) : ImportReadingBookmark()
 
     /**
-     * [page] of [mushaf], numbered the way apps number that mushaf's pages (see [Mushaf]); stored like
-     * `setPageReadingBookmark`, so a page the mushaf doesn't have fails the import with [IllegalArgumentException].
+     * [page] of [mushaf], numbered the way apps number that mushaf's pages (see [Mushaf]). A page the mushaf doesn't
+     * have is skipped.
      */
     data class Page(
         val page: Int,
