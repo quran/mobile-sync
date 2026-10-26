@@ -299,12 +299,12 @@ class CollectionScenariosTest {
         assertEquals(setOf("4:1"), server.state(ALICE).versesIn(userFavorites), "the server keeps the web's Favorites")
         assertEquals(setOf("1:1"), server.state(ALICE).favorites)
 
-        // Nothing is silently dropped: the default Favorites keeps 1:1, and the web's "Favorites"
-        // shows as some user collection holding 4:1, under its name or a documented rename.
+        // Nothing is silently dropped: the default Favorites keeps 1:1, and the web's "Favorites" is a
+        // user collection under its own name, holding 4:1.
         assertEquals(listOf("1:1"), phone.favoriteVerses(), "the default Favorites")
-        val holding = phone.data.collectionsWithBookmarks.first()
-            .filter { c -> !c.collection.isDefault && c.bookmarks.any { it.sura == 4 && it.ayah == 1 } }
-        assertEquals(1, holding.size, "user collections holding 4:1")
+        assertEquals(listOf("Favorites"), phone.collectionNames(), "the web's user collection")
+        assertEquals(listOf("4:1"), phone.versesIn("Favorites"))
+        assertConverged(ALICE, phone)
     }
 
     @Test
