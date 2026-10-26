@@ -299,12 +299,12 @@ class CollectionScenariosTest {
         assertEquals(setOf("4:1"), server.state(ALICE).versesIn(userFavorites), "the server keeps the web's Favorites")
         assertEquals(setOf("1:1"), server.state(ALICE).favorites)
 
-        // Nothing is silently dropped: the default Favorites keeps 1:1, and the web's "Favorites"
-        // shows as some user collection holding 4:1, under its name or a documented rename.
+        // Nothing is silently dropped: the default Favorites keeps 1:1, and the web's "Favorites" is a
+        // user collection under its own name, holding 4:1.
         assertEquals(listOf("1:1"), phone.favoriteVerses(), "the default Favorites")
-        val holding = phone.data.collectionsWithBookmarks.first()
-            .filter { c -> !c.collection.isDefault && c.bookmarks.any { it.sura == 4 && it.ayah == 1 } }
-        assertEquals(1, holding.size, "user collections holding 4:1")
+        assertEquals(listOf("Favorites"), phone.collectionNames(), "the web's user collection")
+        assertEquals(listOf("4:1"), phone.versesIn("Favorites"))
+        assertConverged(ALICE, phone)
     }
 
     @Test
@@ -364,6 +364,9 @@ class CollectionScenariosTest {
     @Test
     fun `COL-20 a remote rename onto a name a local pending rename took`() = syncScenario {
         val web = web(ALICE)
+        // "Study" is created first, so the phone writes it back before "Notes": its rename to "Memorize" lands
+        // while "Notes" still holds that name locally. In the other order the revert of "Notes" would free the
+        // name first, and the scenario would pass even without the write-back's temporary keys.
         val study = web.createCollection("Study")
         web.addToCollection(study, 3, 18)
         web.addToCollection(web.createCollection("Notes"), 2, 255)
@@ -373,8 +376,10 @@ class CollectionScenariosTest {
         phone.data.updateCollection(phone.collectionId("Notes"), "Memorize")
 
         // The server took the web's rename first, so the phone's clashing rename is reverted, as a
-        // local rename onto an existing name is refused (COL-12); no collection or verse is lost.
-        assertSucceeded(phone.syncNow())
+        // local rename onto an existing name is refused (COL-12), and never sent; no collection or verse is lost.
+        val run = phone.syncNow()
+        assertSucceeded(run)
+        assertEquals(0, run.posts, "the clashing rename is never sent")
         syncUntilQuiescent(phone)
         assertEquals(listOf("Memorize", "Notes"), phone.collectionNames())
         assertEquals(listOf("3:18"), phone.versesIn("Memorize"))
@@ -405,6 +410,8 @@ class CollectionScenariosTest {
 
     @Test
     fun `COL-22 a web user collection named Favorites reaches a new device beside the seeded default`() = syncScenario {
+        // Not a rename: on the first sync the unbound local Favorites links to `__default__` (uniqueness repair)
+        // while a user collection with the same name arrives, and the two must stay apart.
         val web = web(ALICE)
         web.addToFavorites(1, 1)
         val userFavorites = web.createCollection("Favorites")
