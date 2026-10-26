@@ -43,15 +43,62 @@ class ReadingBookmarksTypeTest {
         assertNull(second.name)
     }
 
-    /** The server keeps only the group; its answer is the group's representative mushaf. */
+    /** The server keeps only the group; a location carries the group and its stand-in mushaf. */
     @Test
-    fun a_location_carries_its_group_representative_mushaf() {
+    fun a_location_carries_its_group_and_the_group_stand_in_mushaf() {
         assertEquals(5, ReadingLocation.ayah(2, 255, mushafId = 1).mushafId)
         assertEquals(5, ReadingLocation.ayah(2, 255, mushafId = 7).mushafId)
-        assertEquals(5, ReadingLocation.page(300, mushafId = 2).mushafId)
-        assertEquals(7, ReadingLocation.page(300, mushafId = 7).mushafId)
-        assertEquals(6, ReadingLocation.page(300, mushafId = 6).mushafId)
+        assertNull(ReadingLocation.ayah(2, 255, mushafId = 7).group)
+        assertEquals(5 to "pages_604", ReadingLocation.page(300, mushafId = 2).let { it.mushafId to it.group })
+        assertEquals(7 to "pages_548", ReadingLocation.page(300, mushafId = 7).let { it.mushafId to it.group })
+        assertEquals(6 to "pages_610", ReadingLocation.page(300, mushafId = 6).let { it.mushafId to it.group })
         assertEquals(5, ReadingLocation.of("juz", 30, mushafId = 7).mushafId)
+    }
+
+    /** A page is read by its `group`, and by its `mushafId` only when the server sends no group. */
+    @Test
+    fun a_server_page_is_read_by_its_group() {
+        val pages = listOf(
+            page("rb1", key = 300, mushafId = 5, group = "pages_548"),
+            page("rb4", key = 300, mushafId = 7, group = null)
+        )
+
+        val locations = type.fromRemote(pages, refs).map { ReadingBookmarksType.toBookmark(0, assertIs<RemoteItem.Upsert>(it).state).location }
+
+        assertEquals(
+            listOf(
+                ReadingLocation.page(300, PageGroup.PAGES_548),
+                ReadingLocation.page(300, PageGroup.PAGES_548)
+            ),
+            locations
+        )
+    }
+
+    /** A group this library doesn't know is never read as 604 pages: it's kept, and written back with its mushaf. */
+    @Test
+    fun an_unknown_page_group_is_kept_as_the_server_sent_it() {
+        val item = assertIs<RemoteItem.Upsert>(type.fromRemote(listOf(page("rb1", key = 700, mushafId = 9, group = "pages_720")), refs).single())
+        val local = type.insert(item.state)
+
+        val location = ReadingBookmarksType.toBookmark(local, type.readAll().getValue(local)).location!!
+        repository.rename(1, "Khatm", 2)
+        val renamed = repository.readingBookmarks().single()
+        val sent = type.mutation(Change.Update("rb1", item.state, type.readAll().getValue(local)), refs).data!!
+
+        assertEquals(Triple("pages_720", 9, null), Triple(location.group, location.mushafId, location.pageGroup))
+        assertEquals(location, renamed.location)
+        assertEquals(JsonPrimitive(9), sent["mushafId"])
+        assertEquals(JsonPrimitive(700), sent["key"])
+        assertNull(type.validate(Change.Create(item.state)), "an unknown group's page count is unknown")
+    }
+
+    @Test
+    fun a_page_must_fit_in_its_group() {
+        fun validate(location: ReadingLocation) = type.validate(Change.Create(ReadingBookmarksType.bookmarkState(1, null, location, null, 1, 1)))
+
+        assertNull(validate(ReadingLocation.page(548, PageGroup.PAGES_548)))
+        assertEquals("INVALID_PAGE", validate(ReadingLocation.page(549, PageGroup.PAGES_548)))
+        assertEquals("INVALID_PAGE", validate(ReadingLocation.page(0, PageGroup.PAGES_604)))
     }
 
     @Test
@@ -125,4 +172,9 @@ class ReadingBookmarksTypeTest {
     }
 
     private fun entry(id: String, data: JsonObject) = RemoteEntry("READING_BOOKMARK", id, "UPDATE", data, 1L)
+
+    private fun page(id: String, key: Int, mushafId: Int, group: String?) = entry(id, buildJsonObject {
+        put("slot", 1); put("name", JsonNull); put("type", "page"); put("key", key); put("verseNumber", JsonNull)
+        put("mushafId", mushafId); group?.let { put("group", it) }
+    })
 }

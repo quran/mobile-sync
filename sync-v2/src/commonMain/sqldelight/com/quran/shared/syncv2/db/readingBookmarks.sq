@@ -1,6 +1,7 @@
 -- Plain domain table: no sync columns. Local ids may be negative (see SyncType).
 -- One row per slot (1..3). A cleared slot keeps its row, name and metadata, with every location column NULL.
--- mushaf_id is the representative mushaf of the server's bookmark group (the server keeps only the group).
+-- mushaf_id is the stand-in mushaf of the server's bookmark group (the server keeps only the group); location_group is
+-- a page's group (pages_604, pages_610, pages_548, or one this library doesn't know, kept with the server's mushaf_id).
 -- location_type is the server's bookmark type: 'ayah' (key = sura, verse = ayah), or 'page', 'surah' or 'juz' (key only).
 
 CREATE TABLE reading_bookmark(
@@ -11,12 +12,13 @@ CREATE TABLE reading_bookmark(
   location_key INTEGER,
   location_verse INTEGER,
   mushaf_id INTEGER,
+  location_group TEXT,
   -- The server's opaque metadata as JSON, without the `source` the server manages.
   metadata TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   CHECK (
-    (location_type IS NULL AND location_key IS NULL AND location_verse IS NULL AND mushaf_id IS NULL) OR
+    (location_type IS NULL AND location_key IS NULL AND location_verse IS NULL AND mushaf_id IS NULL AND location_group IS NULL) OR
     (location_type IS NOT NULL AND location_key IS NOT NULL)
   )
 );
@@ -30,13 +32,13 @@ bySlot:
 SELECT * FROM reading_bookmark WHERE slot = ?;
 
 insert:
-INSERT INTO reading_bookmark(slot, name, location_type, location_key, location_verse, mushaf_id, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO reading_bookmark(slot, name, location_type, location_key, location_verse, mushaf_id, location_group, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 insertWithId:
-INSERT INTO reading_bookmark(local_id, slot, name, location_type, location_key, location_verse, mushaf_id, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO reading_bookmark(local_id, slot, name, location_type, location_key, location_verse, mushaf_id, location_group, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 update:
-UPDATE reading_bookmark SET slot = ?, name = ?, location_type = ?, location_key = ?, location_verse = ?, mushaf_id = ?, metadata = ?, created_at = ?, updated_at = ? WHERE local_id = ?;
+UPDATE reading_bookmark SET slot = ?, name = ?, location_type = ?, location_key = ?, location_verse = ?, mushaf_id = ?, location_group = ?, metadata = ?, created_at = ?, updated_at = ? WHERE local_id = ?;
 
 -- Parked keys are never real and never shared: below 0 and one per local id, negative ids of restored tombstones
 -- included (odd for ids >= 0, even for ids < 0).

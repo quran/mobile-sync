@@ -95,8 +95,10 @@ class WebActor internal constructor(private val server: FakeSyncServer, val acco
     fun setAyahReadingBookmark(slot: Int, sura: Int, ayah: Int, mushafId: Int = 1, times: ClientTimes = ClientTimes()): String =
         write { notes.upsertReadingBookmark(ReadingBookmarkWrite(slot, BookmarkLocation.ayah(sura, ayah, mushafId), times = times)) }
 
-    fun setPageReadingBookmark(slot: Int, page: Int, mushafId: Int = 1, times: ClientTimes = ClientTimes()): String =
-        write { notes.upsertReadingBookmark(ReadingBookmarkWrite(slot, BookmarkLocation("page", page, null, mushafId), times = times)) }
+    fun setPageReadingBookmark(slot: Int, page: Int, mushafId: Int = 1, times: ClientTimes = ClientTimes()): String = write {
+        requireReadingPage(page, mushafId)
+        notes.upsertReadingBookmark(ReadingBookmarkWrite(slot, BookmarkLocation("page", page, null, mushafId), times = times))
+    }
 
     fun renameReadingBookmark(slot: Int, name: String?): String = write { account ->
         val existing = account.readingBookmarks.values.firstOrNull { it.slot == slot }

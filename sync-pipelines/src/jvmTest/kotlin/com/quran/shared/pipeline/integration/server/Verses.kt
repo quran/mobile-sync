@@ -51,3 +51,12 @@ internal fun representativeMushafId(group: String): Int = when (group) {
     "pages_610" -> 6
     else -> 5
 }
+
+/**
+ * The reading bookmark page check: a page must fit in the group its mushaf picks (`PAGES_MUSHAF_MAP`, 604 pages for
+ * every mushaf without its own entry).
+ */
+internal fun requireReadingPage(page: Int, mushafId: Int?) {
+    val pages = bookmarkGroup(mushafId, "page").removePrefix("pages_").toInt()
+    if (page !in 1..pages) throw validationError("The maximum key allowed for page bookmarks must be between 1 and $pages")
+}

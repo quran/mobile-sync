@@ -141,7 +141,7 @@ class ReadingBookmarksImportTest {
     }
 
     private fun insertSlot(slot: Long, name: String) {
-        database.synced.readingBookmarksQueries.insert(slot, name, "page", 88, null, 5, null, 50, 100)
+        database.synced.readingBookmarksQueries.insert(slot, name, "page", 88, null, 5, "pages_604", null, 50, 100)
     }
 
     private fun rows() = database.synced.readingBookmarksQueries.all().executeAsList()

@@ -76,7 +76,7 @@ class ReadingBookmarksRepositoryTest {
 
     @Test
     fun `a write keeps the slot's server metadata`() = runTest {
-        database.synced.readingBookmarksQueries.insert(1, "Daily", "page", 88, null, 5, METADATA, 50, 100)
+        database.synced.readingBookmarksQueries.insert(1, "Daily", "page", 88, null, 5, "pages_604", METADATA, 50, 100)
 
         repository.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 2, 255, at(200))
         repository.clearReadingBookmark(ReadingBookmarkSlot.TEAL, at(300))
@@ -119,7 +119,7 @@ class ReadingBookmarksRepositoryTest {
 
     @Test
     fun `a page bookmark from another mushaf shows its mushaf`() = runTest {
-        database.synced.readingBookmarksQueries.insert(2, null, "page", 300, null, 6, null, 50, 100)
+        database.synced.readingBookmarksQueries.insert(2, null, "page", 300, null, 6, "pages_610", null, 50, 100)
 
         val page = assertIs<PageReadingBookmark>(repository.getReadingBookmarks().single())
 
@@ -129,7 +129,7 @@ class ReadingBookmarksRepositoryTest {
 
     @Test
     fun `a surah location set on the web shows as an empty slot and is kept`() = runTest {
-        database.synced.readingBookmarksQueries.insert(3, "Kahf", "surah", 18, null, 5, null, 50, 100)
+        database.synced.readingBookmarksQueries.insert(3, "Kahf", "surah", 18, null, 5, null, null, 50, 100)
 
         val empty = assertIs<EmptyReadingBookmark>(repository.getReadingBookmarks().single())
 
@@ -140,7 +140,7 @@ class ReadingBookmarksRepositoryTest {
 
     @Test
     fun `slots outside one through three are stored but not shown`() = runTest {
-        database.synced.readingBookmarksQueries.insert(5, null, "page", 42, null, 5, null, 50, 100)
+        database.synced.readingBookmarksQueries.insert(5, null, "page", 42, null, 5, "pages_604", null, 50, 100)
         repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 1, at(100))
 
         assertEquals(listOf(ReadingBookmarkSlot.TEAL), repository.getReadingBookmarks().map { it.slot })

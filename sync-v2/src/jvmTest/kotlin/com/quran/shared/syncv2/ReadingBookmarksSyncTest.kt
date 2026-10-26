@@ -23,9 +23,9 @@ class ReadingBookmarksSyncTest {
     private fun FakeSyncServer.lastMutations() = postBodies.last()["mutations"]!!.jsonArray.map { it.jsonObject }
 
     /**
-     * The server keeps only the bookmark group and answers with its representative mushaf (5 for `verses_6236` and
-     * `pages_604`, 7 and 6 for the IndoPak page groups). A slot set with any mushaf is stored as that
-     * representative, so its echo is a no-op; only `mushafId` is sent.
+     * The server keeps only the bookmark group and answers with it and its stand-in mushaf (5 for `verses_6236` and
+     * `pages_604`, 7 and 6 for the IndoPak page groups). A slot set with any mushaf is stored as that stand-in, so
+     * its echo is a no-op; only `mushafId` is sent.
      */
     @Test
     fun `a slot's mushaf is the group's representative, so its echo is a no-op`() {

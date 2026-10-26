@@ -31,12 +31,12 @@ internal class ReadingBookmarkStore(private val database: SyncV2Database) {
         if (existing == null) {
             queries.insert(
                 slot.storage, next.name, location?.type, location?.key?.toLong(), location?.verse?.toLong(),
-                location?.mushafId?.toLong(), null, at, at
+                location?.mushafId?.toLong(), location?.group, null, at, at
             )
         } else {
             queries.update(
                 slot.storage, next.name, location?.type, location?.key?.toLong(), location?.verse?.toLong(),
-                location?.mushafId?.toLong(), existing.metadata, existing.created_at, at, existing.local_id
+                location?.mushafId?.toLong(), location?.group, existing.metadata, existing.created_at, at, existing.local_id
             )
         }
         return requireNotNull(get(slot)) { "Expected reading bookmark for slot=$slot after mutation." }
@@ -50,5 +50,5 @@ internal class ReadingBookmarkStore(private val database: SyncV2Database) {
 }
 
 internal fun Reading_bookmark.location(): ReadingLocation? = location_type?.let { type ->
-    ReadingLocation.of(type, location_key!!.toInt(), location_verse?.toInt(), mushaf_id?.toInt() ?: ReadingLocation.STANDARD)
+    ReadingLocation.fromServer(type, location_key!!.toInt(), location_verse?.toInt(), mushaf_id?.toInt(), location_group)
 }

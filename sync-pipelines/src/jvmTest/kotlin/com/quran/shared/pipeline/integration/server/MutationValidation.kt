@@ -204,6 +204,7 @@ internal object ResourceSchemas {
                     requireAyah(key, verse)
                 }
                 mushaf(setOf("mushafId"), required = true)
+                if (type == "page") requireReadingPage(key, int("mushafId"))
             }
             val slot = int("slot") ?: throw validationError("\"slot\" is required")
             if (slot !in 1..3) throw validationError("\"slot\" must be less than or equal to 3")
