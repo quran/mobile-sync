@@ -300,7 +300,8 @@ resolves to the default collection; entries sharing a name describe one destinat
 Use `readingBookmarks` with `ImportReadingBookmark.Ayah` or `.Page`, each specifying a
 `ReadingBookmarkSlot` (`TEAL`, `ORANGE`, or `RED`), `lastUpdated`, and an optional `name`; a page
 also names its `Mushaf`. A page the mushaf doesn't have
-is skipped with a warning. Each slot may appear once. An imported slot replaces its
+is skipped with a warning; with `deleteExisting = true` its slot is cleared like an omitted slot.
+Each slot may appear once. An imported slot replaces its
 location, name (including clearing it when null), and modification time. Merge imports leave
 omitted slots unchanged; `deleteExisting = true` clears their locations while preserving slot
 identities and names for sync. Imports are atomic and report the

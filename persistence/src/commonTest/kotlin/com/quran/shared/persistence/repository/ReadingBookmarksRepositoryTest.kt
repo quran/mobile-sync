@@ -161,14 +161,35 @@ class ReadingBookmarksRepositoryTest {
 
     @Test
     fun `a page of an unknown group is an empty slot and a rename keeps it`() = runTest {
-        database.synced.readingBookmarksQueries.insert(1, null, "page", 700, null, 9, "pages_720", null, 50, 100)
+        database.synced.readingBookmarksQueries.insert(1, null, "page", 700, null, 5, "pages_720", null, 50, 100)
 
         assertIs<EmptyReadingBookmark>(repository.getReadingBookmarks(Mushaf.QCF_V2).single())
         val renamed = assertIs<EmptyReadingBookmark>(repository.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "Khatm", Mushaf.QCF_V2, at(200)))
 
         assertEquals("Khatm", renamed.name)
         val row = slotRow(1)
-        assertEquals(listOf<Any?>("page", 700L, 9L, "pages_720"), listOf(row.location_type, row.location_key, row.mushaf_id, row.location_group))
+        assertEquals(listOf<Any?>("page", 700L, 5L, "pages_720"), listOf(row.location_type, row.location_key, row.mushaf_id, row.location_group))
+    }
+
+    @Test
+    fun `a stored page outside its group is an empty slot`() = runTest {
+        database.synced.readingBookmarksQueries.insert(1, null, "page", 605, null, 5, "pages_604", null, 50, 100)
+        database.synced.readingBookmarksQueries.insert(2, null, "page", 549, null, 7, "pages_548", null, 50, 100)
+
+        val slots = repository.getReadingBookmarks(Mushaf.QCF_V2)
+
+        assertEquals(2, slots.size)
+        slots.forEach { assertIs<EmptyReadingBookmark>(it, "${it.slot}: not clamped onto a real page") }
+    }
+
+    @Test
+    fun `a rename returns the slot's page mapped into the mushaf`() = runTest {
+        database.synced.readingBookmarksQueries.insert(1, null, "page", 334, null, 7, "pages_548", null, 50, 100)
+
+        val renamed = assertIs<PageReadingBookmark>(repository.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "Khatm", Mushaf.QCF_V2, at(200)))
+
+        assertEquals(Triple(371, Mushaf.QCF_V2, "Khatm"), Triple(renamed.page, renamed.mushaf, renamed.name))
+        assertEquals(334L to "pages_548", slotRow(1).let { it.location_key to it.location_group }, "the stored page is unchanged")
     }
 
     @Test

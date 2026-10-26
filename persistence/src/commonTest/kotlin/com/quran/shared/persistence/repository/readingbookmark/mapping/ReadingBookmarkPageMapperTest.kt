@@ -14,6 +14,11 @@ class ReadingBookmarkPageMapperTest {
     }
 
     @Test
+    fun `a candidate whose middle verse runs across the source page break is kept`() {
+        assertEquals(47, map(43, PageLayout.INDOPAK_16_LINES, PageLayout.MADANI_1440))
+    }
+
+    @Test
     fun `a mapped page maps back`() {
         val madani = map(301, PageLayout.INDOPAK_16_LINES, PageLayout.MADANI_1440)
 

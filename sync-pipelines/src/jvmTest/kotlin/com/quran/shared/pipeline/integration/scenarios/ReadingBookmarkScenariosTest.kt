@@ -140,7 +140,10 @@ class ReadingBookmarkScenariosTest {
         val (phone) = signedIn("phone")
 
         web(ALICE).setPageReadingBookmark(1, 334, mushafId = 7)
-        assertSucceeded(phone.syncNow())
+        val runs = listOf(phone.syncNow(), phone.syncNow())
+
+        runs.forEach(::assertSucceeded)
+        assertEquals(0, runs.sumOf { it.posts }, "the pages_548 echo pushes nothing back")
 
         val madani = assertIs<PageReadingBookmark>(phone.data.readingBookmarks(Mushaf.QCF_V2).first().single())
         val indoPak = assertIs<PageReadingBookmark>(phone.data.readingBookmarks(Mushaf.INDOPAK_15_LINES).first().single())
@@ -155,6 +158,10 @@ class ReadingBookmarkScenariosTest {
         val set = assertIs<PageReadingBookmark>(phone.data.setPageReadingBookmark(ReadingBookmarkSlot.ORANGE, 537, Mushaf.INDOPAK_15_LINES))
         assertSucceeded(phone.syncNow())
         assertSucceeded(tablet.syncNow())
+        val echoes = listOf(phone.syncNow(), tablet.syncNow())
+
+        echoes.forEach(::assertSucceeded)
+        assertEquals(0, echoes.sumOf { it.posts }, "the pages_610 echo pushes nothing back")
 
         assertEquals(537 to Mushaf.INDOPAK_15_LINES, set.page to set.mushaf)
         val slot = server.state(ALICE).readingBookmarks.single { it.slot == 2 }
