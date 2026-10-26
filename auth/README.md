@@ -73,6 +73,9 @@ is stored with the tokens in one write.
   another account, the session ends, because uploads would go to the access token's account while
   local data belongs to the stored one. A refresh without an ID token keeps the stored user. A
   session stored before this version without a user takes the refreshed ID token's user.
+  `AuthService` republishes `AuthState.Success` with the stored user when a refresh replaces the
+  session's tokens, including one made while fetching request headers, so a renamed account shows its
+  new name without a restart. An unchanged user emits nothing new.
 
 The auth HTTP client, used for the token exchange, refresh and revocation, times out after 15
 seconds to connect and 30 seconds per request or socket read.
