@@ -360,4 +360,65 @@ class CollectionScenariosTest {
         assertEquals(setOf("2:255"), server.state(ALICE).favorites)
         assertConverged(ALICE, phone)
     }
+
+    @Test
+    fun `COL-20 a remote rename onto a name a local pending rename took`() = syncScenario {
+        val web = web(ALICE)
+        val study = web.createCollection("Study")
+        web.addToCollection(study, 3, 18)
+        web.addToCollection(web.createCollection("Notes"), 2, 255)
+        val (phone) = signedIn("phone")
+
+        web.renameCollection(study, "Memorize")
+        phone.data.updateCollection(phone.collectionId("Notes"), "Memorize")
+
+        // The server took the web's rename first, so the phone's clashing rename is reverted, as a
+        // local rename onto an existing name is refused (COL-12); no collection or verse is lost.
+        assertSucceeded(phone.syncNow())
+        syncUntilQuiescent(phone)
+        assertEquals(listOf("Memorize", "Notes"), phone.collectionNames())
+        assertEquals(listOf("3:18"), phone.versesIn("Memorize"))
+        assertEquals(listOf("2:255"), phone.versesIn("Notes"))
+        assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `COL-21 a web swap of two names applies in one sync`() = syncScenario {
+        val web = web(ALICE)
+        val a = web.createCollection("A")
+        web.addToCollection(a, 2, 255)
+        val b = web.createCollection("B")
+        web.addToCollection(b, 3, 18)
+        val (phone) = signedIn("phone")
+
+        // The server collapses the chain to A's UPDATE "B" and B's UPDATE "A": a cycle on the unique name.
+        web.renameCollection(a, "Swap")
+        web.renameCollection(b, "A")
+        web.renameCollection(a, "B")
+
+        assertSucceeded(phone.syncNow())
+        assertEquals(listOf("A", "B"), phone.collectionNames())
+        assertEquals(listOf("3:18"), phone.versesIn("A"))
+        assertEquals(listOf("2:255"), phone.versesIn("B"))
+        assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `COL-22 a web user collection named Favorites reaches a new device beside the seeded default`() = syncScenario {
+        val web = web(ALICE)
+        web.addToFavorites(1, 1)
+        val userFavorites = web.createCollection("Favorites")
+        web.addToCollection(userFavorites, 4, 1)
+        val phone = device("phone")
+        phone.addToFavorites(2, 2)
+
+        assertSucceeded(phone.login(ALICE))
+        syncUntilQuiescent(phone)
+
+        assertEquals(listOf("1:1", "2:2"), phone.favoriteVerses(), "the default Favorites")
+        assertEquals(listOf("Favorites"), phone.collectionNames(), "the web's user collection")
+        assertEquals(listOf("4:1"), phone.versesIn("Favorites"))
+        assertEquals(setOf("4:1"), server.state(ALICE).versesIn(userFavorites))
+        assertConverged(ALICE, phone)
+    }
 }
