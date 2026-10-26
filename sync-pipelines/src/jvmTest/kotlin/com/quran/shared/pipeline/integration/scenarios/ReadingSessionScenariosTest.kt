@@ -280,21 +280,27 @@ class ReadingSessionScenariosTest {
     }
 
     @Test
-    fun `RS-15 a remote move onto a verse with a pending local create`() = syncScenario {
+    fun `RS-15 a remote move onto a verse with a newer pending local create`() = remoteMoveOntoPendingCreate(localAt = 3_000, webAt = 2_000)
+
+    @Test
+    fun `RS-15 variant, a newer remote move onto a verse with a pending local create`() =
+        remoteMoveOntoPendingCreate(localAt = 3_000, webAt = 4_000)
+
+    /** The phone's unsent 3:7 and the moved session meet on one verse: they are one session, and the newer visit's time wins. */
+    private fun remoteMoveOntoPendingCreate(localAt: Long, webAt: Long) = syncScenario {
         val (phone) = signedIn("phone")
         phone.data.addReadingSession(2, 255, at(1_000))
         syncUntilQuiescent(phone)
         val web = web(ALICE)
 
-        web.moveReadingSession(web.sessionId(2, 255)!!, 3, 7, ClientTimes(updatedAt = T0 + 2_000))
-        phone.data.addReadingSession(3, 7, at(3_000))
+        web.moveReadingSession(web.sessionId(2, 255)!!, 3, 7, ClientTimes(updatedAt = T0 + webAt))
+        phone.data.addReadingSession(3, 7, at(localAt))
 
-        // The phone's unsent 3:7 and the moved session meet on one verse: they are one session, and
-        // the newer visit's time wins.
         assertSucceeded(phone.syncNow())
         syncUntilQuiescent(phone)
-        assertEquals(listOf("3:7"), phone.sessionVerses())
-        assertEquals("3:7" to T0 + 3_000, server.state(ALICE).sessions.single().let { it.verseKey to it.clientUpdatedAt })
+        val newest = maxOf(localAt, webAt)
+        assertEquals("3:7" to at(newest), phone.data.readingSessions.first().single().let { "${it.sura}:${it.ayah}" to it.lastUpdated })
+        assertEquals("3:7" to T0 + newest, server.state(ALICE).sessions.single().let { it.verseKey to it.clientUpdatedAt })
         assertConverged(ALICE, phone)
     }
 
@@ -311,30 +317,44 @@ class ReadingSessionScenariosTest {
 
         // The server already deleted the phone's 3:7 for the move, so the local delete has nothing
         // left to push, and the moved session lands on 3:7.
-        assertSucceeded(phone.syncNow())
-        syncUntilQuiescent(phone)
+        val run = phone.syncNow()
+        assertSucceeded(run)
+        assertEquals(0, run.posts)
         assertEquals(listOf("3:7"), phone.sessionVerses())
         assertEquals(listOf("3:7"), server.state(ALICE).sessionVerses)
         assertConverged(ALICE, phone)
     }
 
     @Test
-    fun `RS-17 a remote move and a local move onto the same verse`() = syncScenario {
+    fun `RS-17 a remote move and a newer local move onto the same verse`() = remoteAndLocalMoveOntoOneVerse(localAt = 3_000, webAt = 2_000)
+
+    @Test
+    fun `RS-17 variant, a newer remote move and a local move onto the same verse`() =
+        remoteAndLocalMoveOntoOneVerse(localAt = 3_000, webAt = 4_000)
+
+    /**
+     * Both sessions move onto 3:7: the newer move keeps the verse and the other session goes, as the server's move
+     * replaces the session at its target.
+     */
+    private fun remoteAndLocalMoveOntoOneVerse(localAt: Long, webAt: Long) = syncScenario {
         val (phone) = signedIn("phone")
         phone.data.addReadingSession(2, 255, at(0))
         val local = phone.data.addReadingSession(18, 1, at(1_000))
         syncUntilQuiescent(phone)
         val web = web(ALICE)
+        val remoteMoved = web.sessionId(2, 255)!!
+        val localMoved = web.sessionId(18, 1)!!
 
-        web.moveReadingSession(web.sessionId(2, 255)!!, 3, 7, ClientTimes(updatedAt = T0 + 2_000))
-        phone.data.updateReadingSession(local.id, 3, 7, at(3_000))
+        web.moveReadingSession(remoteMoved, 3, 7, ClientTimes(updatedAt = T0 + webAt))
+        phone.data.updateReadingSession(local.id, 3, 7, at(localAt))
 
-        // Both sessions move onto 3:7: the newer move keeps the verse and the other session goes,
-        // as the server's move replaces the session at its target.
         assertSucceeded(phone.syncNow())
         syncUntilQuiescent(phone)
-        assertEquals(listOf("3:7"), phone.sessionVerses())
-        assertEquals("3:7" to T0 + 3_000, server.state(ALICE).sessions.single().let { it.verseKey to it.clientUpdatedAt })
+        val newest = maxOf(localAt, webAt)
+        assertEquals("3:7" to at(newest), phone.data.readingSessions.first().single().let { "${it.sura}:${it.ayah}" to it.lastUpdated })
+        val session = server.state(ALICE).sessions.single()
+        assertEquals("3:7" to T0 + newest, session.verseKey to session.clientUpdatedAt)
+        assertEquals(if (localAt > webAt) localMoved else remoteMoved, session.id, "the newer move's session keeps the verse")
         assertConverged(ALICE, phone)
     }
 }
