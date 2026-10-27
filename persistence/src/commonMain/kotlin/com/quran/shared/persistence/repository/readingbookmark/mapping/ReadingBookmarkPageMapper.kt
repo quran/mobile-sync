@@ -20,16 +20,16 @@ internal object ReadingBookmarkPageMapper {
         requireNotNull(serverLocationOrNull(appPage, mushaf)) { "Page $appPage is outside $mushaf's pages ${mushaf.appPages}" }
 
     /**
-     * The location [appPage] of [mushaf] is sent as, or null for a page the mushaf doesn't have. A mushaf sent as a
-     * server mushaf of another layout ([Mushaf.SHEMERLY], until the server has its own) sends the page of that layout
-     * holding its verses.
+     * The location [appPage] of [mushaf] is sent as, or null for a page the mushaf doesn't have. A mushaf without a
+     * layout (a riwayah) sends its page unchanged. A mushaf sent as a server mushaf of another layout
+     * ([Mushaf.SHEMERLY], until the server has its own) sends the page of that layout holding its verses.
      */
     fun serverLocationOrNull(appPage: Int, mushaf: Mushaf): ReadingLocation? {
         if (appPage !in mushaf.appPages) return null
         val page = mushaf.toServerPage(appPage)
-        val layout = mushaf.layout
-        val serverLayout = PageLayout.of(mushaf.serverMushaf.id)
-        val serverPage = if (layout == serverLayout) page else mapPage(page, checkNotNull(layout), checkNotNull(serverLayout))
+        val layout = mushaf.layout ?: return ReadingLocation.page(page, mushaf.serverMushaf)
+        val serverLayout = checkNotNull(PageLayout.of(mushaf.serverMushaf.id)) { "$mushaf is sent as ${mushaf.serverMushaf}, which has no layout" }
+        val serverPage = if (layout == serverLayout) page else mapPage(page, layout, serverLayout)
         return ReadingLocation.page(serverPage, mushaf.serverMushaf)
     }
 

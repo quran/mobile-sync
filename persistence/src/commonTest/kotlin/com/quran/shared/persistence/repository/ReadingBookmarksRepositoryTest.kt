@@ -197,8 +197,17 @@ class ReadingBookmarksRepositoryTest {
         assertIs<EmptyReadingBookmark>(warsh[1])
         assertIs<EmptyReadingBookmark>(qaloun[0])
         assertEquals(604 to Mushaf.QALOUN, assertIs<PageReadingBookmark>(qaloun[1]).let { it.page to it.mushaf })
+    }
+
+    @Test
+    fun `a riwayah page is an empty slot in every Hafs mushaf`() = runTest {
+        repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 300, Mushaf.WARSH, at(100))
+        repository.setPageReadingBookmark(ReadingBookmarkSlot.ORANGE, 604, Mushaf.QALOUN, at(100))
+
         listOf(Mushaf.MADANI_1405, Mushaf.MADANI_1440, Mushaf.INDOPAK_15_LINES, Mushaf.SHEMERLY).forEach { mushaf ->
-            repository.getReadingBookmarks(mushaf).forEach { assertIs<EmptyReadingBookmark>(it, "$mushaf ${it.slot}") }
+            val slots = repository.getReadingBookmarks(mushaf)
+            assertEquals(2, slots.size, "$mushaf")
+            slots.forEach { assertIs<EmptyReadingBookmark>(it, "$mushaf ${it.slot}") }
         }
     }
 

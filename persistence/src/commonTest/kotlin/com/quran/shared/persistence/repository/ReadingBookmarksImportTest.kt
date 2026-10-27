@@ -147,6 +147,15 @@ class ReadingBookmarksImportTest {
     }
 
     @Test
+    fun `an imported riwayah page is stored unchanged with its own mushaf`() = runTest {
+        repository.importData(
+            PersistenceImportData(readingBookmarks = listOf(ImportReadingBookmark.Page(300, Mushaf.WARSH, at(300), ReadingBookmarkSlot.TEAL)))
+        )
+
+        assertEquals(listOf(300L to 20L), rows().map { it.location_key to it.mushaf_id })
+    }
+
+    @Test
     fun `an imported page outside its mushaf is skipped and the rest is imported`() = runTest {
         val result = repository.importData(
             PersistenceImportData(

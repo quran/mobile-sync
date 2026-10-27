@@ -239,4 +239,26 @@ class ReadingBookmarkScenariosTest {
         assertEquals(302, madani.page)
         assertConverged(ALICE, phone, tablet)
     }
+
+    /**
+     * Riwayah app builds don't sync, so nothing keeps a riwayah page from being pushed. Today's backend rejects mushaf
+     * 20, so the change is held: the server never gets the slot, nothing relabels it, and it still reads as the Warsh
+     * page here. A backend that accepts 20 but keeps only the page group would echo it as a 1440 page until it keeps
+     * the mushaf id (quran/mobile-sync#354).
+     */
+    @Test
+    fun `RB-13 today's backend rejects a Warsh page, which is held and still reads as Warsh here`() = syncScenario {
+        val (phone) = signedIn("phone")
+
+        phone.data.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 300, Mushaf.WARSH)
+        val runs = listOf(phone.syncNow(), phone.syncNow())
+
+        runs.forEach(::assertSucceeded)
+        assertEquals(listOf(422), server.posts("phone").map { it.status }.distinct(), "the backend rejects mushaf 20")
+        assertEquals(0, runs[1].posts, "held: not sent again")
+        assertEquals(emptyList(), server.state(ALICE).readingBookmarks, "nothing reaches the server")
+        val warsh = assertIs<PageReadingBookmark>(phone.data.readingBookmarks(Mushaf.WARSH).first().single())
+        assertEquals(300 to Mushaf.WARSH, warsh.page to warsh.mushaf)
+        assertIs<EmptyReadingBookmark>(phone.data.readingBookmarks(Mushaf.MADANI_1440).first().single())
+    }
 }

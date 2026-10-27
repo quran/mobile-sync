@@ -26,8 +26,8 @@ class PageLayoutTest {
 
     /**
      * INDOPAK, unused, is added by hand as QCF_V2's pages (the bundle lacks it); the riwayat that number verses
-     * differently have no layout. Each app mushaf is sent as a server mushaf of its layout, but Shemerly, which is sent
-     * as 1440 pages until the server has its own mushaf.
+     * differently have no layout. Each app mushaf is sent as a server mushaf of its layout, except Shemerly, which is
+     * sent as 1440 pages until the server has its own.
      */
     @Test
     fun `each mushaf id has its layout`() {

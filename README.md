@@ -286,10 +286,15 @@ mapping.
 - `Mushaf.SHEMERLY`, the Shemerly print, has pages 1 to 521. The server has no Shemerly mushaf yet
   (quran/mobile-sync#355), so a Shemerly page is stored and synced as the 1440 page holding its
   verses (`mushafId` 1) and mapped back when read. Seven Shemerly pages (9, 364, 379, 422, 495, 500
-  and 516) read back as a neighbouring page.
+  and 516) read back as a neighbouring page. Once the server has a Shemerly id, add it to
+  `ServerMushaf` (521 pages), map it to the Shemerly layout in `PageLayout.of`, and send
+  `Mushaf.SHEMERLY` as it; apps don't change.
 - `Mushaf.WARSH` and `Mushaf.QALOUN`, the Warsh and Qaloun riwayat, have pages 1 to 604. They number
   verses differently, so their pages are never mapped: a page is stored with its own `mushafId` (20
   or 22), reads unchanged in the same mushaf, and reads as `EmptyReadingBookmark` in any other.
+  Riwayah app builds don't sync. If one did, today's backend rejects these ids, so the change is
+  held and never reaches the server; a backend that accepts them but keeps only the page group
+  would relabel the page as a 1440 page until it keeps the mushaf id (quran/mobile-sync#354).
 - `setPageReadingBookmark(slot, page, mushaf)` throws `IllegalArgumentException` for a page the
   mushaf doesn't have.
 - A page is stored and synced with the mushaf it was set in (`mushafId`, such as 2 for
@@ -299,10 +304,11 @@ mapping.
   mushaf and return `PageReadingBookmark`s as pages of it. A page set in a mushaf of the same
   layout keeps its number; another becomes the page holding its middle verse. A page of a mushaf
   with no layout here (one this library doesn't know, or a riwayah such as Warsh, which numbers
-  verses differently) or outside its mushaf's pages reads as `EmptyReadingBookmark`; its location
-  is kept, and a rename sends it back unchanged.
+  verses differently) in any other mushaf, or a page outside its mushaf's pages, reads as
+  `EmptyReadingBookmark`; its location is kept, and a rename sends it back unchanged.
 - Ayah bookmarks need no mapping: every Hafs mushaf numbers verses the same way, so
-  `setAyahReadingBookmark` and `clearReadingBookmark` take no mushaf.
+  `setAyahReadingBookmark` and `clearReadingBookmark` take no mushaf. An ayah bookmark is taken as a
+  Hafs (sura, ayah), in riwayah builds too, which don't sync.
 
 Import local data through `QuranDataService.importData(PersistenceImportData(...))`.
 Each `ImportCollectionAyahBookmark.collectionName` must name an `ImportCollection` in the same

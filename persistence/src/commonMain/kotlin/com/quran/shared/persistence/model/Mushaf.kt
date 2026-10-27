@@ -23,14 +23,20 @@ enum class Mushaf(internal val serverMushaf: ServerMushaf) {
     /**
      * The Shemerly print, 521 pages. The server has no Shemerly mushaf yet (quran/mobile-sync#355), so for now a page
      * is sent as the [MADANI_1440] page that holds its verses (`QCF_V2`, id 1) and read back like any other layout's.
-     * This is temporary: once the server has an id, sending it as that [ServerMushaf] is the only change needed.
+     * This is temporary: once the server has an id, add it to [ServerMushaf] (521 pages), map it to the Shemerly
+     * layout in `PageLayout.of`, and send this mushaf as it. Apps don't change.
      */
     SHEMERLY(ServerMushaf.QCF_V2),
 
-    /** The Warsh riwayah, 604 pages: sent as the server's `WARSH` (id 20). Its pages map to no other mushaf. */
+    /**
+     * The Warsh riwayah, 604 pages: stored as the server's `WARSH` (id 20). Its pages map to no other mushaf: locally a
+     * page reads unchanged in this mushaf and as an empty slot in any other. Riwayah app builds don't sync: today's
+     * backend rejects the id, so the change is held, and a backend that accepts it but keeps only the page group would
+     * relabel it as a 1440 page until it keeps the mushaf id (quran/mobile-sync#354).
+     */
     WARSH(ServerMushaf.WARSH),
 
-    /** The Qaloun riwayah, 604 pages: sent as the server's `QALOUN` (id 22). Its pages map to no other mushaf. */
+    /** The Qaloun riwayah, 604 pages: stored as the server's `QALOUN` (id 22). Pages and sync as for [WARSH]. */
     QALOUN(ServerMushaf.QALOUN)
 }
 
