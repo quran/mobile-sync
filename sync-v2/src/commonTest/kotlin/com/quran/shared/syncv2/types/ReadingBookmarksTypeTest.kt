@@ -46,13 +46,11 @@ class ReadingBookmarksTypeTest {
     /** The server keeps only the group; a location carries the group and its stand-in mushaf. */
     @Test
     fun a_location_carries_its_group_and_the_group_stand_in_mushaf() {
-        assertEquals(5, ReadingLocation.ayah(2, 255, ServerMushaf.QCF_V2).mushafId)
-        assertEquals(5, ReadingLocation.ayah(2, 255, ServerMushaf.INDOPAK_16_LINES).mushafId)
-        assertNull(ReadingLocation.ayah(2, 255, ServerMushaf.INDOPAK_16_LINES).group)
-        assertEquals(5 to "pages_604", ReadingLocation.page(300, ServerMushaf.QCF_V1).let { it.mushafId to it.group })
-        assertEquals(7 to "pages_548", ReadingLocation.page(300, ServerMushaf.INDOPAK_16_LINES).let { it.mushafId to it.group })
-        assertEquals(6 to "pages_610", ReadingLocation.page(300, ServerMushaf.INDOPAK_15_LINES).let { it.mushafId to it.group })
-        assertEquals(5, ReadingLocation.of("juz", 30, mushaf = ServerMushaf.INDOPAK_16_LINES).mushafId)
+        assertEquals(5 to null, ReadingLocation.ayah(2, 255).let { it.mushafId to it.group })
+        assertEquals(5 to "pages_604", ReadingLocation.page(300, PageGroup.PAGES_604).let { it.mushafId to it.group })
+        assertEquals(7 to "pages_548", ReadingLocation.page(300, PageGroup.PAGES_548).let { it.mushafId to it.group })
+        assertEquals(6 to "pages_610", ReadingLocation.page(300, PageGroup.PAGES_610).let { it.mushafId to it.group })
+        assertEquals(5 to null, ReadingLocation.fromServer("juz", 30, null, 7, null).let { it.mushafId to it.group })
     }
 
     /** A page is read by its `group`, and by its `mushafId` only when the server sends no group (5 when neither). */
@@ -63,7 +61,8 @@ class ReadingBookmarksTypeTest {
             page("rb2", key = 300, mushafId = 2, group = null),
             page("rb3", key = 300, mushafId = 99, group = "pages_604"),
             page("rb4", key = 300, mushafId = 7, group = null),
-            page("rb5", key = 300, mushafId = null, group = null)
+            page("rb5", key = 300, mushafId = null, group = null),
+            page("rb6", key = 300, mushafId = 6, group = null)
         )
 
         val locations = type.fromRemote(pages, refs).map { ReadingBookmarksType.toBookmark(0, assertIs<RemoteItem.Upsert>(it).state).location }
@@ -74,11 +73,12 @@ class ReadingBookmarksTypeTest {
                 ReadingLocation.page(300, PageGroup.PAGES_604),
                 ReadingLocation.page(300, PageGroup.PAGES_604),
                 ReadingLocation.page(300, PageGroup.PAGES_548),
-                ReadingLocation.page(300, PageGroup.PAGES_604)
+                ReadingLocation.page(300, PageGroup.PAGES_604),
+                ReadingLocation.page(300, PageGroup.PAGES_610)
             ),
             locations
         )
-        assertEquals(5, locations.last()!!.mushafId)
+        assertEquals(5, locations[4]!!.mushafId)
     }
 
     /** 15 isn't a backend mushaf: without a group, its page is in no known group, like a page of an unknown group. */
@@ -126,7 +126,7 @@ class ReadingBookmarksTypeTest {
 
     @Test
     fun parked_slots_are_one_per_id() {
-        repository.set(1, ReadingLocation.page(5), 1)
+        repository.set(1, ReadingLocation.page(5, PageGroup.PAGES_604), 1)
         // A row restored under -1 next to row 1: their parked keys must differ too.
         type.insert(ReadingBookmarksType.bookmarkState(2, null, null, null, 1, 1), localId = -1)
 
@@ -152,7 +152,7 @@ class ReadingBookmarksTypeTest {
 
         assertEquals(listOf("rb2", "rb3"), items.map { it.remoteId }, "{} is skipped, never read as a clear")
         val metadata = buildJsonObject { put("a", 1); put("b", 2) }
-        assertEquals(ReadingBookmarksType.bookmarkState(2, null, ReadingLocation.page(300, ServerMushaf.INDOPAK_16_LINES), metadata, 1, 1), items[0].state)
+        assertEquals(ReadingBookmarksType.bookmarkState(2, null, ReadingLocation.page(300, PageGroup.PAGES_548), metadata, 1, 1), items[0].state)
         assertEquals(ReadingBookmarksType.bookmarkState(3, "Kursi", null, null, 1, 1), items[1].state)
     }
 

@@ -6,7 +6,6 @@ import com.quran.shared.syncv2.fake.int
 import com.quran.shared.syncv2.fake.str
 import com.quran.shared.syncv2.types.PageGroup
 import com.quran.shared.syncv2.types.ReadingLocation
-import com.quran.shared.syncv2.types.ServerMushaf
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -26,18 +25,16 @@ class ReadingBookmarksSyncTest {
 
     /**
      * The server keeps only the bookmark group and answers with it and its stand-in mushaf (5 for `verses_6236` and
-     * `pages_604`, 7 and 6 for the IndoPak page groups). A slot set with any mushaf is stored as that stand-in, so
-     * its echo is a no-op; only `mushafId` is sent.
+     * `pages_604`, 7 and 6 for the IndoPak page groups). A slot is written and stored with that stand-in, so its
+     * echo is a no-op; only `mushafId` is sent.
      */
     @Test
     fun `a slot's mushaf is the group's representative, so its echo is a no-op`() {
         listOf(
-            ReadingLocation.ayah(18, 10, ServerMushaf.QCF_V2) to 5,
-            ReadingLocation.ayah(18, 10, ServerMushaf.QCF_V1) to 5,
-            ReadingLocation.page(300, ServerMushaf.QCF_V2) to 5,
-            ReadingLocation.page(300, ServerMushaf.QCF_V1) to 5,
-            ReadingLocation.page(300, ServerMushaf.INDOPAK_16_LINES) to 7,
-            ReadingLocation.page(300, ServerMushaf.INDOPAK_15_LINES) to 6
+            ReadingLocation.ayah(18, 10) to 5,
+            ReadingLocation.page(300, PageGroup.PAGES_604) to 5,
+            ReadingLocation.page(300, PageGroup.PAGES_548) to 7,
+            ReadingLocation.page(300, PageGroup.PAGES_610) to 6
         ).forEach { (location, representative) ->
             FakeSyncServer().use { server ->
                 Device(server).use { device ->
@@ -169,14 +166,14 @@ class ReadingBookmarksSyncTest {
                 server.includeMutationIndex = withIndex
                 Device(server).use { device ->
                     device.readingBookmarks.set(1, ReadingLocation.ayah(18, 10), t(0))
-                    device.readingBookmarks.set(2, ReadingLocation.page(300), t(1))
+                    device.readingBookmarks.set(2, ReadingLocation.page(300, PageGroup.PAGES_604), t(1))
                     device.addNote("Written with the slots", "1:1", t(2))
                     server.dropFromNextResponse = { it.str("resource") == "READING_BOOKMARK" && (it["data"] as JsonObject).int("slot") == 1 }
 
                     device.settle()
                     assertEquals(1, server.postBodies.size, "index=$withIndex: nothing pushed twice")
 
-                    device.readingBookmarks.set(2, ReadingLocation.page(301), t(3))
+                    device.readingBookmarks.set(2, ReadingLocation.page(301, PageGroup.PAGES_604), t(3))
                     device.settle()
 
                     assertEquals(mapOf(1 to "18:10", 2 to "page 301"), Remote(server).readingSlots(), "index=$withIndex")

@@ -31,8 +31,8 @@ import kotlinx.serialization.json.put
  *
  * A page carries its server [group] and that group's stand-in mushaf ([PageGroup.standIn]). A page in a group this
  * library doesn't know, or sent without a group and with a mushaf the backend doesn't have, is kept as the server sent
- * it and has no [pageGroup]; [ReadingBookmarksType.validate] holds any write of it. Every other type uses [STANDARD]
- * and has no group.
+ * it and has no [pageGroup]; [ReadingBookmarksType.validate] holds any write of it. Every other type carries
+ * [ServerMushaf.KFGQPC_HAFS] and has no group.
  */
 data class ReadingLocation private constructor(
     val type: String,
@@ -49,27 +49,29 @@ data class ReadingLocation private constructor(
     val pageGroup: PageGroup? get() = group?.let(PageGroup::named)
 
     companion object {
-        /** A location written with [mushaf]: a page goes to the group the server picks for that mushaf. */
-        fun of(type: String, key: Int, verse: Int? = null, mushaf: ServerMushaf = STANDARD): ReadingLocation =
-            if (type == PAGE) page(key, mushaf.pageGroup) else ReadingLocation(type, key, verse, STANDARD.id, null)
-
-        fun ayah(sura: Int, ayah: Int, mushaf: ServerMushaf = STANDARD) = of(AYAH, sura, ayah, mushaf)
-        fun page(page: Int, mushaf: ServerMushaf = STANDARD) = of(PAGE, page, null, mushaf)
+        fun ayah(sura: Int, ayah: Int) = of(AYAH, sura, ayah)
         fun page(page: Int, group: PageGroup) = ReadingLocation(PAGE, page, null, group.standIn.id, group.serverName)
 
         /**
          * A location as the server renders it, or as it was stored: a page by its [group] when there is one, else by
-         * the group its [mushafId] picks. An unknown group, or an unknown mushaf without a group, is kept as sent.
+         * the group its [mushafId] picks (`pages_604` without either). An unknown group, or an unknown mushaf without a
+         * group, is kept as sent.
          */
         fun fromServer(type: String, key: Int, verse: Int?, mushafId: Int?, group: String?): ReadingLocation {
             if (type != PAGE) return of(type, key, verse)
-            val id = mushafId ?: STANDARD.id
+            val id = mushafId ?: PageGroup.PAGES_604.standIn.id
             val known = if (group != null) PageGroup.named(group) else ServerMushaf.fromId(id)?.pageGroup
             return if (known != null) page(key, known) else ReadingLocation(PAGE, key, null, id, group)
         }
 
-        /** The stand-in for `verses_6236`, `pages_604` and `default` (surah and juz). */
-        val STANDARD = ServerMushaf.KFGQPC_HAFS
+        /** An ayah, surah or juz location: it has no group and carries [VERSE_STAND_IN]. */
+        private fun of(type: String, key: Int, verse: Int?) = ReadingLocation(type, key, verse, VERSE_STAND_IN.id, null)
+
+        /**
+         * Written for ayah (`verses_6236`), surah and juz (`default`) locations: the server picks those groups whatever
+         * the id.
+         */
+        private val VERSE_STAND_IN = ServerMushaf.KFGQPC_HAFS
         private const val AYAH = "ayah"
         private const val PAGE = "page"
     }
