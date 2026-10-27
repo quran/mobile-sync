@@ -6,6 +6,7 @@ import com.quran.shared.syncv2.fake.int
 import com.quran.shared.syncv2.fake.str
 import com.quran.shared.syncv2.types.PageGroup
 import com.quran.shared.syncv2.types.ReadingLocation
+import com.quran.shared.syncv2.types.ServerMushaf
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -31,12 +32,12 @@ class ReadingBookmarksSyncTest {
     @Test
     fun `a slot's mushaf is the group's representative, so its echo is a no-op`() {
         listOf(
-            ReadingLocation.ayah(18, 10, mushafId = 1) to 5,
-            ReadingLocation.ayah(18, 10, mushafId = 2) to 5,
-            ReadingLocation.page(300, mushafId = 1) to 5,
-            ReadingLocation.page(300, mushafId = 2) to 5,
-            ReadingLocation.page(300, mushafId = 7) to 7,
-            ReadingLocation.page(300, mushafId = 6) to 6
+            ReadingLocation.ayah(18, 10, ServerMushaf.QCF_V2) to 5,
+            ReadingLocation.ayah(18, 10, ServerMushaf.QCF_V1) to 5,
+            ReadingLocation.page(300, ServerMushaf.QCF_V2) to 5,
+            ReadingLocation.page(300, ServerMushaf.QCF_V1) to 5,
+            ReadingLocation.page(300, ServerMushaf.INDOPAK_16_LINES) to 7,
+            ReadingLocation.page(300, ServerMushaf.INDOPAK_15_LINES) to 6
         ).forEach { (location, representative) ->
             FakeSyncServer().use { server ->
                 Device(server).use { device ->

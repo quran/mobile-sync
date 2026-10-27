@@ -46,13 +46,13 @@ class ReadingBookmarksTypeTest {
     /** The server keeps only the group; a location carries the group and its stand-in mushaf. */
     @Test
     fun a_location_carries_its_group_and_the_group_stand_in_mushaf() {
-        assertEquals(5, ReadingLocation.ayah(2, 255, mushafId = 1).mushafId)
-        assertEquals(5, ReadingLocation.ayah(2, 255, mushafId = 7).mushafId)
-        assertNull(ReadingLocation.ayah(2, 255, mushafId = 7).group)
-        assertEquals(5 to "pages_604", ReadingLocation.page(300, mushafId = 2).let { it.mushafId to it.group })
-        assertEquals(7 to "pages_548", ReadingLocation.page(300, mushafId = 7).let { it.mushafId to it.group })
-        assertEquals(6 to "pages_610", ReadingLocation.page(300, mushafId = 6).let { it.mushafId to it.group })
-        assertEquals(5, ReadingLocation.of("juz", 30, mushafId = 7).mushafId)
+        assertEquals(5, ReadingLocation.ayah(2, 255, ServerMushaf.QCF_V2).mushafId)
+        assertEquals(5, ReadingLocation.ayah(2, 255, ServerMushaf.INDOPAK_16_LINES).mushafId)
+        assertNull(ReadingLocation.ayah(2, 255, ServerMushaf.INDOPAK_16_LINES).group)
+        assertEquals(5 to "pages_604", ReadingLocation.page(300, ServerMushaf.QCF_V1).let { it.mushafId to it.group })
+        assertEquals(7 to "pages_548", ReadingLocation.page(300, ServerMushaf.INDOPAK_16_LINES).let { it.mushafId to it.group })
+        assertEquals(6 to "pages_610", ReadingLocation.page(300, ServerMushaf.INDOPAK_15_LINES).let { it.mushafId to it.group })
+        assertEquals(5, ReadingLocation.of("juz", 30, mushaf = ServerMushaf.INDOPAK_16_LINES).mushafId)
     }
 
     /** A page is read by its `group`, and by its `mushafId` only when the server sends no group. */
@@ -131,7 +131,7 @@ class ReadingBookmarksTypeTest {
 
         assertEquals(listOf("rb2", "rb3"), items.map { it.remoteId }, "{} is skipped, never read as a clear")
         val metadata = buildJsonObject { put("a", 1); put("b", 2) }
-        assertEquals(ReadingBookmarksType.bookmarkState(2, null, ReadingLocation.page(300, 7), metadata, 1, 1), items[0].state)
+        assertEquals(ReadingBookmarksType.bookmarkState(2, null, ReadingLocation.page(300, ServerMushaf.INDOPAK_16_LINES), metadata, 1, 1), items[0].state)
         assertEquals(ReadingBookmarksType.bookmarkState(3, "Kursi", null, null, 1, 1), items[1].state)
     }
 

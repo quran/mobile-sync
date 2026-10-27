@@ -2,6 +2,7 @@ package com.quran.shared.persistence.model
 
 import com.quran.shared.persistence.repository.readingbookmark.mapping.PageLayout
 import com.quran.shared.syncv2.types.PageGroup
+import com.quran.shared.syncv2.types.ServerMushaf
 
 /** The page layout an app shows the Quran in, and sets and reads page reading bookmarks in. */
 enum class Mushaf {
@@ -18,14 +19,14 @@ enum class Mushaf {
     INDOPAK_15_LINES
 }
 
-internal val Mushaf.serverMushafId: Int
+internal val Mushaf.serverMushaf: ServerMushaf
     get() = when (this) {
-        Mushaf.QCF_V1 -> 2
-        Mushaf.QCF_V2 -> 1
-        Mushaf.INDOPAK_15_LINES -> 6
+        Mushaf.QCF_V1 -> ServerMushaf.QCF_V1
+        Mushaf.QCF_V2 -> ServerMushaf.QCF_V2
+        Mushaf.INDOPAK_15_LINES -> ServerMushaf.INDOPAK_15_LINES
     }
 
-internal val Mushaf.pageGroup: PageGroup get() = PageGroup.ofMushaf(serverMushafId)
+internal val Mushaf.pageGroup: PageGroup get() = serverMushaf.pageGroup
 
 internal val Mushaf.layout: PageLayout
     get() = when (this) {
