@@ -14,7 +14,7 @@ class SyncViewModel: ObservableObject {
     private let authService: SyncAuthService
 
     @Published var authState: AuthState = AuthState.Idle()
-    let mushaf: Shared.Mushaf = .qcfV2
+    let mushaf: Shared.Mushaf = .madani1440
     @Published var readingBookmarks: [Shared.ReadingBookmark] = []
     @Published var collectionsWithBookmarks: [Shared.CollectionWithAyahBookmarks] = []
     @Published var notes: [Shared.Note] = []

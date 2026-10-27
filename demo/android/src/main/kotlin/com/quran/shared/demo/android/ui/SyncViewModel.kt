@@ -21,7 +21,7 @@ class SyncViewModel(
     val authState: StateFlow<com.quran.shared.auth.model.AuthState> = service.authState
     val isAuthenticationConfigured: Boolean = authService.isAuthenticationConfigured
     
-    val mushaf: Mushaf = Mushaf.QCF_V2
+    val mushaf: Mushaf = Mushaf.MADANI_1440
 
     val readingBookmarks: Flow<List<ReadingBookmark>> = service.readingBookmarks(mushaf)
     

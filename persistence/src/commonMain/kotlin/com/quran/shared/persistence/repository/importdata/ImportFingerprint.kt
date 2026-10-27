@@ -136,8 +136,8 @@ internal object ImportFingerprint {
     }
 
     private fun Mushaf.fingerprintTag(): Int = when (this) {
-        Mushaf.QCF_V1 -> 1
-        Mushaf.QCF_V2 -> 2
+        Mushaf.MADANI_1405 -> 1
+        Mushaf.MADANI_1440 -> 2
         Mushaf.INDOPAK_15_LINES -> 3
     }
 

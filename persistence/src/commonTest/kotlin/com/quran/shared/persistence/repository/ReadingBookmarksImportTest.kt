@@ -33,7 +33,7 @@ class ReadingBookmarksImportTest {
         val result = repository.importData(
             PersistenceImportData(
                 readingBookmarks = listOf(
-                    ImportReadingBookmark.Page(604, Mushaf.QCF_V2, at(300), ReadingBookmarkSlot.RED),
+                    ImportReadingBookmark.Page(604, Mushaf.MADANI_1440, at(300), ReadingBookmarkSlot.RED),
                     ImportReadingBookmark.Ayah(2, 255, at(100), ReadingBookmarkSlot.TEAL, "Daily"),
                     ImportReadingBookmark.Ayah(2, 255, at(200), ReadingBookmarkSlot.ORANGE, " Study ")
                 )
@@ -57,12 +57,12 @@ class ReadingBookmarksImportTest {
     fun `merge replaces supplied slots and names while preserving identities and other slots`() = runTest {
         insertSlot(1, "Green")
         insertSlot(2, "Purple")
-        readingBookmarks.setPageReadingBookmark(ReadingBookmarkSlot.RED, 88, Mushaf.QCF_V2, at(100))
+        readingBookmarks.setPageReadingBookmark(ReadingBookmarkSlot.RED, 88, Mushaf.MADANI_1440, at(100))
         val before = rows()
         val data = PersistenceImportData(
             readingBookmarks = listOf(
                 ImportReadingBookmark.Ayah(18, 10, at(200), ReadingBookmarkSlot.TEAL, "Imported"),
-                ImportReadingBookmark.Page(1, Mushaf.QCF_V2, at(300), ReadingBookmarkSlot.ORANGE)
+                ImportReadingBookmark.Page(1, Mushaf.MADANI_1440, at(300), ReadingBookmarkSlot.ORANGE)
             )
         )
 
@@ -92,7 +92,7 @@ class ReadingBookmarksImportTest {
         val before = rows()
 
         val result = repository.importData(
-            PersistenceImportData(readingBookmarks = listOf(ImportReadingBookmark.Page(42, Mushaf.QCF_V2, at(200), ReadingBookmarkSlot.TEAL, "Restored"))),
+            PersistenceImportData(readingBookmarks = listOf(ImportReadingBookmark.Page(42, Mushaf.MADANI_1440, at(200), ReadingBookmarkSlot.TEAL, "Restored"))),
             deleteExisting = true
         )
 
@@ -117,7 +117,7 @@ class ReadingBookmarksImportTest {
             PersistenceImportData(
                 readingBookmarks = listOf(
                     ImportReadingBookmark.Ayah(2, 255, at(200), ReadingBookmarkSlot.TEAL),
-                    ImportReadingBookmark.Page(1, Mushaf.QCF_V2, at(300), ReadingBookmarkSlot.TEAL)
+                    ImportReadingBookmark.Page(1, Mushaf.MADANI_1440, at(300), ReadingBookmarkSlot.TEAL)
                 )
             )
         )
@@ -134,7 +134,7 @@ class ReadingBookmarksImportTest {
             PersistenceImportData(
                 readingBookmarks = listOf(
                     ImportReadingBookmark.Page(537, Mushaf.INDOPAK_15_LINES, at(300), ReadingBookmarkSlot.TEAL),
-                    ImportReadingBookmark.Page(584, Mushaf.QCF_V1, at(300), ReadingBookmarkSlot.ORANGE)
+                    ImportReadingBookmark.Page(584, Mushaf.MADANI_1405, at(300), ReadingBookmarkSlot.ORANGE)
                 )
             )
         )
@@ -150,7 +150,7 @@ class ReadingBookmarksImportTest {
         val result = repository.importData(
             PersistenceImportData(
                 readingBookmarks = listOf(
-                    ImportReadingBookmark.Page(300, Mushaf.QCF_V2, at(200), ReadingBookmarkSlot.TEAL),
+                    ImportReadingBookmark.Page(300, Mushaf.MADANI_1440, at(200), ReadingBookmarkSlot.TEAL),
                     ImportReadingBookmark.Page(1, Mushaf.INDOPAK_15_LINES, at(300), ReadingBookmarkSlot.ORANGE)
                 )
             )

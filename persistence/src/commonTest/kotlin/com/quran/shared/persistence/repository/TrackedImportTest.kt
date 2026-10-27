@@ -75,8 +75,8 @@ class TrackedImportTest {
     @Test
     fun `duplicate reading bookmark content applies newest timestamp only once`() = runTest {
         val data = PersistenceImportData(readingBookmarks = listOf(
-            ImportReadingBookmark.Page(42, Mushaf.QCF_V2, at(200), ReadingBookmarkSlot.TEAL),
-            ImportReadingBookmark.Page(42, Mushaf.QCF_V2, at(100), ReadingBookmarkSlot.TEAL)
+            ImportReadingBookmark.Page(42, Mushaf.MADANI_1440, at(200), ReadingBookmarkSlot.TEAL),
+            ImportReadingBookmark.Page(42, Mushaf.MADANI_1440, at(100), ReadingBookmarkSlot.TEAL)
         ))
 
         val first = repository.importData(data, false, true)

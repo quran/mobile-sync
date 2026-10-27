@@ -46,7 +46,7 @@ class PersistenceResetRepositoryTest {
         collectionBookmarks.setHighlight(3, 1, AyahHighlightColor.BLUE, at(100))
         NotesRepositoryImpl(database.synced).addNote("Reflect on it", 2, 255, 2, 255, at(100))
         ReadingSessionsRepositoryImpl(database.synced).addReadingSession(2, 255, at(100))
-        ReadingBookmarksRepositoryImpl(database.synced).setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 42, Mushaf.QCF_V2, at(100))
+        ReadingBookmarksRepositoryImpl(database.synced).setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 42, Mushaf.MADANI_1440, at(100))
 
         reset.deleteAllData()
 

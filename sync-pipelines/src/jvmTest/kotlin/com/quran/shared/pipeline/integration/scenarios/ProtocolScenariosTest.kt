@@ -227,7 +227,7 @@ class ProtocolScenariosTest {
 
         phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, at(0))
         phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 36, 1, at(1_000))
-        phone.data.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 300, Mushaf.QCF_V2, at(2_000))
+        phone.data.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 300, Mushaf.MADANI_1440, at(2_000))
         val run = phone.syncNow()
 
         assertSucceeded(run)

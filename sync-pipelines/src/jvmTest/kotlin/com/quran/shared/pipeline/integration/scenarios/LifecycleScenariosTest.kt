@@ -215,7 +215,7 @@ class LifecycleScenariosTest {
         assertEquals(listOf("1:1"), phone.favoriteVerses())
         assertEquals(listOf("2:255 blue"), phone.highlightList())
         assertEquals(listOf("18:1"), phone.sessionVerses())
-        assertEquals(1, phone.data.readingBookmarks(Mushaf.QCF_V2).first().size)
+        assertEquals(1, phone.data.readingBookmarks(Mushaf.MADANI_1440).first().size)
     }
 
     @Test

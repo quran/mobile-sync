@@ -4,34 +4,30 @@ import com.quran.shared.persistence.repository.readingbookmark.mapping.PageLayou
 import com.quran.shared.syncv2.types.PageGroup
 import com.quran.shared.syncv2.types.ServerMushaf
 
-/** The page layout an app shows the Quran in, and sets and reads page reading bookmarks in. */
-enum class Mushaf {
-    /** The 1405 Madani layout, 604 pages (server mushaf 2). */
-    QCF_V1,
+/**
+ * The page layouts apps show the Quran in, and set and read page reading bookmarks in. mobile-sync maps pages between
+ * them.
+ */
+enum class Mushaf(internal val serverMushaf: ServerMushaf) {
+    /** The 1405 AH Madani print, 604 pages: the server's `QCF_V1` (id 2), filed under `pages_604`. */
+    MADANI_1405(ServerMushaf.QCF_V1),
 
-    /** The 1440 Madani layout, 604 pages (server mushaf 1). */
-    QCF_V2,
+    /** The newer Madani print (1440), 604 pages: the server's `QCF_V2` (id 1), filed under `pages_604`. */
+    MADANI_1440(ServerMushaf.QCF_V2),
 
     /**
-     * The 15-line IndoPak layout (server mushaf 6). Apps skip a cover page and number its pages 2 to 611, so app page N
-     * is the server's page N - 1.
+     * The 15-line IndoPak print: the server's `INDOPAK_15_LINES` (id 6), filed under `pages_610`. Apps number it 2..611
+     * (page 1 is the cover); the server numbers it 1..610.
      */
-    INDOPAK_15_LINES
+    INDOPAK_15_LINES(ServerMushaf.INDOPAK_15_LINES)
 }
-
-internal val Mushaf.serverMushaf: ServerMushaf
-    get() = when (this) {
-        Mushaf.QCF_V1 -> ServerMushaf.QCF_V1
-        Mushaf.QCF_V2 -> ServerMushaf.QCF_V2
-        Mushaf.INDOPAK_15_LINES -> ServerMushaf.INDOPAK_15_LINES
-    }
 
 internal val Mushaf.pageGroup: PageGroup get() = serverMushaf.pageGroup
 
 internal val Mushaf.layout: PageLayout
     get() = when (this) {
-        Mushaf.QCF_V1 -> PageLayout.MADANI_1405
-        Mushaf.QCF_V2 -> PageLayout.MADANI_1440
+        Mushaf.MADANI_1405 -> PageLayout.MADANI_1405
+        Mushaf.MADANI_1440 -> PageLayout.MADANI_1440
         Mushaf.INDOPAK_15_LINES -> PageLayout.INDOPAK_15_LINES
     }
 

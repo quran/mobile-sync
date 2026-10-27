@@ -280,7 +280,7 @@ Reading bookmarks are three slots (`ReadingBookmarkSlot`), each an ayah, a page,
 bookmarks work across mushafs: tell the library which `Mushaf` the app shows, and it does the page
 mapping.
 
-- `Mushaf.QCF_V1` (1405 Madani) and `Mushaf.QCF_V2` (1440 Madani) have pages 1 to 604.
+- `Mushaf.MADANI_1405` and `Mushaf.MADANI_1440`, the 1405 and 1440 Madani prints, have pages 1 to 604.
 - `Mushaf.INDOPAK_15_LINES` has app pages 2 to 611: apps skip a cover page, so app page N is the
   server's page N - 1.
 - `setPageReadingBookmark(slot, page, mushaf)` throws `IllegalArgumentException` for a page the

@@ -24,7 +24,7 @@ data class UserDataSnapshot(
     val sessions: List<String>,
     /**
      * "slot location name" per reading bookmark; a slot that is unplaced and unnamed is left out. Devices are read in
-     * [Mushaf.QCF_V2], so only a `pages_604` page compares with the server's.
+     * [Mushaf.MADANI_1440], so only a `pages_604` page compares with the server's.
      */
     val readingBookmarks: List<String>
 ) {
@@ -41,7 +41,7 @@ data class UserDataSnapshot(
                     .map { c -> collection(c.collection.name, c.bookmarks.map { "${it.sura}:${it.ayah}" }) }.sorted(),
                 highlights = service.highlights.first().map { "${it.sura}:${it.ayah} ${it.color.name.lowercase()}" }.sorted(),
                 sessions = service.readingSessions.first().map { "${it.sura}:${it.ayah}" }.sorted(),
-                readingBookmarks = service.readingBookmarks(Mushaf.QCF_V2).first().mapNotNull { bookmark ->
+                readingBookmarks = service.readingBookmarks(Mushaf.MADANI_1440).first().mapNotNull { bookmark ->
                     val location = when (bookmark) {
                         is AyahReadingBookmark -> "ayah:${bookmark.sura}:${bookmark.ayah}"
                         is PageReadingBookmark -> "page:${bookmark.page}"
