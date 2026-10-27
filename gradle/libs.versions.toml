@@ -29,7 +29,7 @@ buildkonfig = "0.23.0"
 
 # Android configuration
 android-compile-sdk = "37"
-android-min-sdk = "23"
+android-min-sdk = "24"
 
 # Project metadata
 project-group = "com.quran"
