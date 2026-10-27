@@ -212,4 +212,53 @@ class ReadingBookmarkScenariosTest {
         val indoPak = assertIs<PageReadingBookmark>(phone.data.readingBookmarks(Mushaf.INDOPAK_15_LINES).first().single())
         assertEquals(590, indoPak.page, "read from the 1440 layout")
     }
+
+    /**
+     * The server has no Shemerly mushaf yet, so a Shemerly page is sent as the 1440 page with its verses (mushaf 1).
+     * Today's backend echoes it as its `pages_604` stand-in (5, the same layout), which pushes nothing back, and both
+     * devices read it in Shemerly as the page it was set on.
+     */
+    @Test
+    fun `RB-12 a Shemerly page syncs as its 1440 page and converges on the stand-in echo`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+
+        phone.data.setPageReadingBookmark(ReadingBookmarkSlot.ORANGE, 250, Mushaf.SHEMERLY)
+        val runs = listOf(phone.syncNow(), tablet.syncNow(), phone.syncNow(), tablet.syncNow())
+
+        runs.forEach(::assertSucceeded)
+        assertEquals(1, runs.sumOf { it.posts }, "only the set; its echo pushed nothing")
+        val sent = runs.first().accepted.of("READING_BOOKMARK").single()
+        assertEquals("302" to "1", sent.data("key") to sent.data("mushafId"))
+        val slot = server.state(ALICE).readingBookmarks.single { it.slot == 2 }
+        assertEquals("pages_604" to 302, slot.group to slot.key)
+        listOf(phone, tablet).forEach { device ->
+            val shemerly = assertIs<PageReadingBookmark>(device.data.readingBookmarks(Mushaf.SHEMERLY).first().single(), device.name)
+            assertEquals(250 to Mushaf.SHEMERLY, shemerly.page to shemerly.mushaf, device.name)
+        }
+        val madani = assertIs<PageReadingBookmark>(tablet.data.readingBookmarks(Mushaf.MADANI_1440).first().single())
+        assertEquals(302, madani.page)
+        assertConverged(ALICE, phone, tablet)
+    }
+
+    /**
+     * Riwayah app builds don't sync, so nothing keeps a riwayah page from being pushed. Today's backend rejects mushaf
+     * 20, so the change is held: the server never gets the slot, nothing relabels it, and it still reads as the Warsh
+     * page here. A backend that accepts 20 but keeps only the page group would echo it as a 1440 page until it keeps
+     * the mushaf id (quran/mobile-sync#354).
+     */
+    @Test
+    fun `RB-13 today's backend rejects a Warsh page, which is held and still reads as Warsh here`() = syncScenario {
+        val (phone) = signedIn("phone")
+
+        phone.data.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 300, Mushaf.WARSH)
+        val runs = listOf(phone.syncNow(), phone.syncNow())
+
+        runs.forEach(::assertSucceeded)
+        assertEquals(listOf(422), server.posts("phone").map { it.status }.distinct(), "the backend rejects mushaf 20")
+        assertEquals(0, runs[1].posts, "held: not sent again")
+        assertEquals(emptyList(), server.state(ALICE).readingBookmarks, "nothing reaches the server")
+        val warsh = assertIs<PageReadingBookmark>(phone.data.readingBookmarks(Mushaf.WARSH).first().single())
+        assertEquals(300 to Mushaf.WARSH, warsh.page to warsh.mushaf)
+        assertIs<EmptyReadingBookmark>(phone.data.readingBookmarks(Mushaf.MADANI_1440).first().single())
+    }
 }

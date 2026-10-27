@@ -25,5 +25,33 @@ class ReadingBookmarkPageMapperTest {
         assertEquals(301, map(madani, PageLayout.MADANI_1440, PageLayout.INDOPAK_16_LINES))
     }
 
+    @Test
+    fun `a Shemerly page maps to the 1440 page with its verses and back`() {
+        assertEquals(302, map(250, PageLayout.SHEMERLY, PageLayout.MADANI_1440))
+        assertEquals(250, map(302, PageLayout.MADANI_1440, PageLayout.SHEMERLY))
+        assertEquals(604, map(521, PageLayout.SHEMERLY, PageLayout.MADANI_1440))
+        assertEquals(521, map(604, PageLayout.MADANI_1440, PageLayout.SHEMERLY))
+    }
+
+    @Test
+    fun `a Shemerly page maps to the 15-line IndoPak page with its verses`() {
+        assertEquals(27, map(24, PageLayout.SHEMERLY, PageLayout.INDOPAK_15_LINES))
+        assertEquals(41, map(34, PageLayout.SHEMERLY, PageLayout.INDOPAK_15_LINES))
+        assertEquals(610, map(521, PageLayout.SHEMERLY, PageLayout.INDOPAK_15_LINES))
+    }
+
+    /**
+     * Shemerly pages are sent as 1440 pages until the server has a Shemerly mushaf, so these come back one page off.
+     * Accepted: the Android app, which maps Shemerly through its 1440 layout by the same rule, gets the same pages.
+     */
+    @Test
+    fun `only seven Shemerly pages don't round-trip through the 1440 layout`() {
+        val changed = (1..PageLayout.SHEMERLY.pageCount)
+            .associateWith { map(map(it, PageLayout.SHEMERLY, PageLayout.MADANI_1440), PageLayout.MADANI_1440, PageLayout.SHEMERLY) }
+            .filter { (page, back) -> page != back }
+
+        assertEquals(mapOf(9 to 10, 364 to 363, 379 to 380, 422 to 423, 495 to 494, 500 to 501, 516 to 517), changed)
+    }
+
     private fun map(page: Int, source: PageLayout, target: PageLayout) = ReadingBookmarkPageMapper.mapPage(page, source, target)
 }

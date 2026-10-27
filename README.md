@@ -283,6 +283,18 @@ mapping.
 - `Mushaf.MADANI_1405` and `Mushaf.MADANI_1440`, the 1405 and 1440 Madani prints, have pages 1 to 604.
 - `Mushaf.INDOPAK_15_LINES` has app pages 2 to 611: apps skip a cover page, so app page N is the
   server's page N - 1.
+- `Mushaf.SHEMERLY`, the Shemerly print, has pages 1 to 521. The server has no Shemerly mushaf yet
+  (quran/mobile-sync#355), so a Shemerly page is stored and synced as the 1440 page holding its
+  verses (`mushafId` 1) and mapped back when read. Seven Shemerly pages (9, 364, 379, 422, 495, 500
+  and 516) read back as a neighbouring page. Once the server has a Shemerly id, add it to
+  `ServerMushaf` (521 pages), map it to the Shemerly layout in `PageLayout.of`, and send
+  `Mushaf.SHEMERLY` as it; apps don't change.
+- `Mushaf.WARSH` and `Mushaf.QALOUN`, the Warsh and Qaloun riwayat, have pages 1 to 604. They number
+  verses differently, so their pages are never mapped: a page is stored with its own `mushafId` (20
+  or 22), reads unchanged in the same mushaf, and reads as `EmptyReadingBookmark` in any other.
+  Riwayah app builds don't sync. If one did, today's backend rejects these ids, so the change is
+  held and never reaches the server; a backend that accepts them but keeps only the page group
+  would relabel the page as a 1440 page until it keeps the mushaf id (quran/mobile-sync#354).
 - `setPageReadingBookmark(slot, page, mushaf)` throws `IllegalArgumentException` for a page the
   mushaf doesn't have.
 - A page is stored and synced with the mushaf it was set in (`mushafId`, such as 2 for
@@ -292,10 +304,11 @@ mapping.
   mushaf and return `PageReadingBookmark`s as pages of it. A page set in a mushaf of the same
   layout keeps its number; another becomes the page holding its middle verse. A page of a mushaf
   with no layout here (one this library doesn't know, or a riwayah such as Warsh, which numbers
-  verses differently) or outside its mushaf's pages reads as `EmptyReadingBookmark`; its location
-  is kept, and a rename sends it back unchanged.
-- Ayah bookmarks need no mapping: every supported mushaf numbers verses the same way, so
-  `setAyahReadingBookmark` and `clearReadingBookmark` take no mushaf.
+  verses differently) in any other mushaf, or a page outside its mushaf's pages, reads as
+  `EmptyReadingBookmark`; its location is kept, and a rename sends it back unchanged.
+- Ayah bookmarks need no mapping: every Hafs mushaf numbers verses the same way, so
+  `setAyahReadingBookmark` and `clearReadingBookmark` take no mushaf. An ayah bookmark is taken as a
+  Hafs (sura, ayah), in riwayah builds too, which don't sync.
 
 Import local data through `QuranDataService.importData(PersistenceImportData(...))`.
 Each `ImportCollectionAyahBookmark.collectionName` must name an `ImportCollection` in the same
@@ -425,10 +438,11 @@ Build iOS KMP target:
 ### Regenerating the page tables
 
 Page reading bookmarks are mapped across mushafs with
-`persistence/.../readingbookmark/mapping/PageLayoutTables.kt`: per-page verse ranges for the four
+`persistence/.../readingbookmark/mapping/PageLayoutTables.kt`: per-page verse ranges for the five
 Hafs layouts, and each mushaf ID's page count and layout. It is generated from Quran.com's
-mushaf-mapping bundle (`src/utils/mushafMapping/client_bundle.v1.json` in quran/quran.com-fe); never
-edit it by hand. To regenerate it from a newer bundle:
+mushaf-mapping bundle (`src/utils/mushafMapping/client_bundle.v1.json` in quran/quran.com-fe) and,
+for the Shemerly layout the bundle lacks, `scripts/data/shemerly-pages.json`; never edit it by hand.
+To regenerate it from a newer bundle:
 
 1. Download the bundle at the quran.com-fe commit you want:
    ```bash
@@ -451,6 +465,12 @@ edit it by hand. To regenerate it from a newer bundle:
    `ServerMushaf` against the bundle, and `ReadingBookmarkPageMapperTest` pins known mappings, so a
    changed layout shows up as a failing test. Mushaf IDs the bundle lacks (such as `INDOPAK`, 3)
    are mapped by hand in `PageLayout.of`.
+
+The Shemerly layout comes from `scripts/data/shemerly-pages.json`: the `[sura, ayah]` each of its 521
+pages starts with, exported from the Android app's `ShemerlyDataSource` (`suraForPageArray` and
+`ayahForPageArray`; the file records the source repository, path and commit). The generator ends
+each page one verse before the next starts and checks the layout like the bundle's. To update it,
+replace `pageStarts` (and `source`) in that file and run the generator as above.
 
 ### Releases
 

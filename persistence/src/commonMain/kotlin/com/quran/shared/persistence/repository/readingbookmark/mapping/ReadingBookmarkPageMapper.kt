@@ -19,18 +19,33 @@ internal object ReadingBookmarkPageMapper {
     fun serverLocation(appPage: Int, mushaf: Mushaf): ReadingLocation =
         requireNotNull(serverLocationOrNull(appPage, mushaf)) { "Page $appPage is outside $mushaf's pages ${mushaf.appPages}" }
 
-    fun serverLocationOrNull(appPage: Int, mushaf: Mushaf): ReadingLocation? =
-        if (appPage in mushaf.appPages) ReadingLocation.page(mushaf.toServerPage(appPage), mushaf.serverMushaf) else null
+    /**
+     * The location [appPage] of [mushaf] is sent as, or null for a page the mushaf doesn't have. A mushaf without a
+     * layout (a riwayah) sends its page unchanged. A mushaf sent as a server mushaf of another layout
+     * ([Mushaf.SHEMERLY], until the server has its own) sends the page of that layout holding its verses.
+     */
+    fun serverLocationOrNull(appPage: Int, mushaf: Mushaf): ReadingLocation? {
+        if (appPage !in mushaf.appPages) return null
+        val page = mushaf.toServerPage(appPage)
+        val layout = mushaf.layout ?: return ReadingLocation.page(page, mushaf.serverMushaf)
+        val serverLayout = checkNotNull(PageLayout.of(mushaf.serverMushaf.id)) { "$mushaf is sent as ${mushaf.serverMushaf}, which has no layout" }
+        val serverPage = if (layout == serverLayout) page else mapPage(page, layout, serverLayout)
+        return ReadingLocation.page(serverPage, mushaf.serverMushaf)
+    }
 
     /**
      * The page of [mushaf] showing [location]'s page, or null when its mushaf has no layout here ([PageLayout.of]) or
      * the page isn't one of its mushaf's. A page of the same layout keeps its number. The server's stand-in for
-     * `pages_604` (5, KFGQPC Hafs) is read in the 1440 layout, its own.
+     * `pages_604` (5, KFGQPC Hafs) is read in the 1440 layout, its own. A mushaf without a layout (a riwayah) reads
+     * only its own pages, unchanged.
      */
     fun appPage(location: ReadingLocation, mushaf: Mushaf): Int? {
+        val target = mushaf.layout ?: return location.key.takeIf {
+            location.mushafId == mushaf.serverMushaf.id && it in 1..mushaf.serverMushaf.pageCount
+        }
         val source = PageLayout.of(location.mushafId) ?: return null
         if (location.key !in 1..source.pageCount) return null
-        val page = if (source == mushaf.layout) location.key else mapPage(location.key, source, mushaf.layout)
+        val page = if (source == target) location.key else mapPage(location.key, source, target)
         return mushaf.toAppPage(page)
     }
 

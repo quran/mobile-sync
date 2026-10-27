@@ -163,9 +163,94 @@ class ReadingBookmarksRepositoryTest {
         assertEquals(listOf(590, 591), indoPak.map { it.page }, "app pages: server pages 589 and 590")
     }
 
+    /** The server has no Shemerly mushaf yet, so a Shemerly page is stored and sent as the 1440 page with its verses. */
+    @Test
+    fun `a Shemerly page is stored as the 1440 page with its verses and read in each mushaf`() = runTest {
+        val set = assertIs<PageReadingBookmark>(repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 250, Mushaf.SHEMERLY, at(100)))
+        repository.setPageReadingBookmark(ReadingBookmarkSlot.ORANGE, 300, Mushaf.MADANI_1440, at(100))
+
+        assertEquals(250 to Mushaf.SHEMERLY, set.page to set.mushaf)
+        assertEquals(listOf(302L to 1L, 300L to 1L), rows().map { it.location_key to it.mushaf_id })
+        assertEquals(listOf(250, 248), pages(Mushaf.SHEMERLY))
+        assertEquals(listOf(302, 300), pages(Mushaf.MADANI_1440))
+        assertEquals(listOf(303, 301), pages(Mushaf.INDOPAK_15_LINES))
+    }
+
+    /** One of the seven Shemerly pages that don't round-trip through the 1440 layout (ReadingBookmarkPageMapperTest). */
+    @Test
+    fun `a Shemerly page without its own 1440 page reads back as its neighbour`() = runTest {
+        val set = assertIs<PageReadingBookmark>(repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 9, Mushaf.SHEMERLY, at(100)))
+
+        assertEquals(10, set.page)
+        assertEquals(10L to 1L, slotRow(1).let { it.location_key to it.mushaf_id })
+    }
+
+    @Test
+    fun `a riwayah page is stored unchanged and read only in its own mushaf`() = runTest {
+        repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 300, Mushaf.WARSH, at(100))
+        repository.setPageReadingBookmark(ReadingBookmarkSlot.ORANGE, 604, Mushaf.QALOUN, at(100))
+
+        assertEquals(listOf(300L to 20L, 604L to 22L), rows().map { it.location_key to it.mushaf_id })
+        val warsh = repository.getReadingBookmarks(Mushaf.WARSH)
+        val qaloun = repository.getReadingBookmarks(Mushaf.QALOUN)
+        assertEquals(300 to Mushaf.WARSH, assertIs<PageReadingBookmark>(warsh[0]).let { it.page to it.mushaf })
+        assertIs<EmptyReadingBookmark>(warsh[1])
+        assertIs<EmptyReadingBookmark>(qaloun[0])
+        assertEquals(604 to Mushaf.QALOUN, assertIs<PageReadingBookmark>(qaloun[1]).let { it.page to it.mushaf })
+    }
+
+    @Test
+    fun `a riwayah page is an empty slot in every Hafs mushaf`() = runTest {
+        repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 300, Mushaf.WARSH, at(100))
+        repository.setPageReadingBookmark(ReadingBookmarkSlot.ORANGE, 604, Mushaf.QALOUN, at(100))
+
+        listOf(Mushaf.MADANI_1405, Mushaf.MADANI_1440, Mushaf.INDOPAK_15_LINES, Mushaf.SHEMERLY).forEach { mushaf ->
+            val slots = repository.getReadingBookmarks(mushaf)
+            assertEquals(2, slots.size, "$mushaf")
+            slots.forEach { assertIs<EmptyReadingBookmark>(it, "$mushaf ${it.slot}") }
+        }
+    }
+
+    @Test
+    fun `a Hafs page is an empty slot in a riwayah`() = runTest {
+        repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 300, Mushaf.MADANI_1440, at(100))
+        database.synced.readingBookmarksQueries.insert(2, null, "page", 300, null, 5, null, 50, 100)
+
+        listOf(Mushaf.WARSH, Mushaf.QALOUN).forEach { mushaf ->
+            val slots = repository.getReadingBookmarks(mushaf)
+            assertEquals(2, slots.size)
+            slots.forEach { assertIs<EmptyReadingBookmark>(it, "$mushaf ${it.slot}") }
+        }
+    }
+
+    @Test
+    fun `a rename returns a riwayah page in its own mushaf and keeps it in another`() = runTest {
+        repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 300, Mushaf.WARSH, at(100))
+
+        val inWarsh = assertIs<PageReadingBookmark>(repository.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "Khatm", Mushaf.WARSH, at(200)))
+        val inMadani = assertIs<EmptyReadingBookmark>(repository.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "Hifz", Mushaf.MADANI_1440, at(300)))
+
+        assertEquals(Triple(300, Mushaf.WARSH, "Khatm"), Triple(inWarsh.page, inWarsh.mushaf, inWarsh.name))
+        assertEquals("Hifz", inMadani.name)
+        assertEquals(300L to 20L, slotRow(1).let { it.location_key to it.mushaf_id }, "the stored page is unchanged")
+    }
+
+    @Test
+    fun `a rename returns a 1440 page as its Shemerly page`() = runTest {
+        repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 302, Mushaf.MADANI_1440, at(100))
+
+        val renamed = assertIs<PageReadingBookmark>(repository.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "Khatm", Mushaf.SHEMERLY, at(200)))
+
+        assertEquals(Triple(250, Mushaf.SHEMERLY, "Khatm"), Triple(renamed.page, renamed.mushaf, renamed.name))
+        assertEquals(302L to 1L, slotRow(1).let { it.location_key to it.mushaf_id })
+    }
+
     @Test
     fun `a page outside the mushaf is rejected and nothing is written`() = runTest {
-        listOf(Mushaf.MADANI_1405 to 605, Mushaf.MADANI_1440 to 0, Mushaf.INDOPAK_15_LINES to 1, Mushaf.INDOPAK_15_LINES to 612).forEach { (mushaf, page) ->
+        listOf(
+            Mushaf.MADANI_1405 to 605, Mushaf.MADANI_1440 to 0, Mushaf.INDOPAK_15_LINES to 1, Mushaf.INDOPAK_15_LINES to 612,
+            Mushaf.SHEMERLY to 0, Mushaf.SHEMERLY to 522, Mushaf.WARSH to 0, Mushaf.WARSH to 605, Mushaf.QALOUN to 605
+        ).forEach { (mushaf, page) ->
             assertFailsWith<IllegalArgumentException>("$mushaf $page") {
                 repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, page, mushaf, at(100))
             }
@@ -175,6 +260,16 @@ class ReadingBookmarksRepositoryTest {
         repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 2, Mushaf.INDOPAK_15_LINES, at(100))
         repository.setPageReadingBookmark(ReadingBookmarkSlot.ORANGE, 611, Mushaf.INDOPAK_15_LINES, at(100))
         assertEquals(listOf(1L, 610L), rows().map { it.location_key })
+    }
+
+    @Test
+    fun `the first and last pages of the new mushafs are accepted`() = runTest {
+        listOf(Mushaf.SHEMERLY to listOf(1, 521), Mushaf.WARSH to listOf(1, 604), Mushaf.QALOUN to listOf(1, 604)).forEach { (mushaf, pages) ->
+            pages.forEach { page ->
+                val set = assertIs<PageReadingBookmark>(repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, page, mushaf, at(100)))
+                assertEquals(page, set.page, "$mushaf $page")
+            }
+        }
     }
 
     /** Warsh (20) numbers verses differently, so its pages don't map; 99 is a mushaf this library doesn't know. */
@@ -241,6 +336,8 @@ class ReadingBookmarksRepositoryTest {
     }
 
     private fun rows() = database.synced.readingBookmarksQueries.all().executeAsList()
+
+    private suspend fun pages(mushaf: Mushaf) = repository.getReadingBookmarks(mushaf).map { assertIs<PageReadingBookmark>(it).page }
 
     private fun slotRow(slot: Long) = database.synced.readingBookmarksQueries.bySlot(slot).executeAsOne()
 

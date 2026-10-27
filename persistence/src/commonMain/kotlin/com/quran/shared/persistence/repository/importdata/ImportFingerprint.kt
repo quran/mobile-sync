@@ -139,6 +139,9 @@ internal object ImportFingerprint {
         Mushaf.MADANI_1405 -> 1
         Mushaf.MADANI_1440 -> 2
         Mushaf.INDOPAK_15_LINES -> 3
+        Mushaf.SHEMERLY -> 4
+        Mushaf.WARSH -> 5
+        Mushaf.QALOUN -> 6
     }
 
     private val FORMAT_TAG = "quran-mobile-sync-import".encodeToByteArray()
