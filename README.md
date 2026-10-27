@@ -422,6 +422,36 @@ Build iOS KMP target:
 ./gradlew :sync-pipelines:compileKotlinIosSimulatorArm64
 ```
 
+### Regenerating the page tables
+
+Page reading bookmarks are mapped across mushafs with
+`persistence/.../readingbookmark/mapping/PageLayoutTables.kt`: per-page verse ranges for the four
+Hafs layouts, and each mushaf ID's page count and layout. It is generated from Quran.com's
+mushaf-mapping bundle (`src/utils/mushafMapping/client_bundle.v1.json` in quran/quran.com-fe); never
+edit it by hand. To regenerate it from a newer bundle:
+
+1. Download the bundle at the quran.com-fe commit you want:
+   ```bash
+   gh api "repos/quran/quran.com-fe/contents/src/utils/mushafMapping/client_bundle.v1.json?ref=<commit>" \
+     -H "Accept: application/vnd.github.raw" > /tmp/client_bundle.v1.json
+   ```
+2. Set `SOURCE_COMMIT` in `scripts/generate-page-layouts.py` to that commit. The file header records
+   it and the bundle's revision.
+3. Run the generator, which overwrites `PageLayoutTables.kt`:
+   ```bash
+   python3 scripts/generate-page-layouts.py /tmp/client_bundle.v1.json
+   ```
+   It finds each layout by its exact list of mushaf IDs (`LAYOUTS` in the script). If the bundle
+   moved a mushaf between page groups, the script fails: update `LAYOUTS`.
+4. Run the tests:
+   ```bash
+   ./gradlew :persistence:allTests
+   ```
+   `PageLayoutTest` checks the tables' page counts and coverage, `BundleMushafPageCountsTest` checks
+   `ServerMushaf` against the bundle, and `ReadingBookmarkPageMapperTest` pins known mappings, so a
+   changed layout shows up as a failing test. Mushaf IDs the bundle lacks (such as `INDOPAK`, 3)
+   are mapped by hand in `PageLayout.of`.
+
 ### Releases
 
 The manual `Release` workflow bumps the version and tags it, attaches the iOS XCFramework to a GitHub Release, and publishes the Android/JVM artifacts to the GitHub Pages Maven repository on the `gh-pages` branch. Android apps resolve it with:
