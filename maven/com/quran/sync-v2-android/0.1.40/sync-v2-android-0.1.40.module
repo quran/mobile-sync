@@ -1,0 +1,165 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "url": "../../sync-v2/0.1.40/sync-v2-0.1.40.module",
+    "group": "com.quran",
+    "module": "sync-v2",
+    "version": "0.1.40",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.8.2"
+    }
+  },
+  "variants": [
+    {
+      "name": "androidApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-serialization-json",
+          "version": {
+            "requires": "1.12.0"
+          }
+        },
+        {
+          "group": "io.ktor",
+          "module": "ktor-client-core",
+          "version": {
+            "requires": "3.6.0"
+          }
+        },
+        {
+          "group": "app.cash.sqldelight",
+          "module": "runtime",
+          "version": {
+            "requires": "2.4.1"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "sync-v2.aar",
+          "url": "sync-v2-android-0.1.40.aar",
+          "size": 435869,
+          "sha512": "59e54ee3b7b6435a14ff4461a629e0604d24da13179dd11d01b893cfef47ac9444b6725dc8c018293413d7d54c176a7063991e1b58de1d5beb65334661d6240a",
+          "sha256": "95a93e4e88ec89fb1b35dd367c36b52b0090adb10e6b704fb0609466de22c84b",
+          "sha1": "e9f6c2cbb94e1c5fad06e7beebf15a5b0eada94b",
+          "md5": "5918da7585588e149fb7e583d8574402"
+        }
+      ]
+    },
+    {
+      "name": "androidRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-serialization-json",
+          "version": {
+            "requires": "1.12.0"
+          }
+        },
+        {
+          "group": "io.ktor",
+          "module": "ktor-client-core",
+          "version": {
+            "requires": "3.6.0"
+          }
+        },
+        {
+          "group": "app.cash.sqldelight",
+          "module": "runtime",
+          "version": {
+            "requires": "2.4.1"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-core",
+          "version": {
+            "requires": "1.11.0"
+          }
+        },
+        {
+          "group": "co.touchlab",
+          "module": "kermit",
+          "version": {
+            "requires": "2.2.0"
+          }
+        },
+        {
+          "group": "com.quran",
+          "module": "mutations-definitions",
+          "version": {
+            "requires": "0.1.40"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "sync-v2.aar",
+          "url": "sync-v2-android-0.1.40.aar",
+          "size": 435869,
+          "sha512": "59e54ee3b7b6435a14ff4461a629e0604d24da13179dd11d01b893cfef47ac9444b6725dc8c018293413d7d54c176a7063991e1b58de1d5beb65334661d6240a",
+          "sha256": "95a93e4e88ec89fb1b35dd367c36b52b0090adb10e6b704fb0609466de22c84b",
+          "sha1": "e9f6c2cbb94e1c5fad06e7beebf15a5b0eada94b",
+          "md5": "5918da7585588e149fb7e583d8574402"
+        }
+      ]
+    },
+    {
+      "name": "androidSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "files": [
+        {
+          "name": "sync-v2-android-0.1.40-sources.jar",
+          "url": "sync-v2-android-0.1.40-sources.jar",
+          "size": 72956,
+          "sha512": "d080a4f415e665655e9da2aae89f4e5ae73b32725805585d61973dbce45c09e203a72709c58e95d01eeccbaa236e19bd59c1a3a5c391b62b91f3abd409396911",
+          "sha256": "93d06750acb2cd717fda2e68385db5d5f7bb3cc63b98f6c47a3068aecd546513",
+          "sha1": "f34cafe4e5b0c93edc6ee553ceba40d52db324ab",
+          "md5": "591fbbcc34a320d7ecbc79778561070b"
+        }
+      ]
+    }
+  ]
+}
