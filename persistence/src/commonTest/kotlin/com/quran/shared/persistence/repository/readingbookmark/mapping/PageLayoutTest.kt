@@ -17,7 +17,8 @@ class PageLayoutTest {
                 PageLayout.MADANI_1440 to 604,
                 PageLayout.MADANI_1405 to 604,
                 PageLayout.INDOPAK_15_LINES to 610,
-                PageLayout.INDOPAK_16_LINES to 548
+                PageLayout.INDOPAK_16_LINES to 548,
+                PageLayout.SHEMERLY to 521
             ),
             PageLayout.entries.associateWith { it.pageCount }
         )
@@ -25,7 +26,8 @@ class PageLayoutTest {
 
     /**
      * INDOPAK, unused, is added by hand as QCF_V2's pages (the bundle lacks it); the riwayat that number verses
-     * differently have no layout.
+     * differently have no layout. Each app mushaf is sent as a server mushaf of its layout, but Shemerly, which is sent
+     * as 1440 pages until the server has its own mushaf.
      */
     @Test
     fun `each mushaf id has its layout`() {
@@ -51,7 +53,10 @@ class PageLayoutTest {
             ServerMushaf.entries.associateWith { PageLayout.of(it.id) }
         )
         assertNull(PageLayout.of(10), "in the bundle, but not a backend mushaf")
-        Mushaf.entries.forEach { assertEquals(it.layout, PageLayout.of(it.serverMushaf.id), "$it") }
+        Mushaf.entries.forEach { mushaf ->
+            val sent = if (mushaf == Mushaf.SHEMERLY) PageLayout.MADANI_1440 else mushaf.layout
+            assertEquals(sent, PageLayout.of(mushaf.serverMushaf.id), "$mushaf")
+        }
     }
 
     @Test
@@ -79,7 +84,18 @@ class PageLayoutTest {
         assertEquals(0, shared.getValue(PageLayout.MADANI_1440))
         assertEquals(0, shared.getValue(PageLayout.MADANI_1405))
         assertEquals(0, shared.getValue(PageLayout.INDOPAK_15_LINES))
+        assertEquals(0, shared.getValue(PageLayout.SHEMERLY))
         assertTrue(shared.getValue(PageLayout.INDOPAK_16_LINES) > 0)
+    }
+
+    /** From the Android app's Shemerly page starts (`scripts/data/shemerly-pages.json`): 1:1, 3:7 and 112:1. */
+    @Test
+    fun `the Shemerly layout's pages start where the app's do`() {
+        val layout = PageLayout.SHEMERLY
+
+        assertEquals(1 to 7, layout.firstVerse(1) to layout.lastVerse(1))
+        assertEquals(299 to 300, layout.lastVerse(41) to layout.firstVerse(42))
+        assertEquals(6222 to VERSES, layout.firstVerse(521) to layout.lastVerse(521))
     }
 
     @Test

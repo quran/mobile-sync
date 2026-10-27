@@ -5,7 +5,7 @@ import com.quran.shared.syncv2.types.ServerMushaf
 
 /**
  * The page layouts apps show the Quran in, and set and read page reading bookmarks in. mobile-sync maps pages between
- * them.
+ * the Hafs layouts; the riwayat ([WARSH], [QALOUN]) number verses differently, so their pages are never mapped.
  */
 enum class Mushaf(internal val serverMushaf: ServerMushaf) {
     /** The 1405 AH Madani print, 604 pages: sent as the server's `QCF_V1` (id 2). */
@@ -18,19 +18,35 @@ enum class Mushaf(internal val serverMushaf: ServerMushaf) {
      * The 15-line IndoPak print: sent as the server's `INDOPAK_15_LINES` (id 6). Apps number it 2..611 (page 1 is the
      * cover); the server numbers it 1..610.
      */
-    INDOPAK_15_LINES(ServerMushaf.INDOPAK_15_LINES)
+    INDOPAK_15_LINES(ServerMushaf.INDOPAK_15_LINES),
+
+    /**
+     * The Shemerly print, 521 pages. The server has no Shemerly mushaf yet (quran/mobile-sync#355), so for now a page
+     * is sent as the [MADANI_1440] page that holds its verses (`QCF_V2`, id 1) and read back like any other layout's.
+     * This is temporary: once the server has an id, sending it as that [ServerMushaf] is the only change needed.
+     */
+    SHEMERLY(ServerMushaf.QCF_V2),
+
+    /** The Warsh riwayah, 604 pages: sent as the server's `WARSH` (id 20). Its pages map to no other mushaf. */
+    WARSH(ServerMushaf.WARSH),
+
+    /** The Qaloun riwayah, 604 pages: sent as the server's `QALOUN` (id 22). Its pages map to no other mushaf. */
+    QALOUN(ServerMushaf.QALOUN)
 }
 
-internal val Mushaf.layout: PageLayout
+/** The layout this mushaf's pages are numbered in; null for the riwayat, whose pages don't map. */
+internal val Mushaf.layout: PageLayout?
     get() = when (this) {
         Mushaf.MADANI_1405 -> PageLayout.MADANI_1405
         Mushaf.MADANI_1440 -> PageLayout.MADANI_1440
         Mushaf.INDOPAK_15_LINES -> PageLayout.INDOPAK_15_LINES
+        Mushaf.SHEMERLY -> PageLayout.SHEMERLY
+        Mushaf.WARSH, Mushaf.QALOUN -> null
     }
 
 private val Mushaf.appPageOffset: Int get() = if (this == Mushaf.INDOPAK_15_LINES) 1 else 0
 
-internal val Mushaf.appPages: IntRange get() = (1 + appPageOffset)..(layout.pageCount + appPageOffset)
+internal val Mushaf.appPages: IntRange get() = (1 + appPageOffset)..((layout?.pageCount ?: serverMushaf.pageCount) + appPageOffset)
 
 internal fun Mushaf.toServerPage(appPage: Int): Int = appPage - appPageOffset
 
