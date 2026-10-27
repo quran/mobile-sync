@@ -17,10 +17,10 @@ internal enum class PageLayout(private val ranges: IntArray) {
 
     companion object {
         /**
-         * The layout a mushaf's pages are numbered in: the bundle's Hafs page groups, and INDOPAK, which the bundle
-         * lacks (checked against the Quran.com API: QCF_V2's pages). Null for a mushaf [ServerMushaf] doesn't know and
-         * for the riwayat (WARSH, QALOUN, DOORI, SOUSI, BAZZI, QUMBUL): they number verses differently, so their pages
-         * don't map.
+         * The layout a mushaf's pages are numbered in: the bundle's Hafs page groups, and INDOPAK, which is unused and
+         * read as QCF_V2's pages (checked against the Quran.com API; the bundle lacks it). Null for a mushaf
+         * [ServerMushaf] doesn't know and for the riwayat (WARSH, QALOUN, DOORI, SOUSI, BAZZI, QUMBUL): they number
+         * verses differently, so their pages don't map.
          */
         fun of(mushafId: Int): PageLayout? = ServerMushaf.fromId(mushafId)?.let { mushaf ->
             if (mushaf == ServerMushaf.INDOPAK) MADANI_1440 else bundleMushafLayouts[mushaf.id]

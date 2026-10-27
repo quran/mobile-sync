@@ -23,7 +23,10 @@ class PageLayoutTest {
         )
     }
 
-    /** INDOPAK is added by hand (the bundle lacks it); the riwayat that number verses differently have no layout. */
+    /**
+     * INDOPAK, unused, is added by hand as QCF_V2's pages (the bundle lacks it); the riwayat that number verses
+     * differently have no layout.
+     */
     @Test
     fun `each mushaf id has its layout`() {
         assertEquals(

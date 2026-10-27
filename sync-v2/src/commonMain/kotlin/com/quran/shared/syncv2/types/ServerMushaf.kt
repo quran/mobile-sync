@@ -17,7 +17,10 @@ enum class ServerMushaf(val id: Int, val pageCount: Int) {
     /** The 1405 AH Madani print, rendered with QCF V1 page fonts. */
     QCF_V1(2, 604),
 
-    /** IndoPak script, paged like [QCF_V2] on Quran.com (checked against its API: the mapping bundle lacks it). */
+    /**
+     * IndoPak script on the Madani 604-page pagination. Unused: the Quran.com web only offers the 15- and 16-line
+     * IndoPak prints. Read as [QCF_V2]'s pages (checked against the Quran.com API; the mapping bundle lacks it).
+     */
     INDOPAK(3, 604),
 
     /** Uthmani Hafs text, paged like [QCF_V2]. */
