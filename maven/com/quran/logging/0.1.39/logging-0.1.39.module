@@ -1,0 +1,240 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.quran",
+    "module": "logging",
+    "version": "0.1.39",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.8.2"
+    }
+  },
+  "variants": [
+    {
+      "name": "metadataApiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-metadata",
+        "org.jetbrains.kotlin.platform.type": "common"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        },
+        {
+          "group": "co.touchlab",
+          "module": "kermit",
+          "version": {
+            "requires": "2.2.0"
+          }
+        },
+        {
+          "group": "io.ktor",
+          "module": "ktor-client-core",
+          "version": {
+            "requires": "3.6.0"
+          }
+        },
+        {
+          "group": "io.ktor",
+          "module": "ktor-client-logging",
+          "version": {
+            "requires": "3.6.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "logging-metadata-0.1.39.jar",
+          "url": "logging-0.1.39.jar",
+          "size": 3485,
+          "sha512": "59e1eab0371ef59135cadcf69178bc142758e7ddd6e26e2d034c43a69332aee13bd625312a03e330d476656bf354c597fe4e4d9b37169f0939389045c44abef7",
+          "sha256": "6fa8afbc55634a46dfeca4920d8548b91fa58f5175c0193896daa528df7ccf0b",
+          "sha1": "6b3b749c1d4675f9fa8bbb203009e1d3e9f43d89",
+          "md5": "dd921b69b828c91a4ff3249bc9575e65"
+        }
+      ]
+    },
+    {
+      "name": "metadataSourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.platform.type": "common"
+      },
+      "files": [
+        {
+          "name": "logging-kotlin-0.1.39-sources.jar",
+          "url": "logging-0.1.39-sources.jar",
+          "size": 3023,
+          "sha512": "17be418c59e56c3fef5dfc124b3ef0cacf4141c4f0891b867c6aa1dffcc876ab10f9d09a5324645d46d8616a584e951938b20208ee00bfdf19293878ff4c7a8c",
+          "sha256": "cffd323a18df97b217cb2f21b4a9cadb9f7952d5badf29e1d3b6566790264c39",
+          "sha1": "8a77668bb4152c71984c765ccd03e67cd0f4a646",
+          "md5": "83d9d6eb39f12bc4e6857de1f6a9e30b"
+        }
+      ]
+    },
+    {
+      "name": "iosArm64ApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-api",
+        "org.jetbrains.kotlin.native.target": "ios_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../logging-iosarm64/0.1.39/logging-iosarm64-0.1.39.module",
+        "group": "com.quran",
+        "module": "logging-iosarm64",
+        "version": "0.1.39"
+      }
+    },
+    {
+      "name": "iosArm64SourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.native.target": "ios_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../logging-iosarm64/0.1.39/logging-iosarm64-0.1.39.module",
+        "group": "com.quran",
+        "module": "logging-iosarm64",
+        "version": "0.1.39"
+      }
+    },
+    {
+      "name": "iosArm64MetadataElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-metadata",
+        "org.jetbrains.kotlin.native.target": "ios_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../logging-iosarm64/0.1.39/logging-iosarm64-0.1.39.module",
+        "group": "com.quran",
+        "module": "logging-iosarm64",
+        "version": "0.1.39"
+      }
+    },
+    {
+      "name": "iosSimulatorArm64ApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-api",
+        "org.jetbrains.kotlin.native.target": "ios_simulator_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../logging-iossimulatorarm64/0.1.39/logging-iossimulatorarm64-0.1.39.module",
+        "group": "com.quran",
+        "module": "logging-iossimulatorarm64",
+        "version": "0.1.39"
+      }
+    },
+    {
+      "name": "iosSimulatorArm64SourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.native.target": "ios_simulator_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../logging-iossimulatorarm64/0.1.39/logging-iossimulatorarm64-0.1.39.module",
+        "group": "com.quran",
+        "module": "logging-iossimulatorarm64",
+        "version": "0.1.39"
+      }
+    },
+    {
+      "name": "iosSimulatorArm64MetadataElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-metadata",
+        "org.jetbrains.kotlin.native.target": "ios_simulator_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../logging-iossimulatorarm64/0.1.39/logging-iossimulatorarm64-0.1.39.module",
+        "group": "com.quran",
+        "module": "logging-iossimulatorarm64",
+        "version": "0.1.39"
+      }
+    },
+    {
+      "name": "jvmApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "available-at": {
+        "url": "../../logging-jvm/0.1.39/logging-jvm-0.1.39.module",
+        "group": "com.quran",
+        "module": "logging-jvm",
+        "version": "0.1.39"
+      }
+    },
+    {
+      "name": "jvmRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "available-at": {
+        "url": "../../logging-jvm/0.1.39/logging-jvm-0.1.39.module",
+        "group": "com.quran",
+        "module": "logging-jvm",
+        "version": "0.1.39"
+      }
+    },
+    {
+      "name": "jvmSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "available-at": {
+        "url": "../../logging-jvm/0.1.39/logging-jvm-0.1.39.module",
+        "group": "com.quran",
+        "module": "logging-jvm",
+        "version": "0.1.39"
+      }
+    }
+  ]
+}
