@@ -2,7 +2,6 @@ package com.quran.shared.pipeline
 
 import com.quran.shared.auth.model.AuthState
 import com.quran.shared.auth.model.AuthRuntimeConfig
-import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.auth.model.asAuthenticationException
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.di.AppScope
@@ -27,6 +26,11 @@ class SyncAuthService internal constructor(
     private val sessionLifecycleCoordinator: SessionLifecycleCoordinator,
     private val authRuntimeConfig: AuthRuntimeConfig = AuthRuntimeConfig.Unconfigured
 ) {
+    /**
+     * The session state. The user is signed in while the value is [AuthState.Success]; its
+     * [userInfo][AuthState.Success.userInfo] is the signed-in user, or null for a session stored
+     * before the user was kept, until its next token refresh. Collect the flow to follow changes.
+     */
     @NativeCoroutinesState
     val authState: StateFlow<AuthState> get() = authService.authState
 
@@ -38,9 +42,6 @@ class SyncAuthService internal constructor(
      */
     val isAuthenticationConfigured: Boolean
         get() = authRuntimeConfig.isConfigured
-
-    val loggedInUser: UserInfo?
-        get() = (authService.authState.value as? AuthState.Success)?.userInfo
 
     /**
      * Signs in through the browser and publishes the session, which starts a sync.
