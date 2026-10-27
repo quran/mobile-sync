@@ -2,7 +2,6 @@ package com.quran.shared.pipeline
 
 import com.quran.shared.auth.model.AuthState
 import com.quran.shared.auth.model.AuthRuntimeConfig
-import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.auth.model.asAuthenticationException
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.di.AppScope
@@ -38,9 +37,6 @@ class SyncAuthService internal constructor(
      */
     val isAuthenticationConfigured: Boolean
         get() = authRuntimeConfig.isConfigured
-
-    val loggedInUser: UserInfo?
-        get() = (authService.authState.value as? AuthState.Success)?.userInfo
 
     /**
      * Signs in through the browser and publishes the session, which starts a sync.
