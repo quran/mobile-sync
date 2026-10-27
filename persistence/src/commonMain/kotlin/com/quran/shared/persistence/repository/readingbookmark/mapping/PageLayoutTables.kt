@@ -325,3 +325,10 @@ internal object IndoPak16LinePages {
         /* 545 */ 6164, 6188, 6189, 6207, 6208, 6225, 6226, 6236
     )
 }
+
+/** Every mushaf id in the bundle's page groups, with its group's page count. */
+internal val bundleMushafPageCounts: Map<Int, Int> = mapOf(
+    1 to 604, 2 to 604, 4 to 604, 5 to 604, 6 to 610, 7 to 548, 10 to 604, 11 to 604,
+    12 to 604, 14 to 610, 15 to 548, 16 to 604, 19 to 604, 20 to 604, 21 to 604, 22 to 604,
+    23 to 604, 24 to 604
+)

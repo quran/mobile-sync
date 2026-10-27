@@ -5,7 +5,8 @@ Usage: scripts/generate-page-layouts.py <client_bundle.v1.json> [output.kt]
 
 The bundle is Quran.com's mushaf-mapping bundle, `src/utils/mushafMapping/client_bundle.v1.json` in
 github.com/quran/quran.com-fe. Every page is `[firstVerseId, lastVerseId]` in canonical Hafs verse ids (1..6236).
-Only the four Hafs page groups below are used: the Warsh and Douri groups are numbered differently.
+Only the four Hafs page groups below are used: the Warsh and Douri groups are numbered differently. Every group's
+mushaf ids and page count are written too, for a test to check ServerMushaf's page groups against.
 Update SOURCE_COMMIT when generating from another bundle; the revision is read from the bundle.
 """
 
@@ -61,8 +62,27 @@ def main() -> None:
             separator = "," if start + PER_LINE < len(pages) else ""
             lines.append(f"        /* {start + 1:3} */ {values}{separator}")
         lines += ["    )", "}", ""]
+    lines += mushaf_page_counts(bundle["pageGroups"])
     output.write_text("\n".join(lines))
     print(f"Wrote {output}")
+
+
+def mushaf_page_counts(page_groups: list) -> list:
+    counts = {}
+    for group in page_groups:
+        for mushaf_id in group["mushafIds"]:
+            if mushaf_id in counts:
+                sys.exit(f"Mushaf {mushaf_id} is in more than one page group")
+            counts[mushaf_id] = len(group["pages"])
+    entries = [f"{mushaf_id} to {count}" for mushaf_id, count in sorted(counts.items())]
+    lines = [
+        "/** Every mushaf id in the bundle's page groups, with its group's page count. */",
+        "internal val bundleMushafPageCounts: Map<Int, Int> = mapOf(",
+    ]
+    for start in range(0, len(entries), PER_LINE):
+        separator = "," if start + PER_LINE < len(entries) else ""
+        lines.append(f"    {', '.join(entries[start:start + PER_LINE])}{separator}")
+    return lines + [")", ""]
 
 
 def check(name: str, pages: list, page_count: int) -> None:
