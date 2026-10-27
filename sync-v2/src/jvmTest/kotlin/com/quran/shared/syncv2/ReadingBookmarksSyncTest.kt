@@ -141,6 +141,22 @@ class ReadingBookmarksSyncTest {
         }
     }
 
+    /** 15 isn't a backend mushaf: a page sent with it and no group is in no known group, so it is kept and held. */
+    @Test
+    fun `a rename of a page of an unknown mushaf without a group is held`() = FakeSyncServer().use { server ->
+        Device(server).use { device ->
+            Remote(server).fileUngroupedReadingPage(1, 300, mushafId = 15)
+            device.settle()
+
+            device.readingBookmarks.rename(1, "Khatm", t(1))
+
+            assertEquals(listOf("UNKNOWN_PAGE_GROUP"), device.settle().held.map { it.reason })
+            assertEquals(0, server.postBodies.size, "nothing pushed")
+            val location = device.readingBookmarks.readingBookmarks().single().location!!
+            assertEquals(listOf<Any?>("page", 300, 15, null, null), listOf(location.type, location.key, location.mushafId, location.group, location.pageGroup))
+        }
+    }
+
     /**
      * The server collapses same-slot creates, so a response can be shorter than its request. Positions then say
      * nothing: the batch is settled from its outbox by the next GET (slots by key and content, notes by

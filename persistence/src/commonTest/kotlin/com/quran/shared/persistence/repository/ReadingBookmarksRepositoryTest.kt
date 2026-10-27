@@ -172,6 +172,18 @@ class ReadingBookmarksRepositoryTest {
     }
 
     @Test
+    fun `a page of an unknown mushaf without a group is an empty slot and a rename keeps it`() = runTest {
+        database.synced.readingBookmarksQueries.insert(1, null, "page", 300, null, 15, null, null, 50, 100)
+
+        assertIs<EmptyReadingBookmark>(repository.getReadingBookmarks(Mushaf.QCF_V2).single())
+        val renamed = assertIs<EmptyReadingBookmark>(repository.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "Khatm", Mushaf.QCF_V2, at(200)))
+
+        assertEquals("Khatm", renamed.name)
+        val row = slotRow(1)
+        assertEquals(listOf<Any?>("page", 300L, 15L, null), listOf(row.location_type, row.location_key, row.mushaf_id, row.location_group))
+    }
+
+    @Test
     fun `a stored page outside its group is an empty slot`() = runTest {
         database.synced.readingBookmarksQueries.insert(1, null, "page", 605, null, 5, "pages_604", null, 50, 100)
         database.synced.readingBookmarksQueries.insert(2, null, "page", 549, null, 7, "pages_548", null, 50, 100)

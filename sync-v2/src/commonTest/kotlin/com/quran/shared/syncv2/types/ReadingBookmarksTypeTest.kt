@@ -55,12 +55,15 @@ class ReadingBookmarksTypeTest {
         assertEquals(5, ReadingLocation.of("juz", 30, mushaf = ServerMushaf.INDOPAK_16_LINES).mushafId)
     }
 
-    /** A page is read by its `group`, and by its `mushafId` only when the server sends no group. */
+    /** A page is read by its `group`, and by its `mushafId` only when the server sends no group (5 when neither). */
     @Test
     fun a_server_page_is_read_by_its_group() {
         val pages = listOf(
             page("rb1", key = 300, mushafId = 5, group = "pages_548"),
-            page("rb4", key = 300, mushafId = 7, group = null)
+            page("rb2", key = 300, mushafId = 2, group = null),
+            page("rb3", key = 300, mushafId = 99, group = "pages_604"),
+            page("rb4", key = 300, mushafId = 7, group = null),
+            page("rb5", key = 300, mushafId = null, group = null)
         )
 
         val locations = type.fromRemote(pages, refs).map { ReadingBookmarksType.toBookmark(0, assertIs<RemoteItem.Upsert>(it).state).location }
@@ -68,10 +71,28 @@ class ReadingBookmarksTypeTest {
         assertEquals(
             listOf(
                 ReadingLocation.page(300, PageGroup.PAGES_548),
-                ReadingLocation.page(300, PageGroup.PAGES_548)
+                ReadingLocation.page(300, PageGroup.PAGES_604),
+                ReadingLocation.page(300, PageGroup.PAGES_604),
+                ReadingLocation.page(300, PageGroup.PAGES_548),
+                ReadingLocation.page(300, PageGroup.PAGES_604)
             ),
             locations
         )
+        assertEquals(5, locations.last()!!.mushafId)
+    }
+
+    /** 15 isn't a backend mushaf: without a group, its page is in no known group, like a page of an unknown group. */
+    @Test
+    fun a_page_of_an_unknown_mushaf_without_a_group_is_kept_and_never_written_back() {
+        val item = assertIs<RemoteItem.Upsert>(type.fromRemote(listOf(page("rb1", key = 300, mushafId = 15, group = null)), refs).single())
+        val local = type.insert(item.state)
+
+        val location = ReadingBookmarksType.toBookmark(local, type.readAll().getValue(local)).location!!
+
+        assertEquals(listOf<Any?>("page", 300, 15, null, null), listOf(location.type, location.key, location.mushafId, location.group, location.pageGroup))
+        assertEquals("UNKNOWN_PAGE_GROUP", type.validate(Change.Create(item.state)))
+        val renamed = ReadingBookmarksType.bookmarkState(1, "Khatm", location, null, 1, 2)
+        assertEquals("UNKNOWN_PAGE_GROUP", type.validate(Change.Update("rb1", item.state, renamed)))
     }
 
     @Test
@@ -175,8 +196,8 @@ class ReadingBookmarksTypeTest {
 
     private fun entry(id: String, data: JsonObject) = RemoteEntry("READING_BOOKMARK", id, "UPDATE", data, 1L)
 
-    private fun page(id: String, key: Int, mushafId: Int, group: String?) = entry(id, buildJsonObject {
+    private fun page(id: String, key: Int, mushafId: Int?, group: String?) = entry(id, buildJsonObject {
         put("slot", 1); put("name", JsonNull); put("type", "page"); put("key", key); put("verseNumber", JsonNull)
-        put("mushafId", mushafId); group?.let { put("group", it) }
+        mushafId?.let { put("mushafId", it) }; group?.let { put("group", it) }
     })
 }

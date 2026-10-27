@@ -246,6 +246,13 @@ class Remote(private val server: FakeSyncServer, private val account: String = D
         data.log("READING_BOOKMARK", id, "CREATE")
     }
 
+    /** A page GET renders with [mushafId] and no `group` (see [FReadingBookmark.ungroupedMushafId]). */
+    fun fileUngroupedReadingPage(slot: Int, page: Int, mushafId: Int) {
+        val id = data.newId("rb")
+        data.readingBookmarks[id] = FReadingBookmark(slot, null, "page", page, null, null, null, data.now(), data.now(), mushafId)
+        data.log("READING_BOOKMARK", id, "CREATE")
+    }
+
     /** The row is gone, but its log stays: GET sends it as `{}` (a resource that vanished between queries). */
     fun vanish(resource: String, id: String) {
         when (resource) {

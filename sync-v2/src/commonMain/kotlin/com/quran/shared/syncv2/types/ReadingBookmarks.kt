@@ -29,19 +29,23 @@ import kotlinx.serialization.json.put
  * Where a slot points: `ayah` (key = sura, verse = ayah), or `page`, `surah` or `juz` (key only). The server keeps
  * only the bookmark group, which the mushaf picks, and answers with the group and a stand-in mushaf for it.
  *
- * A page carries its server [group] and that group's stand-in mushaf ([PageGroup.standIn]). A group this
- * library doesn't know is kept as the server named it, with the mushaf the server sent; [ReadingBookmarksType.validate]
- * holds any write of it. Every other type uses [STANDARD] and has no group.
+ * A page carries its server [group] and that group's stand-in mushaf ([PageGroup.standIn]). A page in a group this
+ * library doesn't know, or sent without a group and with a mushaf the backend doesn't have, is kept as the server sent
+ * it and has no [pageGroup]; [ReadingBookmarksType.validate] holds any write of it. Every other type uses [STANDARD]
+ * and has no group.
  */
 data class ReadingLocation private constructor(
     val type: String,
     val key: Int,
     val verse: Int?,
     val mushafId: Int,
-    /** A page's server group (`pages_604`, `pages_610`, `pages_548` or one this library doesn't know); null otherwise. */
+    /**
+     * A page's server group (`pages_604`, `pages_610`, `pages_548` or one this library doesn't know); null for another
+     * type, or a page of an unknown mushaf sent without a group.
+     */
     val group: String?
 ) {
-    /** A page's known group, or null for another type or an unknown group. */
+    /** A page's known group, or null for another type or a page in no group this library knows. */
     val pageGroup: PageGroup? get() = group?.let(PageGroup::named)
 
     companion object {
@@ -55,12 +59,13 @@ data class ReadingLocation private constructor(
 
         /**
          * A location as the server renders it, or as it was stored: a page by its [group] when there is one, else by
-         * the group its [mushafId] picks. An unknown group keeps its name and the server's mushaf.
+         * the group its [mushafId] picks. An unknown group, or an unknown mushaf without a group, is kept as sent.
          */
         fun fromServer(type: String, key: Int, verse: Int?, mushafId: Int?, group: String?): ReadingLocation {
             if (type != PAGE) return of(type, key, verse)
-            val known = if (group == null) ServerMushaf.fromId(mushafId ?: STANDARD.id)?.pageGroup ?: PageGroup.PAGES_604 else PageGroup.named(group)
-            return if (known != null) page(key, known) else ReadingLocation(PAGE, key, null, mushafId ?: STANDARD.id, group)
+            val id = mushafId ?: STANDARD.id
+            val known = if (group != null) PageGroup.named(group) else ServerMushaf.fromId(id)?.pageGroup
+            return if (known != null) page(key, known) else ReadingLocation(PAGE, key, null, id, group)
         }
 
         /** The stand-in for `verses_6236`, `pages_604` and `default` (surah and juz). */
@@ -109,8 +114,9 @@ class ReadingBookmarksRepository(private val database: SyncV2Database) {
  * expects (its DELETE would also reset the slot's client timestamps). Entries without a slot (`{}`, a vanished row)
  * are skipped, never read as a clear. The mushaf key is `mushafId`, the only one this resource accepts; a page is read
  * by its `group` ([ReadingLocation.fromServer]) and must fit in it ([PageGroup.pageCount]), as the server checks. A
- * page of a group this library doesn't know is held (`UNKNOWN_PAGE_GROUP`) on any create or update: the server picks
- * the group from `mushafId` alone and would file it under `pages_604`, so a rename must not resend it.
+ * page in no group this library knows (an unknown group, or an unknown mushaf sent without one) is held
+ * (`UNKNOWN_PAGE_GROUP`) on any create or update: the server picks the group from `mushafId` alone and could file it
+ * under another group, so a rename must not resend it.
  * `metadata` round-trips (the server replaces it on every write), except `source`, which the server keeps.
  */
 class ReadingBookmarksType(private val database: SyncV2Database) : SyncType {

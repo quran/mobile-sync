@@ -95,7 +95,7 @@ class ReadingBookmarksRepositoryImpl(
 
 /**
  * A slot as the app shows it, page bookmarks as pages of [mushaf]. A location the app has no model for (a surah or juz
- * set on the web, or a page of a group this library doesn't know) shows as an empty slot; the row keeps it. Slots
+ * set on the web, or a page in no group this library knows) shows as an empty slot; the row keeps it. Slots
  * outside 1 to 3 are not shown. [mushaf] is null only for a row that can't hold a page.
  */
 internal fun Reading_bookmark.toReadingBookmark(mushaf: Mushaf?): ReadingBookmark? {

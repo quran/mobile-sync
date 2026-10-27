@@ -1,7 +1,8 @@
 -- Plain domain table: no sync columns. Local ids may be negative (see SyncType).
 -- One row per slot (1..3). A cleared slot keeps its row, name and metadata, with every location column NULL.
 -- mushaf_id is the stand-in mushaf of the server's bookmark group (the server keeps only the group); location_group is
--- a page's group (pages_604, pages_610, pages_548, or one this library doesn't know, kept with the server's mushaf_id).
+-- a page's group (pages_604, pages_610, pages_548, or one this library doesn't know, kept with the server's mushaf_id;
+-- NULL for a page the server sent without a group and with a mushaf_id the backend doesn't have).
 -- location_type is the server's bookmark type: 'ayah' (key = sura, verse = ayah), or 'page', 'surah' or 'juz' (key only).
 
 CREATE TABLE reading_bookmark(

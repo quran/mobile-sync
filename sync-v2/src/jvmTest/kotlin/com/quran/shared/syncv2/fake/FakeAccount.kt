@@ -45,7 +45,8 @@ data class FNote(val body: String, val ranges: List<String>, val createdAt: Stri
 
 /**
  * A reading bookmark slot; a cleared one has no location. Like the backend it stores the bookmark [group], not the
- * mushaf. Client timestamps are null after a DELETE clears it.
+ * mushaf. Client timestamps are null after a DELETE clears it. [ungroupedMushafId] is a test hook: a page GET renders
+ * with that `mushafId` and no `group`, as no current backend does.
  */
 data class FReadingBookmark(
     val slot: Int,
@@ -56,7 +57,8 @@ data class FReadingBookmark(
     val group: String?,
     val metadata: JsonObject?,
     val createdAt: String?,
-    val updatedAt: String?
+    val updatedAt: String?,
+    val ungroupedMushafId: Int? = null
 )
 
 /**
@@ -192,7 +194,7 @@ class FakeAccount(
     private fun readingBookmarkData(it: FReadingBookmark) = buildJsonObject {
         put("slot", it.slot)
         put("name", it.name?.let(::JsonPrimitive) ?: JsonNull)
-        put("mushafId", it.group?.let { group -> JsonPrimitive(representativeMushaf(group)) } ?: JsonNull)
+        put("mushafId", (it.group?.let(::representativeMushaf) ?: it.ungroupedMushafId)?.let(::JsonPrimitive) ?: JsonNull)
         put("type", it.type?.let(::JsonPrimitive) ?: JsonNull)
         put("group", it.group?.let(::JsonPrimitive) ?: JsonNull)
         put("key", it.key?.let(::JsonPrimitive) ?: JsonNull)
