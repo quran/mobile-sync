@@ -1,6 +1,7 @@
 package com.quran.shared.pipeline.integration.scenarios
 
 import com.quran.shared.persistence.model.AyahHighlightColor
+import com.quran.shared.persistence.model.Mushaf
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.pipeline.integration.DeviceTimings
 import com.quran.shared.pipeline.integration.SyncDevice
@@ -64,10 +65,10 @@ class ConvergenceScenariosTest {
         assertConverged(ALICE, phone)
 
         // The server trims reading bookmark names; the client trims them the same way before pushing.
-        phone.data.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "  Juz 30  ")
+        phone.data.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "  Juz 30  ", Mushaf.MADANI_1440)
         assertSucceeded(phone.syncNow())
         assertEquals(listOf("Juz 30"), server.state(ALICE).readingBookmarks.map { it.name })
-        assertEquals(listOf("Juz 30"), phone.data.readingBookmarks.first().map { it.name }, "name after the push")
+        assertEquals(listOf("Juz 30"), phone.data.readingBookmarks(Mushaf.MADANI_1440).first().map { it.name }, "name after the push")
 
         val again = phone.syncNow()
         assertSucceeded(again)
@@ -87,7 +88,7 @@ class ConvergenceScenariosTest {
         d2.data.addNote("Second device note", 2, 153, 2, 153)
         d2.addToFavorites(2, 3)
         d2.data.addReadingSession(3, 7, at(2_000))
-        d2.data.setPageReadingBookmark(ReadingBookmarkSlot.ORANGE, 300, at(2_000))
+        d2.data.setPageReadingBookmark(ReadingBookmarkSlot.ORANGE, 300, Mushaf.MADANI_1440, at(2_000))
         d2.data.addCollection("Temporary")
         d3.data.addAyahBookmarkToCollection(d3.data.addCollection("Memorize").id, 3, 18)
         d3.data.addNote("Third device note", 36, 1, 36, 1)

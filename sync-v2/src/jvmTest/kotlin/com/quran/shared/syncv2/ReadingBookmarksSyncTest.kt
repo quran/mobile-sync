@@ -5,6 +5,7 @@ import com.quran.shared.syncv2.fake.FakeSyncServer
 import com.quran.shared.syncv2.fake.int
 import com.quran.shared.syncv2.fake.str
 import com.quran.shared.syncv2.types.ReadingLocation
+import com.quran.shared.syncv2.types.ServerMushaf
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -13,6 +14,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -23,32 +25,52 @@ class ReadingBookmarksSyncTest {
     private fun FakeSyncServer.lastMutations() = postBodies.last()["mutations"]!!.jsonArray.map { it.jsonObject }
 
     /**
-     * The server keeps only the bookmark group and answers with its representative mushaf (5 for `verses_6236` and
-     * `pages_604`, 7 and 6 for the IndoPak page groups). A slot set with any mushaf is stored as that
-     * representative, so its echo is a no-op; only `mushafId` is sent.
+     * A slot sends the mushaf it carries, `mushafId` only. Today's backend keeps only the bookmark group and echoes
+     * its stand-in (5 for `verses_6236` and `pages_604`, 7 and 6 for the IndoPak page groups), so a page set in mushaf 1
+     * or 2 comes back as 5. The echo replaces the location and pushes nothing.
      */
     @Test
-    fun `a slot's mushaf is the group's representative, so its echo is a no-op`() {
+    fun `a slot sends its mushaf and takes the server's echo without pushing again`() {
         listOf(
-            ReadingLocation.ayah(18, 10, mushafId = 1) to 5,
-            ReadingLocation.ayah(18, 10, mushafId = 2) to 5,
-            ReadingLocation.page(300, mushafId = 1) to 5,
-            ReadingLocation.page(300, mushafId = 2) to 5,
-            ReadingLocation.page(300, mushafId = 7) to 7,
-            ReadingLocation.page(300, mushafId = 6) to 6
-        ).forEach { (location, representative) ->
+            ReadingLocation.ayah(18, 10) to 5,
+            ReadingLocation.page(300, ServerMushaf.QCF_V1) to 5,
+            ReadingLocation.page(300, ServerMushaf.QCF_V2) to 5,
+            ReadingLocation.page(300, ServerMushaf.INDOPAK_16_LINES) to 7,
+            ReadingLocation.page(300, ServerMushaf.INDOPAK_15_LINES) to 6
+        ).forEach { (location, echoed) ->
             FakeSyncServer().use { server ->
                 Device(server).use { device ->
                     device.readingBookmarks.set(1, location, t(0))
-                    assertEquals(representative, device.readingBookmarks.readingBookmarks().single().location!!.mushafId)
 
+                    device.settle()
                     device.settle()
 
                     val data = server.lastMutations().single()["data"] as JsonObject
-                    assertEquals(representative, data.int("mushafId"), "$location")
-                    assertTrue("mushaf" !in data, "the resource accepts only mushafId")
+                    assertEquals(location.mushafId, data.int("mushafId"), "$location")
+                    assertTrue("mushaf" !in data && "group" !in data, "the resource accepts only mushafId")
                     assertEquals(1, server.postBodies.size, "$location: the echo pushed nothing")
-                    assertEquals(location, device.readingBookmarks.readingBookmarks().single().location)
+                    val stored = device.readingBookmarks.readingBookmarks().single().location!!
+                    assertEquals(Triple(location.type, location.key, echoed), Triple(stored.type, stored.key, stored.mushafId))
+                }
+            }
+        }
+    }
+
+    /** The backend we'll ask for returns the written mushaf, so a page keeps it. */
+    @Test
+    fun `a page keeps its mushaf when the server returns it`() = FakeSyncServer().use { server ->
+        Device(server).use { phone ->
+            Device(server).use { tablet ->
+                server.account(Device.ACCOUNT).keepsMushafId = true
+                phone.readingBookmarks.set(1, ReadingLocation.page(584, ServerMushaf.QCF_V1), t(0))
+
+                phone.settle()
+                phone.settle()
+                tablet.settle()
+
+                assertEquals(1, server.postBodies.size, "only the set; its echo pushed nothing")
+                listOf(phone, tablet).forEach {
+                    assertEquals(ReadingLocation.page(584, ServerMushaf.QCF_V1), it.readingBookmarks.readingBookmarks().single().location)
                 }
             }
         }
@@ -110,6 +132,58 @@ class ReadingBookmarksSyncTest {
         }
     }
 
+    /** The upcoming backend renders `pages_604` with stand-in 1: the echo replaces the mushaf and pushes nothing. */
+    @Test
+    fun `a pages_604 echo with mushaf 1 pushes nothing`() = FakeSyncServer().use { server ->
+        Device(server).use { device ->
+            server.account(Device.ACCOUNT).pages604StandIn = 1
+            device.readingBookmarks.set(1, ReadingLocation.page(300, ServerMushaf.QCF_V1), t(0))
+
+            device.settle()
+            device.settle()
+
+            assertEquals(1, server.postBodies.size, "only the set; its echo pushed nothing")
+            assertEquals(ReadingLocation.page(300, ServerMushaf.QCF_V2), device.readingBookmarks.readingBookmarks().single().location)
+        }
+    }
+
+    /** A page of a mushaf set elsewhere is sent back as the server sent it: a rename isn't held. */
+    @Test
+    fun `a rename sends a page's mushaf back unchanged`() = FakeSyncServer().use { server ->
+        Device(server).use { device ->
+            server.account(Device.ACCOUNT).keepsMushafId = true
+            Remote(server).setReadingPage(1, 300, mushafId = 3, updatedAt = t(0))
+            device.settle()
+
+            device.readingBookmarks.rename(1, "Khatm", t(1))
+
+            assertEquals(emptyList(), device.settle().held.map { it.reason })
+            val data = server.lastMutations().single()["data"] as JsonObject
+            assertEquals(Triple("page", 300, 3), Triple(data.str("type"), data.int("key"), data.int("mushafId")))
+            assertEquals(ReadingLocation.page(300, ServerMushaf.INDOPAK), device.readingBookmarks.readingBookmarks().single().location)
+        }
+    }
+
+    /**
+     * A page CREATE landed but its response was lost. The next GET binds it and its 2 -> 5 echo settles it: one push,
+     * the slot ends on 5, and nothing is pushed again. This relies on the server keeping `clientUpdatedAt` to the ms.
+     */
+    @Test
+    fun `a lost page create converges on the server's stand-in`() = FakeSyncServer().use { server ->
+        Device(server).use { device ->
+            device.readingBookmarks.set(1, ReadingLocation.page(300, ServerMushaf.QCF_V1), t(0))
+            server.loseNextPostResponse = true
+
+            assertIs<SyncResult.Failed>(device.sync())
+            device.settle()
+            device.settle()
+
+            assertEquals(1, server.postBodies.size, "pushed once")
+            assertEquals(mapOf(1 to "page 300"), Remote(server).readingSlots())
+            assertEquals(ReadingLocation.page(300, ServerMushaf.KFGQPC_HAFS), device.readingBookmarks.readingBookmarks().single().location)
+        }
+    }
+
     /**
      * The server collapses same-slot creates, so a response can be shorter than its request. Positions then say
      * nothing: the batch is settled from its outbox by the next GET (slots by key and content, notes by
@@ -122,19 +196,23 @@ class ReadingBookmarksSyncTest {
                 server.includeMutationIndex = withIndex
                 Device(server).use { device ->
                     device.readingBookmarks.set(1, ReadingLocation.ayah(18, 10), t(0))
-                    device.readingBookmarks.set(2, ReadingLocation.page(300), t(1))
+                    device.readingBookmarks.set(2, ReadingLocation.page(300, ServerMushaf.QCF_V1), t(1))
                     device.addNote("Written with the slots", "1:1", t(2))
                     server.dropFromNextResponse = { it.str("resource") == "READING_BOOKMARK" && (it["data"] as JsonObject).int("slot") == 1 }
 
                     device.settle()
                     assertEquals(1, server.postBodies.size, "index=$withIndex: nothing pushed twice")
 
-                    device.readingBookmarks.set(2, ReadingLocation.page(301), t(3))
+                    device.readingBookmarks.set(2, ReadingLocation.page(301, ServerMushaf.QCF_V1), t(3))
+                    device.settle()
                     device.settle()
 
                     assertEquals(mapOf(1 to "18:10", 2 to "page 301"), Remote(server).readingSlots(), "index=$withIndex")
                     assertEquals(listOf("Written with the slots"), Remote(server).noteBodies())
                     assertEquals(Remote(server).readingBookmarkId(2), server.lastMutations().single().str("resourceId"))
+                    assertEquals(2, server.postBodies.size, "index=$withIndex: the 2 -> 5 echoes pushed nothing")
+                    val page = device.readingBookmarks.readingBookmarks().single { it.slot == 2 }.location
+                    assertEquals(ReadingLocation.page(301, ServerMushaf.KFGQPC_HAFS), page, "index=$withIndex")
                 }
             }
         }

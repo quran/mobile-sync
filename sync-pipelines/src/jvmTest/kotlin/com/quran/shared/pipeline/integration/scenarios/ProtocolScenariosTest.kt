@@ -2,6 +2,7 @@ package com.quran.shared.pipeline.integration.scenarios
 
 import com.quran.shared.persistence.input.ImportNote
 import com.quran.shared.persistence.input.PersistenceImportData
+import com.quran.shared.persistence.model.Mushaf
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.pipeline.SyncStatus
 import com.quran.shared.pipeline.integration.DeviceTimings
@@ -226,7 +227,7 @@ class ProtocolScenariosTest {
 
         phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10, at(0))
         phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 36, 1, at(1_000))
-        phone.data.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 300, at(2_000))
+        phone.data.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 300, Mushaf.MADANI_1440, at(2_000))
         val run = phone.syncNow()
 
         assertSucceeded(run)

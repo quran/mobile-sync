@@ -5,6 +5,7 @@ import com.quran.shared.pipeline.SyncAuthService
 import com.quran.shared.pipeline.QuranDataService
 import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.model.CollectionWithAyahBookmarks
+import com.quran.shared.persistence.model.Mushaf
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
@@ -20,7 +21,9 @@ class SyncViewModel(
     val authState: StateFlow<com.quran.shared.auth.model.AuthState> = service.authState
     val isAuthenticationConfigured: Boolean = authService.isAuthenticationConfigured
     
-    val readingBookmarks: Flow<List<ReadingBookmark>> = service.readingBookmarks
+    val mushaf: Mushaf = Mushaf.MADANI_1440
+
+    val readingBookmarks: Flow<List<ReadingBookmark>> = service.readingBookmarks(mushaf)
     
     val collectionsWithBookmarks: Flow<List<CollectionWithAyahBookmarks>> =
         service.collectionsWithBookmarks
@@ -57,7 +60,7 @@ class SyncViewModel(
     }
 
     suspend fun setPageReadingBookmark(slot: ReadingBookmarkSlot, page: Int): ReadingBookmark {
-        return service.setPageReadingBookmark(slot, page)
+        return service.setPageReadingBookmark(slot, page, mushaf)
     }
 
     suspend fun clearReadingBookmark(slot: ReadingBookmarkSlot) {

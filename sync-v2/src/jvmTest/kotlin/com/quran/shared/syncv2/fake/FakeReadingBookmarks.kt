@@ -11,7 +11,9 @@ import kotlinx.serialization.json.contentOrNull
  * `validators/readingBookmarks.ts`): one row per slot (1..3), which is never deleted.
  * - CREATE upserts by slot; UPDATE replaces the slot's state (404 for a missing row, 422 for another slot);
  *   DELETE clears the location and resets the client timestamps.
- * - The location's mushaf is `mushafId`, required for a placed slot; Joi rejects `mushaf` like any unknown key.
+ * - The location's mushaf is `mushafId`, required for a placed slot; Joi rejects `mushaf` like any unknown key. A page
+ *   must fit in the group the mushaf picks (604, 610 or 548 pages). GET renders the group's stand-in mushaf, or the
+ *   written one with [FakeAccount.keepsMushafId].
  *   A cleared slot must send every location field as null.
  * - Slot 1 is projected onto the legacy BOOKMARK `isReading` flag (`projectLegacySlotOne`): the bookmark at its
  *   location (created outside Favorites if needed) is the only one with `isReading`.
@@ -36,6 +38,10 @@ class FakeReadingBookmarks(private val account: FakeAccount) {
             if (data.int("mushafId") !in MUSHAFS) throw invalid("\"mushafId\" must be a known mushaf")
             val key = data.int("key")?.takeIf { it >= 1 } ?: throw invalid("\"key\" is required")
             if (location == "ayah" && !FakeMutations.verseExists(key, data.int("verseNumber") ?: 0)) throw invalid("Invalid ayah or surah")
+            if (location == "page") {
+                val pages = pageCount(group(location, data.int("mushafId")!!))
+                if (key > pages) throw invalid("The maximum key allowed for page bookmarks must be between 1 and $pages")
+            }
         }
         if (((data["metadata"] as? JsonObject)?.size ?: 0) > 10) throw invalid("\"metadata\" must have less than or equal to 10 keys")
         val name = data["name"]?.let { (it as? JsonPrimitive)?.contentOrNull }?.trimLikeServer()?.ifEmpty { null }
@@ -60,7 +66,7 @@ class FakeReadingBookmarks(private val account: FakeAccount) {
         else -> {
             val existing = account.readingBookmarks[id] ?: throw HttpError(404, "NotFoundError", "Reading bookmark not found")
             write(id!!, existing.copy(
-                type = null, key = null, verse = null, group = null,
+                type = null, key = null, verse = null, group = null, mushafId = null,
                 metadata = keepSource(existing.metadata, null), createdAt = null, updatedAt = null
             ))
             id
@@ -75,6 +81,7 @@ class FakeReadingBookmarks(private val account: FakeAccount) {
             key = data.int("key").takeIf { type != null },
             verse = data.int("verseNumber").takeIf { type == "ayah" },
             group = type?.let { group(it, data.int("mushafId")!!) },
+            mushafId = data.int("mushafId").takeIf { type != null },
             // Joi defaults a missing `metadata` to null, so every write replaces it (keeping `source`).
             metadata = keepSource(current.metadata, data["metadata"] as? JsonObject),
             createdAt = data.timestamp("clientCreatedAt") ?: current.createdAt,
@@ -118,6 +125,9 @@ class FakeReadingBookmarks(private val account: FakeAccount) {
         }
         else -> "default"
     }
+
+    /** `PAGES_MUSHAF_MAP`: the pages a page group's key must fit in. */
+    private fun pageCount(group: String) = group.removePrefix("pages_").toInt()
 
     /** `replaceMetadataPreservingSource`. */
     private fun keepSource(current: JsonObject?, replacement: JsonObject?): JsonObject? {

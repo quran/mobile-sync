@@ -1,6 +1,7 @@
 package com.quran.shared.persistence.input
 
 import com.quran.shared.persistence.model.AyahHighlightColor
+import com.quran.shared.persistence.model.Mushaf
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.persistence.util.PlatformDateTime
 
@@ -47,8 +48,13 @@ sealed class ImportReadingBookmark {
         override val name: String? = null
     ) : ImportReadingBookmark()
 
+    /**
+     * [page] of [mushaf], numbered the way apps number that mushaf's pages (see [Mushaf]). A page the mushaf doesn't
+     * have is skipped.
+     */
     data class Page(
         val page: Int,
+        val mushaf: Mushaf,
         override val lastUpdated: PlatformDateTime,
         override val slot: ReadingBookmarkSlot,
         override val name: String? = null

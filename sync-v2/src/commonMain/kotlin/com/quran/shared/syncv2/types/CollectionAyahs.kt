@@ -224,6 +224,6 @@ class CollectionAyahsType(private val database: SyncV2Database, collections: Col
         const val BOOKMARK = "BOOKMARK"
         const val FAVORITES_ID = CollectionsType.DEFAULT_COLLECTION_ID
         val CLIENT_TIMES = listOf("clientCreatedAt", "clientUpdatedAt")
-        const val MUSHAF = 1
+        val MUSHAF = ServerMushaf.QCF_V2.id
     }
 }

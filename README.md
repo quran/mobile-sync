@@ -276,17 +276,40 @@ Core API examples:
 - Trigger sync: `triggerSync()` after a burst of edits, or `triggerSync(immediately = true)` for a user's "Sync now"
 - Auth: use `SyncAuthService.login()`, `loginWithReauthentication()`, `logout()`, and `clearError()`
 
+Reading bookmarks are three slots (`ReadingBookmarkSlot`), each an ayah, a page, or empty. Page
+bookmarks work across mushafs: tell the library which `Mushaf` the app shows, and it does the page
+mapping.
+
+- `Mushaf.MADANI_1405` and `Mushaf.MADANI_1440`, the 1405 and 1440 Madani prints, have pages 1 to 604.
+- `Mushaf.INDOPAK_15_LINES` has app pages 2 to 611: apps skip a cover page, so app page N is the
+  server's page N - 1.
+- `setPageReadingBookmark(slot, page, mushaf)` throws `IllegalArgumentException` for a page the
+  mushaf doesn't have.
+- A page is stored and synced with the mushaf it was set in (`mushafId`, such as 2 for
+  `MADANI_1405`). Today's backend keeps only a page group and returns its stand-in mushaf (5 for
+  the 604-page group, read as the 1440 layout), so after a sync a 1405 page reads as a 1440 one.
+- `readingBookmarks(mushaf)`, `setPageReadingBookmark`, and `renameReadingBookmark` take the app's
+  mushaf and return `PageReadingBookmark`s as pages of it. A page set in a mushaf of the same
+  layout keeps its number; another becomes the page holding its middle verse. A page of a mushaf
+  with no layout here (one this library doesn't know, or a riwayah such as Warsh, which numbers
+  verses differently) or outside its mushaf's pages reads as `EmptyReadingBookmark`; its location
+  is kept, and a rename sends it back unchanged.
+- Ayah bookmarks need no mapping: every supported mushaf numbers verses the same way, so
+  `setAyahReadingBookmark` and `clearReadingBookmark` take no mushaf.
+
 Import local data through `QuranDataService.importData(PersistenceImportData(...))`.
 Each `ImportCollectionAyahBookmark.collectionName` must name an `ImportCollection` in the same
 batch. Names match exactly, except that any case or surrounding-whitespace variant of Favorites
 resolves to the default collection; entries sharing a name describe one destination.
 Use `readingBookmarks` with `ImportReadingBookmark.Ayah` or `.Page`, each specifying a
-`ReadingBookmarkSlot` (`TEAL`, `ORANGE`, or `RED`), `lastUpdated`, and an optional `name`.
-Each slot may appear once; page numbers must be in `1..604`. An imported slot replaces its
+`ReadingBookmarkSlot` (`TEAL`, `ORANGE`, or `RED`), `lastUpdated`, and an optional `name`; a page
+also names its `Mushaf`. A page the mushaf doesn't have
+is skipped with a warning; with `deleteExisting = true` its slot is cleared like an omitted slot.
+Each slot may appear once. An imported slot replaces its
 location, name (including clearing it when null), and modification time. Merge imports leave
 omitted slots unchanged; `deleteExisting = true` clears their locations while preserving slot
 identities and names for sync. Imports are atomic and report the
-number of supplied reading bookmarks in `PersistenceImportResult.readingBookmarksImported`.
+number of imported reading bookmarks in `PersistenceImportResult.readingBookmarksImported`.
 An import writes through the repositories' rules: text is trimmed like the server, each note gets a
 creation time of its own (nudged by a millisecond on a clash), a verse keeps one highlight color,
 and only the newest 20 reading sessions are kept. Matching against notes already on the device and
@@ -398,6 +421,36 @@ Build iOS KMP target:
 ```bash
 ./gradlew :sync-pipelines:compileKotlinIosSimulatorArm64
 ```
+
+### Regenerating the page tables
+
+Page reading bookmarks are mapped across mushafs with
+`persistence/.../readingbookmark/mapping/PageLayoutTables.kt`: per-page verse ranges for the four
+Hafs layouts, and each mushaf ID's page count and layout. It is generated from Quran.com's
+mushaf-mapping bundle (`src/utils/mushafMapping/client_bundle.v1.json` in quran/quran.com-fe); never
+edit it by hand. To regenerate it from a newer bundle:
+
+1. Download the bundle at the quran.com-fe commit you want:
+   ```bash
+   gh api "repos/quran/quran.com-fe/contents/src/utils/mushafMapping/client_bundle.v1.json?ref=<commit>" \
+     -H "Accept: application/vnd.github.raw" > /tmp/client_bundle.v1.json
+   ```
+2. Set `SOURCE_COMMIT` in `scripts/generate-page-layouts.py` to that commit. The file header records
+   it and the bundle's revision.
+3. Run the generator, which overwrites `PageLayoutTables.kt`:
+   ```bash
+   python3 scripts/generate-page-layouts.py /tmp/client_bundle.v1.json
+   ```
+   It finds each layout by its exact list of mushaf IDs (`LAYOUTS` in the script). If the bundle
+   moved a mushaf between page groups, the script fails: update `LAYOUTS`.
+4. Run the tests:
+   ```bash
+   ./gradlew :persistence:allTests
+   ```
+   `PageLayoutTest` checks the tables' page counts and coverage, `BundleMushafPageCountsTest` checks
+   `ServerMushaf` against the bundle, and `ReadingBookmarkPageMapperTest` pins known mappings, so a
+   changed layout shows up as a failing test. Mushaf IDs the bundle lacks (such as `INDOPAK`, 3)
+   are mapped by hand in `PageLayout.of`.
 
 ### Releases
 

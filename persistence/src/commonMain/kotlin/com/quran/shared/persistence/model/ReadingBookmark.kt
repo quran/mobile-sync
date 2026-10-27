@@ -38,24 +38,20 @@ data class AyahReadingBookmark(
     override val name: String? = null
 ) : ReadingBookmark
 
-/**
- * A page in the mushaf [mushafId] numbers it in: the server keeps a page group, and answers with the group's mushaf.
- * 5 is the 604-page Madani mushaf (the default, and the one this app sets), 6 the 610-page and 7 the 548-page IndoPak.
- */
+/** A page of [mushaf], the mushaf the bookmarks were read in, numbered the way apps number its pages (see [Mushaf]). */
 data class PageReadingBookmark(
     val page: Int,
+    val mushaf: Mushaf,
     override val lastUpdated: PlatformDateTime,
     override val id: String,
     override val slot: ReadingBookmarkSlot,
-    override val name: String? = null,
-    val mushafId: Int = MADANI_MUSHAF_ID
-) : ReadingBookmark {
-    companion object {
-        /** The 604-page Madani mushaf, the one page bookmarks set from this library use. */
-        const val MADANI_MUSHAF_ID = 5
-    }
-}
+    override val name: String? = null
+) : ReadingBookmark
 
+/**
+ * A cleared slot, or one holding a location the app has no model for (a surah or juz set on the web, or a page of a
+ * mushaf with no layout here or outside its mushaf's pages). The stored location is kept.
+ */
 data class EmptyReadingBookmark(
     override val slot: ReadingBookmarkSlot,
     override val name: String?,

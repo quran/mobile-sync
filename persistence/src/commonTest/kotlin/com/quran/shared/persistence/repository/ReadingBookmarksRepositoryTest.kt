@@ -5,6 +5,7 @@ import com.quran.shared.persistence.at
 import com.quran.shared.persistence.createTestDatabase
 import com.quran.shared.persistence.model.AyahReadingBookmark
 import com.quran.shared.persistence.model.EmptyReadingBookmark
+import com.quran.shared.persistence.model.Mushaf
 import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksRepositoryImpl
@@ -13,6 +14,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 
@@ -29,10 +31,10 @@ class ReadingBookmarksRepositoryTest {
     @Test
     fun `three slots support only ayah and page locations`() = runTest {
         repository.setAyahReadingBookmark(slot = ReadingBookmarkSlot.TEAL, sura = 2, ayah = 255)
-        repository.setPageReadingBookmark(slot = ReadingBookmarkSlot.ORANGE, page = 42)
-        repository.renameReadingBookmark(slot = ReadingBookmarkSlot.RED, name = "Resume")
+        repository.setPageReadingBookmark(slot = ReadingBookmarkSlot.ORANGE, page = 42, mushaf = Mushaf.MADANI_1440)
+        repository.renameReadingBookmark(slot = ReadingBookmarkSlot.RED, name = "Resume", mushaf = Mushaf.MADANI_1440)
 
-        val bookmarks = repository.getReadingBookmarks()
+        val bookmarks = repository.getReadingBookmarks(Mushaf.MADANI_1440)
         val ayah = assertIs<AyahReadingBookmark>(bookmarks[0])
         val page = assertIs<PageReadingBookmark>(bookmarks[1])
         val empty = assertIs<EmptyReadingBookmark>(bookmarks[2])
@@ -49,7 +51,7 @@ class ReadingBookmarksRepositoryTest {
 
     @Test
     fun `a slot keeps one row and its id across writes`() = runTest {
-        val first = repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 1, at(100))
+        val first = repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 1, Mushaf.MADANI_1440, at(100))
 
         val second = repository.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 2, 255, at(200))
 
@@ -60,8 +62,8 @@ class ReadingBookmarksRepositoryTest {
 
     @Test
     fun `clearing a slot keeps its row id and name`() = runTest {
-        repository.setPageReadingBookmark(slot = ReadingBookmarkSlot.ORANGE, page = 88, timestamp = at(100))
-        val named = repository.renameReadingBookmark(ReadingBookmarkSlot.ORANGE, "Study", at(150))
+        repository.setPageReadingBookmark(slot = ReadingBookmarkSlot.ORANGE, page = 88, mushaf = Mushaf.MADANI_1440, timestamp = at(100))
+        val named = repository.renameReadingBookmark(ReadingBookmarkSlot.ORANGE, "Study", Mushaf.MADANI_1440, at(150))
 
         val cleared = assertIs<EmptyReadingBookmark>(repository.clearReadingBookmark(ReadingBookmarkSlot.ORANGE, at(200)))
 
@@ -89,10 +91,10 @@ class ReadingBookmarksRepositoryTest {
         repository.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 2, 255, at(100))
         assertEquals(100L, slotRow(1).updated_at)
 
-        repository.setPageReadingBookmark(ReadingBookmarkSlot.ORANGE, 42, at(200))
+        repository.setPageReadingBookmark(ReadingBookmarkSlot.ORANGE, 42, Mushaf.MADANI_1440, at(200))
         assertEquals(200L, slotRow(2).updated_at)
 
-        repository.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "Resume", at(300))
+        repository.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "Resume", Mushaf.MADANI_1440, at(300))
         assertEquals(300L, slotRow(1).updated_at)
 
         repository.clearReadingBookmark(ReadingBookmarkSlot.ORANGE, at(400))
@@ -101,8 +103,8 @@ class ReadingBookmarksRepositoryTest {
 
     @Test
     fun `names are trimmed and an empty name is stored as null`() = runTest {
-        val trimmed = repository.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "  Daily \n", at(100))
-        val empty = repository.renameReadingBookmark(ReadingBookmarkSlot.ORANGE, " 　", at(100))
+        val trimmed = repository.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "  Daily \n", Mushaf.MADANI_1440, at(100))
+        val empty = repository.renameReadingBookmark(ReadingBookmarkSlot.ORANGE, " 　", Mushaf.MADANI_1440, at(100))
 
         assertEquals("Daily", trimmed.name)
         assertNull(empty.name)
@@ -110,28 +112,110 @@ class ReadingBookmarksRepositoryTest {
     }
 
     @Test
-    fun `a page bookmark set here uses the Madani mushaf`() = runTest {
-        val page = assertIs<PageReadingBookmark>(repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 42, at(100)))
+    fun `a 15-line IndoPak page is stored as the server numbers it`() = runTest {
+        val page = assertIs<PageReadingBookmark>(
+            repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 537, Mushaf.INDOPAK_15_LINES, at(100))
+        )
 
-        assertEquals(PageReadingBookmark.MADANI_MUSHAF_ID, page.mushafId)
-        assertEquals(5L, slotRow(1).mushaf_id)
+        assertEquals(537 to Mushaf.INDOPAK_15_LINES, page.page to page.mushaf)
+        assertEquals(536L to 6L, slotRow(1).let { it.location_key to it.mushaf_id })
     }
 
     @Test
-    fun `a page bookmark from another mushaf shows its mushaf`() = runTest {
-        database.synced.readingBookmarksQueries.insert(2, null, "page", 300, null, 6, null, 50, 100)
+    fun `a page reads in another mushaf as the page with the same verses`() = runTest {
+        repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 537, Mushaf.INDOPAK_15_LINES, at(100))
+        database.synced.readingBookmarksQueries.insert(2, null, "page", 334, null, 7, null, 50, 100)
 
-        val page = assertIs<PageReadingBookmark>(repository.getReadingBookmarks().single())
+        val madani = repository.getReadingBookmarks(Mushaf.MADANI_1440).map { assertIs<PageReadingBookmark>(it) }
+        val indoPak = repository.getReadingBookmarks(Mushaf.INDOPAK_15_LINES).map { assertIs<PageReadingBookmark>(it) }
 
-        assertEquals(300, page.page)
-        assertEquals(6, page.mushafId)
+        assertEquals(listOf(536, 371), madani.map { it.page })
+        assertEquals(listOf(537, 372), indoPak.map { it.page })
+    }
+
+    /** Before any sync the slot carries the mushaf it was set in, so the two Madani layouts map by their tables. */
+    @Test
+    fun `a page set in one Madani layout maps into the other and back`() = runTest {
+        repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 121, Mushaf.MADANI_1405, at(100))
+
+        val madani1440 = assertIs<PageReadingBookmark>(repository.getReadingBookmarks(Mushaf.MADANI_1440).single())
+        repository.setPageReadingBookmark(ReadingBookmarkSlot.ORANGE, madani1440.page, Mushaf.MADANI_1440, at(200))
+        val back = assertIs<PageReadingBookmark>(repository.getReadingBookmarks(Mushaf.MADANI_1405)[1])
+
+        assertEquals(121, madani1440.page)
+        assertEquals(121, back.page)
+        assertEquals(listOf(2L, 1L), rows().map { it.mushaf_id }, "each slot keeps the mushaf it was set in")
+    }
+
+    /**
+     * Today's backend echoes 5 (KFGQPC Hafs) for every `pages_604` page; it is read in the 1440 layout. Page 585 tells
+     * the layouts apart: the 15-line IndoPak page with its verses is 589 from the 1440 layout and 590 from the 1405 one.
+     */
+    @Test
+    fun `the server's stand-in is read in the 1440 layout`() = runTest {
+        database.synced.readingBookmarksQueries.insert(1, null, "page", 585, null, 5, null, 50, 100)
+        database.synced.readingBookmarksQueries.insert(2, null, "page", 585, null, 2, null, 50, 100)
+
+        val madani1405 = repository.getReadingBookmarks(Mushaf.MADANI_1405).map { assertIs<PageReadingBookmark>(it) }
+        val indoPak = repository.getReadingBookmarks(Mushaf.INDOPAK_15_LINES).map { assertIs<PageReadingBookmark>(it) }
+
+        assertEquals(listOf(585, 585), madani1405.map { it.page })
+        assertEquals(listOf(590, 591), indoPak.map { it.page }, "app pages: server pages 589 and 590")
+    }
+
+    @Test
+    fun `a page outside the mushaf is rejected and nothing is written`() = runTest {
+        listOf(Mushaf.MADANI_1405 to 605, Mushaf.MADANI_1440 to 0, Mushaf.INDOPAK_15_LINES to 1, Mushaf.INDOPAK_15_LINES to 612).forEach { (mushaf, page) ->
+            assertFailsWith<IllegalArgumentException>("$mushaf $page") {
+                repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, page, mushaf, at(100))
+            }
+        }
+        assertEquals(emptyList(), rows())
+
+        repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 2, Mushaf.INDOPAK_15_LINES, at(100))
+        repository.setPageReadingBookmark(ReadingBookmarkSlot.ORANGE, 611, Mushaf.INDOPAK_15_LINES, at(100))
+        assertEquals(listOf(1L, 610L), rows().map { it.location_key })
+    }
+
+    /** Warsh (20) numbers verses differently, so its pages don't map; 99 is a mushaf this library doesn't know. */
+    @Test
+    fun `a page of a mushaf without a layout here is an empty slot and a rename keeps it`() = runTest {
+        database.synced.readingBookmarksQueries.insert(1, null, "page", 300, null, 20, null, 50, 100)
+        database.synced.readingBookmarksQueries.insert(2, null, "page", 300, null, 99, null, 50, 100)
+
+        repository.getReadingBookmarks(Mushaf.MADANI_1440).forEach { assertIs<EmptyReadingBookmark>(it, "${it.slot}") }
+        val renamed = assertIs<EmptyReadingBookmark>(repository.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "Khatm", Mushaf.MADANI_1440, at(200)))
+
+        assertEquals("Khatm", renamed.name)
+        assertEquals(listOf(Triple(300L, 20L, "page"), Triple(300L, 99L, "page")), rows().map { Triple(it.location_key, it.mushaf_id, it.location_type) })
+    }
+
+    @Test
+    fun `a stored page outside its mushaf is an empty slot`() = runTest {
+        database.synced.readingBookmarksQueries.insert(1, null, "page", 605, null, 5, null, 50, 100)
+        database.synced.readingBookmarksQueries.insert(2, null, "page", 549, null, 7, null, 50, 100)
+
+        val slots = repository.getReadingBookmarks(Mushaf.MADANI_1440)
+
+        assertEquals(2, slots.size)
+        slots.forEach { assertIs<EmptyReadingBookmark>(it, "${it.slot}: not clamped onto a real page") }
+    }
+
+    @Test
+    fun `a rename returns the slot's page mapped into the mushaf`() = runTest {
+        database.synced.readingBookmarksQueries.insert(1, null, "page", 334, null, 7, null, 50, 100)
+
+        val renamed = assertIs<PageReadingBookmark>(repository.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "Khatm", Mushaf.MADANI_1440, at(200)))
+
+        assertEquals(Triple(371, Mushaf.MADANI_1440, "Khatm"), Triple(renamed.page, renamed.mushaf, renamed.name))
+        assertEquals(334L to 7L, slotRow(1).let { it.location_key to it.mushaf_id }, "the stored page is unchanged")
     }
 
     @Test
     fun `a surah location set on the web shows as an empty slot and is kept`() = runTest {
         database.synced.readingBookmarksQueries.insert(3, "Kahf", "surah", 18, null, 5, null, 50, 100)
 
-        val empty = assertIs<EmptyReadingBookmark>(repository.getReadingBookmarks().single())
+        val empty = assertIs<EmptyReadingBookmark>(repository.getReadingBookmarks(Mushaf.MADANI_1440).single())
 
         assertEquals(ReadingBookmarkSlot.RED, empty.slot)
         assertEquals("Kahf", empty.name)
@@ -141,9 +225,9 @@ class ReadingBookmarksRepositoryTest {
     @Test
     fun `slots outside one through three are stored but not shown`() = runTest {
         database.synced.readingBookmarksQueries.insert(5, null, "page", 42, null, 5, null, 50, 100)
-        repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 1, at(100))
+        repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 1, Mushaf.MADANI_1440, at(100))
 
-        assertEquals(listOf(ReadingBookmarkSlot.TEAL), repository.getReadingBookmarks().map { it.slot })
+        assertEquals(listOf(ReadingBookmarkSlot.TEAL), repository.getReadingBookmarks(Mushaf.MADANI_1440).map { it.slot })
         assertEquals(5L, slotRow(5).slot)
     }
 
@@ -151,7 +235,7 @@ class ReadingBookmarksRepositoryTest {
     fun `reading bookmarks flow emits the slots`() = runTest {
         repository.setAyahReadingBookmark(ReadingBookmarkSlot.ORANGE, 2, 255, at(100))
 
-        val bookmark = assertIs<AyahReadingBookmark>(repository.getReadingBookmarksFlow().first().single())
+        val bookmark = assertIs<AyahReadingBookmark>(repository.getReadingBookmarksFlow(Mushaf.MADANI_1440).first().single())
 
         assertEquals(ReadingBookmarkSlot.ORANGE, bookmark.slot)
     }

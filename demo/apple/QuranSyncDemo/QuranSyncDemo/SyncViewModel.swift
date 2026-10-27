@@ -14,6 +14,7 @@ class SyncViewModel: ObservableObject {
     private let authService: SyncAuthService
 
     @Published var authState: AuthState = AuthState.Idle()
+    let mushaf: Shared.Mushaf = .madani1440
     @Published var readingBookmarks: [Shared.ReadingBookmark] = []
     @Published var collectionsWithBookmarks: [Shared.CollectionWithAyahBookmarks] = []
     @Published var notes: [Shared.Note] = []
@@ -42,11 +43,11 @@ class SyncViewModel: ObservableObject {
                 }
             }
             group.addTask { @MainActor [weak self] in
-                guard let quranDataService = self?.quranDataService else {
+                guard let quranDataService = self?.quranDataService, let mushaf = self?.mushaf else {
                     return
                 }
                 do {
-                    for try await list in asyncSequence(for: quranDataService.readingBookmarks) {
+                    for try await list in asyncSequence(for: quranDataService.readingBookmarks(mushaf: mushaf)) {
                         guard let self = self else {
                             break
                         }
@@ -184,7 +185,7 @@ class SyncViewModel: ObservableObject {
         page: Int32
     ) async -> Shared.ReadingBookmark? {
         do {
-            return try await asyncFunction(for: quranDataService.setPageReadingBookmark(slot: slot, page: page))
+            return try await asyncFunction(for: quranDataService.setPageReadingBookmark(slot: slot, page: page, mushaf: mushaf))
         } catch {
             print("SyncViewModel: Failed to set reading page bookmark: \(error)")
             return nil

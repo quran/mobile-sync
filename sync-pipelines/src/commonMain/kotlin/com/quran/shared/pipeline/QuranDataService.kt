@@ -21,6 +21,7 @@ import com.quran.shared.persistence.model.BookmarkCollectionsReplacementResult
 import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.model.CollectionAyahBookmark
 import com.quran.shared.persistence.model.CollectionWithAyahBookmarks
+import com.quran.shared.persistence.model.Mushaf
 import com.quran.shared.persistence.model.Note
 import com.quran.shared.persistence.model.ReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
@@ -219,8 +220,12 @@ class QuranDataService internal constructor(
     @NativeCoroutines
     val highlights: Flow<List<AyahHighlight>> get() = collectionBookmarksRepository.getHighlightsFlow()
 
+    /**
+     * Flow of the three reading bookmark slots, page bookmarks as pages of [mushaf], the mushaf the app shows, mapped
+     * from whichever mushaf they were set in.
+     */
     @NativeCoroutines
-    val readingBookmarks: Flow<List<ReadingBookmark>> get() = readingBookmarksRepository.getReadingBookmarksFlow()
+    fun readingBookmarks(mushaf: Mushaf): Flow<List<ReadingBookmark>> = readingBookmarksRepository.getReadingBookmarksFlow(mushaf)
 
     /**
      * Flow of all collections with their bookmarks for the UI to observe.
@@ -534,32 +539,40 @@ class QuranDataService internal constructor(
         readingBookmarksRepository.setAyahReadingBookmark(slot, sura, ayah, timestamp)
     }
 
+    /**
+     * Sets [slot] to [page] of [mushaf], numbered the way apps number that mushaf's pages (see [Mushaf]).
+     *
+     * @throws IllegalArgumentException when [mushaf] has no such page.
+     */
     @NativeCoroutines
-    suspend fun setPageReadingBookmark(slot: ReadingBookmarkSlot, page: Int): ReadingBookmark =
-        setPageReadingBookmark(slot, page, currentPlatformDateTime())
+    suspend fun setPageReadingBookmark(slot: ReadingBookmarkSlot, page: Int, mushaf: Mushaf): ReadingBookmark =
+        setPageReadingBookmark(slot, page, mushaf, currentPlatformDateTime())
 
     @NativeCoroutines
     suspend fun setPageReadingBookmark(
         slot: ReadingBookmarkSlot,
         page: Int,
+        mushaf: Mushaf,
         timestamp: PlatformDateTime
     ): ReadingBookmark =
         mutatingCall("Failed to set reading page bookmark") {
-            readingBookmarksRepository.setPageReadingBookmark(slot, page, timestamp)
+            readingBookmarksRepository.setPageReadingBookmark(slot, page, mushaf, timestamp)
         }
 
+    /** Renames [slot] and returns it read in [mushaf], like [readingBookmarks]. */
     @NativeCoroutines
-    suspend fun renameReadingBookmark(slot: ReadingBookmarkSlot, name: String?): ReadingBookmark =
-        renameReadingBookmark(slot, name, currentPlatformDateTime())
+    suspend fun renameReadingBookmark(slot: ReadingBookmarkSlot, name: String?, mushaf: Mushaf): ReadingBookmark =
+        renameReadingBookmark(slot, name, mushaf, currentPlatformDateTime())
 
     @NativeCoroutines
     suspend fun renameReadingBookmark(
         slot: ReadingBookmarkSlot,
         name: String?,
+        mushaf: Mushaf,
         timestamp: PlatformDateTime
     ): ReadingBookmark =
         mutatingCall("Failed to rename reading bookmark") {
-            readingBookmarksRepository.renameReadingBookmark(slot, name, timestamp)
+            readingBookmarksRepository.renameReadingBookmark(slot, name, mushaf, timestamp)
         }
 
     @NativeCoroutines

@@ -50,5 +50,5 @@ internal class ReadingBookmarkStore(private val database: SyncV2Database) {
 }
 
 internal fun Reading_bookmark.location(): ReadingLocation? = location_type?.let { type ->
-    ReadingLocation.of(type, location_key!!.toInt(), location_verse?.toInt(), mushaf_id?.toInt() ?: ReadingLocation.STANDARD)
+    ReadingLocation.fromStored(type, location_key!!.toInt(), location_verse?.toInt(), mushaf_id?.toInt())
 }

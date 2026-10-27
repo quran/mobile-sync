@@ -99,6 +99,30 @@ class FakeSyncServerTest {
     }
 
     @Test
+    fun `a reading bookmark page must fit in its mushaf's group and GET renders the group with its stand-in mushaf`() {
+        val head = server.head(ALICE)
+        val slot = """"slot":1,"type":"page","clientUpdatedAt":"2026-01-01T00:00:00.000Z""""
+
+        assertEquals(422, post(head, mutation("READING_BOOKMARK", "CREATE", data = """{$slot,"key":549,"mushafId":7}""")).statusCode())
+        assertEquals(422, post(head, mutation("READING_BOOKMARK", "CREATE", data = """{$slot,"key":605,"mushafId":1}""")).statusCode())
+        assertEquals(200, post(head, mutation("READING_BOOKMARK", "CREATE", data = """{$slot,"key":610,"mushafId":6}""")).statusCode())
+
+        val entry = get(since = 0).single { it.str("resource") == "READING_BOOKMARK" }["data"]!!.jsonObject
+        assertEquals(listOf("pages_610", "6", "610"), listOf(entry.str("group"), entry.str("mushafId"), entry.str("key")))
+    }
+
+    @Test
+    fun `with keepsMushafId GET renders a reading bookmark's written mushaf`() {
+        server.account(ALICE).keepsMushafId = true
+        val data = """{"slot":1,"type":"page","key":584,"mushafId":2,"clientUpdatedAt":"2026-01-01T00:00:00.000Z"}"""
+
+        assertEquals(200, post(server.head(ALICE), mutation("READING_BOOKMARK", "CREATE", data = data)).statusCode())
+
+        val entry = get(since = 0).single { it.str("resource") == "READING_BOOKMARK" }["data"]!!.jsonObject
+        assertEquals(listOf("pages_604", "2"), listOf(entry.str("group"), entry.str("mushafId")))
+    }
+
+    @Test
     fun `an exception that models no backend behavior is recorded as a fake bug`() {
         server.faults.beforePost { error("broken test callback") }
 

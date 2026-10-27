@@ -43,20 +43,69 @@ class ReadingBookmarksTypeTest {
         assertNull(second.name)
     }
 
-    /** The server keeps only the group; its answer is the group's representative mushaf. */
+    /** A page carries the mushaf it was set in; every other type carries 5 (KFGQPC Hafs). */
     @Test
-    fun a_location_carries_its_group_representative_mushaf() {
-        assertEquals(5, ReadingLocation.ayah(2, 255, mushafId = 1).mushafId)
-        assertEquals(5, ReadingLocation.ayah(2, 255, mushafId = 7).mushafId)
-        assertEquals(5, ReadingLocation.page(300, mushafId = 2).mushafId)
-        assertEquals(7, ReadingLocation.page(300, mushafId = 7).mushafId)
-        assertEquals(6, ReadingLocation.page(300, mushafId = 6).mushafId)
-        assertEquals(5, ReadingLocation.of("juz", 30, mushafId = 7).mushafId)
+    fun a_location_carries_its_mushaf() {
+        assertEquals(5, ReadingLocation.ayah(2, 255).mushafId)
+        assertEquals(2, ReadingLocation.page(300, ServerMushaf.QCF_V1).mushafId)
+        assertEquals(5, ReadingLocation.fromServer("juz", 30, null, 7, null).mushafId)
+    }
+
+    /** A page is read by its `mushafId`; only without one, by its `group`'s stand-in (5 when neither). */
+    @Test
+    fun a_server_page_is_read_by_its_mushaf() {
+        val pages = listOf(
+            page("rb1", key = 300, mushafId = 2, group = "pages_604"),
+            page("rb2", key = 300, mushafId = 6, group = "pages_548"),
+            page("rb3", key = 300, mushafId = null, group = "pages_548"),
+            page("rb4", key = 300, mushafId = null, group = "pages_610"),
+            page("rb5", key = 300, mushafId = null, group = "pages_604"),
+            page("rb6", key = 300, mushafId = null, group = null)
+        )
+
+        val locations = type.fromRemote(pages, refs).map { ReadingBookmarksType.toBookmark(0, assertIs<RemoteItem.Upsert>(it).state).location }
+
+        assertEquals(listOf(2, 6, 7, 6, 5, 5), locations.map { it!!.mushafId })
+    }
+
+    /** 15 isn't a backend mushaf this library knows: the page is kept, and a rename sends it back unchanged. */
+    @Test
+    fun a_page_of_an_unknown_mushaf_is_kept_and_sent_back() {
+        val item = assertIs<RemoteItem.Upsert>(type.fromRemote(listOf(page("rb1", key = 900, mushafId = 15, group = null)), refs).single())
+        val local = type.insert(item.state)
+        val location = ReadingBookmarksType.toBookmark(local, type.readAll().getValue(local)).location!!
+        val renamed = ReadingBookmarksType.bookmarkState(1, "Khatm", location, null, 1, 2)
+
+        val change = Change.Update("rb1", item.state, renamed)
+
+        assertEquals(Triple("page", 900, 15), Triple(location.type, location.key, location.mushafId))
+        assertNull(type.validate(change))
+        assertEquals(JsonPrimitive(15), type.mutation(change, refs).data!!["mushafId"])
+    }
+
+    @Test
+    fun a_stored_page_without_a_mushaf_reads_as_5() {
+        database.readingBookmarksQueries.insert(1, null, "page", 300, null, null, null, 1, 1)
+
+        val (localId, state) = type.readAll().entries.single()
+
+        assertEquals(ReadingLocation.page(300, ServerMushaf.KFGQPC_HAFS), ReadingBookmarksType.toBookmark(localId, state).location)
+    }
+
+    @Test
+    fun a_page_must_fit_in_its_mushaf() {
+        fun validate(location: ReadingLocation) = type.validate(Change.Create(ReadingBookmarksType.bookmarkState(1, null, location, null, 1, 1)))
+
+        assertNull(validate(ReadingLocation.page(548, ServerMushaf.INDOPAK_16_LINES)))
+        assertNull(validate(ReadingLocation.page(610, ServerMushaf.INDOPAK_15_LINES)))
+        assertEquals("INVALID_PAGE", validate(ReadingLocation.page(549, ServerMushaf.INDOPAK_16_LINES)))
+        assertEquals("INVALID_PAGE", validate(ReadingLocation.page(605, ServerMushaf.QCF_V1)))
+        assertEquals("INVALID_PAGE", validate(ReadingLocation.page(0, ServerMushaf.QCF_V2)))
     }
 
     @Test
     fun parked_slots_are_one_per_id() {
-        repository.set(1, ReadingLocation.page(5), 1)
+        repository.set(1, ReadingLocation.page(5, ServerMushaf.QCF_V2), 1)
         // A row restored under -1 next to row 1: their parked keys must differ too.
         type.insert(ReadingBookmarksType.bookmarkState(2, null, null, null, 1, 1), localId = -1)
 
@@ -82,7 +131,7 @@ class ReadingBookmarksTypeTest {
 
         assertEquals(listOf("rb2", "rb3"), items.map { it.remoteId }, "{} is skipped, never read as a clear")
         val metadata = buildJsonObject { put("a", 1); put("b", 2) }
-        assertEquals(ReadingBookmarksType.bookmarkState(2, null, ReadingLocation.page(300, 7), metadata, 1, 1), items[0].state)
+        assertEquals(ReadingBookmarksType.bookmarkState(2, null, ReadingLocation.page(300, ServerMushaf.INDOPAK_16_LINES), metadata, 1, 1), items[0].state)
         assertEquals(ReadingBookmarksType.bookmarkState(3, "Kursi", null, null, 1, 1), items[1].state)
     }
 
@@ -125,4 +174,9 @@ class ReadingBookmarksTypeTest {
     }
 
     private fun entry(id: String, data: JsonObject) = RemoteEntry("READING_BOOKMARK", id, "UPDATE", data, 1L)
+
+    private fun page(id: String, key: Int, mushafId: Int?, group: String?) = entry(id, buildJsonObject {
+        put("slot", 1); put("name", JsonNull); put("type", "page"); put("key", key); put("verseNumber", JsonNull)
+        mushafId?.let { put("mushafId", it) }; group?.let { put("group", it) }
+    })
 }

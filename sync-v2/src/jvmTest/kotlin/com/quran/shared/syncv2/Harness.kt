@@ -2,6 +2,7 @@ package com.quran.shared.syncv2
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.quran.shared.syncv2.db.SyncV2Database
+import com.quran.shared.syncv2.fake.FReadingBookmark
 import com.quran.shared.syncv2.fake.FakeSyncServer
 import com.quran.shared.syncv2.fake.int
 import com.quran.shared.syncv2.fake.str
@@ -213,13 +214,13 @@ class Remote(private val server: FakeSyncServer, private val account: String = D
         "READING_BOOKMARK", "CREATE", null, "slot" to slot, "type" to "ayah", "key" to sura, "verseNumber" to ayah,
         "mushafId" to 1, "clientUpdatedAt" to updatedAt, *listOfNotNull(metadata?.let { "metadata" to it }).toTypedArray()
     )!!
-    /** The web renames a slot: its UPDATE replaces the whole slot, so it sends the location it has, too. */
+    /** The web renames a slot: its UPDATE replaces the whole slot, so it sends the location it read, too. */
     fun renameReadingBookmark(slot: Int, name: String, updatedAt: Long) {
         val current = data.readingBookmarks.values.single { it.slot == slot }
         apply(
             "READING_BOOKMARK", "UPDATE", readingBookmarkId(slot), "slot" to slot, "name" to name, "type" to current.type!!,
             "key" to current.key!!, *listOfNotNull(current.verse?.let { "verseNumber" to it }).toTypedArray(),
-            "mushafId" to 1, "clientUpdatedAt" to updatedAt, *listOfNotNull(current.metadata?.let { "metadata" to it }).toTypedArray()
+            "mushafId" to data.renderedMushafId(current)!!, "clientUpdatedAt" to updatedAt, *listOfNotNull(current.metadata?.let { "metadata" to it }).toTypedArray()
         )
     }
     fun readingBookmarkMetadata(slot: Int): JsonObject? = data.readingBookmarks.values.single { it.slot == slot }.metadata

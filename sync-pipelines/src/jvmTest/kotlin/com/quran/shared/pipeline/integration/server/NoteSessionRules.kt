@@ -145,7 +145,7 @@ internal class NoteSessionRules(
     ): ServerReadingBookmark {
         val location = write.location
         return base.copy(
-            type = location?.type, group = location?.group, key = location?.key,
+            type = location?.type, group = location?.group, key = location?.key, mushafId = location?.mushafId,
             verse = location?.verse.takeIf { location?.type == "ayah" },
             // Present replaces the name, null included (the server stores an empty name as null).
             name = if (write.name != null) write.name.value else base.name,
@@ -156,7 +156,9 @@ internal class NoteSessionRules(
     }
 
     private fun writeReadingBookmark(old: ServerReadingBookmark?, new: ServerReadingBookmark): String {
-        if (old != new) {
+        // Today's backend doesn't store the mushaf, so a write that changes only it logs nothing.
+        val stored = if (account.keepsMushafId) new else new.copy(mushafId = old?.mushafId)
+        if (old != stored) {
             account.readingBookmarks[new.id] = new
             account.log("READING_BOOKMARK", new.id, if (old == null) LogKind.CREATE else LogKind.UPDATE)
         }

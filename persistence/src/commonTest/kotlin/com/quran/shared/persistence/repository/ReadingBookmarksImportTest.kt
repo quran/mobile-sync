@@ -5,6 +5,7 @@ import com.quran.shared.persistence.at
 import com.quran.shared.persistence.createTestDatabase
 import com.quran.shared.persistence.input.ImportReadingBookmark
 import com.quran.shared.persistence.input.PersistenceImportData
+import com.quran.shared.persistence.model.Mushaf
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.persistence.repository.importdata.PersistenceImportRepositoryImpl
 import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksRepositoryImpl
@@ -13,6 +14,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class ReadingBookmarksImportTest {
     private lateinit var database: MobileSyncDatabase
@@ -31,7 +33,7 @@ class ReadingBookmarksImportTest {
         val result = repository.importData(
             PersistenceImportData(
                 readingBookmarks = listOf(
-                    ImportReadingBookmark.Page(604, at(300), ReadingBookmarkSlot.RED),
+                    ImportReadingBookmark.Page(604, Mushaf.MADANI_1440, at(300), ReadingBookmarkSlot.RED),
                     ImportReadingBookmark.Ayah(2, 255, at(100), ReadingBookmarkSlot.TEAL, "Daily"),
                     ImportReadingBookmark.Ayah(2, 255, at(200), ReadingBookmarkSlot.ORANGE, " Study ")
                 )
@@ -47,7 +49,7 @@ class ReadingBookmarksImportTest {
         assertEquals(rows.map { it.updated_at }, rows.map { it.created_at })
         assertEquals(listOf(2L, 2L, 604L), rows.map { it.location_key })
         assertEquals(listOf(255L, 255L, null), rows.map { it.location_verse })
-        assertEquals(listOf(5L, 5L, 5L), rows.map { it.mushaf_id })
+        assertEquals(listOf(5L, 5L, 1L), rows.map { it.mushaf_id })
         assertEquals(emptyList(), database.synced.collectionsQueries.collectionAyahsAll().executeAsList())
     }
 
@@ -55,12 +57,12 @@ class ReadingBookmarksImportTest {
     fun `merge replaces supplied slots and names while preserving identities and other slots`() = runTest {
         insertSlot(1, "Green")
         insertSlot(2, "Purple")
-        readingBookmarks.setPageReadingBookmark(ReadingBookmarkSlot.RED, 88, at(100))
+        readingBookmarks.setPageReadingBookmark(ReadingBookmarkSlot.RED, 88, Mushaf.MADANI_1440, at(100))
         val before = rows()
         val data = PersistenceImportData(
             readingBookmarks = listOf(
                 ImportReadingBookmark.Ayah(18, 10, at(200), ReadingBookmarkSlot.TEAL, "Imported"),
-                ImportReadingBookmark.Page(1, at(300), ReadingBookmarkSlot.ORANGE)
+                ImportReadingBookmark.Page(1, Mushaf.MADANI_1440, at(300), ReadingBookmarkSlot.ORANGE)
             )
         )
 
@@ -90,7 +92,7 @@ class ReadingBookmarksImportTest {
         val before = rows()
 
         val result = repository.importData(
-            PersistenceImportData(readingBookmarks = listOf(ImportReadingBookmark.Page(42, at(200), ReadingBookmarkSlot.TEAL, "Restored"))),
+            PersistenceImportData(readingBookmarks = listOf(ImportReadingBookmark.Page(42, Mushaf.MADANI_1440, at(200), ReadingBookmarkSlot.TEAL, "Restored"))),
             deleteExisting = true
         )
 
@@ -110,23 +112,54 @@ class ReadingBookmarksImportTest {
     }
 
     @Test
-    fun `duplicate slots and out of range pages use normal setter behavior`() = runTest {
+    fun `duplicate slots use normal setter behavior`() = runTest {
         val result = repository.importData(
             PersistenceImportData(
                 readingBookmarks = listOf(
                     ImportReadingBookmark.Ayah(2, 255, at(200), ReadingBookmarkSlot.TEAL),
-                    ImportReadingBookmark.Page(0, at(300), ReadingBookmarkSlot.TEAL),
-                    ImportReadingBookmark.Page(605, at(400), ReadingBookmarkSlot.ORANGE)
+                    ImportReadingBookmark.Page(1, Mushaf.MADANI_1440, at(300), ReadingBookmarkSlot.TEAL)
                 )
             )
         )
 
-        val rows = rows()
-        assertEquals(3, result.readingBookmarksImported)
-        assertEquals("page" to 0L, rows[0].location_type to rows[0].location_key)
-        assertEquals(300L, rows[0].updated_at)
-        assertEquals("page" to 605L, rows[1].location_type to rows[1].location_key)
-        assertEquals(400L, rows[1].updated_at)
+        val row = rows().single()
+        assertEquals(2, result.readingBookmarksImported)
+        assertEquals("page" to 1L, row.location_type to row.location_key)
+        assertEquals(300L, row.updated_at)
+    }
+
+    @Test
+    fun `an imported page is stored like the setter stores it`() = runTest {
+        repository.importData(
+            PersistenceImportData(
+                readingBookmarks = listOf(
+                    ImportReadingBookmark.Page(537, Mushaf.INDOPAK_15_LINES, at(300), ReadingBookmarkSlot.TEAL),
+                    ImportReadingBookmark.Page(584, Mushaf.MADANI_1405, at(300), ReadingBookmarkSlot.ORANGE)
+                )
+            )
+        )
+
+        assertEquals(
+            listOf(536L to 6L, 584L to 2L),
+            rows().map { it.location_key to it.mushaf_id }
+        )
+    }
+
+    @Test
+    fun `an imported page outside its mushaf is skipped and the rest is imported`() = runTest {
+        val result = repository.importData(
+            PersistenceImportData(
+                readingBookmarks = listOf(
+                    ImportReadingBookmark.Page(300, Mushaf.MADANI_1440, at(200), ReadingBookmarkSlot.TEAL),
+                    ImportReadingBookmark.Page(1, Mushaf.INDOPAK_15_LINES, at(300), ReadingBookmarkSlot.ORANGE)
+                )
+            )
+        )
+
+        assertEquals(1, result.readingBookmarksImported)
+        assertTrue(result.changed)
+        val row = rows().single()
+        assertEquals(Triple(1L, "page", 300L), Triple(row.slot, row.location_type, row.location_key))
     }
 
     @Test

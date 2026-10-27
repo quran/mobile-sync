@@ -4,6 +4,7 @@ import com.quran.shared.persistence.MobileSyncDatabase
 import com.quran.shared.persistence.at
 import com.quran.shared.persistence.createTestDatabase
 import com.quran.shared.persistence.model.AyahHighlightColor
+import com.quran.shared.persistence.model.Mushaf
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepositoryImpl
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepositoryImpl
@@ -45,7 +46,7 @@ class PersistenceResetRepositoryTest {
         collectionBookmarks.setHighlight(3, 1, AyahHighlightColor.BLUE, at(100))
         NotesRepositoryImpl(database.synced).addNote("Reflect on it", 2, 255, 2, 255, at(100))
         ReadingSessionsRepositoryImpl(database.synced).addReadingSession(2, 255, at(100))
-        ReadingBookmarksRepositoryImpl(database.synced).setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 42, at(100))
+        ReadingBookmarksRepositoryImpl(database.synced).setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 42, Mushaf.MADANI_1440, at(100))
 
         reset.deleteAllData()
 
