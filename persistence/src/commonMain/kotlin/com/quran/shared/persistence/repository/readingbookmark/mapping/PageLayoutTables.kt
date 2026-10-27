@@ -326,6 +326,15 @@ internal object IndoPak16LinePages {
     )
 }
 
+/** Every mushaf id in the bundle's Hafs page groups, with its page layout. */
+internal val bundleMushafLayouts: Map<Int, PageLayout> = mapOf(
+    1 to PageLayout.MADANI_1440, 2 to PageLayout.MADANI_1405, 4 to PageLayout.MADANI_1440,
+    5 to PageLayout.MADANI_1440, 6 to PageLayout.INDOPAK_15_LINES, 7 to PageLayout.INDOPAK_16_LINES,
+    10 to PageLayout.MADANI_1405, 11 to PageLayout.MADANI_1405, 12 to PageLayout.MADANI_1405,
+    14 to PageLayout.INDOPAK_15_LINES, 16 to PageLayout.MADANI_1440, 19 to PageLayout.MADANI_1440,
+    23 to PageLayout.MADANI_1440
+)
+
 /** Every mushaf id in the bundle's page groups, with its group's page count. */
 internal val bundleMushafPageCounts: Map<Int, Int> = mapOf(
     1 to 604, 2 to 604, 4 to 604, 5 to 604, 6 to 610, 7 to 548, 10 to 604, 11 to 604,

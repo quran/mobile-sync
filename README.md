@@ -285,11 +285,15 @@ mapping.
   server's page N - 1.
 - `setPageReadingBookmark(slot, page, mushaf)` throws `IllegalArgumentException` for a page the
   mushaf doesn't have.
+- A page is stored and synced with the mushaf it was set in (`mushafId`, such as 2 for
+  `MADANI_1405`). Today's backend keeps only a page group and returns its stand-in mushaf (5 for
+  the 604-page group, read as the 1440 layout), so after a sync a 1405 page reads as a 1440 one.
 - `readingBookmarks(mushaf)`, `setPageReadingBookmark`, and `renameReadingBookmark` take the app's
-  mushaf and return `PageReadingBookmark`s as pages of it. A page
-  set in a mushaf of the same page count keeps its number, even between the two Madani layouts;
-  another becomes the page holding its middle verse. A page of a layout this library doesn't know
-  reads as `EmptyReadingBookmark`; its location is kept.
+  mushaf and return `PageReadingBookmark`s as pages of it. A page set in a mushaf of the same
+  layout keeps its number; another becomes the page holding its middle verse. A page of a mushaf
+  with no layout here (one this library doesn't know, or a riwayah such as Warsh, which numbers
+  verses differently) or outside its mushaf's pages reads as `EmptyReadingBookmark`; its location
+  is kept, and a rename sends it back unchanged.
 - Ayah bookmarks need no mapping: every supported mushaf numbers verses the same way, so
   `setAyahReadingBookmark` and `clearReadingBookmark` take no mushaf.
 

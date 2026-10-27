@@ -3,15 +3,13 @@ package com.quran.shared.persistence.repository.readingbookmark.mapping
 import com.quran.shared.persistence.model.Mushaf
 import com.quran.shared.persistence.model.appPages
 import com.quran.shared.persistence.model.layout
-import com.quran.shared.persistence.model.pageGroup
 import com.quran.shared.persistence.model.toAppPage
 import com.quran.shared.persistence.model.toServerPage
-import com.quran.shared.syncv2.types.PageGroup
 import com.quran.shared.syncv2.types.ReadingLocation
 import kotlin.math.abs
 
 /**
- * Maps page reading bookmarks between the app's mushaf and the server's page groups with the rule both apps use
+ * Maps page reading bookmarks between the app's mushaf and the mushaf they were set in with the rule both apps use
  * (quran_android `ReadingBookmarkPageMapper.mapPage`), fixed as [mapPage] describes for verses that run across a page
  * break.
  */
@@ -22,16 +20,17 @@ internal object ReadingBookmarkPageMapper {
         requireNotNull(serverLocationOrNull(appPage, mushaf)) { "Page $appPage is outside $mushaf's pages ${mushaf.appPages}" }
 
     fun serverLocationOrNull(appPage: Int, mushaf: Mushaf): ReadingLocation? =
-        if (appPage in mushaf.appPages) ReadingLocation.page(mushaf.toServerPage(appPage), mushaf.pageGroup) else null
+        if (appPage in mushaf.appPages) ReadingLocation.page(mushaf.toServerPage(appPage), mushaf.serverMushaf) else null
 
     /**
-     * The page of [mushaf] showing [location]'s page, or null when its group is unknown or the page isn't one of the
-     * group's. A page of the mushaf's own group keeps its number, even between the two Madani layouts.
+     * The page of [mushaf] showing [location]'s page, or null when its mushaf has no layout here ([PageLayout.of]) or
+     * the page isn't one of its mushaf's. A page of the same layout keeps its number. The server's stand-in for
+     * `pages_604` (5, KFGQPC Hafs) is read in the 1440 layout, its own.
      */
     fun appPage(location: ReadingLocation, mushaf: Mushaf): Int? {
-        val group = location.pageGroup ?: return null
-        if (location.key !in 1..group.pageCount) return null
-        val page = if (group == mushaf.pageGroup) location.key else mapPage(location.key, group.layout, mushaf.layout)
+        val source = PageLayout.of(location.mushafId) ?: return null
+        if (location.key !in 1..source.pageCount) return null
+        val page = if (source == mushaf.layout) location.key else mapPage(location.key, source, mushaf.layout)
         return mushaf.toAppPage(page)
     }
 
@@ -57,12 +56,4 @@ internal object ReadingBookmarkPageMapper {
             .ifEmpty { candidates }
             .minBy { abs(it - preferred) }
     }
-
-    /** The layout a group's pages are read in: the server's stand-in for `pages_604` is the 1440 Madani layout. */
-    private val PageGroup.layout: PageLayout
-        get() = when (this) {
-            PageGroup.PAGES_604 -> PageLayout.MADANI_1440
-            PageGroup.PAGES_610 -> PageLayout.INDOPAK_15_LINES
-            PageGroup.PAGES_548 -> PageLayout.INDOPAK_16_LINES
-        }
 }

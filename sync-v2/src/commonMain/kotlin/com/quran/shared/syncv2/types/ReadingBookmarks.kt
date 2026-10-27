@@ -26,46 +26,41 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * Where a slot points: `ayah` (key = sura, verse = ayah), or `page`, `surah` or `juz` (key only). The server keeps
- * only the bookmark group, which the mushaf picks, and answers with the group and a stand-in mushaf for it.
- *
- * A page carries its server [group] and that group's stand-in mushaf ([PageGroup.standIn]). A page in a group this
- * library doesn't know, or sent without a group and with a mushaf the backend doesn't have, is kept as the server sent
- * it and has no [pageGroup]; [ReadingBookmarksType.validate] holds any write of it. Every other type carries
- * [ServerMushaf.KFGQPC_HAFS] and has no group.
+ * Where a slot points: `ayah` (key = sura, verse = ayah), or `page`, `surah` or `juz` (key only), and the mushaf it
+ * carries ([mushafId]). A page carries the mushaf it was set in, or the server's stand-in after a sync with a backend
+ * that doesn't keep it ([fromServer]); every other type carries [ServerMushaf.KFGQPC_HAFS]. A page keeps whatever
+ * mushaf the server sends, one this library doesn't know included.
  */
 data class ReadingLocation private constructor(
     val type: String,
     val key: Int,
     val verse: Int?,
-    val mushafId: Int,
-    /**
-     * A page's server group (`pages_604`, `pages_610`, `pages_548` or one this library doesn't know); null for another
-     * type, or a page of an unknown mushaf sent without a group.
-     */
-    val group: String?
+    val mushafId: Int
 ) {
-    /** A page's known group, or null for another type or a page in no group this library knows. */
-    val pageGroup: PageGroup? get() = group?.let(PageGroup::named)
-
     companion object {
         fun ayah(sura: Int, ayah: Int) = of(AYAH, sura, ayah)
-        fun page(page: Int, group: PageGroup) = ReadingLocation(PAGE, page, null, group.standIn.id, group.serverName)
+        fun page(page: Int, mushaf: ServerMushaf) = ReadingLocation(PAGE, page, null, mushaf.id)
 
         /**
-         * A location as the server renders it, or as it was stored: a page by its [group] when there is one, else by
-         * the group its [mushafId] picks (`pages_604` without either). An unknown group, or an unknown mushaf without a
-         * group, is kept as sent.
+         * A location as the server renders it. A page carries its [mushafId]; without one, the stand-in the server
+         * answers with for its [group] (`getRepresentativeMushafIdForGroup`). Today's backend keeps only the group, so a
+         * page it echoes carries that stand-in, not the mushaf it was set in.
          */
-        fun fromServer(type: String, key: Int, verse: Int?, mushafId: Int?, group: String?): ReadingLocation {
-            if (type != PAGE) return of(type, key, verse)
-            val id = mushafId ?: PageGroup.PAGES_604.standIn.id
-            val known = if (group != null) PageGroup.named(group) else ServerMushaf.fromId(id)?.pageGroup
-            return if (known != null) page(key, known) else ReadingLocation(PAGE, key, null, id, group)
-        }
+        fun fromServer(type: String, key: Int, verse: Int?, mushafId: Int?, group: String?): ReadingLocation =
+            fromStored(type, key, verse, mushafId ?: groupStandIn(group).id)
 
-        /** An ayah, surah or juz location: it has no group and carries [VERSE_STAND_IN]. */
-        private fun of(type: String, key: Int, verse: Int?) = ReadingLocation(type, key, verse, VERSE_STAND_IN.id, null)
+        /** A location as it was stored; a page without a mushaf reads as the `pages_604` stand-in (5). */
+        fun fromStored(type: String, key: Int, verse: Int?, mushafId: Int?): ReadingLocation =
+            if (type == PAGE) ReadingLocation(PAGE, key, null, mushafId ?: groupStandIn(null).id) else of(type, key, verse)
+
+        /** An ayah, surah or juz location: it carries [VERSE_STAND_IN]. */
+        private fun of(type: String, key: Int, verse: Int?) = ReadingLocation(type, key, verse, VERSE_STAND_IN.id)
+
+        private fun groupStandIn(group: String?): ServerMushaf = when (group) {
+            "pages_610" -> ServerMushaf.INDOPAK_15_LINES
+            "pages_548" -> ServerMushaf.INDOPAK_16_LINES
+            else -> ServerMushaf.KFGQPC_HAFS
+        }
 
         /**
          * Written for ayah (`verses_6236`), surah and juz (`default`) locations: the server picks those groups whatever
@@ -114,11 +109,9 @@ class ReadingBookmarksRepository(private val database: SyncV2Database) {
  * one field (type, key, verse and mushaf together), so two sides' locations never mix, and a rename on one device
  * survives a location change on another. A clear is an UPDATE with every location field null, as the backend
  * expects (its DELETE would also reset the slot's client timestamps). Entries without a slot (`{}`, a vanished row)
- * are skipped, never read as a clear. The mushaf key is `mushafId`, the only one this resource accepts; a page is read
- * by its `group` ([ReadingLocation.fromServer]) and must fit in it ([PageGroup.pageCount]), as the server checks. A
- * page in no group this library knows (an unknown group, or an unknown mushaf sent without one) is held
- * (`UNKNOWN_PAGE_GROUP`) on any create or update: the server picks the group from `mushafId` alone and could file it
- * under another group, so a rename must not resend it.
+ * are skipped, never read as a clear. The mushaf key is `mushafId`, the only one this resource accepts: a page sends
+ * the mushaf it carries, which is the one the server sent for a page set elsewhere. A page must fit in its mushaf's
+ * pages ([ServerMushaf.pageCount]), as the server checks; a mushaf this library doesn't know is the server's to check.
  * `metadata` round-trips (the server replaces it on every write), except `source`, which the server keeps.
  */
 class ReadingBookmarksType(private val database: SyncV2Database) : SyncType {
@@ -132,7 +125,7 @@ class ReadingBookmarksType(private val database: SyncV2Database) : SyncType {
 
     override fun readAll(): Map<Long, State> = queries.all().executeAsList().associate {
         val location = it.location_type?.let { type ->
-            ReadingLocation.fromServer(type, it.location_key!!.toInt(), it.location_verse?.toInt(), it.mushaf_id?.toInt(), it.location_group)
+            ReadingLocation.fromStored(type, it.location_key!!.toInt(), it.location_verse?.toInt(), it.mushaf_id?.toInt())
         }
         val metadata = it.metadata?.let { text -> Json.parseToJsonElement(text) as? JsonObject }
         it.local_id to bookmarkState(it.slot.toInt(), it.name, location, metadata, it.created_at, it.updated_at)
@@ -144,10 +137,10 @@ class ReadingBookmarksType(private val database: SyncV2Database) : SyncType {
         val name = state.getOrNull(NAME)
         val metadata = state.getOrNull(METADATA)
         if (localId != null) {
-            queries.insertWithId(localId, slot, name, l?.type, l?.key?.toLong(), l?.verse?.toLong(), l?.mushafId?.toLong(), l?.group, metadata, state[CREATED_AT], state[UPDATED_AT])
+            queries.insertWithId(localId, slot, name, l?.type, l?.key?.toLong(), l?.verse?.toLong(), l?.mushafId?.toLong(), metadata, state[CREATED_AT], state[UPDATED_AT])
             return localId
         }
-        queries.insert(slot, name, l?.type, l?.key?.toLong(), l?.verse?.toLong(), l?.mushafId?.toLong(), l?.group, metadata, state[CREATED_AT], state[UPDATED_AT])
+        queries.insert(slot, name, l?.type, l?.key?.toLong(), l?.verse?.toLong(), l?.mushafId?.toLong(), metadata, state[CREATED_AT], state[UPDATED_AT])
         return queries.lastInsertId().executeAsOne()
     }
 
@@ -155,7 +148,7 @@ class ReadingBookmarksType(private val database: SyncV2Database) : SyncType {
         val l = location(state)
         queries.update(
             state[SLOT].toLong(), state.getOrNull(NAME), l?.type, l?.key?.toLong(), l?.verse?.toLong(), l?.mushafId?.toLong(),
-            l?.group, state.getOrNull(METADATA), state[CREATED_AT], state[UPDATED_AT], localId
+            state.getOrNull(METADATA), state[CREATED_AT], state[UPDATED_AT], localId
         )
     }
 
@@ -210,9 +203,9 @@ class ReadingBookmarksType(private val database: SyncV2Database) : SyncType {
             location == null -> null
             location.type !in TYPES -> "INVALID_LOCATION"
             location.type == AYAH -> if (Verses.exists(location.key, location.verse ?: 0)) null else "INVALID_VERSE"
-            location.type == PAGE -> when (val group = location.pageGroup) {
-                null -> "UNKNOWN_PAGE_GROUP"
-                else -> if (location.key in 1..group.pageCount) null else "INVALID_PAGE"
+            location.type == PAGE -> {
+                val pages = ServerMushaf.fromId(location.mushafId)?.pageCount ?: Int.MAX_VALUE
+                if (location.key in 1..pages) null else "INVALID_PAGE"
             }
             location.key < 1 -> "INVALID_LOCATION"
             else -> null
@@ -239,7 +232,7 @@ class ReadingBookmarksType(private val database: SyncV2Database) : SyncType {
     companion object {
         private val SLOT = Field.int("slot")
         private val NAME = Field.string("name")
-        /** The whole location as one value, `type:key:verse:mushaf:group` (verse empty but for ayahs, group but for pages). */
+        /** The whole location as one value, `type:key:verse:mushaf` (verse empty but for ayahs). */
         private val LOCATION = Field.string("location")
         /** `metadata` without `source`, as canonical JSON (sorted keys). */
         private val METADATA = Field.string("metadata")
@@ -268,16 +261,15 @@ class ReadingBookmarksType(private val database: SyncV2Database) : SyncType {
             return stateOf(
                 SLOT(slot),
                 name?.let { NAME(it) } ?: (NAME.name to JsonNull),
-                location?.let { LOCATION("${it.type}:${it.key}:${it.verse ?: ""}:${it.mushafId}:${it.group ?: ""}") } ?: (LOCATION.name to JsonNull),
+                location?.let { LOCATION("${it.type}:${it.key}:${it.verse ?: ""}:${it.mushafId}") } ?: (LOCATION.name to JsonNull),
                 canonical?.let { METADATA(it) } ?: (METADATA.name to JsonNull),
                 CREATED_AT(createdAt),
                 UPDATED_AT(updatedAt)
             )
         }
 
-        private fun location(state: State): ReadingLocation? = state.getOrNull(LOCATION)?.split(":", limit = 5)?.let { parts ->
-            val (type, key, verse, mushaf) = parts
-            ReadingLocation.fromServer(type, key.toInt(), verse.toIntOrNull(), mushaf.toInt(), parts.getOrNull(4)?.ifEmpty { null })
+        private fun location(state: State): ReadingLocation? = state.getOrNull(LOCATION)?.split(":")?.let { (type, key, verse, mushaf) ->
+            ReadingLocation.fromStored(type, key.toInt(), verse.toIntOrNull(), mushaf.toInt())
         }
 
         private fun metadata(state: State): JsonObject? = state.getOrNull(METADATA)?.let { Json.parseToJsonElement(it) as JsonObject }

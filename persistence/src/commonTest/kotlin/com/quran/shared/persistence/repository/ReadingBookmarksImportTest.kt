@@ -49,7 +49,7 @@ class ReadingBookmarksImportTest {
         assertEquals(rows.map { it.updated_at }, rows.map { it.created_at })
         assertEquals(listOf(2L, 2L, 604L), rows.map { it.location_key })
         assertEquals(listOf(255L, 255L, null), rows.map { it.location_verse })
-        assertEquals(listOf(5L, 5L, 5L), rows.map { it.mushaf_id })
+        assertEquals(listOf(5L, 5L, 1L), rows.map { it.mushaf_id })
         assertEquals(emptyList(), database.synced.collectionsQueries.collectionAyahsAll().executeAsList())
     }
 
@@ -140,8 +140,8 @@ class ReadingBookmarksImportTest {
         )
 
         assertEquals(
-            listOf(Triple(536L, 6L, "pages_610"), Triple(584L, 5L, "pages_604")),
-            rows().map { Triple(it.location_key, it.mushaf_id, it.location_group) }
+            listOf(536L to 6L, 584L to 2L),
+            rows().map { it.location_key to it.mushaf_id }
         )
     }
 
@@ -174,7 +174,7 @@ class ReadingBookmarksImportTest {
     }
 
     private fun insertSlot(slot: Long, name: String) {
-        database.synced.readingBookmarksQueries.insert(slot, name, "page", 88, null, 5, "pages_604", null, 50, 100)
+        database.synced.readingBookmarksQueries.insert(slot, name, "page", 88, null, 5, null, 50, 100)
     }
 
     private fun rows() = database.synced.readingBookmarksQueries.all().executeAsList()

@@ -5,8 +5,9 @@ Usage: scripts/generate-page-layouts.py <client_bundle.v1.json> [output.kt]
 
 The bundle is Quran.com's mushaf-mapping bundle, `src/utils/mushafMapping/client_bundle.v1.json` in
 github.com/quran/quran.com-fe. Every page is `[firstVerseId, lastVerseId]` in canonical Hafs verse ids (1..6236).
-Only the four Hafs page groups below are used: the Warsh and Douri groups are numbered differently. Every group's
-mushaf ids and page count are written too, for a test to check ServerMushaf's page groups against.
+Only the four Hafs page groups below are used: the Warsh and Douri groups are numbered differently. Their mushaf ids
+are written with their layout (bundleMushafLayouts), and every group's mushaf ids with its page count
+(bundleMushafPageCounts), for a test to check ServerMushaf against.
 Update SOURCE_COMMIT when generating from another bundle; the revision is read from the bundle.
 """
 
@@ -20,15 +21,16 @@ OUTPUT = Path(__file__).resolve().parent.parent / (
     "persistence/src/commonMain/kotlin/com/quran/shared/persistence/repository/readingbookmark/mapping/PageLayoutTables.kt"
 )
 
-# (Kotlin object, the bundle's mushafIds for the group, page count, description)
+# (Kotlin object, PageLayout case, the bundle's mushafIds for the group, page count, description)
 LAYOUTS = [
-    ("Madani1440Pages", [1, 4, 5, 16, 19, 23], 604, "The 1440 Madani layout (QCF V2), 604 pages"),
-    ("Madani1405Pages", [2, 10, 11, 12], 604, "The 1405 Madani layout (QCF V1), 604 pages"),
-    ("IndoPak15LinePages", [6, 14], 610, "The 15-line IndoPak layout, 610 pages as the server numbers them"),
-    ("IndoPak16LinePages", [7], 548, "The 16-line IndoPak layout, 548 pages"),
+    ("Madani1440Pages", "MADANI_1440", [1, 4, 5, 16, 19, 23], 604, "The 1440 Madani layout (QCF V2), 604 pages"),
+    ("Madani1405Pages", "MADANI_1405", [2, 10, 11, 12], 604, "The 1405 Madani layout (QCF V1), 604 pages"),
+    ("IndoPak15LinePages", "INDOPAK_15_LINES", [6, 14], 610, "The 15-line IndoPak layout, 610 pages as the server numbers them"),
+    ("IndoPak16LinePages", "INDOPAK_16_LINES", [7], 548, "The 16-line IndoPak layout, 548 pages"),
 ]
 VERSES = 6236
 PER_LINE = 8
+LAYOUTS_PER_LINE = 3
 
 
 def main() -> None:
@@ -46,7 +48,7 @@ def main() -> None:
         "package com.quran.shared.persistence.repository.readingbookmark.mapping",
         "",
     ]
-    for name, mushaf_ids, page_count, description in LAYOUTS:
+    for name, _, mushaf_ids, page_count, description in LAYOUTS:
         pages = groups.get(tuple(mushaf_ids))
         if pages is None:
             sys.exit(f"No page group for mushafs {mushaf_ids}")
@@ -62,9 +64,23 @@ def main() -> None:
             separator = "," if start + PER_LINE < len(pages) else ""
             lines.append(f"        /* {start + 1:3} */ {values}{separator}")
         lines += ["    )", "}", ""]
+    lines += mushaf_layouts()
     lines += mushaf_page_counts(bundle["pageGroups"])
     output.write_text("\n".join(lines))
     print(f"Wrote {output}")
+
+
+def mushaf_layouts() -> list:
+    layouts = sorted((mushaf_id, layout) for _, layout, mushaf_ids, _, _ in LAYOUTS for mushaf_id in mushaf_ids)
+    entries = [f"{mushaf_id} to PageLayout.{layout}" for mushaf_id, layout in layouts]
+    lines = [
+        "/** Every mushaf id in the bundle's Hafs page groups, with its page layout. */",
+        "internal val bundleMushafLayouts: Map<Int, PageLayout> = mapOf(",
+    ]
+    for start in range(0, len(entries), LAYOUTS_PER_LINE):
+        separator = "," if start + LAYOUTS_PER_LINE < len(entries) else ""
+        lines.append(f"    {', '.join(entries[start:start + LAYOUTS_PER_LINE])}{separator}")
+    return lines + [")", ""]
 
 
 def mushaf_page_counts(page_groups: list) -> list:

@@ -102,6 +102,8 @@ data class ServerReadingBookmark(
     val group: String? = null,
     val key: Int? = null,
     val verse: Int? = null,
+    /** The written `mushafId`, which GET returns only with [FakeAccount.keepsMushafId]. */
+    val mushafId: Int? = null,
     val metadata: JsonObject? = null,
     val clientCreatedAt: Long? = null,
     val clientUpdatedAt: Long? = null
@@ -130,6 +132,9 @@ class FakeAccount internal constructor(
     internal val readingBookmarks = LinkedHashMap<String, ServerReadingBookmark>()
     internal val logs = LinkedHashMap<String, LogRow>()
     private var lastStamp = createdAt
+
+    /** The backend reading bookmarks will need: GET returns a slot's written `mushafId`, not its group's stand-in. */
+    @Volatile var keepsMushafId = false
 
     /** Token scopes. GET silently skips resources without scope; POST rejects the whole batch with 403. */
     var scopes: Set<String> = ALL_SCOPES

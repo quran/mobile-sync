@@ -44,9 +44,9 @@ data class FSession(val chapter: Int, val verse: Int, val createdAt: String, val
 data class FNote(val body: String, val ranges: List<String>, val createdAt: String, val updatedAt: String, val archivedAt: String? = null)
 
 /**
- * A reading bookmark slot; a cleared one has no location. Like the backend it stores the bookmark [group], not the
- * mushaf. Client timestamps are null after a DELETE clears it. [ungroupedMushafId] is a test hook: a page GET renders
- * with that `mushafId` and no `group`, as no current backend does.
+ * A reading bookmark slot; a cleared one has no location. Like the backend it stores the bookmark [group]; it also
+ * keeps the written [mushafId], which GET returns only with [FakeAccount.keepsMushafId]. Client timestamps are null
+ * after a DELETE clears it.
  */
 data class FReadingBookmark(
     val slot: Int,
@@ -58,7 +58,7 @@ data class FReadingBookmark(
     val metadata: JsonObject?,
     val createdAt: String?,
     val updatedAt: String?,
-    val ungroupedMushafId: Int? = null
+    val mushafId: Int? = null
 )
 
 /**
@@ -182,6 +182,9 @@ class FakeAccount(
     /** The stand-in GET renders for `pages_604`: 5 today, 1 on the upcoming backend. */
     @Volatile var pages604StandIn = 5
 
+    /** The backend reading bookmarks will need: GET returns a slot's written `mushafId`, not its group's stand-in. */
+    @Volatile var keepsMushafId = false
+
     /** `getRepresentativeMushafIdForGroup`: 7 and 6 for the IndoPak page groups, 5 (KFGQPC Hafs) for every other. */
     private fun representativeMushaf(group: String) = when (group) {
         "pages_548" -> 7
@@ -190,11 +193,14 @@ class FakeAccount(
         else -> 5
     }
 
+    /** The `mushafId` GET renders for a slot: its group's stand-in, or the written one with [keepsMushafId]. */
+    fun renderedMushafId(it: FReadingBookmark): Int? = if (keepsMushafId) it.mushafId else it.group?.let(::representativeMushaf)
+
     /** `readingBookmarkDTO`: every location field, null for a cleared slot, and nullable client timestamps. */
     private fun readingBookmarkData(it: FReadingBookmark) = buildJsonObject {
         put("slot", it.slot)
         put("name", it.name?.let(::JsonPrimitive) ?: JsonNull)
-        put("mushafId", (it.group?.let(::representativeMushaf) ?: it.ungroupedMushafId)?.let(::JsonPrimitive) ?: JsonNull)
+        put("mushafId", renderedMushafId(it)?.let(::JsonPrimitive) ?: JsonNull)
         put("type", it.type?.let(::JsonPrimitive) ?: JsonNull)
         put("group", it.group?.let(::JsonPrimitive) ?: JsonNull)
         put("key", it.key?.let(::JsonPrimitive) ?: JsonNull)

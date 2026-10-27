@@ -214,13 +214,13 @@ class Remote(private val server: FakeSyncServer, private val account: String = D
         "READING_BOOKMARK", "CREATE", null, "slot" to slot, "type" to "ayah", "key" to sura, "verseNumber" to ayah,
         "mushafId" to 1, "clientUpdatedAt" to updatedAt, *listOfNotNull(metadata?.let { "metadata" to it }).toTypedArray()
     )!!
-    /** The web renames a slot: its UPDATE replaces the whole slot, so it sends the location it has, too. */
+    /** The web renames a slot: its UPDATE replaces the whole slot, so it sends the location it read, too. */
     fun renameReadingBookmark(slot: Int, name: String, updatedAt: Long) {
         val current = data.readingBookmarks.values.single { it.slot == slot }
         apply(
             "READING_BOOKMARK", "UPDATE", readingBookmarkId(slot), "slot" to slot, "name" to name, "type" to current.type!!,
             "key" to current.key!!, *listOfNotNull(current.verse?.let { "verseNumber" to it }).toTypedArray(),
-            "mushafId" to 1, "clientUpdatedAt" to updatedAt, *listOfNotNull(current.metadata?.let { "metadata" to it }).toTypedArray()
+            "mushafId" to data.renderedMushafId(current)!!, "clientUpdatedAt" to updatedAt, *listOfNotNull(current.metadata?.let { "metadata" to it }).toTypedArray()
         )
     }
     fun readingBookmarkMetadata(slot: Int): JsonObject? = data.readingBookmarks.values.single { it.slot == slot }.metadata
@@ -238,20 +238,6 @@ class Remote(private val server: FakeSyncServer, private val account: String = D
     fun readingBookmarkName(slot: Int): String? = data.readingBookmarks.values.single { it.slot == slot }.name
     /** The verse of the bookmark carrying `isReading` (slot 1's location), if any. */
     fun readingVerse(): String? = data.bookmarks.values.singleOrNull { it.isReading }?.let { "${it.key}:${it.verse}" }
-
-    /** A page filed under [group] directly, as the backend would hold one of a layout this library doesn't know. */
-    fun fileReadingPage(slot: Int, page: Int, group: String) {
-        val id = data.newId("rb")
-        data.readingBookmarks[id] = FReadingBookmark(slot, null, "page", page, null, group, null, data.now(), data.now())
-        data.log("READING_BOOKMARK", id, "CREATE")
-    }
-
-    /** A page GET renders with [mushafId] and no `group` (see [FReadingBookmark.ungroupedMushafId]). */
-    fun fileUngroupedReadingPage(slot: Int, page: Int, mushafId: Int) {
-        val id = data.newId("rb")
-        data.readingBookmarks[id] = FReadingBookmark(slot, null, "page", page, null, null, null, data.now(), data.now(), mushafId)
-        data.log("READING_BOOKMARK", id, "CREATE")
-    }
 
     /** The row is gone, but its log stays: GET sends it as `{}` (a resource that vanished between queries). */
     fun vanish(resource: String, id: String) {

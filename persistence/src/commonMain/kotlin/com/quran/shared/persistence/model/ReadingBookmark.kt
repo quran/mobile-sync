@@ -50,7 +50,7 @@ data class PageReadingBookmark(
 
 /**
  * A cleared slot, or one holding a location the app has no model for (a surah or juz set on the web, or a page of a
- * layout this library doesn't know). The stored location is kept.
+ * mushaf with no layout here or outside its mushaf's pages). The stored location is kept.
  */
 data class EmptyReadingBookmark(
     override val slot: ReadingBookmarkSlot,

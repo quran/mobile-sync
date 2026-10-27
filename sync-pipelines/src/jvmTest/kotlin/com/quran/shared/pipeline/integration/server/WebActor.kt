@@ -106,7 +106,8 @@ class WebActor internal constructor(private val server: FakeSyncServer, val acco
         if (existing == null) {
             notes.upsertReadingBookmark(ReadingBookmarkWrite(slot, null, ReadingBookmarkWrite.Name(normalized)))
         } else {
-            val location = existing.type?.let { BookmarkLocation(it, existing.key!!, existing.verse, representativeMushafId(existing.group!!)) }
+            val mushafId = if (account.keepsMushafId) existing.mushafId else existing.group?.let(::representativeMushafId)
+            val location = existing.type?.let { BookmarkLocation(it, existing.key!!, existing.verse, mushafId) }
             notes.replaceReadingBookmark(existing.id, ReadingBookmarkWrite(slot, location, ReadingBookmarkWrite.Name(normalized), existing.metadata))
             existing.id
         }

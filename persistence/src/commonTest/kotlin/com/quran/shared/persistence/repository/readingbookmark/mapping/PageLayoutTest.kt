@@ -1,7 +1,11 @@
 package com.quran.shared.persistence.repository.readingbookmark.mapping
 
+import com.quran.shared.persistence.model.Mushaf
+import com.quran.shared.persistence.model.layout
+import com.quran.shared.syncv2.types.ServerMushaf
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class PageLayoutTest {
@@ -17,6 +21,34 @@ class PageLayoutTest {
             ),
             PageLayout.entries.associateWith { it.pageCount }
         )
+    }
+
+    /** INDOPAK is added by hand (the bundle lacks it); the riwayat that number verses differently have no layout. */
+    @Test
+    fun `each mushaf id has its layout`() {
+        assertEquals(
+            mapOf(
+                ServerMushaf.QCF_V2 to PageLayout.MADANI_1440,
+                ServerMushaf.QCF_V1 to PageLayout.MADANI_1405,
+                ServerMushaf.INDOPAK to PageLayout.MADANI_1440,
+                ServerMushaf.UTHMANI_HAFS to PageLayout.MADANI_1440,
+                ServerMushaf.KFGQPC_HAFS to PageLayout.MADANI_1440,
+                ServerMushaf.INDOPAK_15_LINES to PageLayout.INDOPAK_15_LINES,
+                ServerMushaf.INDOPAK_16_LINES to PageLayout.INDOPAK_16_LINES,
+                ServerMushaf.TAJWEED to PageLayout.MADANI_1405,
+                ServerMushaf.QCF_TAJWEED_V4 to PageLayout.MADANI_1440,
+                ServerMushaf.WARSH to null,
+                ServerMushaf.DOORI to null,
+                ServerMushaf.QALOUN to null,
+                ServerMushaf.SHUBA to PageLayout.MADANI_1440,
+                ServerMushaf.SOUSI to null,
+                ServerMushaf.BAZZI to null,
+                ServerMushaf.QUMBUL to null
+            ),
+            ServerMushaf.entries.associateWith { PageLayout.of(it.id) }
+        )
+        assertNull(PageLayout.of(10), "in the bundle, but not a backend mushaf")
+        Mushaf.entries.forEach { assertEquals(it.layout, PageLayout.of(it.serverMushaf.id), "$it") }
     }
 
     @Test

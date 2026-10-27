@@ -57,7 +57,7 @@ internal object ResourceRendering {
         "COLLECTION_BOOKMARK" -> membership(account, row.resourceId)
         "NOTE" -> account.notes[row.resourceId]?.let(::note)
         "READING_SESSION" -> account.sessions[row.resourceId]?.let(::session)
-        "READING_BOOKMARK" -> account.readingBookmarks[row.resourceId]?.let(::readingBookmark)
+        "READING_BOOKMARK" -> account.readingBookmarks[row.resourceId]?.let { readingBookmark(account, it) }
         else -> null
     } ?: JsonObject(emptyMap())
 
@@ -126,11 +126,14 @@ internal object ResourceRendering {
         put("clientUpdatedAt", isoMillis(it.clientUpdatedAt))
     }
 
-    /** `readingBookmarkDTO`: the representative mushaf for the stored group, and nullable client timestamps. */
-    fun readingBookmark(it: ServerReadingBookmark) = buildJsonObject {
+    /**
+     * `readingBookmarkDTO`: the representative mushaf for the stored group (the written one with
+     * [FakeAccount.keepsMushafId]), and nullable client timestamps.
+     */
+    fun readingBookmark(account: FakeAccount, it: ServerReadingBookmark) = buildJsonObject {
         put("slot", it.slot)
         put("name", it.name)
-        put("mushafId", it.group?.let(::representativeMushafId))
+        put("mushafId", if (account.keepsMushafId) it.mushafId else it.group?.let(::representativeMushafId))
         put("type", it.type)
         put("group", it.group)
         put("key", it.key)

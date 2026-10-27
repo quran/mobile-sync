@@ -170,18 +170,46 @@ class ReadingBookmarkScenariosTest {
         assertEquals(536 to Mushaf.MADANI_1440, onTablet.page to onTablet.mushaf)
     }
 
+    /**
+     * The backend we'll ask for keeps the mushaf a page was set in, so another device maps it from its own layout. The
+     * 1405 and 1440 layouts give page 585 the same number, but its 15-line IndoPak page differs: 591 from the 1405
+     * layout, 590 from the 1440 one (RB-11).
+     */
     @Test
-    fun `RB-10 a page of one Madani layout keeps its number in the other`() = syncScenario {
+    fun `RB-10 a page keeps its mushaf when the server returns it and maps from its own layout`() = syncScenario {
         val (phone, tablet) = signedIn("phone", "tablet")
+        server.account(ALICE).keepsMushafId = true
 
-        phone.data.setPageReadingBookmark(ReadingBookmarkSlot.RED, 584, Mushaf.MADANI_1405)
+        phone.data.setPageReadingBookmark(ReadingBookmarkSlot.RED, 585, Mushaf.MADANI_1405)
         assertSucceeded(phone.syncNow())
         assertSucceeded(tablet.syncNow())
+        val echoes = listOf(phone.syncNow(), tablet.syncNow())
 
+        echoes.forEach(::assertSucceeded)
+        assertEquals(0, echoes.sumOf { it.posts }, "the echo pushes nothing back")
         val slot = server.state(ALICE).readingBookmarks.single { it.slot == 3 }
-        assertEquals("pages_604" to 584, slot.group to slot.key)
-        val onTablet = assertIs<PageReadingBookmark>(tablet.data.readingBookmarks(Mushaf.MADANI_1440).first().single())
-        assertEquals(584 to Mushaf.MADANI_1440, onTablet.page to onTablet.mushaf)
+        assertEquals(Triple("pages_604", 585, 2), Triple(slot.group, slot.key, slot.mushafId))
+        val madani = assertIs<PageReadingBookmark>(tablet.data.readingBookmarks(Mushaf.MADANI_1440).first().single())
+        val indoPak = assertIs<PageReadingBookmark>(tablet.data.readingBookmarks(Mushaf.INDOPAK_15_LINES).first().single())
+        assertEquals(585 to Mushaf.MADANI_1440, madani.page to madani.mushaf)
+        assertEquals(591 to Mushaf.INDOPAK_15_LINES, indoPak.page to indoPak.mushaf)
         assertConverged(ALICE, phone, tablet)
+    }
+
+    /**
+     * Today's backend keeps only the group and returns its stand-in (5, read in the 1440 layout), so a 1405 page
+     * comes back as a 1440 one. Accepted until the backend returns the written mushaf (RB-10).
+     */
+    @Test
+    fun `RB-11 today's backend returns a 1405 page as its pages_604 stand-in`() = syncScenario {
+        val (phone) = signedIn("phone")
+
+        phone.data.setPageReadingBookmark(ReadingBookmarkSlot.RED, 585, Mushaf.MADANI_1405)
+        val runs = listOf(phone.syncNow(), phone.syncNow())
+
+        runs.forEach(::assertSucceeded)
+        assertEquals(1, runs.sumOf { it.posts }, "only the set; its echo pushed nothing")
+        val indoPak = assertIs<PageReadingBookmark>(phone.data.readingBookmarks(Mushaf.INDOPAK_15_LINES).first().single())
+        assertEquals(590, indoPak.page, "read from the 1440 layout")
     }
 }

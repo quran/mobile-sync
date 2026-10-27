@@ -112,6 +112,17 @@ class FakeSyncServerTest {
     }
 
     @Test
+    fun `with keepsMushafId GET renders a reading bookmark's written mushaf`() {
+        server.account(ALICE).keepsMushafId = true
+        val data = """{"slot":1,"type":"page","key":584,"mushafId":2,"clientUpdatedAt":"2026-01-01T00:00:00.000Z"}"""
+
+        assertEquals(200, post(server.head(ALICE), mutation("READING_BOOKMARK", "CREATE", data = data)).statusCode())
+
+        val entry = get(since = 0).single { it.str("resource") == "READING_BOOKMARK" }["data"]!!.jsonObject
+        assertEquals(listOf("pages_604", "2"), listOf(entry.str("group"), entry.str("mushafId")))
+    }
+
+    @Test
     fun `an exception that models no backend behavior is recorded as a fake bug`() {
         server.faults.beforePost { error("broken test callback") }
 
