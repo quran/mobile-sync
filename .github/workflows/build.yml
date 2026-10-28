@@ -3,11 +3,44 @@ name: Gradle CI
 on:
   push:
     branches: [main]
+    paths-ignore: ["**/*.md"]
   pull_request:
     branches: [main]
+    paths-ignore: ["**/*.md"]
+
+# A new push to a pull request cancels its older runs; every main push runs to the end.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  build:
+  # JVM and Android host tests need no Kotlin/Native, so they run on a Linux runner.
+  jvm-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          java-version: "25"
+          distribution: "temurin"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Run tests
+        run: ./gradlew jvmTest testAndroidHostTest --stacktrace --continue
+
+      - name: Test Summary
+        uses: test-summary/action@v2
+        with:
+          paths: "**/build/test-results/**/TEST-*.xml"
+        if: always()
+
+  # The iOS simulator and macOS tests; together with jvm-android this is everything `allTests` runs.
+  apple:
     runs-on: macos-latest
 
     steps:
@@ -18,16 +51,23 @@ jobs:
         with:
           java-version: "25"
           distribution: "temurin"
-          cache: gradle
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
 
-      - name: Clean project
-        run: ./gradlew clean
+      - name: Read Kotlin version
+        id: kotlin
+        run: echo "version=$(sed -n 's/^kotlin = "\(.*\)"$/\1/p' gradle/libs.versions.toml)" >> "$GITHUB_OUTPUT"
+
+      # Kotlin/Native downloads LLVM, libffi and lldb here on its first compile.
+      - name: Cache Kotlin/Native dependencies
+        uses: actions/cache@v6
+        with:
+          path: ~/.konan/dependencies
+          key: konan-dependencies-${{ runner.os }}-${{ runner.arch }}-${{ steps.kotlin.outputs.version }}
 
       - name: Run tests
-        run: ./gradlew allTests --stacktrace --continue
+        run: ./gradlew iosSimulatorArm64Test macosArm64Test --stacktrace --continue
 
       - name: Test Summary
         uses: test-summary/action@v2
