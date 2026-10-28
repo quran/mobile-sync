@@ -31,6 +31,7 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -49,6 +50,8 @@ class SyncClientRunRecordTest {
     private val notes = NotesRepository(database.synced)
     private val collections = CollectionsRepository(database.synced)
     private var retryBase: Duration = 5.milliseconds
+    private var retryJitter = 0.0
+    private var jitterSample = 0.5
     private var foregroundDelay: Duration = 1.hours
 
     /** How many times sync asked the session for headers. */
@@ -83,8 +86,10 @@ class SyncClientRunRecordTest {
                 ended.trySend(run)
             }
         })
-        val timings = SchedulerTimings(1.hours, 1.hours, 1.hours, foregroundDelay, FailureRetryingConfig(retryBase, 2.5, 5))
-        SyncClient.create(database.synced, SynchronizationEnvironment(server.url), account, object : SyncLifecycleGate {}, observer, timings)
+        val retrying = FailureRetryingConfig(retryBase, 2.5, 5, jitter = retryJitter)
+        val timings = SchedulerTimings(1.hours, 1.hours, 1.hours, foregroundDelay, retrying)
+        val gate = object : SyncLifecycleGate {}
+        SyncClient.create(database.synced, SynchronizationEnvironment(server.url), account, gate, observer, timings) { jitterSample }
     }
 
     @AfterTest
@@ -170,17 +175,22 @@ class SyncClientRunRecordTest {
         listOf(SECRET_NOTE, SECRET_COLLECTION, "Short", "Could not save").forEach { assertFalse(it in text, "\"$it\" in $text") }
     }
 
-    /** syncStatus shows the wait for the retry, with when it comes; a "sync now" runs at once in its place. */
+    /**
+     * syncStatus shows the wait for the retry, with when it comes (the jittered delay the scheduler waits); a "sync now"
+     * runs at once in its place.
+     */
     @Test
     fun `a sync now that replaces a waiting retry cancels that run`() {
         retryBase = 1.hours
+        retryJitter = 0.5
+        jitterSample = 0.9
         server.faults.failRequests(times = 1, status = 503, code = "ServiceUnavailableError")
         notes.addNote("A note pushed by the sync now", listOf(NoteRange(2, 255, 2, 255)), 0)
         client.triggerSyncImmediately()
         val retrying = runBlocking { withTimeout(15.seconds) { status.status.first { it is SyncStatus.Retrying } } }
         assertIs<SyncStatus.Retrying>(retrying)
         assertEquals(503 to "ServiceUnavailableError", retrying.error.httpStatus to retrying.error.serverCode)
-        assertEquals(1.hours, retrying.nextAttemptAt - retrying.failedAt, "the first retry's backoff")
+        assertEquals(84.minutes, retrying.nextAttemptAt - retrying.failedAt, "the first retry's backoff, 1.4 h by its jitter")
         assertTrue(ended.tryReceive().isFailure, "the run is still open")
 
         client.triggerSyncImmediately()

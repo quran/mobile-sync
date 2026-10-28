@@ -76,7 +76,7 @@ class SyncHistoryScenariosTest {
         val history = phone.history()
         assertEquals(2, history.size, "one record for the run and its retries, after the login's")
         val run = history.first()
-        assertEquals(SyncRunResult.FAILED to 6, run.result to run.attempts, "the first attempt and five retries")
+        assertEquals(SyncRunResult.FAILED to 5, run.result to run.attempts, "the first attempt and four retries")
         assertEquals(503 to "ServiceUnavailableError", run.error?.httpStatus to run.error?.serverCode)
         assertEquals(status.error, run.error, "the error syncStatus shows")
         assertEquals(0, run.pushed)

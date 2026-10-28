@@ -24,6 +24,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 /** What the public API reports. The sync history and held items are in [SyncHistoryScenariosTest]. */
@@ -87,9 +88,9 @@ class ObservabilityScenariosTest {
         assertIs<SyncStatus.Succeeded>(statuses.first(), "the login's result: $statuses")
         val attempts = statuses.drop(1).dropLast(1)
         assertEquals(
-            listOf(SyncStatus.Syncing::class) + List(5) { listOf(SyncStatus.Retrying::class, SyncStatus.Syncing::class) }.flatten(),
+            listOf(SyncStatus.Syncing::class) + List(4) { listOf(SyncStatus.Retrying::class, SyncStatus.Syncing::class) }.flatten(),
             attempts.map { it::class },
-            "the first attempt and five retries, waiting between them: $statuses"
+            "the first attempt and four retries, waiting between them: $statuses"
         )
         assertEquals(run.status, statuses.last(), "then exactly one failure")
         val error = assertIs<SyncStatus.Failed>(run.status).error
@@ -118,12 +119,14 @@ class ObservabilityScenariosTest {
     }
 
     /**
-     * Offline, a run waits between retries as Retrying, not Syncing: it says why and when it tries again. A "sync now"
-     * then runs at once instead of waiting, and the run it replaced is recorded cancelled.
+     * Offline, a run waits between retries as Retrying, not Syncing: it says why and when it tries again, with the
+     * retry's jitter applied. A "sync now" then runs at once instead of waiting, and the run it replaced is recorded
+     * cancelled.
      */
     @Test
     fun `OBS-04 a run waiting to retry shows why and when, and a sync now runs at once`() = syncScenario {
-        val phone = device("phone", DeviceTimings(retryBaseDelay = 1.hours))
+        // A sample of 0.25 with ±50% jitter waits three quarters of the hour.
+        val phone = device("phone", DeviceTimings(retryBaseDelay = 1.hours, retryJitter = 0.5, retryJitterSample = { 0.25 }))
         assertSucceeded(phone.login(ALICE))
         server.faults.networkDown()
         phone.data.addNote("Written offline", 2, 255, 2, 255)
@@ -133,7 +136,7 @@ class ObservabilityScenariosTest {
         val retrying = withTimeout(15.seconds) { phone.data.syncStatus.first { it is SyncStatus.Retrying } }
         assertIs<SyncStatus.Retrying>(retrying)
         assertEquals(SyncErrorKind.NETWORK, retrying.error.kind)
-        assertEquals(1.hours, retrying.nextAttemptAt - retrying.failedAt, "the first retry's backoff")
+        assertEquals(45.minutes, retrying.nextAttemptAt - retrying.failedAt, "the first retry's jittered backoff")
         server.faults.networkUp()
         val run = phone.syncNow()
         assertSucceeded(run)

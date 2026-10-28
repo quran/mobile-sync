@@ -51,9 +51,13 @@ class SyncSchedulerTest {
     }
 
     /** Runs [test] with a scheduler that is cancelled afterwards: its periodic runs would otherwise never end. */
-    private fun schedulerTest(test: suspend TestScope.(Runs, SyncScheduler) -> Unit): TestResult = runTest {
+    private fun schedulerTest(
+        timings: SchedulerTimings = this.timings,
+        random: () -> Double = { 0.5 },
+        test: suspend TestScope.(Runs, SyncScheduler) -> Unit
+    ): TestResult = runTest {
         val runs = Runs(this)
-        val scheduler = SyncScheduler(timings, StandardTestDispatcher(testScheduler), { testScheduler.currentTime }, runs::run)
+        val scheduler = SyncScheduler(timings, StandardTestDispatcher(testScheduler), { testScheduler.currentTime }, runs::run, random)
         try {
             test(runs, scheduler)
         } finally {
@@ -103,6 +107,45 @@ class SyncSchedulerTest {
         advanceTimeBy(30.minutes.inWholeMilliseconds)
         runCurrent()
         assertEquals(SyncAttempt(SyncTrigger.PERIODIC, 0), runs.attempts.last().second, "S21: sync goes on")
+    }
+
+    /** Production's backoff: about 2, 6, 18 and 54 s, each spread by up to half of itself either way, at most a minute. */
+    @Test
+    fun `production retries wait about 2, 6, 18 and 54 s, jittered by half and capped at a minute`() {
+        fun delays(sample: Double): List<Duration> {
+            var delays = emptyList<Duration>()
+            schedulerTest(DefaultSyncTimings, random = { sample }) { runs, scheduler ->
+                repeat(5) { runs.outcomes += AttemptOutcome.Failed(retryable = true) }
+                scheduler.trigger(SyncTrigger.IMMEDIATE)
+                advanceTimeBy(5.minutes.inWholeMilliseconds)
+                runCurrent()
+                assertEquals(5, runs.attempts.size, "the first attempt and four retries")
+                assertEquals(1, runs.finalFailures.size)
+                delays = runs.retryDelays.toList()
+            }
+            return delays
+        }
+
+        assertEquals(listOf(2.seconds, 6.seconds, 18.seconds, 54.seconds), delays(0.5), "no jitter")
+        assertEquals(listOf(1.seconds, 3.seconds, 9.seconds, 27.seconds), delays(0.0), "half")
+        assertEquals(listOf(3.seconds, 9.seconds, 27.seconds, 60.seconds), delays(1.0), "one and a half, the last capped")
+    }
+
+    /** Each attempt samples its own jitter, and the delay it is told is the one the scheduler waits. */
+    @Test
+    fun `a jittered retry waits the delay the attempt was told`() {
+        val samples = ArrayDeque(listOf(0.1, 0.9, 0.3))
+        val jittered = timings.copy(failureRetryingConfig = FailureRetryingConfig(1.seconds, 2.0, 2, jitter = 0.5))
+        schedulerTest(jittered, random = { samples.removeFirst() }) { runs, scheduler ->
+            repeat(3) { runs.outcomes += AttemptOutcome.Failed(retryable = true) }
+
+            scheduler.trigger(SyncTrigger.IMMEDIATE)
+            advanceTimeBy(10_000)
+            runCurrent()
+
+            assertEquals(listOf(600.milliseconds, 2_800.milliseconds), runs.retryDelays, "1 s × 0.6, then 2 s × 1.4")
+            assertEquals(listOf(0L, 600L, 3_400L), runs.attempts.map { it.first }, "each retry after the delay it was told")
+        }
     }
 
     @Test

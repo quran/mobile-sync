@@ -42,8 +42,9 @@ import java.util.Properties
 /**
  * Scheduler timings for a simulated device. By default nothing syncs on its own: app start, local
  * edits, a return to the foreground and the periodic sync wait an hour, so a device is "offline" until the test syncs it.
- * Retries keep production's count and multiplier with a 5 ms base, so a run that fails for good
- * gives up in well under a second.
+ * Retries keep production's count and multiplier with a 5 ms base and no jitter, so a run that
+ * fails for good gives up in well under a second, at the same times on every run. With
+ * [retryJitter], each attempt's jitter sample comes from [retryJitterSample] (`0 until 1`).
  */
 data class DeviceTimings(
     val localChangeDelay: Duration = 1.hours,
@@ -51,15 +52,17 @@ data class DeviceTimings(
     val foregroundDelay: Duration = 1.hours,
     val periodicInterval: Duration = 1.hours,
     val retryBaseDelay: Duration = 5.milliseconds,
-    val retryMultiplier: Double = 2.5,
-    val maximumRetries: Int = 5
+    val retryMultiplier: Double = 3.0,
+    val maximumRetries: Int = 4,
+    val retryJitter: Double = 0.0,
+    val retryJitterSample: () -> Double = { 0.5 }
 ) {
     internal fun toSchedulerTimings() = SchedulerTimings(
         standardInterval = periodicInterval,
         appRefreshInterval = appStartDelay,
         localDataModifiedInterval = localChangeDelay,
         foregroundInterval = foregroundDelay,
-        failureRetryingConfig = FailureRetryingConfig(retryBaseDelay, retryMultiplier, maximumRetries)
+        failureRetryingConfig = FailureRetryingConfig(retryBaseDelay, retryMultiplier, maximumRetries, retryJitter)
     )
 }
 
@@ -224,7 +227,7 @@ class SyncDevice internal constructor(
     }
 
     private fun newGraph(): AppGraph =
-        createDynamicGraphFactory<AppGraph.Factory>(DeviceBindings(database, auth, timings.toSchedulerTimings()))
+        createDynamicGraphFactory<AppGraph.Factory>(DeviceBindings(database, auth, timings))
             .create(
                 driverFactory = DriverFactory(),
                 storage = storage,
@@ -248,7 +251,7 @@ class SyncDevice internal constructor(
 internal class DeviceBindings(
     private val database: MobileSyncDatabase,
     private val authRepository: FakeAuthRepository,
-    private val timings: SchedulerTimings
+    private val timings: DeviceTimings
 ) {
     /**
      * Replaces the app's database binding with this device's in-memory one. It cannot go through
@@ -265,7 +268,9 @@ internal class DeviceBindings(
     @Provides
     fun synchronizationClientFactory(): QuranDataServiceSynchronizationClientFactory =
         QuranDataServiceSynchronizationClientFactory { environment, account, gate, observer ->
-            SyncClient.create(database.synced, environment, account, gate, observer, timings)
+            SyncClient.create(
+                database.synced, environment, account, gate, observer, timings.toSchedulerTimings(), timings.retryJitterSample
+            )
         }
 }
 

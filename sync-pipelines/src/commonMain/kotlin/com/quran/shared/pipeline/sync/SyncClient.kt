@@ -26,6 +26,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import kotlinx.io.IOException
 import kotlin.concurrent.Volatile
+import kotlin.random.Random
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Instant
@@ -65,10 +66,12 @@ internal class SyncClient(
     dispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val now: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     /** Closed with this client. */
-    private val httpClient: HttpClient? = null
+    private val httpClient: HttpClient? = null,
+    /** The retries' jitter, a uniform sample in `0 until 1` per attempt (see [SyncScheduler]); tests pass a fixed one. */
+    random: () -> Double = { Random.nextDouble() }
 ) : SynchronizationClient, AutoCloseable {
     private val logger = Logger.withTag("SyncClient")
-    private val scheduler = SyncScheduler(timings, dispatcher, now, ::runAttempt)
+    private val scheduler = SyncScheduler(timings, dispatcher, now, ::runAttempt, random)
 
     @Volatile
     private var pushBackoffUntil = 0L
@@ -284,7 +287,8 @@ internal class SyncClient(
             account: SyncAccount,
             gate: SyncLifecycleGate,
             observer: SyncRunObserver,
-            timings: SchedulerTimings = DefaultSyncTimings
+            timings: SchedulerTimings = DefaultSyncTimings,
+            random: () -> Double = { Random.nextDouble() }
         ): SyncClient {
             lateinit var client: SyncClient
             // The platform's engine (OkHttp on Android and the JVM, Darwin on iOS) comes from this module's dependencies.
@@ -294,7 +298,7 @@ internal class SyncClient(
             }
             val api = SyncApi(httpClient, environment.endPointURL) { client.requestHeaders() }
             val engine = SyncEngineV2(database, api, syncTypes(database), ENGINE_VERSION)
-            client = SyncClient(engine, account, gate, observer, timings, httpClient = httpClient)
+            client = SyncClient(engine, account, gate, observer, timings, httpClient = httpClient, random = random)
             return client
         }
     }
