@@ -46,7 +46,9 @@ class SyncClientRunRecordTest {
     private val ended = Channel<SyncRun>(Channel.UNLIMITED)
     private val skips = Channel<Unit>(Channel.UNLIMITED)
     private val status = SyncStatusTracker()
-    private val token = server.issueToken(ACCOUNT, "phone")
+    /** The session's access token; a test replaces it as a refresh would. */
+    @Volatile
+    private var token = server.issueToken(ACCOUNT, "phone")
     private val notes = NotesRepository(database.synced)
     private val collections = CollectionsRepository(database.synced)
     private var retryBase: Duration = 5.milliseconds
@@ -275,10 +277,7 @@ class SyncClientRunRecordTest {
     fun `a return to the foreground soon after a pulled-only sync is skipped`() {
         foregroundDelay = Duration.ZERO
         foregroundSkip = 1.hours
-        server.faults.failRequests(times = 1, status = 403, code = "ForbiddenError")
-        notes.addNote("A note whose push is paused", listOf(NoteRange(2, 255, 2, 255)), 0)
-        client.triggerSyncImmediately()
-        assertEquals(SyncRunResult.FAILED, next().result)
+        pausePushesWithA403()
         client.appForegrounded()
         assertEquals(SyncRunTrigger.FOREGROUND to SyncRunResult.PULLED_ONLY, next().let { it.trigger to it.result }, "a failure doesn't skip it")
         settle()
@@ -300,6 +299,48 @@ class SyncClientRunRecordTest {
         client.appForegrounded()
 
         assertEquals(SyncRunTrigger.FOREGROUND, next().trigger)
+    }
+
+    /** A 403 that may be the token's scope pauses pushes; a new token (a refresh) ends the pause. */
+    @Test
+    fun `a new access token ends the push pause after a 403`() {
+        foregroundDelay = Duration.ZERO
+        pausePushesWithA403()
+        client.appForegrounded()
+        assertEquals(SyncRunResult.PULLED_ONLY, next().result, "pushes are paused")
+
+        token = server.issueToken(ACCOUNT, "phone")
+        client.appForegrounded()
+
+        val run = next()
+        assertEquals(SyncRunResult.SUCCEEDED to 1, run.result to run.pushed, "the new token pushes")
+    }
+
+    /**
+     * A sign-in ends the push pause even when its own run fails before it pushes: the automatic run after it pushes,
+     * with the same token.
+     */
+    @Test
+    fun `a sign-in ends the push pause after a 403`() {
+        foregroundDelay = Duration.ZERO
+        pausePushesWithA403()
+        // Every attempt of the sign-in's run fails at its GET.
+        server.faults.failRequests(times = 6, status = 503, code = "ServiceUnavailableError") { !it.isPost }
+        client.signedIn()
+        assertEquals(SyncRunTrigger.SIGN_IN to SyncRunResult.FAILED, next().let { it.trigger to it.result })
+
+        client.appForegrounded()
+
+        val run = next()
+        assertEquals(SyncRunResult.SUCCEEDED to 1, run.result to run.pushed)
+    }
+
+    /** A note whose push the server answers with a lone 403, which pauses pushes for an hour. */
+    private fun pausePushesWithA403() {
+        server.faults.failRequests(times = 1, status = 403, code = "ForbiddenError")
+        notes.addNote("A note whose push is paused", listOf(NoteRange(2, 255, 2, 255)), 0)
+        client.triggerSyncImmediately()
+        assertEquals(SyncRunResult.FAILED, next().result)
     }
 
     @Test

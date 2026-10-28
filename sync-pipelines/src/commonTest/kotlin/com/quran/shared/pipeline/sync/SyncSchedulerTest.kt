@@ -151,7 +151,7 @@ class SyncSchedulerTest {
 
     @Test
     fun `a failure that asks for a long backoff is not retried soon`() = schedulerTest { runs, scheduler ->
-        runs.outcomes += AttemptOutcome.Failed(retryable = true, retryAfterMillis = 6 * 60 * 60 * 1000L)
+        runs.outcomes += AttemptOutcome.Failed(retryable = true, retryAfterMillis = 60 * 60 * 1000L)
 
         scheduler.trigger(SyncTrigger.IMMEDIATE)
         advanceTimeBy(29.minutes.inWholeMilliseconds)

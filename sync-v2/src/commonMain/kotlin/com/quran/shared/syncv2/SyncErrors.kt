@@ -19,7 +19,7 @@ import com.quran.shared.syncv2.PushPlanner.Companion.CREATE
  * | 404 on UPDATE or DELETE | the item is gone remotely: forget its base (edit beats delete) |
  * | 403 with an index | revert the item to base |
  * | 403 without an index | after something landed, the item's: revert it. Before, split the batch to find something |
- * |     | that lands; a lone 403 stops (retryable, 6 h backoff), as it may be a scope error |
+ * |     | that lands; a lone 403 stops (retryable, 1 h backoff), as it may be a scope error |
  * | 500 | fetch and retry; after a second one, fetch (to resolve its outbox), then: after something landed, hold the |
  * |     | item; before, post the rest without it (a 5xx there too is an outage: abort, hold nothing). A lone item is |
  * |     | held only when it failed like this in an earlier run |

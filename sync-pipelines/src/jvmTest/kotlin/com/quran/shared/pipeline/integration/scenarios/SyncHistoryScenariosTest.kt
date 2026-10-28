@@ -117,7 +117,7 @@ class SyncHistoryScenariosTest {
     fun `HIST-05 a run during a push backoff is recorded as pulled only`() = syncScenario {
         val phone = device("phone", DeviceTimings(localChangeDelay = 50.milliseconds))
         assertSucceeded(phone.login(ALICE))
-        // A 403 without a mutation index may be the session's scope: pushes back off for hours.
+        // A 403 without a mutation index may be the session's scope: pushes back off for an hour.
         server.faults.failRequests(times = 1, status = 403, code = "ForbiddenError")
         phone.data.addNote("Pushed once the backoff ends", 2, 255, 2, 255)
         assertIs<SyncStatus.Failed>(phone.awaitSync().status, "the local change's run")
@@ -333,7 +333,7 @@ class SyncHistoryScenariosTest {
     fun `HIST-19 a return to the foreground during a push backoff only pulls`() = syncScenario {
         val phone = device("phone", DeviceTimings(foregroundDelay = 50.milliseconds))
         assertSucceeded(phone.login(ALICE))
-        // A 403 without a mutation index may be the session's scope: pushes back off for hours.
+        // A 403 without a mutation index may be the session's scope: pushes back off for an hour.
         server.faults.failRequests(times = 1, status = 403, code = "ForbiddenError")
         phone.data.addNote("Pushed once the backoff ends", 2, 255, 2, 255)
         val failed = assertIs<SyncStatus.Failed>(phone.syncNow().status)

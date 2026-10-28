@@ -55,7 +55,8 @@ internal class SignedOutException : IllegalStateException("No session")
  *
  * - A 401 forces one token refresh and runs again; a refused refresh ends the session.
  * - A failure that asks for a push backoff (a 403 that may be the token's scope) stops pushing for that long; the
- *   periodic and other automatic runs still pull. A "sync now" or a sign-in pushes anyway.
+ *   periodic and other automatic runs still pull. A "sync now" or a sign-in pushes anyway. A sign-in, a logout or
+ *   reset, or a new access token (a refresh, by any path) ends the backoff: the 403 may have been the old token's.
  */
 internal class SyncClient(
     private val engine: SyncEngineV2,
@@ -75,6 +76,17 @@ internal class SyncClient(
 
     @Volatile
     private var pushBackoffUntil = 0L
+
+    /**
+     * A fingerprint (the hash, so no token is kept) of the headers of the request that started the push backoff: other
+     * headers mean a new token, which ends it.
+     */
+    @Volatile
+    private var pushBackoffHeaders: Int? = null
+
+    /** The fingerprint of the headers the latest request sent. */
+    @Volatile
+    private var lastRequestHeaders: Int? = null
 
     /** When the latest run that pulled the server's changes (succeeded or pulled only) ended; null after a failure. */
     @Volatile
@@ -100,7 +112,11 @@ internal class SyncClient(
 
     override fun triggerSyncImmediately() = trigger(SyncTrigger.IMMEDIATE)
 
-    override fun signedIn() = trigger(SyncTrigger.SIGN_IN)
+    /** A new session: a push backoff the previous one started ends. */
+    override fun signedIn() {
+        endPushBackoff("a user signed in")
+        trigger(SyncTrigger.SIGN_IN)
+    }
 
     override fun sessionRestored() = trigger(SyncTrigger.SESSION_RESTORED)
 
@@ -111,6 +127,7 @@ internal class SyncClient(
         scheduler.cancelAndJoin()
         run = null
         lastPulledAt = null
+        endPushBackoff("a logout or reset")
     }
 
     /** Stops the scheduler for good and closes the HTTP client: the service that owns this client is gone. */
@@ -142,11 +159,14 @@ internal class SyncClient(
         // while they run, and a retry reports it even if fetching headers fails again.
         val startReported = attempt.number > 0 || replacedWaitingRun
         if (startReported) observer.syncStarted()
-        val push = attempt.trigger.isImmediate || now() >= pushBackoffUntil
+        var push = false
         val result = try {
-            if (account.authHeaders().isEmpty()) return skipped("no one is signed in")
+            val headers = account.authHeaders()
+            if (headers.isEmpty()) return skipped("no one is signed in")
             val accountId = account.accountId() ?: return skipped("the signed-in account is unknown")
             if (!startReported) observer.syncStarted()
+            pushBackoffHeaders?.let { if (it != headers.hashCode()) endPushBackoff("the access token changed") }
+            push = attempt.trigger.isImmediate || now() >= pushBackoffUntil
             sync(accountId, push, tally)
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -156,7 +176,7 @@ internal class SyncClient(
         if (!epochIsCurrent(epoch)) return skipped("a logout or reset began during the run")
         return when (result) {
             is SyncResult.Success -> {
-                if (push) pushBackoffUntil = 0L
+                if (push) endPushBackoff("a push succeeded")
                 end(if (push) SyncRunResult.SUCCEEDED else SyncRunResult.PULLED_ONLY, held = result.held.size)
                 AttemptOutcome.Done
             }
@@ -187,7 +207,10 @@ internal class SyncClient(
             is SignedOutException -> return skipped("the session ended")
             is SyncOperationInvalidatedException -> return skipped("a logout or reset began during the run")
         }
-        result.retryAfterMillis?.let { pushBackoffUntil = now() + it }
+        result.retryAfterMillis?.let {
+            pushBackoffUntil = now() + it
+            pushBackoffHeaders = lastRequestHeaders
+        }
         val outcome = AttemptOutcome.Failed(result.retryable, result.retryAfterMillis)
         val delay = retryDelay(outcome)
         if (delay == null) {
@@ -294,7 +317,17 @@ internal class SyncClient(
      */
     private suspend fun requestHeaders(): Map<String, String> {
         runEpoch?.let { gate.admitSyncPost(it) }
-        return account.authHeaders().ifEmpty { throw SignedOutException() }.also { run?.contactedServer = true }
+        return account.authHeaders().ifEmpty { throw SignedOutException() }.also {
+            run?.contactedServer = true
+            lastRequestHeaders = it.hashCode()
+        }
+    }
+
+    private fun endPushBackoff(why: String) {
+        if (pushBackoffUntil == 0L && pushBackoffHeaders == null) return
+        logger.i { "Pushing again: $why" }
+        pushBackoffUntil = 0L
+        pushBackoffHeaders = null
     }
 
     companion object {
