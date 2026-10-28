@@ -112,7 +112,7 @@ class SyncSchedulerTest {
 
     /** Production's backoff: about 2, 6, 18 and 54 s, each spread by up to half of itself either way, at most a minute. */
     @Test
-    fun `production retries wait about 2, 6, 18 and 54 s, jittered by half and capped at a minute`() {
+    fun `production retries wait about 2 then 6 then 18 then 54 s jittered by half and capped at a minute`() {
         fun delays(sample: Double): List<Duration> {
             var delays = emptyList<Duration>()
             schedulerTest(DefaultSyncTimings, random = { sample }) { runs, scheduler ->
