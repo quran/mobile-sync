@@ -134,6 +134,9 @@ internal class SyncClient(
         endPushBackoff("a logout or reset")
     }
 
+    /** Waits until the scheduler has handled the end of the attempt running now, if any (see [SyncScheduler.awaitIdle]). */
+    internal suspend fun awaitSchedulerIdle() = scheduler.awaitIdle()
+
     /** Stops the scheduler for good and closes the HTTP client: the service that owns this client is gone. */
     override fun close() {
         scheduler.close()

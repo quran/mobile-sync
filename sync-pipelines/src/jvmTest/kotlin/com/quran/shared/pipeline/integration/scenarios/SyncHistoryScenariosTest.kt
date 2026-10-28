@@ -388,8 +388,7 @@ class SyncHistoryScenariosTest {
     fun `HIST-22 a return to the foreground right after a sync is skipped, but not after a failed one`() = syncScenario {
         val phone = device("phone", DeviceTimings(foregroundDelay = Duration.ZERO, foregroundSkipAfterSync = 1.hours))
         assertSucceeded(phone.login(ALICE))
-        // The login's run reports its end before the scheduler is done with it; a trigger in between would wait for it.
-        delay(100.milliseconds)
+        phone.awaitSchedulerIdle()
 
         phone.data.syncOnForeground()
         assertSucceeded(phone.syncNow())

@@ -31,6 +31,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.publicvalue.multiplatform.oidc.tokenstore.SettingsStore
 import org.publicvalue.multiplatform.oidc.tokenstore.SettingsTokenStore
 import kotlin.time.Duration
@@ -137,6 +138,18 @@ class SyncDevice internal constructor(
     /** The app-facing auth API. */
     val authService: SyncAuthService get() = graph.authService
 
+    /** The current graph's sync client, for [awaitSchedulerIdle] only: tests drive the device through [data]. */
+    @Volatile
+    private var syncClient: SyncClient? = null
+
+    /**
+     * Waits until the scheduler has finished the run that just ended. A run publishes its end before the scheduler is
+     * done with it, and a trigger in between waits for it (where a "sync now" displaces a later trigger).
+     */
+    internal suspend fun awaitSchedulerIdle() = withTimeout(SyncStatusRecorder.RUN_TIMEOUT) {
+        checkNotNull(syncClient) { "$name has no sync client" }.awaitSchedulerIdle()
+    }
+
     /** The latest run [syncNow], [login], [awaitSync] or [restart] waited for. */
     var lastRun: SyncRun? = null
         private set
@@ -230,7 +243,7 @@ class SyncDevice internal constructor(
     }
 
     private fun newGraph(): AppGraph =
-        createDynamicGraphFactory<AppGraph.Factory>(DeviceBindings(database, auth, timings))
+        createDynamicGraphFactory<AppGraph.Factory>(DeviceBindings(database, auth, timings) { syncClient = it })
             .create(
                 driverFactory = DriverFactory(),
                 storage = storage,
@@ -254,7 +267,9 @@ class SyncDevice internal constructor(
 internal class DeviceBindings(
     private val database: MobileSyncDatabase,
     private val authRepository: FakeAuthRepository,
-    private val timings: DeviceTimings
+    private val timings: DeviceTimings,
+    /** Receives the sync client the graph creates. */
+    private val onSyncClient: (SyncClient) -> Unit
 ) {
     /**
      * Replaces the app's database binding with this device's in-memory one. It cannot go through
@@ -273,7 +288,7 @@ internal class DeviceBindings(
         QuranDataServiceSynchronizationClientFactory { environment, account, gate, observer ->
             SyncClient.create(
                 database.synced, environment, account, gate, observer, timings.toSchedulerTimings(), timings.retryJitterSample
-            )
+            ).also(onSyncClient)
         }
 }
 

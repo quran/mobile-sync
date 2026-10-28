@@ -364,6 +364,24 @@ class SyncSchedulerTest {
     }
 
     @Test
+    fun `await idle returns once the running attempt's end is handled`() = schedulerTest { runs, scheduler ->
+        runs.block = CompletableDeferred()
+        scheduler.trigger(SyncTrigger.IMMEDIATE)
+        runCurrent()
+
+        val idle = launch { scheduler.awaitIdle() }
+        runCurrent()
+        assertTrue(!idle.isCompleted, "an attempt is running")
+        runs.block!!.complete(Unit)
+        runCurrent()
+
+        assertTrue(idle.isCompleted)
+        val again = launch { scheduler.awaitIdle() }
+        runCurrent()
+        assertTrue(again.isCompleted, "nothing runs: at once")
+    }
+
+    @Test
     fun `close stops the command loop for good`() = schedulerTest { runs, scheduler ->
         runs.block = CompletableDeferred()
         scheduler.trigger(SyncTrigger.IMMEDIATE)

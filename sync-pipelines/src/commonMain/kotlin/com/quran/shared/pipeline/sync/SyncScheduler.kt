@@ -142,6 +142,8 @@ internal class SyncScheduler(
     private var followUpDuringRun: SyncTrigger? = null
     /** The latest immediate trigger that arrived during the run, to run right after it. */
     private var immediateDuringRun: SyncTrigger? = null
+    /** [awaitIdle] callers waiting for the running attempt to finish. */
+    private val idleWaiters = mutableListOf<CompletableDeferred<Unit>>()
 
     init {
         scope.launch { for (command in commands) handle(command) }
@@ -168,6 +170,21 @@ internal class SyncScheduler(
         scope.coroutineContext.job.takeIf { it.isCancelled }?.join()
     }
 
+    /**
+     * Waits until no attempt is running: one running now finishes and this scheduler has handled its end (scheduled
+     * what comes next). An attempt reports its end to observers before that, so a trigger right after a run's end may
+     * otherwise still find it running. Returns at once after [close].
+     */
+    internal suspend fun awaitIdle() {
+        val done = CompletableDeferred<Unit>()
+        if (commands.trySend(Command.AwaitIdle(done)).isSuccess) {
+            select {
+                done.onAwait {}
+                scope.coroutineContext.job.onJoin {}
+            }
+        }
+    }
+
     /** Stops for good: the command loop, the timers and the running attempt. Later triggers do nothing. */
     fun close() {
         commands.close()
@@ -184,6 +201,7 @@ internal class SyncScheduler(
             val outcome: AttemptOutcome
         ) : Command
         data class Cancel(val done: CompletableDeferred<Unit>?) : Command
+        data class AwaitIdle(val done: CompletableDeferred<Unit>) : Command
     }
 
     private suspend fun handle(command: Command) {
@@ -204,8 +222,10 @@ internal class SyncScheduler(
                 running = null
                 followUpDuringRun = null
                 immediateDuringRun = null
+                releaseIdleWaiters()
                 command.done?.complete(Unit)
             }
+            is Command.AwaitIdle -> if (running == null) command.done.complete(Unit) else idleWaiters += command.done
         }
     }
 
@@ -258,6 +278,12 @@ internal class SyncScheduler(
         } else {
             schedule(timings.standardInterval, SyncAttempt(SyncTrigger.PERIODIC, 0), onlyIfSooner = false)
         }
+        releaseIdleWaiters()
+    }
+
+    private fun releaseIdleWaiters() {
+        idleWaiters.forEach { it.complete(Unit) }
+        idleWaiters.clear()
     }
 
     /**

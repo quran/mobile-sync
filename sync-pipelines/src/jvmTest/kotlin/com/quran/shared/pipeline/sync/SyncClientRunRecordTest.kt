@@ -116,10 +116,11 @@ class SyncClientRunRecordTest {
     private fun awaitSkip() = runBlocking { withTimeout(15.seconds) { skips.receive() } }
 
     /**
-     * Gives the scheduler time to finish the run that just ended: [next] returns as the run reports its end, before the
-     * scheduler is done with it, and a trigger during the run is held until after it, where a "sync now" displaces it.
+     * Waits until the scheduler has finished the run that just ended: [next] returns as the run reports its end, before
+     * the scheduler is done with it, and a trigger during the run is held until after it, where a "sync now" displaces
+     * it.
      */
-    private fun settle() = runBlocking { delay(100.milliseconds) }
+    private fun settle() = runBlocking { withTimeout(15.seconds) { client.awaitSchedulerIdle() } }
 
     /** 101 notes, so the first POST lands 100 of them before the second one fails with [status]. */
     private fun failSecondPost(status: Int, code: String, beforeAnswer: () -> Unit = {}) {
