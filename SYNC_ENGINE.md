@@ -28,8 +28,8 @@ A run compares three states of each item, all in the same canonical shape (`Stat
 3. **Push:** `PushPlanner` diffs base against working (deletes, then updates, then creates; children wait for their
    parent's remote id), and `Pusher` posts batches of at most 100. Server errors are handled as the table in
    `SyncErrors.kt` says; an item the server keeps refusing, or one that fails local validation, is held (`Holds`) with
-   its dependents instead of blocking the rest. A hold ends when the user edits the item, the app version changes, or
-   it expires.
+   its dependents instead of blocking the rest. A hold ends when the user edits the item (or deletes it, unless the
+   hold is on its delete), the app version changes, or it expires.
 
 A logout or account switch bumps the wipe epoch (`Generation`), so a sync in flight can't write back wiped data.
 
