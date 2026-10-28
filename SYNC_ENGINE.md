@@ -30,7 +30,10 @@ A run compares three states of each item, all in the same canonical shape (`Stat
    parent's remote id), and `Pusher` posts batches of at most 100. Server errors are handled as the table in
    `SyncErrors.kt` says; an item the server keeps refusing, or one that fails local validation, is held (`Holds`) with
    its dependents instead of blocking the rest. A hold ends when the user edits the item (or deletes it, unless the
-   hold is on its delete), the app version changes, or it expires.
+   hold is on its delete), the engine's version changes (sync-pipelines passes `ENGINE_VERSION`, changed with a
+   library update), or it expires. `SyncEngineV2.held(database, types)` lists the held and waiting items as the next
+   push would plan them, so a UI can read them between syncs (`sync_itemQueries.holdInputs` changes with every table
+   they depend on).
 
 A run's `SyncResult` carries what it `pushed` and `pulled` (the local rows its merges created, changed or deleted to
 take remote changes).
