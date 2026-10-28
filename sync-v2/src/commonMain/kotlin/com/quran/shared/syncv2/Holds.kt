@@ -21,7 +21,13 @@ data class HeldItem(val type: String, val localId: Long, val reason: String, val
 
 data class ItemRef(val type: String, val localId: Long)
 
-/** Releasing and listing holds. A hold is also released when the user edits the item (see [PushPlanner]). */
+/**
+ * Whether this tombstone's hold is a held DELETE: it holds the base, as the server refused the delete. A tombstone
+ * held with any other state was held for a create or edit the user deleted since, so the hold no longer applies.
+ */
+internal fun SyncRow.holdsDelete(merger: Merger): Boolean = heldReason != null && base != null && merger.same(heldState, base)
+
+/** Releasing and listing holds. A hold is also released when the user edits or deletes the item (see [PushPlanner]). */
 class Holds(private val store: SyncStore, private val types: List<SyncType>, private val refs: Refs) {
 
     /**

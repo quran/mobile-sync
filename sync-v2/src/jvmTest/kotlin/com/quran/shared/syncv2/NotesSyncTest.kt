@@ -66,6 +66,22 @@ class NotesSyncTest {
         }
     }
 
+    /** A synced note edited too short is held on its UPDATE; deleting it then is a new change, so the DELETE is pushed. */
+    @Test
+    fun `deleting a note held for an edit pushes the delete`() = FakeSyncServer().use { server ->
+        Device(server).use { device ->
+            val note = device.addNote("Long enough to sync", "1:1", t(0))
+            device.settle()
+            device.notes.updateNote(note, "Bad", t(1))
+            assertEquals(listOf(HeldItem("NOTE", note, "BODY_LENGTH")), device.settle().held)
+
+            device.notes.deleteNote(note)
+
+            assertEquals(emptyList(), device.settle().held)
+            assertEquals(emptyList(), Remote(server).noteBodies())
+        }
+    }
+
     /** IMP-07: a legacy note naming a verse that doesn't exist gets 500 from the server; it is held up front. */
     @Test
     fun `a note on a verse that doesn't exist is held, not retried forever`() = FakeSyncServer().use { server ->

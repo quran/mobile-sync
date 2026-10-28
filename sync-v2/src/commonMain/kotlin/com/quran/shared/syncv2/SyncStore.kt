@@ -2,6 +2,7 @@ package com.quran.shared.syncv2
 
 import com.quran.shared.syncv2.db.SyncV2Database
 import com.quran.shared.syncv2.db.Sync_item
+import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -115,7 +116,7 @@ class SyncStore(val database: SyncV2Database) {
      * one only after a 5xx: a later POST must not replace a batch that may have landed until a GET resolved it.
      */
     var outboxes: List<Outbox>
-        get() = meta(OUTBOX)?.let { json.decodeFromString(outboxesSerializer, it) }.orEmpty()
+        get() = meta(OUTBOX)?.let { decode(outboxesSerializer, it, "outbox") }.orEmpty()
         set(value) {
             if (value.isEmpty()) {
                 queries.metaDelete(OUTBOX)
@@ -126,7 +127,7 @@ class SyncStore(val database: SyncV2Database) {
 
     /** Failures by `type:localId` (see [ItemFailure]). */
     var failures: Map<String, ItemFailure>
-        get() = meta(FAILURES)?.let { json.decodeFromString(failuresSerializer, it) }.orEmpty()
+        get() = meta(FAILURES)?.let { decode(failuresSerializer, it, "failures") }.orEmpty()
         set(value) {
             if (value.isEmpty()) queries.metaDelete(FAILURES) else queries.metaSet(FAILURES, json.encodeToString(failuresSerializer, value))
         }
@@ -158,6 +159,17 @@ class SyncStore(val database: SyncV2Database) {
         private val outboxesSerializer = ListSerializer(Outbox.serializer())
         val json = Json { ignoreUnknownKeys = true }
         fun encode(state: State): String = json.encodeToString(JsonObject.serializer(), state)
-        fun decode(text: String): State = json.decodeFromString(JsonObject.serializer(), text)
+        fun decode(text: String): State = decode(JsonObject.serializer(), text, "state")
+
+        /**
+         * Decodes stored JSON. Text that doesn't parse fails without the parser's error, which quotes the text (a
+         * note's body, a collection's name) into whatever logs the failure.
+         */
+        private fun <T> decode(deserializer: DeserializationStrategy<T>, text: String, what: String): T = try {
+            json.decodeFromString(deserializer, text)
+        } catch (e: IllegalArgumentException) {
+            // SerializationException is one; neither its message nor its cause may go along.
+            throw IllegalStateException("The stored $what is not valid JSON")
+        }
     }
 }
