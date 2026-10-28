@@ -24,7 +24,7 @@ import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.shareIn
 
 /**
- * [QuranDataService.heldItems] and [QuranDataService.unsyncedItemCount], both from one [UnsyncedSnapshot] of
+ * [QuranDataService.heldItems] and [QuranDataService.unsyncedItems], both from one [UnsyncedSnapshot] of
  * [database], read again on every write to `sync_item`, `sync_meta` or a domain table, as the next push would see it.
  *
  * Every collector shares one reader in [scope], as each read is a transaction (the writer lock on Android and iOS).
@@ -50,7 +50,8 @@ internal class HeldItems(private val database: SyncV2Database, scope: CoroutineS
 
     val flow: Flow<List<HeldSyncItem>> = snapshots.map { it.held }.distinctUntilChanged()
 
-    val unsyncedCount: Flow<Int> = snapshots.map { it.held.size + it.pendingCount }.distinctUntilChanged()
+    val unsyncedCounts: Flow<UnsyncedItemCounts> =
+        snapshots.map { UnsyncedItemCounts(pending = it.pendingCount, held = it.held.size) }.distinctUntilChanged()
 
     private fun readOrNull(): UnsyncedSnapshot? = try {
         read()
@@ -136,7 +137,10 @@ internal class HeldItems(private val database: SyncV2Database, scope: CoroutineS
     }
 }
 
-/** The held items as [QuranDataService.heldItems] lists them, and how many other items the next push sends. */
+/**
+ * The held items as [QuranDataService.heldItems] lists them (with the items waiting on them), and how many other items
+ * the next push sends: the engine leaves held and waiting items out of its pending ones.
+ */
 internal data class UnsyncedSnapshot(val held: List<HeldSyncItem>, val pendingCount: Int)
 
 /**

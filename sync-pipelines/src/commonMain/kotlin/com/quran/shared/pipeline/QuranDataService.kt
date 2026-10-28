@@ -231,17 +231,19 @@ class QuranDataService internal constructor(
     val heldItems: Flow<List<HeldSyncItem>> get() = heldItemsReader.flow
 
     /**
-     * How many items have a local state the server doesn't have yet: new, edited or deleted since they last synced, or
-     * held ([heldItems]). Logout wipes them, so an app can warn with this count. An item counts once; a change the
-     * server never sees doesn't count: one only to a field that isn't synced (such as an edit time), a verse removed
-     * with its collection, or a delete the server would refuse (sync undoes it).
+     * How many items have a local state the server doesn't have yet, from one read: [UnsyncedItemCounts.pending], new,
+     * edited or deleted since they last synced, which the next sync sends; and [UnsyncedItemCounts.held], the
+     * [heldItems] (held items and the items waiting on them), which don't sync until they are fixed. Logout wipes them
+     * all, so an app can warn with these counts. An item counts once, in one of the two; a change the server never sees
+     * doesn't count: one only to a field that isn't synced (such as an edit time), a verse removed with its collection,
+     * or a delete the server would refuse (sync undoes it).
      *
-     * It may over-count before the first sync (items a sync will link to the server's equal ones count as new) and
-     * while a sent batch's answer is unknown. It changes on every local write, like [heldItems]; each write re-reads
-     * it, push planning included, so collect it only while it is shown.
+     * It may over-count pending items before the first sync (items a sync will link to the server's equal ones count as
+     * new) and while a sent batch's answer is unknown. It changes on every local write, like [heldItems]; each write
+     * re-reads it, push planning included, so collect it only while it is shown.
      */
     @NativeCoroutines
-    val unsyncedItemCount: Flow<Int> get() = heldItemsReader.unsyncedCount
+    val unsyncedItems: Flow<UnsyncedItemCounts> get() = heldItemsReader.unsyncedCounts
 
     private val bookmarksRepository = pipeline.bookmarksRepository
     private val readingBookmarksRepository = pipeline.readingBookmarksRepository

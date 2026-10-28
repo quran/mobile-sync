@@ -17,7 +17,7 @@ Core modules:
 - `:auth`: OIDC login/logout, auth state, token handling.
 - `:persistence`: the app database (`MobileSyncDatabase`: `QuranDatabase` for app metadata plus `:sync-v2`'s `SyncV2Database` on one driver, schema `MobileSyncSchema`) and the repositories for bookmarks, collections, notes, and reading sessions. Repositories write plain domain rows through one store per type (`NoteStore`, `CollectionStore`, `ReadingSessionStore`, `ReadingBookmarkStore`), which the importer uses too.
 - `:sync-v2`: the generic sync engine (fetch, three-way merge, push), its per-type mappings and their plain domain tables (plus `sync_item` and `sync_meta`). Not exported through `umbrella`. `SYNC_ENGINE.md` maps it.
-- `:sync-pipelines`: DI graph, storage wiring, the sync client and scheduler (`pipeline/sync`), and `QuranDataService` with its public sync types (`SyncStatus`, `SyncError`, `SyncRun` for `syncHistory`, `HeldSyncItem` for `heldItems`, `SynchronizationEnvironment`). `unsyncedItemCount` counts the held items and those the next push sends.
+- `:sync-pipelines`: DI graph, storage wiring, the sync client and scheduler (`pipeline/sync`), and `QuranDataService` with its public sync types (`SyncStatus`, `SyncError`, `SyncRun` for `syncHistory`, `HeldSyncItem` for `heldItems`, `SynchronizationEnvironment`). `unsyncedItems` counts, from one read, the items the next push sends (`pending`) and the held items with those waiting on them (`held`).
 - `:umbrella`: iOS `Shared` XCFramework export.
 - `:demo:android`: Android Compose demo.
 - `:demo:common`: shared demo helpers/models.

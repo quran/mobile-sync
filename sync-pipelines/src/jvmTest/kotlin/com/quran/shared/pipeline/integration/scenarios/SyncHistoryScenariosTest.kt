@@ -11,10 +11,12 @@ import com.quran.shared.pipeline.SyncResourceType
 import com.quran.shared.pipeline.SyncRunResult
 import com.quran.shared.pipeline.SyncRunTrigger
 import com.quran.shared.pipeline.SyncStatus
+import com.quran.shared.pipeline.UnsyncedItemCounts
 import com.quran.shared.pipeline.integration.DeviceTimings
 import com.quran.shared.pipeline.integration.SyncDevice
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.server.ServerFaults
+import com.quran.shared.pipeline.integration.server.text
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
@@ -37,7 +39,7 @@ import kotlin.time.Duration.Companion.seconds
 import com.quran.shared.pipeline.SyncRun as HistoryRun
 
 /**
- * The sync history (`syncHistory`), the held items (`heldItems`) and the unsynced items (`unsyncedItemCount`), through
+ * The sync history (`syncHistory`), the held items (`heldItems`) and the unsynced items (`unsyncedItems`), through
  * the public API only.
  */
 class SyncHistoryScenariosTest {
@@ -197,7 +199,7 @@ class SyncHistoryScenariosTest {
 
         phone.awaitUnsynced(1)
         phone.data.updateNote(note.id, "A note to edit")
-        phone.awaitUnsynced(0, "back to the synced state")
+        phone.awaitUnsynced(0, message = "back to the synced state")
     }
 
     @Test
@@ -219,17 +221,17 @@ class SyncHistoryScenariosTest {
     }
 
     @Test
-    fun `HIST-12 a held note counts as unsynced, and once fixed still does until the next sync`() = syncScenario {
+    fun `HIST-12 a held note counts as held, and once fixed as pending until the next sync`() = syncScenario {
         val (phone) = signedIn("phone")
         phone.importShortNote()
         assertSucceeded(phone.syncNow())
         awaitValue(phone.data.heldItems.map { it.size }, 1)
-        phone.awaitUnsynced(1, "the held note counts")
+        phone.awaitUnsynced(pending = 0, held = 1, message = "the held note counts as held")
 
         phone.data.updateNote(phone.note("Good").id, "Good enough to sync")
 
         awaitValue(phone.data.heldItems.map { it.size }, 0)
-        phone.awaitUnsynced(1, "now pending")
+        phone.awaitUnsynced(pending = 1, message = "now pending, and no longer held")
         assertSucceeded(phone.syncNow())
         phone.awaitUnsynced(0)
     }
@@ -357,12 +359,28 @@ class SyncHistoryScenariosTest {
         assertEquals(SyncStatus.Idle, phone.data.syncStatus.value)
     }
 
+    /** Items waiting on a held one count as held with it, never as pending; pending counts only what the next sync sends. */
+    @Test
+    fun `HIST-21 a held collection and the verses waiting on it count as held, apart from what is pending`() = syncScenario {
+        val (phone) = signedIn("phone")
+        server.faults.rejectMutation { it.resource == "COLLECTION" && it.data?.text("name") == "Study" }
+        val study = phone.data.addCollection("Study")
+        phone.data.addAyahBookmarkToCollection(study.id, 1, 1)
+        phone.data.addAyahBookmarkToCollection(study.id, 2, 255)
+        assertSucceeded(phone.syncNow())
+        awaitValue(phone.data.heldItems.map { held -> held.map { it.reason } }, listOf(HeldReason.REJECTED_BY_SERVER) + List(2) { HeldReason.WAITING_ON_PARENT })
+
+        phone.data.addNote("A note written after the sync", 1, 1, 1, 7)
+
+        phone.awaitUnsynced(pending = 1, held = 3, message = "the note pending; the collection and its verses held")
+    }
+
     private suspend fun SyncDevice.history(): List<HistoryRun> = data.syncHistory.first()
 
     private suspend fun SyncDevice.held(): List<HeldSyncItem> = data.heldItems.first()
 
-    private suspend fun SyncDevice.awaitUnsynced(expected: Int, message: String? = null) =
-        awaitValue(data.unsyncedItemCount, expected, message)
+    private suspend fun SyncDevice.awaitUnsynced(pending: Int, held: Int = 0, message: String? = null) =
+        awaitValue(data.unsyncedItems, UnsyncedItemCounts(pending, held), message)
 
     /** Waits until [flow] shows [expected]: a collector that joins as another leaves may first get its stale value. */
     private suspend fun <T> awaitValue(flow: Flow<T>, expected: T, message: String? = null) {
@@ -382,12 +400,12 @@ class SyncHistoryScenariosTest {
     }
 
     /**
-     * Runs [block] on one subscription to `unsyncedItemCount`, so no stale value can satisfy [UnsyncedWatch.await]. A
+     * Runs [block] on one subscription to `unsyncedItems`, so no stale value can satisfy [UnsyncedWatch.await]. A
      * write that must not count goes between a counted edit and its undo: 0 then comes only if it didn't count.
      */
     private suspend fun SyncDevice.watchUnsynced(block: suspend UnsyncedWatch.() -> Unit) = coroutineScope {
-        val values = Channel<Int>(Channel.UNLIMITED)
-        val collector = launch(Dispatchers.Default) { data.unsyncedItemCount.collect { values.send(it) } }
+        val values = Channel<UnsyncedItemCounts>(Channel.UNLIMITED)
+        val collector = launch(Dispatchers.Default) { data.unsyncedItems.collect { values.send(it) } }
         try {
             UnsyncedWatch(values).block()
         } finally {
@@ -395,10 +413,12 @@ class SyncHistoryScenariosTest {
         }
     }
 
-    private class UnsyncedWatch(private val values: Channel<Int>) {
-        private var last: Int? = null
+    private class UnsyncedWatch(private val values: Channel<UnsyncedItemCounts>) {
+        private var last: UnsyncedItemCounts? = null
 
-        suspend fun await(expected: Int, message: String) {
+        /** Waits for [pending] pending items and none held. */
+        suspend fun await(pending: Int, message: String) {
+            val expected = UnsyncedItemCounts(pending, held = 0)
             try {
                 withTimeout(10.seconds) { while (values.receive().also { last = it } != expected) Unit }
             } catch (e: TimeoutCancellationException) {

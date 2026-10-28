@@ -232,6 +232,20 @@ class HeldItemsTest {
         }
     }
 
+    /** A membership waiting on its held collection counts as held with it, never as pending; a new note is pending. */
+    @Test
+    fun `the counts put an item waiting on a held one in held and the rest in pending`() = runTest {
+        val study = collections.addCollection("system:study", 0).localId
+        collections.addAyah(study, 2, 255, 1)
+        hold("COLLECTION", study, "RESERVED_NAME")
+        notes.addNote("A note the next push sends", listOf(NoteRange(1, 1, 1, 7)), 2)
+
+        val counts = withContext(Dispatchers.Default) { withTimeout(5_000) { held.unsyncedCounts.first() } }
+
+        assertEquals(UnsyncedItemCounts(pending = 1, held = 2), counts)
+        assertEquals(counts.held, held.read().held.size, "held is exactly the held items' list")
+    }
+
     /** A read that fails is skipped: the shared reader survives, crashes nothing, and reads again on the next write. */
     @Test
     fun `a held state that doesn't parse skips a list and the flow keeps going`() = runTest {
