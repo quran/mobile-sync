@@ -52,6 +52,12 @@ internal interface SynchronizationClient {
     fun localDataUpdated()
     fun applicationStarted()
     fun triggerSyncImmediately()
+
+    /** A user signed in: sync now, pushing even during a backoff. */
+    fun signedIn()
+
+    /** The stored session was restored (at launch): run the app start's sync now instead of after its delay. */
+    fun sessionRestored()
     fun cancelSyncing()
     suspend fun cancelSyncingAndJoin()
 }
