@@ -231,17 +231,19 @@ class QuranDataService internal constructor(
     val heldItems: Flow<List<HeldSyncItem>> get() = heldItemsReader.flow
 
     /**
-     * How many items have a local state the server doesn't have yet: new, edited or deleted since they last synced, or
-     * held ([heldItems]). Logout wipes them, so an app can warn with this count. An item counts once; a change the
-     * server never sees doesn't count: one only to a field that isn't synced (such as an edit time), a verse removed
-     * with its collection, or a delete the server would refuse (sync undoes it).
+     * How many items have a local state the server doesn't have yet, from one read: [UnsyncedItemCounts.pending], new,
+     * edited or deleted since they last synced, which the next sync sends; and [UnsyncedItemCounts.held], the
+     * [heldItems] (held items and the items waiting on them), which don't sync until they are fixed. Logout loses
+     * them all (it wipes all local data), so an app can warn with these counts. An item counts once, in one of the
+     * two; a change the server never sees doesn't count: one only to a field that isn't synced (such as an edit time),
+     * a verse removed with its collection, or a delete the server would refuse (sync undoes it).
      *
-     * It may over-count before the first sync (items a sync will link to the server's equal ones count as new) and
-     * while a sent batch's answer is unknown. It changes on every local write, like [heldItems]; each write re-reads
-     * it, push planning included, so collect it only while it is shown.
+     * It may over-count pending items before the first sync (items a sync will link to the server's equal ones count as
+     * new) and while a sent batch's answer is unknown. It changes on every local write, like [heldItems]; each write
+     * re-reads it, push planning included, so collect it only while it is shown.
      */
     @NativeCoroutines
-    val unsyncedItemCount: Flow<Int> get() = heldItemsReader.unsyncedCount
+    val unsyncedItems: Flow<UnsyncedItemCounts> get() = heldItemsReader.unsyncedCounts
 
     private val bookmarksRepository = pipeline.bookmarksRepository
     private val readingBookmarksRepository = pipeline.readingBookmarksRepository
@@ -395,6 +397,24 @@ class QuranDataService internal constructor(
         } else {
             syncClient.localDataUpdated()
         }
+    }
+
+    /**
+     * Tells sync the app came back to the foreground, so it syncs soon; [syncHistory] records the run as
+     * [SyncRunTrigger.FOREGROUND]. Call it on each return from the background, not at launch, which has its own sync.
+     *
+     * It is automatic, like a local change: the run starts after a few seconds, and while pushes back off after a
+     * failure (see [SyncRunResult.PULLED_ONLY]) it only pulls. A run already due sooner (a pending local change) runs
+     * in its place, keeping its own trigger; one due later (the periodic sync) is brought forward. During a run it runs
+     * again after it; while a failed run waits to retry, it is dropped, as the retry comes sooner. Signed out, the run
+     * finds no session and ends before any request, unrecorded, leaving [syncStatus] as it was.
+     */
+    fun syncOnForeground() {
+        if (!sessionLifecycleCoordinator.canStartSync()) {
+            Logger.d { "Foreground sync skipped because session is resetting" }
+            return
+        }
+        syncClient.appForegrounded()
     }
 
     private suspend fun resetLocalAuthDataAndToken() {

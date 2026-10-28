@@ -41,13 +41,14 @@ import java.util.Properties
 
 /**
  * Scheduler timings for a simulated device. By default nothing syncs on its own: app start, local
- * edits and the periodic sync wait an hour, so a device is "offline" until the test syncs it.
+ * edits, a return to the foreground and the periodic sync wait an hour, so a device is "offline" until the test syncs it.
  * Retries keep production's count and multiplier with a 5 ms base, so a run that fails for good
  * gives up in well under a second.
  */
 data class DeviceTimings(
     val localChangeDelay: Duration = 1.hours,
     val appStartDelay: Duration = 1.hours,
+    val foregroundDelay: Duration = 1.hours,
     val periodicInterval: Duration = 1.hours,
     val retryBaseDelay: Duration = 5.milliseconds,
     val retryMultiplier: Double = 2.5,
@@ -57,6 +58,7 @@ data class DeviceTimings(
         standardInterval = periodicInterval,
         appRefreshInterval = appStartDelay,
         localDataModifiedInterval = localChangeDelay,
+        foregroundInterval = foregroundDelay,
         failureRetryingConfig = FailureRetryingConfig(retryBaseDelay, retryMultiplier, maximumRetries)
     )
 }
@@ -143,9 +145,12 @@ class SyncDevice internal constructor(
     suspend fun logout(): LogoutResult = authService.logout()
 
     /**
-     * Runs one sync now, with its retries, and returns it. Waits first for a run already in flight,
-     * so the returned run started after this call. A run that finds no session is returned with no
-     * status ([SyncRun.skipped]); [assertSucceeded] fails on it.
+     * Runs one sync now, with its retries, and returns it. Waits first for an attempt already
+     * running, so the returned run started after this call. A run waiting to retry doesn't hold it
+     * up: the sync now usually replaces its retry (that run then ends cancelled), but the retry's
+     * timer may fire between the two, and then the returned run is the earlier one, as its retry
+     * ends it. A run that finds no session is returned with no status ([SyncRun.skipped]);
+     * [assertSucceeded] fails on it.
      *
      * A run publishes its end before the scheduler has finished it, and a scheduler may drop an
      * immediate trigger that arrives in between. So the trigger is repeated until a run starts

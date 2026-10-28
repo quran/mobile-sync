@@ -23,12 +23,14 @@ import kotlin.time.Duration.Companion.seconds
 
 /**
  * How long [SyncScheduler] waits: [standardInterval] between periodic runs, [appRefreshInterval] after an app start,
- * [localDataModifiedInterval] after a local change, and [failureRetryingConfig] between retries.
+ * [localDataModifiedInterval] after a local change, [foregroundInterval] after the app came to the foreground, and
+ * [failureRetryingConfig] between retries.
  */
 internal data class SchedulerTimings(
     val standardInterval: Duration,
     val appRefreshInterval: Duration,
     val localDataModifiedInterval: Duration,
+    val foregroundInterval: Duration,
     val failureRetryingConfig: FailureRetryingConfig
 )
 
@@ -39,11 +41,12 @@ internal data class FailureRetryingConfig(
     val maximumRetries: Int
 )
 
-/** Production timings: 30 s after app start, 5 s after a local change, 30 min periodic. */
+/** Production timings: 30 s after app start, 5 s after a local change or a return to the foreground, 30 min periodic. */
 internal val DefaultSyncTimings = SchedulerTimings(
     standardInterval = 30.minutes,
     appRefreshInterval = 30.seconds,
     localDataModifiedInterval = 5.seconds,
+    foregroundInterval = 5.seconds,
     failureRetryingConfig = FailureRetryingConfig(baseDelay = 200.milliseconds, multiplier = 2.5, maximumRetries = 5)
 )
 
@@ -52,11 +55,17 @@ internal val DefaultSyncTimings = SchedulerTimings(
  * run again right after a run in flight, replace a waiting retry, and push even while pushes back off.
  * [SESSION_RESTORED] (the stored session was restored, as at launch) is the app start's run brought forward: it runs
  * at once in place of a pending app start (or any later run), and like [APP_START] is dropped during a run or a retry.
+ * [FOREGROUND] (the app came back to the foreground) is automatic like [LOCAL_CHANGE]: it runs after its delay unless a
+ * run is due sooner, runs again after a run in flight, is dropped while a retry waits, and only pulls while pushes
+ * back off.
  */
 internal enum class SyncTrigger {
-    APP_START, LOCAL_CHANGE, IMMEDIATE, PERIODIC, SIGN_IN, SESSION_RESTORED;
+    APP_START, LOCAL_CHANGE, FOREGROUND, IMMEDIATE, PERIODIC, SIGN_IN, SESSION_RESTORED;
 
     val isImmediate: Boolean get() = this == IMMEDIATE || this == SIGN_IN
+
+    /** Arriving during a run, it runs again after it: the run may have read the server, or the data, before it came. */
+    val followsUpRun: Boolean get() = this == LOCAL_CHANGE || this == FOREGROUND
 }
 
 /** One attempt of a sync run: the first is number 0, its retries count up. */
@@ -72,20 +81,24 @@ internal sealed interface AttemptOutcome {
 }
 
 /**
- * When syncs run. A trigger schedules a run after its delay ([SchedulerTimings]: an app start, a local change, or now),
- * unless one is already due sooner. Runs never overlap: a local change during a run runs again after it, and an
+ * When syncs run. A trigger schedules a run after its delay ([SchedulerTimings]: an app start, a local change, a return
+ * to the foreground, or now), unless one is already due sooner, which then keeps its own trigger. Runs never overlap: a
+ * local change or a return to the foreground during a run runs again after it (once, as the first of them), and an
  * immediate trigger (a user's "sync now") during a run runs right after it; one while a retry waits replaces the retry
- * with an immediate run. An app start (or a restored session) during a run or a pending retry is dropped. A failed
- * attempt is retried with exponential backoff, up to the configured number of retries, unless it is not retryable or
- * asks for a longer backoff. After every run, whatever its outcome, the next one is scheduled after the periodic
- * interval, so sync never stops after its retries run out.
+ * with an immediate run. An app start (or a restored session) during a run, and any trigger but an immediate one
+ * while a retry waits, is dropped. A failed attempt is retried with exponential backoff, up to the configured number of
+ * retries, unless it is not retryable or asks for a longer backoff. After every run, whatever its outcome, the next one
+ * is scheduled after the periodic interval, so sync never stops after its retries run out.
  */
 internal class SyncScheduler(
     private val timings: SchedulerTimings,
     dispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val now: () -> Long = { Clock.System.now().toEpochMilliseconds() },
-    /** Runs one attempt. [willRetry] says whether a failure of it will be retried, so it can report a final failure. */
-    private val run: suspend (attempt: SyncAttempt, willRetry: (AttemptOutcome.Failed) -> Boolean) -> AttemptOutcome
+    /**
+     * Runs one attempt. [retryDelay] says how long until a failure of it is retried, or null when it won't be, so it
+     * can report a final failure or the wait for the retry.
+     */
+    private val run: suspend (attempt: SyncAttempt, retryDelay: (AttemptOutcome.Failed) -> Duration?) -> AttemptOutcome
 ) {
     private val logger = Logger.withTag("SyncScheduler")
     private val scope = CoroutineScope(dispatcher + SupervisorJob())
@@ -98,7 +111,8 @@ internal class SyncScheduler(
     private var timerAt = 0L
     private var timerAttempt: SyncAttempt? = null
     private var running: Job? = null
-    private var localChangeDuringRun = false
+    /** The first local change or return to the foreground during the run, to run again after it. */
+    private var followUpDuringRun: SyncTrigger? = null
     /** The latest immediate trigger that arrived during the run, to run right after it. */
     private var immediateDuringRun: SyncTrigger? = null
 
@@ -154,7 +168,7 @@ internal class SyncScheduler(
                 timerAttempt = null
                 running?.cancelAndJoin()
                 running = null
-                localChangeDuringRun = false
+                followUpDuringRun = null
                 immediateDuringRun = null
                 command.done?.complete(Unit)
             }
@@ -164,7 +178,7 @@ internal class SyncScheduler(
     private fun onTrigger(trigger: SyncTrigger) {
         when {
             running != null -> when {
-                trigger == SyncTrigger.LOCAL_CHANGE -> localChangeDuringRun = true
+                trigger.followsUpRun -> if (followUpDuringRun == null) followUpDuringRun = trigger
                 trigger.isImmediate -> immediateDuringRun = trigger
                 else -> Unit
             }
@@ -183,7 +197,7 @@ internal class SyncScheduler(
         timerAttempt = null
         val generation = generation
         running = scope.launch {
-            val outcome = run(attempt) { failed -> willRetry(attempt, failed) }
+            val outcome = run(attempt) { failed -> retryDelay(attempt, failed) }
             commands.send(Command.Finished(generation, attempt, outcome))
         }
     }
@@ -191,26 +205,31 @@ internal class SyncScheduler(
     private fun onFinished(attempt: SyncAttempt, outcome: AttemptOutcome) {
         running = null
         val immediate = immediateDuringRun
+        val followUp = followUpDuringRun
+        val backoff = (outcome as? AttemptOutcome.Failed)?.let { retryDelay(attempt, it) }
         if (immediate != null) {
             // A user asked to sync (or signed in) while this run was going: run (and push) again right away.
             immediateDuringRun = null
-            localChangeDuringRun = false
+            followUpDuringRun = null
             schedule(Duration.ZERO, SyncAttempt(immediate, 0), onlyIfSooner = false)
-        } else if (outcome is AttemptOutcome.Failed && willRetry(attempt, outcome)) {
-            localChangeDuringRun = false
-            val backoff = timings.failureRetryingConfig.let { it.baseDelay * it.multiplier.pow(attempt.number) }
+        } else if (backoff != null) {
+            followUpDuringRun = null
             logger.i { "Retrying sync in $backoff (attempt ${attempt.number + 1})" }
             schedule(backoff, attempt.copy(number = attempt.number + 1), onlyIfSooner = false)
-        } else if (localChangeDuringRun) {
-            localChangeDuringRun = false
-            schedule(delayOf(SyncTrigger.LOCAL_CHANGE), SyncAttempt(SyncTrigger.LOCAL_CHANGE, 0), onlyIfSooner = false)
+        } else if (followUp != null) {
+            followUpDuringRun = null
+            schedule(delayOf(followUp), SyncAttempt(followUp, 0), onlyIfSooner = false)
         } else {
             schedule(timings.standardInterval, SyncAttempt(SyncTrigger.PERIODIC, 0), onlyIfSooner = false)
         }
     }
 
-    private fun willRetry(attempt: SyncAttempt, failed: AttemptOutcome.Failed): Boolean =
-        failed.retryable && failed.retryAfterMillis == null && attempt.number < timings.failureRetryingConfig.maximumRetries
+    /** The backoff before [failed]'s retry: exponential in [attempt]'s number; null when it isn't retried. */
+    private fun retryDelay(attempt: SyncAttempt, failed: AttemptOutcome.Failed): Duration? {
+        val config = timings.failureRetryingConfig
+        val retried = failed.retryable && failed.retryAfterMillis == null && attempt.number < config.maximumRetries
+        return if (retried) config.baseDelay * config.multiplier.pow(attempt.number) else null
+    }
 
     private fun schedule(delay: Duration, attempt: SyncAttempt, onlyIfSooner: Boolean) {
         val at = now() + delay.inWholeMilliseconds
@@ -228,6 +247,7 @@ internal class SyncScheduler(
     private fun delayOf(trigger: SyncTrigger): Duration = when (trigger) {
         SyncTrigger.APP_START -> timings.appRefreshInterval
         SyncTrigger.LOCAL_CHANGE -> timings.localDataModifiedInterval
+        SyncTrigger.FOREGROUND -> timings.foregroundInterval
         SyncTrigger.IMMEDIATE, SyncTrigger.SIGN_IN, SyncTrigger.SESSION_RESTORED -> Duration.ZERO
         SyncTrigger.PERIODIC -> timings.standardInterval
     }

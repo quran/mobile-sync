@@ -10,6 +10,7 @@ import com.quran.shared.auth.repository.RemoteLogoutFailure
 import com.quran.shared.auth.repository.RemoteLogoutMode
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.persistence.MobileSyncDatabase
+import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.repository.PersistenceResetRepositoryImpl
 import com.quran.shared.pipeline.sync.SyncClient
 import com.quran.shared.persistence.repository.bookmark.repository.BookmarksRepositoryImpl
@@ -107,6 +108,64 @@ class QuranDataServiceSyncStatusTest {
     }
 
     @Test
+    fun `a failed attempt that will be retried shows retrying until the retry runs`() = runTest(dispatcher) {
+        service.awaitInitialization()
+
+        events.syncStarted()
+        events.syncRetrying(failedAt, serverError, retryAt)
+        assertEquals(SyncStatus.Retrying(failedAt, serverError, retryAt), service.syncStatus.value)
+        events.syncStarted()
+        assertEquals(SyncStatus.Syncing, service.syncStatus.value, "the retry runs")
+        events.syncRetrying(failedAt, networkError, retryAt)
+        assertEquals(networkError, assertIs<SyncStatus.Retrying>(service.syncStatus.value).error, "the latest attempt's error")
+        events.syncStarted()
+        events.syncEnded(run(SyncRunResult.FAILED, serverError))
+        assertEquals(SyncStatus.Failed(endedAt, serverError), service.syncStatus.value, "the retries ran out")
+    }
+
+    /** A "sync now" replaces the waiting retry: the run ends cancelled and the new one reports syncing. */
+    @Test
+    fun `a run whose retry a sync now replaced stays retrying until the new run starts`() = runTest(dispatcher) {
+        service.awaitInitialization()
+        events.syncStarted()
+        events.syncRetrying(failedAt, networkError, retryAt)
+
+        events.syncEnded(run(SyncRunResult.CANCELLED))
+        assertIs<SyncStatus.Retrying>(service.syncStatus.value)
+        events.syncStarted()
+        assertEquals(SyncStatus.Syncing, service.syncStatus.value)
+        events.syncEnded(run(SyncRunResult.SUCCEEDED))
+        assertEquals(SyncStatus.Succeeded(endedAt), service.syncStatus.value)
+    }
+
+    @Test
+    fun `a retry that ends without a result restores the result from before the run`() = runTest(dispatcher) {
+        service.awaitInitialization()
+        events.syncEnded(run(SyncRunResult.SUCCEEDED))
+        events.syncStarted()
+        events.syncRetrying(failedAt, networkError, retryAt)
+
+        events.syncStarted()
+        events.syncSkipped()
+
+        assertEquals(SyncStatus.Succeeded(endedAt), service.syncStatus.value)
+    }
+
+    /** A pull during a push backoff that needed a retry still ends on the failure that started the backoff. */
+    @Test
+    fun `a pulled-only run after a retry keeps the failure`() = runTest(dispatcher) {
+        service.awaitInitialization()
+        events.syncEnded(run(SyncRunResult.FAILED, serverError))
+        events.syncStarted()
+        events.syncRetrying(failedAt, networkError, retryAt)
+        events.syncStarted()
+
+        events.syncEnded(run(SyncRunResult.PULLED_ONLY))
+
+        assertEquals(SyncStatus.Failed(endedAt, serverError), service.syncStatus.value)
+    }
+
+    @Test
     fun `skipped run restores the result from before it started`() = runTest(dispatcher) {
         service.awaitInitialization()
         events.syncEnded(run(SyncRunResult.FAILED, serverError))
@@ -141,6 +200,8 @@ class QuranDataServiceSyncStatusTest {
 }
 
 private val endedAt = Instant.fromEpochMilliseconds(1_760_000_000_000L)
+private val failedAt = Instant.fromEpochMilliseconds(1_759_999_999_000L)
+private val retryAt = Instant.fromEpochMilliseconds(1_760_000_000_500L)
 
 private fun run(result: SyncRunResult, error: SyncError? = null) = SyncRun(
     startedAt = endedAt, endedAt = endedAt, trigger = SyncRunTrigger.MANUAL, result = result,
@@ -153,6 +214,8 @@ private val serverError = SyncError(
     serverCode = "ServerError",
     message = "The sync server is unavailable (HTTP 503)"
 )
+
+private val networkError = SyncError(SyncErrorKind.NETWORK, null, null, "Could not reach the sync server")
 
 @BindingContainer
 private class RecordingSyncBindings(private val events: SyncRunEvents, private val database: MobileSyncDatabase) {
@@ -170,6 +233,8 @@ private class SyncRunEvents : SyncRunObserver {
     private val recorded = Channel<String>(Channel.UNLIMITED)
 
     override fun syncStarted() = record("started") { service.syncStarted() }
+    override fun syncRetrying(failedAt: PlatformDateTime, error: SyncError, nextAttemptAt: PlatformDateTime) =
+        record("retrying") { service.syncRetrying(failedAt, error, nextAttemptAt) }
     override fun syncSkipped() = record("skipped") { service.syncSkipped() }
     override fun syncEnded(run: SyncRun) = record(run.result.name) { service.syncEnded(run) }
 

@@ -13,9 +13,11 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.DurationUnit
 
 /** [SyncScheduler] on virtual time: when runs start, how failures are retried, and that sync never stops. */
 class SyncSchedulerTest {
@@ -23,6 +25,7 @@ class SyncSchedulerTest {
         standardInterval = 30.minutes,
         appRefreshInterval = 30.seconds,
         localDataModifiedInterval = 5.seconds,
+        foregroundInterval = 3.seconds,
         failureRetryingConfig = FailureRetryingConfig(baseDelay = 200.milliseconds, multiplier = 2.5, maximumRetries = 5)
     )
 
@@ -30,14 +33,19 @@ class SyncSchedulerTest {
     private class Runs(private val scope: TestScope) {
         val attempts = mutableListOf<Pair<Long, SyncAttempt>>()
         val finalFailures = mutableListOf<Long>()
+        /** The delay each failure that will be retried was told. */
+        val retryDelays = mutableListOf<Duration>()
         val outcomes = ArrayDeque<AttemptOutcome>()
         var block: CompletableDeferred<Unit>? = null
 
-        suspend fun run(attempt: SyncAttempt, willRetry: (AttemptOutcome.Failed) -> Boolean): AttemptOutcome {
+        suspend fun run(attempt: SyncAttempt, retryDelay: (AttemptOutcome.Failed) -> Duration?): AttemptOutcome {
             attempts += scope.testScheduler.currentTime to attempt
             block?.await()
             val outcome = outcomes.removeFirstOrNull() ?: AttemptOutcome.Done
-            if (outcome is AttemptOutcome.Failed && !willRetry(outcome)) finalFailures += scope.testScheduler.currentTime
+            if (outcome is AttemptOutcome.Failed) {
+                val delay = retryDelay(outcome)
+                if (delay == null) finalFailures += scope.testScheduler.currentTime else retryDelays += delay
+            }
             return outcome
         }
     }
@@ -90,6 +98,7 @@ class SyncSchedulerTest {
         runCurrent()
         assertEquals((0..5).toList(), runs.attempts.map { it.second.number })
         assertEquals(listOf(12_888L), runs.finalFailures, "the last failure only")
+        assertEquals(listOf(200.0, 500.0, 1_250.0, 3_125.0, 7_812.5), runs.retryDelays.map { it.toDouble(DurationUnit.MILLISECONDS) }, "each retry's wait, as the attempt is told it")
 
         advanceTimeBy(30.minutes.inWholeMilliseconds)
         runCurrent()
@@ -138,6 +147,69 @@ class SyncSchedulerTest {
 
         assertEquals(listOf(SyncTrigger.IMMEDIATE, SyncTrigger.LOCAL_CHANGE), runs.attempts.map { it.second.trigger })
         assertEquals(5_000L, runs.attempts.last().first, "after the local change delay, counted from the run's end")
+    }
+
+    @Test
+    fun `a return to the foreground runs after its delay in place of the periodic run`() = schedulerTest { runs, scheduler ->
+        scheduler.trigger(SyncTrigger.IMMEDIATE)
+        runCurrent()
+        scheduler.trigger(SyncTrigger.FOREGROUND)
+        advanceTimeBy(2_999)
+        runCurrent()
+        assertEquals(1, runs.attempts.size)
+
+        advanceTimeBy(2)
+        runCurrent()
+        assertEquals(listOf(0L to SyncAttempt(SyncTrigger.IMMEDIATE, 0), 3_000L to SyncAttempt(SyncTrigger.FOREGROUND, 0)), runs.attempts)
+    }
+
+    /** The run due first keeps its trigger: a local change due sooner absorbs a later foreground, and the reverse. */
+    @Test
+    fun `a return to the foreground and a pending local change run once`() = schedulerTest { runs, scheduler ->
+        scheduler.trigger(SyncTrigger.LOCAL_CHANGE)
+        advanceTimeBy(2_500)
+        scheduler.trigger(SyncTrigger.FOREGROUND)
+        advanceTimeBy(5_000)
+        runCurrent()
+        scheduler.trigger(SyncTrigger.FOREGROUND)
+        runCurrent()
+        scheduler.trigger(SyncTrigger.LOCAL_CHANGE)
+        advanceTimeBy(10_000)
+        runCurrent()
+
+        assertEquals(
+            listOf(5_000L to SyncTrigger.LOCAL_CHANGE, 10_500L to SyncTrigger.FOREGROUND),
+            runs.attempts.map { it.first to it.second.trigger }
+        )
+    }
+
+    @Test
+    fun `a return to the foreground during a run runs again after it`() = schedulerTest { runs, scheduler ->
+        runs.block = CompletableDeferred()
+
+        scheduler.trigger(SyncTrigger.IMMEDIATE)
+        runCurrent()
+        scheduler.trigger(SyncTrigger.FOREGROUND)
+        scheduler.trigger(SyncTrigger.LOCAL_CHANGE)
+        runCurrent()
+        runs.block!!.complete(Unit)
+        advanceTimeBy(5_001)
+        runCurrent()
+
+        assertEquals(listOf(0L to SyncTrigger.IMMEDIATE, 3_000L to SyncTrigger.FOREGROUND), runs.attempts.map { it.first to it.second.trigger }, "once, as the first of them")
+    }
+
+    @Test
+    fun `a return to the foreground while a retry waits is dropped`() = schedulerTest { runs, scheduler ->
+        runs.outcomes += AttemptOutcome.Failed(retryable = true)
+
+        scheduler.trigger(SyncTrigger.IMMEDIATE)
+        runCurrent()
+        scheduler.trigger(SyncTrigger.FOREGROUND)
+        advanceTimeBy(10_000)
+        runCurrent()
+
+        assertEquals(listOf(0L to SyncAttempt(SyncTrigger.IMMEDIATE, 0), 200L to SyncAttempt(SyncTrigger.IMMEDIATE, 1)), runs.attempts)
     }
 
     /** A user's "sync now" during a run is not swallowed: it runs right after, ahead of a local change's delay. */

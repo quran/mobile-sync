@@ -43,6 +43,9 @@ enum class SyncRunTrigger {
     /** Local data changed: `triggerSync(immediately = false)`, or an edit through [QuranDataService]. */
     LOCAL_CHANGE,
 
+    /** The app came back to the foreground: [QuranDataService.syncOnForeground]. */
+    FOREGROUND,
+
     /** The periodic sync came due. */
     PERIODIC,
 
