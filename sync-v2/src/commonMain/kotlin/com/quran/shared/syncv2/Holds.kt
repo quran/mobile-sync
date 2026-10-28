@@ -123,8 +123,7 @@ class Holds(private val store: SyncStore, private val types: List<SyncType>, pri
         if (store.account == null) return emptyList()
         return working.filter { (localId, state) ->
             val row = rows[localId]
-            row?.base == null && row?.heldReason == null &&
-                type.parent?.let { parent -> parentId(state, parent)?.let { refs.remoteId(parent.type, it) } == null } != true &&
+            row?.base == null && row?.heldReason == null && !waitsForParent(type, state, refs) &&
                 type.mutation(Change.Create(state), refs) == null
         }.keys.toList()
     }

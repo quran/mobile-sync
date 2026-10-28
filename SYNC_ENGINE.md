@@ -33,7 +33,9 @@ A run compares three states of each item, all in the same canonical shape (`Stat
    hold is on its delete), the engine's version changes (sync-pipelines passes `ENGINE_VERSION`, changed with a
    library update), or it expires. `SyncEngineV2.held(database, types)` lists the held and waiting items as the next
    push would plan them, so a UI can read them between syncs (`sync_itemQueries.holdInputs` changes with every table
-   they depend on).
+   they depend on). `SyncEngineV2.unsynced(database, types)` reads them and the items the next push sends in one
+   transaction: `PushPlanner.preview` plans as the push does without writing, so it lists what a push sends, one entry
+   per item, children deferred until their parent's CREATE included.
 
 A run's `SyncResult` carries what it `pushed` and `pulled` (the local rows its merges created, changed or deleted to
 take remote changes).
