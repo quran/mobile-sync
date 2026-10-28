@@ -78,6 +78,6 @@ internal class SyncHistory(private val database: SyncV2Database) : SyncRunObserv
 
     companion object {
         /** How many runs the history keeps. */
-        const val LIMIT = 50
+        const val LIMIT = 100
     }
 }

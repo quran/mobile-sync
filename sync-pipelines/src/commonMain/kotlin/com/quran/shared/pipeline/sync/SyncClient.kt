@@ -20,12 +20,16 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import io.ktor.client.HttpClient
+import io.ktor.client.HttpClientConfig
+import io.ktor.client.engine.HttpClientEngine
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.request.header
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import kotlinx.io.IOException
 import kotlin.concurrent.Volatile
+import kotlin.random.Random
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Instant
@@ -54,34 +58,69 @@ internal class SignedOutException : IllegalStateException("No session")
  *
  * - A 401 forces one token refresh and runs again; a refused refresh ends the session.
  * - A failure that asks for a push backoff (a 403 that may be the token's scope) stops pushing for that long; the
- *   periodic and other automatic runs still pull. A "sync now" or a sign-in pushes anyway.
+ *   periodic and other automatic runs still pull. A "sync now" or a sign-in pushes anyway. A sign-in, a logout or
+ *   reset, or a new access token (a refresh, by any path) ends the backoff: the 403 may have been the old token's.
  */
 internal class SyncClient(
     private val engine: SyncEngineV2,
     private val account: SyncAccount,
     private val gate: SyncLifecycleGate,
     private val observer: SyncRunObserver,
-    timings: SchedulerTimings,
+    private val timings: SchedulerTimings,
     dispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val now: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     /** Closed with this client. */
-    private val httpClient: HttpClient? = null
+    private val httpClient: HttpClient? = null,
+    /** The retries' jitter: a uniform sample in `0 until 1` per attempt (see [SyncScheduler]); tests fix it. */
+    random: () -> Double = { Random.nextDouble() }
 ) : SynchronizationClient, AutoCloseable {
     private val logger = Logger.withTag("SyncClient")
-    private val scheduler = SyncScheduler(timings, dispatcher, now, ::runAttempt)
+    private val scheduler = SyncScheduler(timings, dispatcher, now, ::runAttempt, random)
 
     @Volatile
     private var pushBackoffUntil = 0L
 
+    /**
+     * A fingerprint (the hash, so no token is kept) of the headers of the request that started the push backoff: other
+     * headers mean a new token, which ends it.
+     */
+    @Volatile
+    private var pushBackoffHeaders: Int? = null
+
+    /** The fingerprint of the headers the latest request sent. */
+    @Volatile
+    private var lastRequestHeaders: Int? = null
+
+    /** When the latest run that pulled the server's changes (succeeded or pulled only) ended; null after a failure. */
+    @Volatile
+    private var lastPulledAt: Long? = null
+
     override fun localDataUpdated() = trigger(SyncTrigger.LOCAL_CHANGE)
 
-    override fun appForegrounded() = trigger(SyncTrigger.FOREGROUND)
+    /**
+     * Dropped within [SchedulerTimings.foregroundSkipAfterSync] of the end of a run that pulled the server's changes
+     * (succeeded, or pulled only during a push backoff): the app already has them. A run that failed since then ends
+     * the skip, so returning after a failure syncs; a cancelled run neither starts nor ends it. A clock set back since
+     * that run (it seems to end in the future) ends the skip too, rather than stretch it.
+     */
+    override fun appForegrounded() {
+        val sincePulled = lastPulledAt?.let { now() - it }
+        if (sincePulled != null && sincePulled in 0 until timings.foregroundSkipAfterSync.inWholeMilliseconds) {
+            logger.d { "Skipping the foreground sync: a sync pulled $sincePulled ms ago" }
+            return
+        }
+        trigger(SyncTrigger.FOREGROUND)
+    }
 
     override fun applicationStarted() = trigger(SyncTrigger.APP_START)
 
     override fun triggerSyncImmediately() = trigger(SyncTrigger.IMMEDIATE)
 
-    override fun signedIn() = trigger(SyncTrigger.SIGN_IN)
+    /** A new session: a push backoff the previous one started ends. */
+    override fun signedIn() {
+        endPushBackoff("a user signed in")
+        trigger(SyncTrigger.SIGN_IN)
+    }
 
     override fun sessionRestored() = trigger(SyncTrigger.SESSION_RESTORED)
 
@@ -91,7 +130,12 @@ internal class SyncClient(
     override suspend fun cancelSyncingAndJoin() {
         scheduler.cancelAndJoin()
         run = null
+        lastPulledAt = null
+        endPushBackoff("a logout or reset")
     }
+
+    /** Waits until the scheduler has handled the end of the attempt running now, if any (see [SyncScheduler.awaitIdle]). */
+    internal suspend fun awaitSchedulerIdle() = scheduler.awaitIdle()
 
     /** Stops the scheduler for good and closes the HTTP client: the service that owns this client is gone. */
     override fun close() {
@@ -122,11 +166,16 @@ internal class SyncClient(
         // while they run, and a retry reports it even if fetching headers fails again.
         val startReported = attempt.number > 0 || replacedWaitingRun
         if (startReported) observer.syncStarted()
-        val push = attempt.trigger.isImmediate || now() >= pushBackoffUntil
+        var push = false
         val result = try {
-            if (account.authHeaders().isEmpty()) return skipped("no one is signed in")
+            val headers = account.authHeaders()
+            if (headers.isEmpty()) return skipped("no one is signed in")
             val accountId = account.accountId() ?: return skipped("the signed-in account is unknown")
             if (!startReported) observer.syncStarted()
+            // A pause that ran out is forgotten quietly; one still running ends if the token changed.
+            if (pushBackoffUntil != 0L && now() >= pushBackoffUntil) endPushBackoff(why = null)
+            pushBackoffHeaders?.let { if (it != headers.hashCode()) endPushBackoff("the access token changed") }
+            push = attempt.trigger.isImmediate || now() >= pushBackoffUntil
             sync(accountId, push, tally)
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -136,7 +185,7 @@ internal class SyncClient(
         if (!epochIsCurrent(epoch)) return skipped("a logout or reset began during the run")
         return when (result) {
             is SyncResult.Success -> {
-                if (push) pushBackoffUntil = 0L
+                if (push) endPushBackoff("a push succeeded")
                 end(if (push) SyncRunResult.SUCCEEDED else SyncRunResult.PULLED_ONLY, held = result.held.size)
                 AttemptOutcome.Done
             }
@@ -167,7 +216,10 @@ internal class SyncClient(
             is SignedOutException -> return skipped("the session ended")
             is SyncOperationInvalidatedException -> return skipped("a logout or reset began during the run")
         }
-        result.retryAfterMillis?.let { pushBackoffUntil = now() + it }
+        result.retryAfterMillis?.let {
+            pushBackoffUntil = now() + it
+            pushBackoffHeaders = lastRequestHeaders
+        }
         val outcome = AttemptOutcome.Failed(result.retryable, result.retryAfterMillis)
         val delay = retryDelay(outcome)
         if (delay == null) {
@@ -232,6 +284,11 @@ internal class SyncClient(
     private fun end(result: SyncRunResult, error: SyncError? = null, held: Int? = null) {
         val tally = run ?: return
         run = null
+        when (result) {
+            SyncRunResult.SUCCEEDED, SyncRunResult.PULLED_ONLY -> lastPulledAt = now()
+            SyncRunResult.FAILED -> lastPulledAt = null
+            SyncRunResult.CANCELLED -> Unit
+        }
         observer.syncEnded(tally.toRun(result, now(), held ?: heldCount(), error))
     }
 
@@ -269,7 +326,18 @@ internal class SyncClient(
      */
     private suspend fun requestHeaders(): Map<String, String> {
         runEpoch?.let { gate.admitSyncPost(it) }
-        return account.authHeaders().ifEmpty { throw SignedOutException() }.also { run?.contactedServer = true }
+        return account.authHeaders().ifEmpty { throw SignedOutException() }.also {
+            run?.contactedServer = true
+            lastRequestHeaders = it.hashCode()
+        }
+    }
+
+    /** Ends the push pause, logging [why] unless it is null (the pause ran out). */
+    private fun endPushBackoff(why: String?) {
+        if (pushBackoffUntil == 0L && pushBackoffHeaders == null) return
+        if (why != null) logger.i { "Pushing again: $why" }
+        pushBackoffUntil = 0L
+        pushBackoffHeaders = null
     }
 
     companion object {
@@ -284,19 +352,44 @@ internal class SyncClient(
             account: SyncAccount,
             gate: SyncLifecycleGate,
             observer: SyncRunObserver,
-            timings: SchedulerTimings = DefaultSyncTimings
+            timings: SchedulerTimings = DefaultSyncTimings,
+            random: () -> Double = { Random.nextDouble() },
+            now: () -> Long = { Clock.System.now().toEpochMilliseconds() }
         ): SyncClient {
             lateinit var client: SyncClient
-            // The platform's engine (OkHttp on Android and the JVM, Darwin on iOS) comes from this module's dependencies.
-            val httpClient = HttpClient {
-                installHttpLogging(tag = "SyncHttp")
-                defaultRequest { header(HttpHeaders.Accept, ContentType.Application.Json) }
-            }
+            val httpClient = createSyncHttpClient()
             val api = SyncApi(httpClient, environment.endPointURL) { client.requestHeaders() }
             val engine = SyncEngineV2(database, api, syncTypes(database), ENGINE_VERSION)
-            client = SyncClient(engine, account, gate, observer, timings, httpClient = httpClient)
+            client = SyncClient(engine, account, gate, observer, timings, now = now, httpClient = httpClient, random = random)
             return client
         }
+
+        /**
+         * The client behind the sync API's GETs and POSTs. The explicit timeouts keep a request that never answers (an
+         * app suspended mid-request, a stalled network, a server that stops answering) from holding the run, which
+         * then fails as a network error and is retried. A request as a whole has no cap, so a large first-sync page on
+         * a slow network can finish as long as data keeps coming. [engine] is for tests; null uses the platform's
+         * engine (OkHttp on Android and the JVM, Darwin on iOS) from this module's dependencies.
+         *
+         * The engines apply them differently. OkHttp takes both: connecting gives up after 15 s, and a connection that
+         * stalls mid-response after 60 s of silence (OkHttp's own default is 10 s). Ktor's Darwin engine (3.6.0)
+         * ignores the connect timeout and uses the socket timeout as the request's idle timeout, so on iOS the 60 s
+         * idle timeout covers connecting too.
+         */
+        internal fun createSyncHttpClient(engine: HttpClientEngine? = null): HttpClient {
+            val configure: HttpClientConfig<*>.() -> Unit = {
+                installHttpLogging(tag = "SyncHttp")
+                install(HttpTimeout) {
+                    connectTimeoutMillis = SYNC_CONNECT_TIMEOUT_MS
+                    socketTimeoutMillis = SYNC_SOCKET_TIMEOUT_MS
+                }
+                defaultRequest { header(HttpHeaders.Accept, ContentType.Application.Json) }
+            }
+            return if (engine == null) HttpClient(configure) else HttpClient(engine, configure)
+        }
+
+        internal const val SYNC_CONNECT_TIMEOUT_MS = 15_000L
+        internal const val SYNC_SOCKET_TIMEOUT_MS = 60_000L
     }
 }
 

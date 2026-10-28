@@ -31,6 +31,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.publicvalue.multiplatform.oidc.tokenstore.SettingsStore
 import org.publicvalue.multiplatform.oidc.tokenstore.SettingsTokenStore
 import kotlin.time.Duration
@@ -42,24 +43,30 @@ import java.util.Properties
 /**
  * Scheduler timings for a simulated device. By default nothing syncs on its own: app start, local
  * edits, a return to the foreground and the periodic sync wait an hour, so a device is "offline" until the test syncs it.
- * Retries keep production's count and multiplier with a 5 ms base, so a run that fails for good
- * gives up in well under a second.
+ * Retries keep production's count and multiplier with a 5 ms base and no jitter, so a run that
+ * fails for good gives up in well under a second, at the same times on every run. A return to
+ * the foreground is never skipped for a recent sync unless [foregroundSkipAfterSync] says. With
+ * [retryJitter], each attempt's jitter sample comes from [retryJitterSample] (`0 until 1`).
  */
 data class DeviceTimings(
     val localChangeDelay: Duration = 1.hours,
     val appStartDelay: Duration = 1.hours,
     val foregroundDelay: Duration = 1.hours,
+    val foregroundSkipAfterSync: Duration = Duration.ZERO,
     val periodicInterval: Duration = 1.hours,
     val retryBaseDelay: Duration = 5.milliseconds,
-    val retryMultiplier: Double = 2.5,
-    val maximumRetries: Int = 5
+    val retryMultiplier: Double = 3.0,
+    val maximumRetries: Int = 4,
+    val retryJitter: Double = 0.0,
+    val retryJitterSample: () -> Double = { 0.5 }
 ) {
     internal fun toSchedulerTimings() = SchedulerTimings(
         standardInterval = periodicInterval,
         appRefreshInterval = appStartDelay,
         localDataModifiedInterval = localChangeDelay,
         foregroundInterval = foregroundDelay,
-        failureRetryingConfig = FailureRetryingConfig(retryBaseDelay, retryMultiplier, maximumRetries)
+        foregroundSkipAfterSync = foregroundSkipAfterSync,
+        failureRetryingConfig = FailureRetryingConfig(retryBaseDelay, retryMultiplier, maximumRetries, retryJitter)
     )
 }
 
@@ -130,6 +137,18 @@ class SyncDevice internal constructor(
 
     /** The app-facing auth API. */
     val authService: SyncAuthService get() = graph.authService
+
+    /** The current graph's sync client, for [awaitSchedulerIdle] only: tests drive the device through [data]. */
+    @Volatile
+    private var syncClient: SyncClient? = null
+
+    /**
+     * Waits until the scheduler has finished the run that just ended. A run publishes its end before the scheduler is
+     * done with it, and a trigger in between waits for it (where a "sync now" displaces a later trigger).
+     */
+    internal suspend fun awaitSchedulerIdle() = withTimeout(SyncStatusRecorder.RUN_TIMEOUT) {
+        checkNotNull(syncClient) { "$name has no sync client" }.awaitSchedulerIdle()
+    }
 
     /** The latest run [syncNow], [login], [awaitSync] or [restart] waited for. */
     var lastRun: SyncRun? = null
@@ -224,7 +243,7 @@ class SyncDevice internal constructor(
     }
 
     private fun newGraph(): AppGraph =
-        createDynamicGraphFactory<AppGraph.Factory>(DeviceBindings(database, auth, timings.toSchedulerTimings()))
+        createDynamicGraphFactory<AppGraph.Factory>(DeviceBindings(database, auth, timings) { syncClient = it })
             .create(
                 driverFactory = DriverFactory(),
                 storage = storage,
@@ -248,7 +267,9 @@ class SyncDevice internal constructor(
 internal class DeviceBindings(
     private val database: MobileSyncDatabase,
     private val authRepository: FakeAuthRepository,
-    private val timings: SchedulerTimings
+    private val timings: DeviceTimings,
+    /** Receives the sync client the graph creates. */
+    private val onSyncClient: (SyncClient) -> Unit
 ) {
     /**
      * Replaces the app's database binding with this device's in-memory one. It cannot go through
@@ -265,7 +286,9 @@ internal class DeviceBindings(
     @Provides
     fun synchronizationClientFactory(): QuranDataServiceSynchronizationClientFactory =
         QuranDataServiceSynchronizationClientFactory { environment, account, gate, observer ->
-            SyncClient.create(database.synced, environment, account, gate, observer, timings)
+            SyncClient.create(
+                database.synced, environment, account, gate, observer, timings.toSchedulerTimings(), timings.retryJitterSample
+            ).also(onSyncClient)
         }
 }
 

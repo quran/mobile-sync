@@ -324,7 +324,8 @@ class Pusher(
         private const val HOUR = 60 * 60 * 1000L
         /** How long an item that keeps failing waits: by the runs it failed in (1 h, 6 h, then 24 h). */
         val HOLD_MILLIS = listOf(HOUR, 6 * HOUR, 24 * HOUR)
-        const val FORBIDDEN_BACKOFF_MILLIS = 6 * HOUR
+        /** How long pushes pause after a lone 403; the client ends the pause early once the token changes. */
+        const val FORBIDDEN_BACKOFF_MILLIS = HOUR
         const val UNIQUE_HOLD_MILLIS = 24 * HOUR
     }
 }

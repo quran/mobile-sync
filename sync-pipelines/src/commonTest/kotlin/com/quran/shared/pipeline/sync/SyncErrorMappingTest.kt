@@ -4,6 +4,8 @@ import com.quran.shared.pipeline.SyncError
 import com.quran.shared.pipeline.SyncErrorKind
 import com.quran.shared.syncv2.SyncHttpException
 import com.quran.shared.syncv2.SyncResult
+import io.ktor.client.network.sockets.ConnectTimeoutException
+import io.ktor.client.network.sockets.SocketTimeoutException
 import kotlinx.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -57,6 +59,14 @@ class SyncErrorMappingTest {
 
         assertEquals(network, failed(IOException("Connection reset")).toSyncError())
         assertEquals(network, failed(IllegalStateException("Token refresh failed", IOException("Timeout"))).toSyncError())
+    }
+
+    /** The sync client's connect and idle timeouts fail the attempt as a network error, which is retried. */
+    @Test
+    fun `a connect or idle timeout is a network error`() {
+        listOf(ConnectTimeoutException("Connect timeout"), SocketTimeoutException("Socket timeout")).forEach { timeout ->
+            assertEquals(SyncErrorKind.NETWORK, failed(timeout).toSyncError().kind, "$timeout")
+        }
     }
 
     @Test

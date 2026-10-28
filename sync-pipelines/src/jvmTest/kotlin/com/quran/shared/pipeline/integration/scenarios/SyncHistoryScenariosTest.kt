@@ -37,6 +37,8 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.fail
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import com.quran.shared.pipeline.SyncRun as HistoryRun
@@ -76,7 +78,7 @@ class SyncHistoryScenariosTest {
         val history = phone.history()
         assertEquals(2, history.size, "one record for the run and its retries, after the login's")
         val run = history.first()
-        assertEquals(SyncRunResult.FAILED to 6, run.result to run.attempts, "the first attempt and five retries")
+        assertEquals(SyncRunResult.FAILED to 5, run.result to run.attempts, "the first attempt and four retries")
         assertEquals(503 to "ServiceUnavailableError", run.error?.httpStatus to run.error?.serverCode)
         assertEquals(status.error, run.error, "the error syncStatus shows")
         assertEquals(0, run.pushed)
@@ -115,7 +117,7 @@ class SyncHistoryScenariosTest {
     fun `HIST-05 a run during a push backoff is recorded as pulled only`() = syncScenario {
         val phone = device("phone", DeviceTimings(localChangeDelay = 50.milliseconds))
         assertSucceeded(phone.login(ALICE))
-        // A 403 without a mutation index may be the session's scope: pushes back off for hours.
+        // A 403 without a mutation index may be the session's scope: pushes back off for an hour.
         server.faults.failRequests(times = 1, status = 403, code = "ForbiddenError")
         phone.data.addNote("Pushed once the backoff ends", 2, 255, 2, 255)
         assertIs<SyncStatus.Failed>(phone.awaitSync().status, "the local change's run")
@@ -331,7 +333,7 @@ class SyncHistoryScenariosTest {
     fun `HIST-19 a return to the foreground during a push backoff only pulls`() = syncScenario {
         val phone = device("phone", DeviceTimings(foregroundDelay = 50.milliseconds))
         assertSucceeded(phone.login(ALICE))
-        // A 403 without a mutation index may be the session's scope: pushes back off for hours.
+        // A 403 without a mutation index may be the session's scope: pushes back off for an hour.
         server.faults.failRequests(times = 1, status = 403, code = "ForbiddenError")
         phone.data.addNote("Pushed once the backoff ends", 2, 255, 2, 255)
         val failed = assertIs<SyncStatus.Failed>(phone.syncNow().status)
@@ -376,6 +378,28 @@ class SyncHistoryScenariosTest {
         phone.data.addNote("A note written after the sync", 1, 1, 1, 7)
 
         phone.awaitUnsynced(pending = 1, held = 3, message = "the note pending; the collection and its verses held")
+    }
+
+    /**
+     * A return to the foreground soon after a sync that pulled is dropped; after a failed one it syncs. With no
+     * foreground delay, one that was not dropped would start at once and be the run the sync now waits for.
+     */
+    @Test
+    fun `HIST-22 a return to the foreground right after a sync is skipped, but not after a failed one`() = syncScenario {
+        val phone = device("phone", DeviceTimings(foregroundDelay = Duration.ZERO, foregroundSkipAfterSync = 1.hours))
+        assertSucceeded(phone.login(ALICE))
+        phone.awaitSchedulerIdle()
+
+        phone.data.syncOnForeground()
+        assertSucceeded(phone.syncNow())
+
+        assertEquals(listOf(SyncRunTrigger.MANUAL, SyncRunTrigger.SIGN_IN), phone.history().map { it.trigger }, "no foreground run")
+        server.faults.networkDown()
+        phone.data.addNote("Written while the network is down", 1, 1, 1, 7)
+        assertIs<SyncStatus.Failed>(phone.syncNow().status)
+        server.faults.networkUp()
+        assertSucceeded(phone.awaitSyncOf { phone.data.syncOnForeground() })
+        assertEquals(SyncRunTrigger.FOREGROUND to SyncRunResult.SUCCEEDED, phone.history().first().let { it.trigger to it.result })
     }
 
     private suspend fun SyncDevice.history(): List<HistoryRun> = data.syncHistory.first()

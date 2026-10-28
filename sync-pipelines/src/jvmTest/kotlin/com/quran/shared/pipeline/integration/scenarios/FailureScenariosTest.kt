@@ -327,7 +327,7 @@ class FailureScenariosTest {
     }
 
     /**
-     * A 403 that may be the token's scope stops pushes for hours, but not pulls: the periodic sync keeps fetching what
+     * A 403 that may be the token's scope stops pushes for an hour, but not pulls: the periodic sync keeps fetching what
      * other devices write, and pushes nothing. syncStatus keeps the 403 until a run that pushes succeeds. A "sync now"
      * tries to push again.
      */
@@ -350,6 +350,27 @@ class FailureScenariosTest {
         assertSucceeded(phone.syncNow())
         assertIs<SyncStatus.Succeeded>(phone.data.syncStatus.value)
         assertEquals(listOf("Written without the note scope"), server.state(ALICE).notes.map { it.body })
+    }
+
+    /** The push pause a 403 starts ends once the access token is refreshed: the next automatic run pushes. */
+    @Test
+    fun `ERR-18 variant, a refreshed token ends the push pause`() = syncScenario {
+        val phone = device("phone", DeviceTimings(foregroundDelay = 50.milliseconds))
+        assertSucceeded(phone.login(ALICE))
+        server.faults.failRequests(times = 1, status = 403, code = "ForbiddenError")
+        phone.data.addNote("Pushed once the token is refreshed", 2, 255, 2, 255)
+        assertIs<SyncStatus.Failed>(phone.syncNow().status)
+
+        phone.auth.rotateToken()
+        val run = coroutineScope {
+            val run = async(start = CoroutineStart.UNDISPATCHED) { phone.awaitSync() }
+            phone.data.syncOnForeground()
+            run.await()
+        }
+
+        assertSucceeded(run)
+        assertEquals(listOf(200), run.postStatuses, "an automatic run pushed")
+        assertEquals(listOf("Pushed once the token is refreshed"), server.state(ALICE).notes.map { it.body })
     }
 
     private suspend fun SyncDevice.writePoisonBatch() {

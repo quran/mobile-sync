@@ -35,7 +35,8 @@ class SyncHistoryTest {
     }
 
     @Test
-    fun `only the newest runs are kept`() = runTest {
+    fun `only the newest 100 runs are kept`() = runTest {
+        assertEquals(100, SyncHistory.LIMIT)
         val runs = (0 until SyncHistory.LIMIT + 5).map { run(it) }
 
         runs.forEach(history::syncEnded)

@@ -31,6 +31,7 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -45,11 +46,20 @@ class SyncClientRunRecordTest {
     private val ended = Channel<SyncRun>(Channel.UNLIMITED)
     private val skips = Channel<Unit>(Channel.UNLIMITED)
     private val status = SyncStatusTracker()
-    private val token = server.issueToken(ACCOUNT, "phone")
+    /** The session's access token; a test replaces it as a refresh would. */
+    @Volatile
+    private var token = server.issueToken(ACCOUNT, "phone")
     private val notes = NotesRepository(database.synced)
     private val collections = CollectionsRepository(database.synced)
     private var retryBase: Duration = 5.milliseconds
+    private var retryJitter = 0.0
+    private var jitterSample = 0.5
     private var foregroundDelay: Duration = 1.hours
+    private var foregroundSkip: Duration = Duration.ZERO
+
+    /** Added to the system clock for the client, to move its clock as a user setting the time would. */
+    @Volatile
+    private var clockOffset = 0L
 
     /** How many times sync asked the session for headers. */
     private val headerRequests = AtomicInteger()
@@ -83,8 +93,13 @@ class SyncClientRunRecordTest {
                 ended.trySend(run)
             }
         })
-        val timings = SchedulerTimings(1.hours, 1.hours, 1.hours, foregroundDelay, FailureRetryingConfig(retryBase, 2.5, 5))
-        SyncClient.create(database.synced, SynchronizationEnvironment(server.url), account, object : SyncLifecycleGate {}, observer, timings)
+        val retrying = FailureRetryingConfig(retryBase, 2.5, 5, jitter = retryJitter)
+        val timings = SchedulerTimings(1.hours, 1.hours, 1.hours, foregroundDelay, foregroundSkip, retrying)
+        val gate = object : SyncLifecycleGate {}
+        val environment = SynchronizationEnvironment(server.url)
+        SyncClient.create(database.synced, environment, account, gate, observer, timings, { jitterSample }) {
+            System.currentTimeMillis() + clockOffset
+        }
     }
 
     @AfterTest
@@ -99,6 +114,13 @@ class SyncClientRunRecordTest {
     private fun stored(): List<SyncRun> = runBlocking { history.runs.first() }
 
     private fun awaitSkip() = runBlocking { withTimeout(15.seconds) { skips.receive() } }
+
+    /**
+     * Waits until the scheduler has finished the run that just ended: [next] returns as the run reports its end, before
+     * the scheduler is done with it, and a trigger during the run is held until after it, where a "sync now" displaces
+     * it.
+     */
+    private fun settle() = runBlocking { withTimeout(15.seconds) { client.awaitSchedulerIdle() } }
 
     /** 101 notes, so the first POST lands 100 of them before the second one fails with [status]. */
     private fun failSecondPost(status: Int, code: String, beforeAnswer: () -> Unit = {}) {
@@ -170,17 +192,22 @@ class SyncClientRunRecordTest {
         listOf(SECRET_NOTE, SECRET_COLLECTION, "Short", "Could not save").forEach { assertFalse(it in text, "\"$it\" in $text") }
     }
 
-    /** syncStatus shows the wait for the retry, with when it comes; a "sync now" runs at once in its place. */
+    /**
+     * syncStatus shows the wait for the retry, with when it comes (the jittered delay the scheduler waits); a "sync now"
+     * runs at once in its place.
+     */
     @Test
     fun `a sync now that replaces a waiting retry cancels that run`() {
         retryBase = 1.hours
+        retryJitter = 0.5
+        jitterSample = 0.9
         server.faults.failRequests(times = 1, status = 503, code = "ServiceUnavailableError")
         notes.addNote("A note pushed by the sync now", listOf(NoteRange(2, 255, 2, 255)), 0)
         client.triggerSyncImmediately()
         val retrying = runBlocking { withTimeout(15.seconds) { status.status.first { it is SyncStatus.Retrying } } }
         assertIs<SyncStatus.Retrying>(retrying)
         assertEquals(503 to "ServiceUnavailableError", retrying.error.httpStatus to retrying.error.serverCode)
-        assertEquals(1.hours, retrying.nextAttemptAt - retrying.failedAt, "the first retry's backoff")
+        assertEquals(84.minutes, retrying.nextAttemptAt - retrying.failedAt, "the first retry's backoff, 1.4 h by its jitter")
         assertTrue(ended.tryReceive().isFailure, "the run is still open")
 
         client.triggerSyncImmediately()
@@ -232,6 +259,111 @@ class SyncClientRunRecordTest {
         assertEquals(emptyList(), stored())
         assertTrue(ended.tryReceive().isFailure, "nothing ended")
         assertEquals(SyncStatus.Idle, status.status.value)
+    }
+
+    /**
+     * A return to the foreground right after a sync is dropped. With no foreground delay, one that was not would start
+     * at once and take the "sync now" that follows it, so the run after them would be recorded as FOREGROUND.
+     */
+    @Test
+    fun `a return to the foreground soon after a successful sync is skipped`() {
+        foregroundDelay = Duration.ZERO
+        foregroundSkip = 1.hours
+        client.triggerSyncImmediately()
+        assertEquals(SyncRunResult.SUCCEEDED, next().result)
+        settle()
+
+        client.appForegrounded()
+        client.triggerSyncImmediately()
+
+        assertEquals(SyncRunTrigger.MANUAL, next().trigger)
+        assertEquals(listOf(SyncRunTrigger.MANUAL, SyncRunTrigger.MANUAL), stored().map { it.trigger })
+    }
+
+    /** A pull during a push backoff got the server's changes too, so a return to the foreground right after skips. */
+    @Test
+    fun `a return to the foreground soon after a pulled-only sync is skipped`() {
+        foregroundDelay = Duration.ZERO
+        foregroundSkip = 1.hours
+        pausePushesWithA403()
+        client.appForegrounded()
+        assertEquals(SyncRunTrigger.FOREGROUND to SyncRunResult.PULLED_ONLY, next().let { it.trigger to it.result }, "a failure doesn't skip it")
+        settle()
+
+        client.appForegrounded()
+        client.triggerSyncImmediately()
+
+        assertEquals(SyncRunTrigger.MANUAL, next().trigger)
+    }
+
+    /** A clock set back after a sync makes it seem to end in the future: that ends the skip instead of stretching it. */
+    @Test
+    fun `a return to the foreground after the clock was set back syncs`() {
+        foregroundDelay = Duration.ZERO
+        foregroundSkip = 1.hours
+        client.triggerSyncImmediately()
+        assertEquals(SyncRunResult.SUCCEEDED, next().result)
+        settle()
+
+        clockOffset = -10.minutes.inWholeMilliseconds
+        client.appForegrounded()
+
+        assertEquals(SyncRunTrigger.FOREGROUND, next().trigger)
+    }
+
+    @Test
+    fun `a return to the foreground after the skip window syncs`() {
+        foregroundDelay = Duration.ZERO
+        foregroundSkip = 50.milliseconds
+        client.triggerSyncImmediately()
+        assertEquals(SyncRunResult.SUCCEEDED, next().result)
+        runBlocking { delay(100.milliseconds) }
+
+        client.appForegrounded()
+
+        assertEquals(SyncRunTrigger.FOREGROUND, next().trigger)
+    }
+
+    /** A 403 that may be the token's scope pauses pushes; a new token (a refresh) ends the pause. */
+    @Test
+    fun `a new access token ends the push pause after a 403`() {
+        foregroundDelay = Duration.ZERO
+        pausePushesWithA403()
+        client.appForegrounded()
+        assertEquals(SyncRunResult.PULLED_ONLY, next().result, "pushes are paused")
+
+        token = server.issueToken(ACCOUNT, "phone")
+        client.appForegrounded()
+
+        val run = next()
+        assertEquals(SyncRunResult.SUCCEEDED to 1, run.result to run.pushed, "the new token pushes")
+    }
+
+    /**
+     * A sign-in ends the push pause even when its own run fails before it pushes: the automatic run after it pushes,
+     * with the same token.
+     */
+    @Test
+    fun `a sign-in ends the push pause after a 403`() {
+        foregroundDelay = Duration.ZERO
+        pausePushesWithA403()
+        // Every attempt of the sign-in's run fails at its GET.
+        server.faults.failRequests(times = 6, status = 503, code = "ServiceUnavailableError") { !it.isPost }
+        client.signedIn()
+        assertEquals(SyncRunTrigger.SIGN_IN to SyncRunResult.FAILED, next().let { it.trigger to it.result })
+
+        client.appForegrounded()
+
+        val run = next()
+        assertEquals(SyncRunResult.SUCCEEDED to 1, run.result to run.pushed)
+    }
+
+    /** A note whose push the server answers with a lone 403, which pauses pushes for an hour. */
+    private fun pausePushesWithA403() {
+        server.faults.failRequests(times = 1, status = 403, code = "ForbiddenError")
+        notes.addNote("A note whose push is paused", listOf(NoteRange(2, 255, 2, 255)), 0)
+        client.triggerSyncImmediately()
+        assertEquals(SyncRunResult.FAILED, next().result)
     }
 
     @Test
