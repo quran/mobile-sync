@@ -41,7 +41,9 @@ internal interface SyncRunObserver {
 
     /**
      * An attempt failed at [failedAt] with [error] and will be retried at [nextAttemptAt]. The run stays open: a "sync
-     * now" or a sign-in replaces the retry (the run then ends cancelled), and the retry reports [syncStarted].
+     * now" or a sign-in replaces the retry (the run then ends cancelled, and the new run reports [syncStarted] at
+     * once), and the retry reports [syncStarted]. One that arrived while the failed attempt ran replaces it too, so
+     * this can report a retry that never comes; the immediate run follows at once.
      */
     fun syncRetrying(failedAt: PlatformDateTime, error: SyncError, nextAttemptAt: PlatformDateTime) {}
 

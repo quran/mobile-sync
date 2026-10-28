@@ -15,7 +15,9 @@ import com.quran.shared.pipeline.integration.server.ServerFaults
 import com.quran.shared.syncv2.types.CollectionsRepository
 import com.quran.shared.syncv2.types.NoteRange
 import com.quran.shared.syncv2.types.NotesRepository
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -30,6 +32,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * [SyncClient] with the real engine over an in-memory database against the integration [FakeSyncServer]: what it
@@ -46,6 +49,14 @@ class SyncClientRunRecordTest {
     private val notes = NotesRepository(database.synced)
     private val collections = CollectionsRepository(database.synced)
     private var retryBase: Duration = 5.milliseconds
+    private var foregroundDelay: Duration = 1.hours
+
+    /** How many times sync asked the session for headers. */
+    private val headerRequests = AtomicInteger()
+
+    /** When set, asking for headers waits for it, like a token refresh that hasn't answered yet. */
+    @Volatile
+    private var headersGate: CompletableDeferred<Unit>? = null
 
     /** How many more times the session gives headers before it ends; it never ends unless set. */
     @Volatile
@@ -55,8 +66,11 @@ class SyncClientRunRecordTest {
     private var refreshes = true
     private val client by lazy {
         val account = object : SyncAccount {
-            override suspend fun authHeaders() =
-                if (headersLeft-- > 0) mapOf("Authorization" to "Bearer $token") else emptyMap()
+            override suspend fun authHeaders(): Map<String, String> {
+                headerRequests.incrementAndGet()
+                headersGate?.await()
+                return if (headersLeft-- > 0) mapOf("Authorization" to "Bearer $token") else emptyMap()
+            }
             override suspend fun accountId() = ACCOUNT
             override suspend fun forceTokenRefresh() = refreshes.also { if (!it) headersLeft = 0 }
         }
@@ -69,7 +83,7 @@ class SyncClientRunRecordTest {
                 ended.trySend(run)
             }
         })
-        val timings = SchedulerTimings(1.hours, 1.hours, 1.hours, 1.hours, FailureRetryingConfig(retryBase, 2.5, 5))
+        val timings = SchedulerTimings(1.hours, 1.hours, 1.hours, foregroundDelay, FailureRetryingConfig(retryBase, 2.5, 5))
         SyncClient.create(database.synced, SynchronizationEnvironment(server.url), account, object : SyncLifecycleGate {}, observer, timings)
     }
 
@@ -178,6 +192,46 @@ class SyncClientRunRecordTest {
         assertEquals(1 to 0, first.attempts to first.pushed, "the failed attempt")
         assertEquals(SyncRunTrigger.MANUAL, second.trigger)
         assertEquals(listOf(second, first), stored())
+    }
+
+    /**
+     * "Try again" during the wait shows syncing at once, while the new run still waits for its headers (a token
+     * refresh, say), not the wait for a retry it replaced.
+     */
+    @Test
+    fun `a sync now that replaces a waiting retry shows syncing before its headers`() {
+        retryBase = 1.hours
+        server.faults.failRequests(times = 1, status = 503, code = "ServiceUnavailableError")
+        notes.addNote("A note whose first push fails", listOf(NoteRange(2, 255, 2, 255)), 0)
+        client.triggerSyncImmediately()
+        runBlocking { withTimeout(15.seconds) { status.status.first { it is SyncStatus.Retrying } } }
+        val gate = CompletableDeferred<Unit>()
+        headersGate = gate
+        val asked = headerRequests.get()
+
+        client.triggerSyncImmediately()
+
+        runBlocking { withTimeout(15.seconds) { while (headerRequests.get() == asked) delay(5) } }
+        assertEquals(SyncStatus.Syncing, status.status.value, "the new run is waiting for its headers")
+        gate.complete(Unit)
+        assertEquals(listOf(SyncRunResult.CANCELLED, SyncRunResult.SUCCEEDED), listOf(next().result, next().result))
+    }
+
+    /** Signed out, a return to the foreground asks for headers once, gets none, and ends: no request, no record. */
+    @Test
+    fun `a return to the foreground while signed out sends nothing and records nothing`() {
+        foregroundDelay = 5.milliseconds
+        headersLeft = 0
+        notes.addNote("A note written signed out", listOf(NoteRange(2, 255, 2, 255)), 0)
+
+        client.appForegrounded()
+        awaitSkip()
+
+        assertEquals(1, headerRequests.get())
+        assertEquals(emptyList(), server.requests("phone"))
+        assertEquals(emptyList(), stored())
+        assertTrue(ended.tryReceive().isFailure, "nothing ended")
+        assertEquals(SyncStatus.Idle, status.status.value)
     }
 
     @Test

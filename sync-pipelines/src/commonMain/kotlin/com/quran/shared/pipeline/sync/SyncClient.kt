@@ -116,14 +116,17 @@ internal class SyncClient(
 
     private suspend fun attemptOnce(attempt: SyncAttempt, retryDelay: (AttemptOutcome.Failed) -> Duration?): AttemptOutcome {
         val epoch = startEpoch() ?: return skipped("the sync lifecycle is unavailable")
-        val tally = startRun(attempt, epoch)
-        // A retry continues a failed run, so it reports syncing even if fetching headers fails again.
-        if (attempt.number > 0) observer.syncStarted()
+        val (tally, replacedWaitingRun) = startRun(attempt, epoch)
+        // A retry continues a failed run, and an immediate run that replaced one waiting to retry ends that wait: both
+        // report syncing at once, before the headers (which may refresh the token), so syncStatus never shows the wait
+        // while they run, and a retry reports it even if fetching headers fails again.
+        val startReported = attempt.number > 0 || replacedWaitingRun
+        if (startReported) observer.syncStarted()
         val push = attempt.trigger.isImmediate || now() >= pushBackoffUntil
         val result = try {
             if (account.authHeaders().isEmpty()) return skipped("no one is signed in")
             val accountId = account.accountId() ?: return skipped("the signed-in account is unknown")
-            if (attempt.number == 0) observer.syncStarted()
+            if (!startReported) observer.syncStarted()
             sync(accountId, push, tally)
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -207,16 +210,23 @@ internal class SyncClient(
      * The run [attempt] belongs to. A first attempt starts a new run; a run still open then was waiting for a retry
      * that an immediate trigger replaced, and is reported cancelled (unless a logout or reset moved the epoch since).
      */
-    private fun startRun(attempt: SyncAttempt, epoch: Long): RunTally {
+    private fun startRun(attempt: SyncAttempt, epoch: Long): RunStart {
         val open = run
+        var replacedWaitingRun = false
         val tally = if (attempt.number > 0 && open != null) open else {
-            if (open != null && open.epoch == epoch) end(SyncRunResult.CANCELLED)
+            if (open != null && open.epoch == epoch) {
+                end(SyncRunResult.CANCELLED)
+                replacedWaitingRun = true
+            }
             RunTally(attempt.trigger, now(), epoch)
         }
         tally.attempts += 1
         run = tally
-        return tally
+        return RunStart(tally, replacedWaitingRun)
     }
+
+    /** [tally]: the run an attempt belongs to. [replacedWaitingRun]: it ended a run that was waiting to retry. */
+    private data class RunStart(val tally: RunTally, val replacedWaitingRun: Boolean)
 
     /** Ends the open run as [result] and reports it, with the [held] items it leaves (counted now if not given). */
     private fun end(result: SyncRunResult, error: SyncError? = null, held: Int? = null) {

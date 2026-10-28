@@ -29,6 +29,12 @@ sealed class SyncStatus {
      * The latest attempt failed at [failedAt] because of [error], and the sync tries again at [nextAttemptAt] on its
      * own; it becomes [Syncing] when it does. No attempt is running, so an app can offer "Try again"
      * (`triggerSync(immediately = true)`), which runs at once instead of waiting.
+     *
+     * [nextAttemptAt] can be in the past: the retry's timer doesn't run while the system suspends the app (as iOS does
+     * in the background), so it fires late. Show such a time as "now" rather than as a time that went by.
+     *
+     * It can also show only for a moment, for a retry that never comes: when a "sync now" arrived while the failed
+     * attempt ran, that sync runs right after it instead, and the status becomes [Syncing] at once.
      */
     data class Retrying(
         val failedAt: PlatformDateTime,
