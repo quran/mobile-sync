@@ -158,8 +158,9 @@ class SyncEngineV2(
 
     companion object {
         /**
-         * Wipes every synced item, its sync state, the token, the account and the outbox, in one transaction, and
-         * bumps the wipe epoch, so a sync in flight can't commit (logout, a managed reset). [types] in dependency order.
+         * Wipes every synced item, its sync state, the token, the account, the outbox and the sync history, in one
+         * transaction, and bumps the wipe epoch, so a sync in flight can't commit (logout, a managed reset). [types] in
+         * dependency order.
          */
         fun wipe(database: SyncV2Database, types: List<SyncType>) = database.transaction { wipeAll(SyncStore(database), types) }
 
