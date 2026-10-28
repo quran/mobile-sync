@@ -233,10 +233,10 @@ class QuranDataService internal constructor(
     /**
      * How many items have a local state the server doesn't have yet, from one read: [UnsyncedItemCounts.pending], new,
      * edited or deleted since they last synced, which the next sync sends; and [UnsyncedItemCounts.held], the
-     * [heldItems] (held items and the items waiting on them), which don't sync until they are fixed. Logout wipes them
-     * all, so an app can warn with these counts. An item counts once, in one of the two; a change the server never sees
-     * doesn't count: one only to a field that isn't synced (such as an edit time), a verse removed with its collection,
-     * or a delete the server would refuse (sync undoes it).
+     * [heldItems] (held items and the items waiting on them), which don't sync until they are fixed. Logout loses
+     * them all (it wipes all local data), so an app can warn with these counts. An item counts once, in one of the
+     * two; a change the server never sees doesn't count: one only to a field that isn't synced (such as an edit time),
+     * a verse removed with its collection, or a delete the server would refuse (sync undoes it).
      *
      * It may over-count pending items before the first sync (items a sync will link to the server's equal ones count as
      * new) and while a sent batch's answer is unknown. It changes on every local write, like [heldItems]; each write
