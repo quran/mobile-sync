@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -304,6 +305,56 @@ class SyncHistoryScenariosTest {
             phone.data.updateNote(edited.id, edited.body)
             await(0, "the bookmark set where it was never counted")
         }
+    }
+
+    @Test
+    fun `HIST-18 a return to the foreground syncs and is recorded as one`() = syncScenario {
+        val phone = device("phone", DeviceTimings(foregroundDelay = 50.milliseconds))
+        assertSucceeded(phone.login(ALICE))
+        phone.data.addNote("A note pushed on the return", 2, 255, 2, 255)
+        web(ALICE).createNote("A note pulled on the return", "1:1-1:7")
+
+        phone.data.syncOnForeground()
+        val run = phone.awaitSync()
+
+        assertSucceeded(run)
+        val recorded = phone.history().first()
+        assertEquals(SyncRunTrigger.FOREGROUND to SyncRunResult.SUCCEEDED, recorded.trigger to recorded.result)
+        assertEquals(1 to 1, recorded.pushed to recorded.pulled, "pushed, pulled")
+    }
+
+    @Test
+    fun `HIST-19 a return to the foreground during a push backoff only pulls`() = syncScenario {
+        val phone = device("phone", DeviceTimings(foregroundDelay = 50.milliseconds))
+        assertSucceeded(phone.login(ALICE))
+        // A 403 without a mutation index may be the session's scope: pushes back off for hours.
+        server.faults.failRequests(times = 1, status = 403, code = "ForbiddenError")
+        phone.data.addNote("Pushed once the backoff ends", 2, 255, 2, 255)
+        val failed = assertIs<SyncStatus.Failed>(phone.syncNow().status)
+        web(ALICE).createNote("A note from the web", "1:1-1:7")
+
+        phone.data.syncOnForeground()
+        val pulled = phone.awaitSync()
+
+        assertEquals(failed, pulled.status, "syncStatus keeps the failure")
+        assertEquals(0, pulled.posts)
+        val run = phone.history().first()
+        assertEquals(SyncRunTrigger.FOREGROUND to SyncRunResult.PULLED_ONLY, run.trigger to run.result)
+        assertEquals(0 to 1, run.pushed to run.pulled)
+    }
+
+    @Test
+    fun `HIST-20 a return to the foreground while signed out sends nothing and records nothing`() = syncScenario {
+        val phone = device("phone", DeviceTimings(foregroundDelay = 50.milliseconds))
+        phone.data.addNote("A note written signed out", 2, 255, 2, 255)
+
+        phone.data.syncOnForeground()
+        // Signed out, the run ends before it asks the OIDC boundary for headers, so there is nothing to wait on but time.
+        delay(500.milliseconds)
+
+        assertEquals(emptyList(), server.requests("phone"))
+        assertEquals(emptyList(), phone.history())
+        assertEquals(SyncStatus.Idle, phone.data.syncStatus.value)
     }
 
     private suspend fun SyncDevice.history(): List<HistoryRun> = data.syncHistory.first()

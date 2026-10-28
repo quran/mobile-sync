@@ -1301,6 +1301,8 @@ private class ServiceSynchronizationClient : SynchronizationClient, AutoCloseabl
         localDataUpdatedCount += 1
     }
 
+    override fun appForegrounded() = Unit
+
     override fun applicationStarted() {
         applicationStartedCount += 1
     }

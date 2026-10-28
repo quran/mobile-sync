@@ -41,13 +41,14 @@ import java.util.Properties
 
 /**
  * Scheduler timings for a simulated device. By default nothing syncs on its own: app start, local
- * edits and the periodic sync wait an hour, so a device is "offline" until the test syncs it.
+ * edits, a return to the foreground and the periodic sync wait an hour, so a device is "offline" until the test syncs it.
  * Retries keep production's count and multiplier with a 5 ms base, so a run that fails for good
  * gives up in well under a second.
  */
 data class DeviceTimings(
     val localChangeDelay: Duration = 1.hours,
     val appStartDelay: Duration = 1.hours,
+    val foregroundDelay: Duration = 1.hours,
     val periodicInterval: Duration = 1.hours,
     val retryBaseDelay: Duration = 5.milliseconds,
     val retryMultiplier: Double = 2.5,
@@ -57,6 +58,7 @@ data class DeviceTimings(
         standardInterval = periodicInterval,
         appRefreshInterval = appStartDelay,
         localDataModifiedInterval = localChangeDelay,
+        foregroundInterval = foregroundDelay,
         failureRetryingConfig = FailureRetryingConfig(retryBaseDelay, retryMultiplier, maximumRetries)
     )
 }

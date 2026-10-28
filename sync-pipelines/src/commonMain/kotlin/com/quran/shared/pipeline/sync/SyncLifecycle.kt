@@ -61,6 +61,9 @@ internal class SyncRunObservers(private vararg val observers: SyncRunObserver) :
 /** Starts and stops sync runs for [com.quran.shared.pipeline.QuranDataService]. */
 internal interface SynchronizationClient {
     fun localDataUpdated()
+
+    /** The app came back to the foreground: sync after a short delay, like a local change. */
+    fun appForegrounded()
     fun applicationStarted()
     fun triggerSyncImmediately()
 

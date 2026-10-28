@@ -23,6 +23,7 @@ class SyncSchedulerTest {
         standardInterval = 30.minutes,
         appRefreshInterval = 30.seconds,
         localDataModifiedInterval = 5.seconds,
+        foregroundInterval = 3.seconds,
         failureRetryingConfig = FailureRetryingConfig(baseDelay = 200.milliseconds, multiplier = 2.5, maximumRetries = 5)
     )
 
@@ -138,6 +139,69 @@ class SyncSchedulerTest {
 
         assertEquals(listOf(SyncTrigger.IMMEDIATE, SyncTrigger.LOCAL_CHANGE), runs.attempts.map { it.second.trigger })
         assertEquals(5_000L, runs.attempts.last().first, "after the local change delay, counted from the run's end")
+    }
+
+    @Test
+    fun `a return to the foreground runs after its delay in place of the periodic run`() = schedulerTest { runs, scheduler ->
+        scheduler.trigger(SyncTrigger.IMMEDIATE)
+        runCurrent()
+        scheduler.trigger(SyncTrigger.FOREGROUND)
+        advanceTimeBy(2_999)
+        runCurrent()
+        assertEquals(1, runs.attempts.size)
+
+        advanceTimeBy(2)
+        runCurrent()
+        assertEquals(listOf(0L to SyncAttempt(SyncTrigger.IMMEDIATE, 0), 3_000L to SyncAttempt(SyncTrigger.FOREGROUND, 0)), runs.attempts)
+    }
+
+    /** The run due first keeps its trigger: a local change due sooner absorbs a later foreground, and the reverse. */
+    @Test
+    fun `a return to the foreground and a pending local change run once`() = schedulerTest { runs, scheduler ->
+        scheduler.trigger(SyncTrigger.LOCAL_CHANGE)
+        advanceTimeBy(2_500)
+        scheduler.trigger(SyncTrigger.FOREGROUND)
+        advanceTimeBy(5_000)
+        runCurrent()
+        scheduler.trigger(SyncTrigger.FOREGROUND)
+        runCurrent()
+        scheduler.trigger(SyncTrigger.LOCAL_CHANGE)
+        advanceTimeBy(10_000)
+        runCurrent()
+
+        assertEquals(
+            listOf(5_000L to SyncTrigger.LOCAL_CHANGE, 10_500L to SyncTrigger.FOREGROUND),
+            runs.attempts.map { it.first to it.second.trigger }
+        )
+    }
+
+    @Test
+    fun `a return to the foreground during a run runs again after it`() = schedulerTest { runs, scheduler ->
+        runs.block = CompletableDeferred()
+
+        scheduler.trigger(SyncTrigger.IMMEDIATE)
+        runCurrent()
+        scheduler.trigger(SyncTrigger.FOREGROUND)
+        scheduler.trigger(SyncTrigger.LOCAL_CHANGE)
+        runCurrent()
+        runs.block!!.complete(Unit)
+        advanceTimeBy(5_001)
+        runCurrent()
+
+        assertEquals(listOf(0L to SyncTrigger.IMMEDIATE, 3_000L to SyncTrigger.FOREGROUND), runs.attempts.map { it.first to it.second.trigger }, "once, as the first of them")
+    }
+
+    @Test
+    fun `a return to the foreground while a retry waits is dropped`() = schedulerTest { runs, scheduler ->
+        runs.outcomes += AttemptOutcome.Failed(retryable = true)
+
+        scheduler.trigger(SyncTrigger.IMMEDIATE)
+        runCurrent()
+        scheduler.trigger(SyncTrigger.FOREGROUND)
+        advanceTimeBy(10_000)
+        runCurrent()
+
+        assertEquals(listOf(0L to SyncAttempt(SyncTrigger.IMMEDIATE, 0), 200L to SyncAttempt(SyncTrigger.IMMEDIATE, 1)), runs.attempts)
     }
 
     /** A user's "sync now" during a run is not swallowed: it runs right after, ahead of a local change's delay. */

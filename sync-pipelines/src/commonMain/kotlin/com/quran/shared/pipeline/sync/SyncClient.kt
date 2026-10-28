@@ -72,6 +72,8 @@ internal class SyncClient(
 
     override fun localDataUpdated() = trigger(SyncTrigger.LOCAL_CHANGE)
 
+    override fun appForegrounded() = trigger(SyncTrigger.FOREGROUND)
+
     override fun applicationStarted() = trigger(SyncTrigger.APP_START)
 
     override fun triggerSyncImmediately() = trigger(SyncTrigger.IMMEDIATE)
@@ -341,6 +343,7 @@ private class RunTally(val trigger: SyncTrigger, val startedAt: Long, val epoch:
 private fun SyncTrigger.toRunTrigger(): SyncRunTrigger = when (this) {
     SyncTrigger.APP_START, SyncTrigger.SESSION_RESTORED -> SyncRunTrigger.APP_START
     SyncTrigger.LOCAL_CHANGE -> SyncRunTrigger.LOCAL_CHANGE
+    SyncTrigger.FOREGROUND -> SyncRunTrigger.FOREGROUND
     SyncTrigger.PERIODIC -> SyncRunTrigger.PERIODIC
     SyncTrigger.IMMEDIATE -> SyncRunTrigger.MANUAL
     SyncTrigger.SIGN_IN -> SyncRunTrigger.SIGN_IN

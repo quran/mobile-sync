@@ -69,7 +69,7 @@ class SyncClientRunRecordTest {
                 ended.trySend(run)
             }
         })
-        val timings = SchedulerTimings(1.hours, 1.hours, 1.hours, FailureRetryingConfig(retryBase, 2.5, 5))
+        val timings = SchedulerTimings(1.hours, 1.hours, 1.hours, 1.hours, FailureRetryingConfig(retryBase, 2.5, 5))
         SyncClient.create(database.synced, SynchronizationEnvironment(server.url), account, object : SyncLifecycleGate {}, observer, timings)
     }
 

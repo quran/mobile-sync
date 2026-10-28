@@ -156,6 +156,7 @@ internal class ImportSyncClientSpy : SynchronizationClient {
         private set
 
     override fun localDataUpdated() { localDataUpdatedCount++ }
+    override fun appForegrounded() = Unit
     override fun applicationStarted() = Unit
     override fun triggerSyncImmediately() = Unit
     override fun signedIn() = Unit
