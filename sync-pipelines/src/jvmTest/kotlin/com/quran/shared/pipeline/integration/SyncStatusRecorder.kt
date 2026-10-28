@@ -23,7 +23,8 @@ import kotlin.time.Duration.Companion.seconds
 
 /**
  * Records every value of the public `syncStatus` flow, so the harness can wait for "the next run":
- * a [SyncStatus.Syncing] after a mark, then the value that ends it. The collector is unconfined
+ * a [SyncStatus.Syncing] after a mark, then the value that ends it. [SyncStatus.Retrying] between
+ * a run's attempts doesn't end it. The collector is unconfined
  * and subscribes in the constructor, so it sees each value as the engine sets it.
  */
 internal class SyncStatusRecorder(flow: StateFlow<SyncStatus>) {
@@ -37,7 +38,10 @@ internal class SyncStatusRecorder(flow: StateFlow<SyncStatus>) {
     /** A position in the history; runs that start after it count. */
     fun mark(): Int = history.value.size
 
-    /** Waits until no run is in flight. */
+    /**
+     * Waits until no attempt is running. A run waiting to retry ([SyncStatus.Retrying]) doesn't
+     * count: a "sync now" replaces its retry, so the next run still starts after this.
+     */
     suspend fun awaitNotSyncing(device: String) = within(RUN_TIMEOUT, "$device: a sync run already in flight did not end") {
         history.first { it.lastOrNull() !is SyncStatus.Syncing }
     }
@@ -97,7 +101,7 @@ internal class SyncStatusRecorder(flow: StateFlow<SyncStatus>) {
 
     private fun runEnd(values: List<SyncStatus>, mark: Int): SyncStatus? {
         val start = start(values, mark) ?: return null
-        return values.drop(start + 1).firstOrNull { it !is SyncStatus.Syncing }
+        return values.drop(start + 1).firstOrNull { it !is SyncStatus.Syncing && it !is SyncStatus.Retrying }
     }
 
     fun close() = scope.cancel()

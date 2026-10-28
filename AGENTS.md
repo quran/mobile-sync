@@ -78,6 +78,7 @@ Synced types (`sync-v2` `syncTypes`, in dependency order): collections, verses i
 - app start: 30 seconds, or at once when the stored session is restored (`SESSION_RESTORED`, recorded as `APP_START`); local change: 5 seconds; return to the foreground (`syncOnForeground()`, `FOREGROUND`): 5 seconds, automatic like a local change (it pulls only during a push backoff, the run due first keeps its trigger, it runs again after a run in flight and is dropped while a retry waits); immediate ("sync now", and a sign-in, `SIGN_IN`): 0 seconds. `AuthService.sessionStart` tells a sign-in from a restored session, once per session, so a token refresh that publishes the session again starts nothing
 - after every run, success or not: the next one in 30 minutes, so sync never stops after its retries
 - retry backoff: 200 ms base, 2.5x multiplier, maximum 5 retries; a failure that asks for a longer backoff (a 403 that may be the token's scope) stops pushes for that long, while automatic runs keep pulling and "sync now" (or a sign-in) pushes again
+- each failed attempt that will be retried is reported to `SyncRunObserver.syncRetrying` (`SyncStatus.Retrying`: the error and when the retry comes) and the retry to `syncStarted` (`Syncing`)
 - every run that ends is reported once to `SyncRunObserver.syncEnded` as a `SyncRun`: `SyncHistory` stores it (`sync_run`, newest 50) before `SyncStatusTracker` publishes `syncStatus`. Skipped runs (no session, a logout or reset) are not recorded, unless the session ended after the run sent a request (`CANCELLED`)
 
 ## sync-v2

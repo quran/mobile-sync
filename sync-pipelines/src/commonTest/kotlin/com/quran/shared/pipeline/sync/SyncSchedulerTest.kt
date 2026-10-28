@@ -13,9 +13,11 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.DurationUnit
 
 /** [SyncScheduler] on virtual time: when runs start, how failures are retried, and that sync never stops. */
 class SyncSchedulerTest {
@@ -31,14 +33,19 @@ class SyncSchedulerTest {
     private class Runs(private val scope: TestScope) {
         val attempts = mutableListOf<Pair<Long, SyncAttempt>>()
         val finalFailures = mutableListOf<Long>()
+        /** The delay each failure that will be retried was told. */
+        val retryDelays = mutableListOf<Duration>()
         val outcomes = ArrayDeque<AttemptOutcome>()
         var block: CompletableDeferred<Unit>? = null
 
-        suspend fun run(attempt: SyncAttempt, willRetry: (AttemptOutcome.Failed) -> Boolean): AttemptOutcome {
+        suspend fun run(attempt: SyncAttempt, retryDelay: (AttemptOutcome.Failed) -> Duration?): AttemptOutcome {
             attempts += scope.testScheduler.currentTime to attempt
             block?.await()
             val outcome = outcomes.removeFirstOrNull() ?: AttemptOutcome.Done
-            if (outcome is AttemptOutcome.Failed && !willRetry(outcome)) finalFailures += scope.testScheduler.currentTime
+            if (outcome is AttemptOutcome.Failed) {
+                val delay = retryDelay(outcome)
+                if (delay == null) finalFailures += scope.testScheduler.currentTime else retryDelays += delay
+            }
             return outcome
         }
     }
@@ -91,6 +98,7 @@ class SyncSchedulerTest {
         runCurrent()
         assertEquals((0..5).toList(), runs.attempts.map { it.second.number })
         assertEquals(listOf(12_888L), runs.finalFailures, "the last failure only")
+        assertEquals(listOf(200.0, 500.0, 1_250.0, 3_125.0, 7_812.5), runs.retryDelays.map { it.toDouble(DurationUnit.MILLISECONDS) }, "each retry's wait, as the attempt is told it")
 
         advanceTimeBy(30.minutes.inWholeMilliseconds)
         runCurrent()

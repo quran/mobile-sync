@@ -145,8 +145,9 @@ class SyncDevice internal constructor(
     suspend fun logout(): LogoutResult = authService.logout()
 
     /**
-     * Runs one sync now, with its retries, and returns it. Waits first for a run already in flight,
-     * so the returned run started after this call. A run that finds no session is returned with no
+     * Runs one sync now, with its retries, and returns it. Waits first for an attempt already
+     * running, so the returned run started after this call; a run waiting to retry has its retry
+     * replaced by this one (and ends cancelled). A run that finds no session is returned with no
      * status ([SyncRun.skipped]); [assertSucceeded] fails on it.
      *
      * A run publishes its end before the scheduler has finished it, and a scheduler may drop an

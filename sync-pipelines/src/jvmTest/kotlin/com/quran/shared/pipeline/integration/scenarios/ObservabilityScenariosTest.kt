@@ -3,14 +3,19 @@ package com.quran.shared.pipeline.integration.scenarios
 import com.quran.shared.persistence.TextLengthBound
 import com.quran.shared.persistence.TextLengthField
 import com.quran.shared.persistence.TextLengthLimitException
+import com.quran.shared.pipeline.SyncErrorKind
+import com.quran.shared.pipeline.SyncRunResult
 import com.quran.shared.pipeline.SyncStatus
+import com.quran.shared.pipeline.integration.DeviceTimings
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.server.ServerFaults
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -18,6 +23,8 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.seconds
 
 /** What the public API reports. The sync history and held items are in [SyncHistoryScenariosTest]. */
 class ObservabilityScenariosTest {
@@ -74,14 +81,23 @@ class ObservabilityScenariosTest {
         }
 
         // A StateFlow replays its current value, the login's result, to a new collector. It also
-        // conflates: equal values are not repeated, so the retries show as one Syncing, and a
-        // value replaced before the collector runs would be missed. The collector is unconfined,
-        // which in practice sees every change, but this can't prove that no value was ever
-        // dropped, only that the flow showed one failure.
+        // conflates: a value replaced before the collector runs would be missed. The collector is
+        // unconfined, which in practice sees every change, but this can't prove that no value was
+        // ever dropped, only that the flow showed one failure.
         assertIs<SyncStatus.Succeeded>(statuses.first(), "the login's result: $statuses")
-        assertEquals(listOf(SyncStatus.Syncing, run.status), statuses.drop(1), "one run, then exactly one failure")
+        val attempts = statuses.drop(1).dropLast(1)
+        assertEquals(
+            listOf(SyncStatus.Syncing::class) + List(5) { listOf(SyncStatus.Retrying::class, SyncStatus.Syncing::class) }.flatten(),
+            attempts.map { it::class },
+            "the first attempt and five retries, waiting between them: $statuses"
+        )
+        assertEquals(run.status, statuses.last(), "then exactly one failure")
         val error = assertIs<SyncStatus.Failed>(run.status).error
         assertEquals(503 to "ServiceUnavailableError", error.httpStatus to error.serverCode)
+        attempts.filterIsInstance<SyncStatus.Retrying>().forEach {
+            assertEquals(error, it.error, "each wait shows the attempt's failure")
+            assertTrue(it.nextAttemptAt > it.failedAt)
+        }
     }
 
     @Test
@@ -99,5 +115,33 @@ class ObservabilityScenariosTest {
         assertTrue(status.at >= started && status.at > afterLogin, "last synced moved from $afterLogin to ${status.at}")
         assertEquals(listOf("Synced and reported"), server.state(ALICE).notes.map { it.body })
         assertConverged(ALICE, phone)
+    }
+
+    /**
+     * Offline, a run waits between retries as Retrying, not Syncing: it says why and when it tries again. A "sync now"
+     * then runs at once instead of waiting, and the run it replaced is recorded cancelled.
+     */
+    @Test
+    fun `OBS-04 a run waiting to retry shows why and when, and a sync now runs at once`() = syncScenario {
+        val phone = device("phone", DeviceTimings(retryBaseDelay = 1.hours))
+        assertSucceeded(phone.login(ALICE))
+        server.faults.networkDown()
+        phone.data.addNote("Written offline", 2, 255, 2, 255)
+
+        phone.data.triggerSync(immediately = true)
+
+        val retrying = withTimeout(15.seconds) { phone.data.syncStatus.first { it is SyncStatus.Retrying } }
+        assertIs<SyncStatus.Retrying>(retrying)
+        assertEquals(SyncErrorKind.NETWORK, retrying.error.kind)
+        assertEquals(1.hours, retrying.nextAttemptAt - retrying.failedAt, "the first retry's backoff")
+        server.faults.networkUp()
+        val run = phone.syncNow()
+        assertSucceeded(run)
+        assertEquals(listOf("Written offline"), server.state(ALICE).notes.map { it.body })
+        assertEquals(
+            listOf(SyncRunResult.SUCCEEDED, SyncRunResult.CANCELLED, SyncRunResult.SUCCEEDED),
+            phone.data.syncHistory.first().map { it.result },
+            "the sync now, the run whose retry it replaced, the login's"
+        )
     }
 }

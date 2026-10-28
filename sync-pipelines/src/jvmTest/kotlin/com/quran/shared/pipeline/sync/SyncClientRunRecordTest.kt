@@ -16,7 +16,6 @@ import com.quran.shared.syncv2.types.CollectionsRepository
 import com.quran.shared.syncv2.types.NoteRange
 import com.quran.shared.syncv2.types.NotesRepository
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -24,6 +23,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
@@ -156,19 +156,25 @@ class SyncClientRunRecordTest {
         listOf(SECRET_NOTE, SECRET_COLLECTION, "Short", "Could not save").forEach { assertFalse(it in text, "\"$it\" in $text") }
     }
 
+    /** syncStatus shows the wait for the retry, with when it comes; a "sync now" runs at once in its place. */
     @Test
     fun `a sync now that replaces a waiting retry cancels that run`() {
         retryBase = 1.hours
         server.faults.failRequests(times = 1, status = 503, code = "ServiceUnavailableError")
         notes.addNote("A note pushed by the sync now", listOf(NoteRange(2, 255, 2, 255)), 0)
         client.triggerSyncImmediately()
-        // The second "sync now" must come after the first attempt reached the server, or the two are one run.
-        runBlocking { withTimeout(15.seconds) { while (server.requests("phone").none { it.method == "POST" }) delay(5) } }
+        val retrying = runBlocking { withTimeout(15.seconds) { status.status.first { it is SyncStatus.Retrying } } }
+        assertIs<SyncStatus.Retrying>(retrying)
+        assertEquals(503 to "ServiceUnavailableError", retrying.error.httpStatus to retrying.error.serverCode)
+        assertEquals(1.hours, retrying.nextAttemptAt - retrying.failedAt, "the first retry's backoff")
+        assertTrue(ended.tryReceive().isFailure, "the run is still open")
+
         client.triggerSyncImmediately()
         val first = next()
         val second = next()
 
         assertEquals(listOf(SyncRunResult.CANCELLED, SyncRunResult.SUCCEEDED), listOf(first.result, second.result))
+        assertEquals(SyncStatus.Succeeded(second.endedAt), status.status.value)
         assertEquals(1 to 0, first.attempts to first.pushed, "the failed attempt")
         assertEquals(SyncRunTrigger.MANUAL, second.trigger)
         assertEquals(listOf(second, first), stored())

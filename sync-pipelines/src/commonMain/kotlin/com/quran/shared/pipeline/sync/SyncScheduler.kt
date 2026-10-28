@@ -94,8 +94,11 @@ internal class SyncScheduler(
     private val timings: SchedulerTimings,
     dispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val now: () -> Long = { Clock.System.now().toEpochMilliseconds() },
-    /** Runs one attempt. [willRetry] says whether a failure of it will be retried, so it can report a final failure. */
-    private val run: suspend (attempt: SyncAttempt, willRetry: (AttemptOutcome.Failed) -> Boolean) -> AttemptOutcome
+    /**
+     * Runs one attempt. [retryDelay] says how long until a failure of it is retried, or null when it won't be, so it
+     * can report a final failure or the wait for the retry.
+     */
+    private val run: suspend (attempt: SyncAttempt, retryDelay: (AttemptOutcome.Failed) -> Duration?) -> AttemptOutcome
 ) {
     private val logger = Logger.withTag("SyncScheduler")
     private val scope = CoroutineScope(dispatcher + SupervisorJob())
@@ -194,7 +197,7 @@ internal class SyncScheduler(
         timerAttempt = null
         val generation = generation
         running = scope.launch {
-            val outcome = run(attempt) { failed -> willRetry(attempt, failed) }
+            val outcome = run(attempt) { failed -> retryDelay(attempt, failed) }
             commands.send(Command.Finished(generation, attempt, outcome))
         }
     }
@@ -203,14 +206,14 @@ internal class SyncScheduler(
         running = null
         val immediate = immediateDuringRun
         val followUp = followUpDuringRun
+        val backoff = (outcome as? AttemptOutcome.Failed)?.let { retryDelay(attempt, it) }
         if (immediate != null) {
             // A user asked to sync (or signed in) while this run was going: run (and push) again right away.
             immediateDuringRun = null
             followUpDuringRun = null
             schedule(Duration.ZERO, SyncAttempt(immediate, 0), onlyIfSooner = false)
-        } else if (outcome is AttemptOutcome.Failed && willRetry(attempt, outcome)) {
+        } else if (backoff != null) {
             followUpDuringRun = null
-            val backoff = timings.failureRetryingConfig.let { it.baseDelay * it.multiplier.pow(attempt.number) }
             logger.i { "Retrying sync in $backoff (attempt ${attempt.number + 1})" }
             schedule(backoff, attempt.copy(number = attempt.number + 1), onlyIfSooner = false)
         } else if (followUp != null) {
@@ -221,8 +224,12 @@ internal class SyncScheduler(
         }
     }
 
-    private fun willRetry(attempt: SyncAttempt, failed: AttemptOutcome.Failed): Boolean =
-        failed.retryable && failed.retryAfterMillis == null && attempt.number < timings.failureRetryingConfig.maximumRetries
+    /** The backoff before [failed]'s retry: exponential in [attempt]'s number; null when it isn't retried. */
+    private fun retryDelay(attempt: SyncAttempt, failed: AttemptOutcome.Failed): Duration? {
+        val config = timings.failureRetryingConfig
+        val retried = failed.retryable && failed.retryAfterMillis == null && attempt.number < config.maximumRetries
+        return if (retried) config.baseDelay * config.multiplier.pow(attempt.number) else null
+    }
 
     private fun schedule(delay: Duration, attempt: SyncAttempt, onlyIfSooner: Boolean) {
         val at = now() + delay.inWholeMilliseconds
