@@ -71,7 +71,7 @@ internal class SyncClient(
     private val now: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     /** Closed with this client. */
     private val httpClient: HttpClient? = null,
-    /** The retries' jitter, a uniform sample in `0 until 1` per attempt (see [SyncScheduler]); tests pass a fixed one. */
+    /** The retries' jitter: a uniform sample in `0 until 1` per attempt (see [SyncScheduler]); tests fix it. */
     random: () -> Double = { Random.nextDouble() }
 ) : SynchronizationClient, AutoCloseable {
     private val logger = Logger.withTag("SyncClient")

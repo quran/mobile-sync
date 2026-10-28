@@ -50,9 +50,9 @@ internal data class FailureRetryingConfig(
 )
 
 /**
- * Production timings: 30 s after app start, 5 s after a local change, 2 s after a return to the foreground (none within a
- * minute of a sync that pulled), 30 min periodic.
- * Retries wait about 2, 6, 18 and 54 s, each ±50% and at most 60 s.
+ * Production timings: 30 s after app start, 5 s after a local change, 2 s after a return to the foreground (none
+ * within a minute of a sync that pulled), 30 min periodic. Retries wait about 2, 6, 18 and 54 s, each ±50% and at most
+ * 60 s.
  */
 internal val DefaultSyncTimings = SchedulerTimings(
     standardInterval = 30.minutes,
@@ -107,8 +107,8 @@ internal sealed interface AttemptOutcome {
  * with an immediate run. An app start (or a restored session) during a run, and any trigger but an immediate one
  * while a retry waits, is dropped. A failed attempt is retried with exponential backoff, jittered and capped as
  * [FailureRetryingConfig] says, up to the configured number of retries, unless it is not retryable or asks for a longer
- * backoff. After every run, whatever its outcome, the next one
- * is scheduled after the periodic interval, so sync never stops after its retries run out.
+ * backoff. After every run, whatever its outcome, the next one is scheduled after the periodic interval, so sync never
+ * stops after its retries run out.
  */
 internal class SyncScheduler(
     private val timings: SchedulerTimings,
