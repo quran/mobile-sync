@@ -45,6 +45,7 @@ flowchart LR
 - **Status.** `QuranDataService.syncStatus` shows `Idle`, `Syncing`, or how the latest run ended: `Succeeded` with its time, or `Failed` with its time and a `SyncError`.
 - **History.** `QuranDataService.syncHistory` lists the newest 50 runs, newest first, one `SyncRun` per run (retries included): when it started and ended, its trigger (`APP_START`, `LOCAL_CHANGE`, `PERIODIC`, `MANUAL` for `triggerSync(immediately = true)`, `SIGN_IN`), its result (`SUCCEEDED`, `PULLED_ONLY` during a push backoff, `FAILED` with its `SyncError`, `CANCELLED`), its attempts, and how many items it pushed, pulled and left held. A run that found no session before it reached the server, or that a logout or reset stopped, is not recorded; one the session's end stops after it reached the server (a refused token refresh, or a retry that finds no one signed in) is recorded as `CANCELLED` with what it did. It holds no user data; it lives in the database (`sync_run`) and is cleared with the rest of the data on logout and on an account switch.
 - **Held items.** `QuranDataService.heldItems` lists the items that don't sync, as `HeldSyncItem`s: the item's type and public id, a `HeldReason` (`TOO_SHORT`, `TOO_LONG`, `INVALID_VERSE`, `RESERVED_NAME`, `REJECTED_BY_SERVER` with the HTTP status and error code, ...), and for an item waiting on a held one (`WAITING_ON_PARENT`, `WAITING_ON_OTHER_ITEM`), that item. It updates as soon as an item is held or released: an edit that fixes a held item takes it out at once, without a sync.
+- **Unsynced items.** `QuranDataService.unsyncedItemCount` counts the items whose local state the server doesn't have yet: new, edited or deleted since they last synced, or held. Logout wipes them, so an app can warn with this count. An item counts once; a change the server never sees doesn't count (an edit only to a field that isn't synced, a verse removed with its collection, a delete the server would refuse, which sync undoes). It may over-count before the first sync (items a sync will link to the server's equal ones count as new) and while a sent batch's answer is unknown. Like `heldItems`, it updates on every local write, without a sync; each write re-reads it, push planning included, so collect it only while it is shown.
 
 ## Modules
 
@@ -273,7 +274,7 @@ backup is enabled.
 ### 3. Use managed services
 
 Core API examples:
-- Observe: `authState`, `syncStatus`, `syncHistory`, `heldItems`, `bookmarks`, `collectionsWithBookmarks`, `notes`
+- Observe: `authState`, `syncStatus`, `syncHistory`, `heldItems`, `unsyncedItemCount`, `bookmarks`, `collectionsWithBookmarks`, `notes`
 - Mutations: `addBookmark`, `deleteBookmark`, `addCollection`, `deleteCollection`, `addNote`, `deleteNote`
 - Trigger sync: `triggerSync()` after a burst of edits, or `triggerSync(immediately = true)` for a user's "Sync now"
 - Auth: use `SyncAuthService.login()`, `loginWithReauthentication()`, `logout()`, and `clearError()`

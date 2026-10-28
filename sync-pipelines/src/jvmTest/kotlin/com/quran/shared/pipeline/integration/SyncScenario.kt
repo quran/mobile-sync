@@ -20,7 +20,7 @@ import kotlin.test.fail
  *
  * # Writing a scenario
  *
- * Each [SyncDevice] is a full app install: the production graph with its own in-memory database
+ * Each [SyncDevice] is a full app install: the production graph with its own database file
  * and the real sync engine and Ktor client, talking over loopback HTTP to one shared
  * [FakeSyncServer]. Tests drive devices only through the public API ([SyncDevice.data] and
  * [SyncDevice.authService]) and assert on public flows, return values, and the fake server's state

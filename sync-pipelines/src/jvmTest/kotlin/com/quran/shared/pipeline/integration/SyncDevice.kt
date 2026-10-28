@@ -36,6 +36,7 @@ import org.publicvalue.multiplatform.oidc.tokenstore.SettingsTokenStore
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.milliseconds
+import java.io.File
 import java.util.Properties
 
 /**
@@ -101,8 +102,17 @@ class SyncDevice internal constructor(
     val server: FakeSyncServer,
     private val timings: DeviceTimings
 ) {
-    private val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY, Properties().apply { put("foreign_keys", "true") })
-        .also { MobileSyncSchema.create(it) }
+    // A file, not SQLDelight's in-memory database, whose one connection and transaction all threads share: a write
+    // could join another thread's transaction and lose its notification. A file binds transactions to their thread.
+    private val file = File.createTempFile("sync-device-$name-", ".db").apply { deleteOnExit() }
+    private val driver = JdbcSqliteDriver(
+        "jdbc:sqlite:${file.absolutePath}",
+        Properties().apply {
+            put("foreign_keys", "true")
+            put("journal_mode", "WAL")
+            put("busy_timeout", "10000")
+        }
+    ).also { MobileSyncSchema.create(it) }
     private val database = MobileSyncDatabase(driver)
     private val storage = MobileSyncStorage(SettingsTokenStore(InMemorySettingsStore()), MapSettings().toFlowSettings())
 
@@ -221,6 +231,7 @@ class SyncDevice internal constructor(
         data.clearAndJoin()
         status.close()
         driver.close()
+        listOf("", "-wal", "-shm").forEach { File(file.path + it).delete() }
     }
 }
 

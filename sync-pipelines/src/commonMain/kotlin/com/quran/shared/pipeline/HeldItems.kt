@@ -19,20 +19,20 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.shareIn
 
 /**
- * The held and waiting items of [database], for [QuranDataService.heldItems]. They are read again on every write to
- * `sync_item`, `sync_meta` or a domain table, as the next push would see them, so an edit that fixes an item takes
- * it out at once, without a sync.
+ * [QuranDataService.heldItems] and [QuranDataService.unsyncedItemCount], both from one [UnsyncedSnapshot] of
+ * [database], read again on every write to `sync_item`, `sync_meta` or a domain table, as the next push would see it.
  *
  * Every collector shares one reader in [scope], as each read is a transaction (the writer lock on Android and iOS).
- * It reads only while someone collects, off the main thread, and forgets the last list when the last collector
- * leaves, so a later collector never starts from a list a wipe has since emptied.
+ * It reads only while someone collects, off the main thread, and drops its snapshot once it stops; a collector that
+ * joins as it stops may get that snapshot first, until the restarted reader's fresh read.
  *
  * A read that fails (a stored state that doesn't parse, a database error) is logged and skipped: collectors keep the
- * last list, and the next write reads again. It never reaches [scope], where it would end the reader for everyone.
+ * last snapshot, and the next write reads again. It never reaches [scope], where it would end the reader for everyone.
  */
 internal class HeldItems(private val database: SyncV2Database, scope: CoroutineScope) {
     private val logger = Logger.withTag("HeldItems")
@@ -42,22 +42,29 @@ internal class HeldItems(private val database: SyncV2Database, scope: CoroutineS
     private val notesType = types.filterIsInstance<NotesType>().single()
     private val collectionsType = types.filterIsInstance<CollectionsType>().single()
 
-    val flow: Flow<List<HeldSyncItem>> = database.sync_itemQueries.holdInputs().asFlow()
+    val snapshots: Flow<UnsyncedSnapshot> = database.sync_itemQueries.holdInputs().asFlow()
         .mapNotNull { readOrNull() }
         .distinctUntilChanged()
         .flowOn(Dispatchers.IO)
         .shareIn(scope, SharingStarted.WhileSubscribed(replayExpirationMillis = 0), replay = 1)
 
-    private fun readOrNull(): List<HeldSyncItem>? = try {
+    val flow: Flow<List<HeldSyncItem>> = snapshots.map { it.held }.distinctUntilChanged()
+
+    val unsyncedCount: Flow<Int> = snapshots.map { it.held.size + it.pendingCount }.distinctUntilChanged()
+
+    private fun readOrNull(): UnsyncedSnapshot? = try {
         read()
     } catch (e: Exception) {
         // The class only: a message may quote what was read.
-        logger.w { "Could not read the held items (${e::class.simpleName}); keeping the last list" }
+        logger.w { "Could not read the unsynced items (${e::class.simpleName}); keeping the last snapshot" }
         null
     }
 
-    /** In one transaction, so the items and the rows they are mapped with agree. */
-    fun read(): List<HeldSyncItem> = database.transactionWithResult { map(SyncEngineV2.held(database, types)) }
+    /** In one transaction, so the held items, the rows they are mapped with and the pending items agree. */
+    fun read(): UnsyncedSnapshot = database.transactionWithResult {
+        val unsynced = SyncEngineV2.unsynced(database, types)
+        UnsyncedSnapshot(map(unsynced.held), unsynced.pending.size)
+    }
 
     /** Maps the engine's items; a waiting item's [HeldSyncItem.waitingOn] is the mapped held item it names. */
     private fun map(items: List<HeldItem>): List<HeldSyncItem> {
@@ -128,6 +135,9 @@ internal class HeldItems(private val database: SyncV2Database, scope: CoroutineS
         const val READING_BOOKMARK = "READING_BOOKMARK"
     }
 }
+
+/** The held items as [QuranDataService.heldItems] lists them, and how many other items the next push sends. */
+internal data class UnsyncedSnapshot(val held: List<HeldSyncItem>, val pendingCount: Int)
 
 /**
  * A length hold's text and the limit it broke; a null [limit] means the type has only a maximum. A null [text] (it
