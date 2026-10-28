@@ -230,6 +230,19 @@ class QuranDataService internal constructor(
     @NativeCoroutines
     val heldItems: Flow<List<HeldSyncItem>> get() = heldItemsReader.flow
 
+    /**
+     * How many items have a local state the server doesn't have yet: new, edited or deleted since they last synced, or
+     * held ([heldItems]). Logout wipes them, so an app can warn with this count. An item counts once; a change the
+     * server never sees doesn't count: one only to a field that isn't synced (such as an edit time), a verse removed
+     * with its collection, or a delete the server would refuse (sync undoes it).
+     *
+     * It may over-count before the first sync (items a sync will link to the server's equal ones count as new) and
+     * while a sent batch's answer is unknown. It changes on every local write, like [heldItems]; each write re-reads
+     * it, push planning included, so collect it only while it is shown.
+     */
+    @NativeCoroutines
+    val unsyncedItemCount: Flow<Int> get() = heldItemsReader.unsyncedCount
+
     private val bookmarksRepository = pipeline.bookmarksRepository
     private val readingBookmarksRepository = pipeline.readingBookmarksRepository
     private val collectionsRepository = pipeline.collectionsRepository

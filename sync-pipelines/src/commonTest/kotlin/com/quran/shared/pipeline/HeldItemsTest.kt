@@ -32,7 +32,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 
-/** [HeldItems]: the engine's held items as the public API shows them, and the reason mapping. */
+/** [HeldItems]: the engine's held items as the public API shows them, the reason mapping, and the snapshot they share. */
 class HeldItemsTest {
     private val database = inMemoryMobileSyncDatabase().synced
     /** What escaped the shared reader: on a device, a crash. */
@@ -81,7 +81,7 @@ class HeldItemsTest {
                 item(SyncResourceType.NOTE, "$short", HeldReason.TOO_SHORT),
                 item(SyncResourceType.NOTE, "$long", HeldReason.TOO_LONG)
             ),
-            held.read()
+            held.read().held
         )
     }
 
@@ -100,7 +100,7 @@ class HeldItemsTest {
 
         assertEquals(
             listOf(item(SyncResourceType.COLLECTION, "$long", HeldReason.TOO_LONG), item(SyncResourceType.NOTE, "$short", HeldReason.TOO_SHORT)),
-            held.read()
+            held.read().held
         )
     }
 
@@ -170,7 +170,7 @@ class HeldItemsTest {
                 collection,
                 item(SyncResourceType.COLLECTION_BOOKMARK, "2:255", HeldReason.WAITING_ON_PARENT, "$study", waitingOn = collection)
             ),
-            held.read()
+            held.read().held
         )
     }
 
@@ -185,13 +185,13 @@ class HeldItemsTest {
 
         assertEquals(
             listOf(item(SyncResourceType.COLLECTION_BOOKMARK, "3:18", HeldReason.REJECTED_BY_SERVER, "$study", null, 422, "ValidationError")),
-            held.read()
+            held.read().held
         )
     }
 
-    /** Collectors share one reader; once the last leaves, a wipe meanwhile isn't hidden behind the list it last read. */
+    /** Collectors share one reader; once it has stopped, a later collector gets a fresh read, which shows a wipe. */
     @Test
-    fun `collectors share the flow and a later one never starts from a stale list`() = runTest {
+    fun `collectors share the flow and a later one reads again once the reader stopped`() = runTest {
         val short = notes.addNote("12345", listOf(NoteRange(1, 1, 1, 1)), 0)
         hold("NOTE", short, "BODY_LENGTH")
         val expected = listOf(item(SyncResourceType.NOTE, "$short", HeldReason.TOO_SHORT))
@@ -206,11 +206,30 @@ class HeldItemsTest {
         collectors.forEach { it.cancelAndJoin() }
         withContext(Dispatchers.Default) {
             // The last collector left: the reader stops and drops the list it read.
-            withTimeout(5_000) { while ((held.flow as SharedFlow<*>).replayCache.isNotEmpty()) yield() }
+            withTimeout(5_000) { while ((held.snapshots as SharedFlow<*>).replayCache.isNotEmpty()) yield() }
         }
         SyncEngineV2.wipe(database, syncTypes(database))
 
         assertEquals(emptyList(), first(), "read again, not the list from before the wipe")
+    }
+
+    /** Held and pending come from one snapshot: a fix moves the note from one to the other in a single emission. */
+    @Test
+    fun `a fixed held note moves to pending in the same snapshot`() = runTest {
+        val short = notes.addNote("12345", listOf(NoteRange(1, 1, 1, 1)), 0)
+        hold("NOTE", short, "BODY_LENGTH")
+        val values = Channel<UnsyncedSnapshot>(Channel.UNLIMITED)
+        val collector = launch(Dispatchers.Default) { held.snapshots.collect { values.send(it) } }
+        suspend fun next() = withContext(Dispatchers.Default) { withTimeout(5_000) { values.receive() } }
+        try {
+            assertEquals(UnsyncedSnapshot(listOf(item(SyncResourceType.NOTE, "$short", HeldReason.TOO_SHORT)), 0), next())
+
+            notes.updateNote(short, "Long enough to sync", 1)
+
+            assertEquals(UnsyncedSnapshot(emptyList(), 1), next(), "held 1 to pending 1, the total unchanged")
+        } finally {
+            collector.cancelAndJoin()
+        }
     }
 
     /** A read that fails is skipped: the shared reader survives, crashes nothing, and reads again on the next write. */

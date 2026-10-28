@@ -17,7 +17,7 @@ Core modules:
 - `:auth`: OIDC login/logout, auth state, token handling.
 - `:persistence`: the app database (`MobileSyncDatabase`: `QuranDatabase` for app metadata plus `:sync-v2`'s `SyncV2Database` on one driver, schema `MobileSyncSchema`) and the repositories for bookmarks, collections, notes, and reading sessions. Repositories write plain domain rows through one store per type (`NoteStore`, `CollectionStore`, `ReadingSessionStore`, `ReadingBookmarkStore`), which the importer uses too.
 - `:sync-v2`: the generic sync engine (fetch, three-way merge, push), its per-type mappings and their plain domain tables (plus `sync_item` and `sync_meta`). Not exported through `umbrella`. `SYNC_ENGINE.md` maps it.
-- `:sync-pipelines`: DI graph, storage wiring, the sync client and scheduler (`pipeline/sync`), and `QuranDataService` with its public sync types (`SyncStatus`, `SyncError`, `SyncRun` for `syncHistory`, `HeldSyncItem` for `heldItems`, `SynchronizationEnvironment`).
+- `:sync-pipelines`: DI graph, storage wiring, the sync client and scheduler (`pipeline/sync`), and `QuranDataService` with its public sync types (`SyncStatus`, `SyncError`, `SyncRun` for `syncHistory`, `HeldSyncItem` for `heldItems`, `SynchronizationEnvironment`). `unsyncedItemCount` counts the held items and those the next push sends.
 - `:umbrella`: iOS `Shared` XCFramework export.
 - `:demo:android`: Android Compose demo.
 - `:demo:common`: shared demo helpers/models.
@@ -89,7 +89,7 @@ Synced types (`sync-v2` `syncTypes`, in dependency order): collections, verses i
 
 ## Integration Tests
 
-`sync-pipelines/src/jvmTest/kotlin/com/quran/shared/pipeline/integration` runs whole devices against one fake sync server, end to end. Each `SyncDevice` is the production graph with its own in-memory database and the real Ktor client, talking over loopback HTTP to `FakeSyncServer`; `FakeAuthRepository` stands in for OIDC.
+`sync-pipelines/src/jvmTest/kotlin/com/quran/shared/pipeline/integration` runs whole devices against one fake sync server, end to end. Each `SyncDevice` is the production graph with its own database (a temporary file, so each thread gets its own connection and transaction, as on a device) and the real Ktor client, talking over loopback HTTP to `FakeSyncServer`; `FakeAuthRepository` stands in for OIDC.
 
 - **Public API only.** Test bodies drive devices through `QuranDataService`/`AuthService` and assert on public flows, return values, and the fake server's state and request log. They never read engine tables or the sync token, so a scenario survives an engine rewrite. Keep it that way.
 - **The scenario catalog is the code.** `integration/scenarios` holds one class per area (`NoteScenariosTest`, `CollectionScenariosTest`, ...) and one test per case, named by its case ID and what it proves, such as `` `NOTE-01 a create syncs to the server and the other device` ``. Add a new case to its area's class under the next free ID for that area's prefix. Shared data and assertions live in `ScenarioData.kt` and `ScenarioSupport.kt`.

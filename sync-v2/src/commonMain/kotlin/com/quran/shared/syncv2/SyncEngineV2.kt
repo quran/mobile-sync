@@ -7,6 +7,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.time.Clock
 
+/** See [SyncEngineV2.unsynced]: the held and waiting items, and the items the next push sends. */
+data class Unsynced(val held: List<HeldItem>, val pending: List<ItemRef>)
+
 sealed interface SyncResult {
     /**
      * Changes this run pushed; local rows it changed to take remote changes ([Reconciler.pulled]); children it dropped
@@ -162,6 +165,24 @@ class SyncEngineV2(
             val store = SyncStore(database)
             // One transaction, so a sync committing meanwhile can't show half its writes.
             return database.transactionWithResult { Holds(store, types, StoreRefs(store)).list() }
+        }
+
+        /**
+         * [held]'s items and the other items the next push sends ([Unsynced.pending]: one entry per item, children
+         * deferred until their parent's CREATE included), read in one transaction, so an item moving from one to the
+         * other is never in both or neither. Pending is [PushPlanner.preview], so it can't drift from what a push
+         * sends. Read it again when `holdInputs` changes, as for [held].
+         */
+        fun unsynced(database: SyncV2Database, types: List<SyncType>): Unsynced {
+            val store = SyncStore(database)
+            val refs = StoreRefs(store)
+            return database.transactionWithResult {
+                val held = Holds(store, types, refs).list()
+                val plan = PushPlanner(store, types, refs).preview()
+                val heldRefs = held.map { ItemRef(it.type, it.localId) }.toSet()
+                val pending = (plan.planned.map { ItemRef(it.type.name, it.localId) } + plan.deferred).distinct() - heldRefs
+                Unsynced(held, pending)
+            }
         }
 
         /**

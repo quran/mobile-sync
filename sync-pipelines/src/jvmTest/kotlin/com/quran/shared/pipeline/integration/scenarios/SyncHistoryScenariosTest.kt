@@ -3,6 +3,8 @@ package com.quran.shared.pipeline.integration.scenarios
 import com.quran.shared.auth.model.AuthState
 import com.quran.shared.persistence.input.ImportNote
 import com.quran.shared.persistence.input.PersistenceImportData
+import com.quran.shared.persistence.model.Note
+import com.quran.shared.persistence.model.ReadingBookmarkSlot
 import com.quran.shared.pipeline.HeldReason
 import com.quran.shared.pipeline.HeldSyncItem
 import com.quran.shared.pipeline.SyncResourceType
@@ -15,9 +17,12 @@ import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.server.ServerFaults
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
@@ -25,11 +30,15 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.fail
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import com.quran.shared.pipeline.SyncRun as HistoryRun
 
-/** The sync history (`syncHistory`) and the held items (`heldItems`), through the public API only. */
+/**
+ * The sync history (`syncHistory`), the held items (`heldItems`) and the unsynced items (`unsyncedItemCount`), through
+ * the public API only.
+ */
 class SyncHistoryScenariosTest {
 
     @Test
@@ -158,9 +167,194 @@ class SyncHistoryScenariosTest {
         assertEquals(listOf(SyncRunTrigger.MANUAL, SyncRunTrigger.MANUAL, SyncRunTrigger.SIGN_IN), phone.history().map { it.trigger })
     }
 
+    @Test
+    fun `HIST-09 changes made offline are pending until a sync sends them`() = syncScenario {
+        val (phone) = signedIn("phone")
+        server.faults.networkDown()
+        phone.addToFavorites(1, 1)
+        phone.addToFavorites(2, 255)
+        phone.addToFavorites(18, 10)
+
+        assertIs<SyncStatus.Failed>(phone.syncNow().status)
+
+        phone.awaitUnsynced(3)
+        assertEquals(emptyList(), phone.held(), "nothing is held")
+        server.faults.networkUp()
+        assertSucceeded(phone.syncNow())
+        phone.awaitUnsynced(0)
+    }
+
+    @Test
+    fun `HIST-10 an edit of a synced note is pending until it is edited back`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.data.addNote("A note to edit", 1, 1, 1, 7)
+        assertSucceeded(phone.syncNow())
+        phone.awaitUnsynced(0)
+        val note = phone.note("A note to edit")
+
+        phone.data.updateNote(note.id, "An edited note")
+
+        phone.awaitUnsynced(1)
+        phone.data.updateNote(note.id, "A note to edit")
+        phone.awaitUnsynced(0, "back to the synced state")
+    }
+
+    @Test
+    fun `HIST-11 saving a note unchanged moves only its edit time, which is not synced`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.data.addNote("A note saved twice", 1, 1, 1, 7)
+        val edited = phone.syncedNoteToEdit()
+        val note = phone.note("A note saved twice")
+
+        phone.watchUnsynced {
+            phone.data.updateNote(edited.id, "An edited note")
+            await(1, "the edit counts")
+
+            phone.data.updateNote(note.id, note.body)
+
+            phone.data.updateNote(edited.id, edited.body)
+            await(0, "the unchanged save never counted")
+        }
+    }
+
+    @Test
+    fun `HIST-12 a held note counts as unsynced, and once fixed still does until the next sync`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.importShortNote()
+        assertSucceeded(phone.syncNow())
+        awaitValue(phone.data.heldItems.map { it.size }, 1)
+        phone.awaitUnsynced(1, "the held note counts")
+
+        phone.data.updateNote(phone.note("Good").id, "Good enough to sync")
+
+        awaitValue(phone.data.heldItems.map { it.size }, 0)
+        phone.awaitUnsynced(1, "now pending")
+        assertSucceeded(phone.syncNow())
+        phone.awaitUnsynced(0)
+    }
+
+    @Test
+    fun `HIST-13 a new collection's verses are pending with it, though they wait for its id`() = syncScenario {
+        val (phone) = signedIn("phone")
+        val study = phone.data.addCollection("Study")
+        phone.data.addAyahBookmarkToCollection(study.id, 1, 1)
+        phone.data.addAyahBookmarkToCollection(study.id, 2, 255)
+
+        phone.awaitUnsynced(3)
+
+        val run = phone.syncNow()
+        assertSucceeded(run)
+        assertEquals(3, run.accepted.size, "what was pending is what was sent")
+        phone.awaitUnsynced(0)
+    }
+
+    @Test
+    fun `HIST-14 deleting a synced note is pending until a sync sends the delete`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.data.addNote("A note to delete", 1, 1, 1, 7)
+        assertSucceeded(phone.syncNow())
+
+        phone.data.deleteNote(phone.note("A note to delete").id)
+
+        phone.awaitUnsynced(1)
+        assertSucceeded(phone.syncNow())
+        phone.awaitUnsynced(0)
+    }
+
+    @Test
+    fun `HIST-15 a note created and deleted before any sync is not unsynced`() = syncScenario {
+        val (phone) = signedIn("phone")
+        val edited = phone.syncedNoteToEdit()
+
+        phone.watchUnsynced {
+            phone.data.updateNote(edited.id, "An edited note")
+            await(1, "the edit counts")
+
+            phone.data.addNote("A note that never leaves", 1, 1, 1, 7)
+            phone.data.deleteNote(phone.note("A note that never leaves").id)
+
+            phone.data.updateNote(edited.id, edited.body)
+            await(0, "the created and deleted note no longer counts")
+        }
+    }
+
+    @Test
+    fun `HIST-16 moving a synced reading bookmark is one unsynced item`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10)
+        assertSucceeded(phone.syncNow())
+
+        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 11)
+
+        phone.awaitUnsynced(1)
+    }
+
+    @Test
+    fun `HIST-17 setting a reading bookmark where it is moves only its timestamp, which is not synced`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10)
+        val edited = phone.syncedNoteToEdit()
+
+        phone.watchUnsynced {
+            phone.data.updateNote(edited.id, "An edited note")
+            await(1, "the edit counts")
+
+            phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 18, 10)
+
+            phone.data.updateNote(edited.id, edited.body)
+            await(0, "the bookmark set where it was never counted")
+        }
+    }
+
     private suspend fun SyncDevice.history(): List<HistoryRun> = data.syncHistory.first()
 
     private suspend fun SyncDevice.held(): List<HeldSyncItem> = data.heldItems.first()
+
+    private suspend fun SyncDevice.awaitUnsynced(expected: Int, message: String? = null) =
+        awaitValue(data.unsyncedItemCount, expected, message)
+
+    /** Waits until [flow] shows [expected]: a collector that joins as another leaves may first get its stale value. */
+    private suspend fun <T> awaitValue(flow: Flow<T>, expected: T, message: String? = null) {
+        var last: T? = null
+        try {
+            withTimeout(10.seconds) { flow.first { it.also { last = it } == expected } }
+        } catch (e: TimeoutCancellationException) {
+            fail("${message?.let { "$it: " }.orEmpty()}expected $expected, still $last")
+        }
+    }
+
+    /** A synced note to edit and edit back (everything new syncs with it). */
+    private suspend fun SyncDevice.syncedNoteToEdit(): Note {
+        data.addNote("A note to edit and edit back", 1, 1, 1, 7)
+        assertSucceeded(syncNow())
+        return note("A note to edit and edit back")
+    }
+
+    /**
+     * Runs [block] on one subscription to `unsyncedItemCount`, so no stale value can satisfy [UnsyncedWatch.await]. A
+     * write that must not count goes between a counted edit and its undo: 0 then comes only if it didn't count.
+     */
+    private suspend fun SyncDevice.watchUnsynced(block: suspend UnsyncedWatch.() -> Unit) = coroutineScope {
+        val values = Channel<Int>(Channel.UNLIMITED)
+        val collector = launch(Dispatchers.Default) { data.unsyncedItemCount.collect { values.send(it) } }
+        try {
+            UnsyncedWatch(values).block()
+        } finally {
+            collector.cancel()
+        }
+    }
+
+    private class UnsyncedWatch(private val values: Channel<Int>) {
+        private var last: Int? = null
+
+        suspend fun await(expected: Int, message: String) {
+            try {
+                withTimeout(10.seconds) { while (values.receive().also { last = it } != expected) Unit }
+            } catch (e: TimeoutCancellationException) {
+                fail("$message: expected $expected, still $last")
+            }
+        }
+    }
 
     private suspend fun SyncDevice.importShortNote() {
         data.importData(PersistenceImportData(notes = listOf(ImportNote("Good", 1, 1, 1, 1, at(0), at(0)))))
