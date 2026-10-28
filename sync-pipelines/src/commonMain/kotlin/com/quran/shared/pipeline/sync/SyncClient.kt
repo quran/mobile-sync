@@ -363,21 +363,21 @@ internal class SyncClient(
 
         /**
          * The client behind the sync API's GETs and POSTs. The explicit timeouts keep a request that never answers (an
-         * app suspended mid-request, a stalled network) from holding the run, which then fails as a network error and
-         * is retried. A full page or a 100-mutation POST gets a minute overall. [engine] is for tests; null uses the
-         * platform's engine (OkHttp on Android and the JVM, Darwin on iOS) from this module's dependencies.
+         * app suspended mid-request, a stalled network, a server that stops answering) from holding the run, which
+         * then fails as a network error and is retried. A request as a whole has no cap, so a large first-sync page on
+         * a slow network can finish as long as data keeps coming. [engine] is for tests; null uses the platform's
+         * engine (OkHttp on Android and the JVM, Darwin on iOS) from this module's dependencies.
          *
-         * The engines apply them differently. OkHttp takes all three: connecting gives up after 15 s, and a connection
-         * that stalls mid-response after 60 s of silence (OkHttp's own default is 10 s). Ktor's Darwin engine (3.6.0)
+         * The engines apply them differently. OkHttp takes both: connecting gives up after 15 s, and a connection that
+         * stalls mid-response after 60 s of silence (OkHttp's own default is 10 s). Ktor's Darwin engine (3.6.0)
          * ignores the connect timeout and uses the socket timeout as the request's idle timeout, so on iOS the 60 s
-         * idle timeout covers connecting too. The 60 s overall request timeout applies on both.
+         * idle timeout covers connecting too.
          */
         internal fun createSyncHttpClient(engine: HttpClientEngine? = null): HttpClient {
             val configure: HttpClientConfig<*>.() -> Unit = {
                 installHttpLogging(tag = "SyncHttp")
                 install(HttpTimeout) {
                     connectTimeoutMillis = SYNC_CONNECT_TIMEOUT_MS
-                    requestTimeoutMillis = SYNC_REQUEST_TIMEOUT_MS
                     socketTimeoutMillis = SYNC_SOCKET_TIMEOUT_MS
                 }
                 defaultRequest { header(HttpHeaders.Accept, ContentType.Application.Json) }
@@ -386,7 +386,6 @@ internal class SyncClient(
         }
 
         internal const val SYNC_CONNECT_TIMEOUT_MS = 15_000L
-        internal const val SYNC_REQUEST_TIMEOUT_MS = 60_000L
         internal const val SYNC_SOCKET_TIMEOUT_MS = 60_000L
     }
 }
