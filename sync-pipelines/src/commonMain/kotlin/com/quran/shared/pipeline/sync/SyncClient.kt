@@ -20,6 +20,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import io.ktor.client.HttpClient
+import io.ktor.client.HttpClientConfig
+import io.ktor.client.engine.HttpClientEngine
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.request.header
 import io.ktor.http.ContentType
@@ -346,16 +349,36 @@ internal class SyncClient(
             random: () -> Double = { Random.nextDouble() }
         ): SyncClient {
             lateinit var client: SyncClient
-            // The platform's engine (OkHttp on Android and the JVM, Darwin on iOS) comes from this module's dependencies.
-            val httpClient = HttpClient {
-                installHttpLogging(tag = "SyncHttp")
-                defaultRequest { header(HttpHeaders.Accept, ContentType.Application.Json) }
-            }
+            val httpClient = createSyncHttpClient()
             val api = SyncApi(httpClient, environment.endPointURL) { client.requestHeaders() }
             val engine = SyncEngineV2(database, api, syncTypes(database), ENGINE_VERSION)
             client = SyncClient(engine, account, gate, observer, timings, httpClient = httpClient, random = random)
             return client
         }
+
+        /**
+         * The client behind the sync API's GETs and POSTs. The explicit timeouts, the same on every platform, keep a
+         * request that never answers (an app suspended mid-request, a stalled network) from holding the run, which
+         * then fails as a network error and is retried. A full page or a 100-mutation POST gets a minute. [engine] is
+         * for tests; null uses the platform's engine (OkHttp on Android and the JVM, Darwin on iOS) from this module's
+         * dependencies.
+         */
+        internal fun createSyncHttpClient(engine: HttpClientEngine? = null): HttpClient {
+            val configure: HttpClientConfig<*>.() -> Unit = {
+                installHttpLogging(tag = "SyncHttp")
+                install(HttpTimeout) {
+                    connectTimeoutMillis = SYNC_CONNECT_TIMEOUT_MS
+                    requestTimeoutMillis = SYNC_REQUEST_TIMEOUT_MS
+                    socketTimeoutMillis = SYNC_SOCKET_TIMEOUT_MS
+                }
+                defaultRequest { header(HttpHeaders.Accept, ContentType.Application.Json) }
+            }
+            return if (engine == null) HttpClient(configure) else HttpClient(engine, configure)
+        }
+
+        internal const val SYNC_CONNECT_TIMEOUT_MS = 15_000L
+        internal const val SYNC_REQUEST_TIMEOUT_MS = 60_000L
+        internal const val SYNC_SOCKET_TIMEOUT_MS = 60_000L
     }
 }
 
