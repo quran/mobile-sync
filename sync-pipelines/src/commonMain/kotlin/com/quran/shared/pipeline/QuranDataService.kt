@@ -128,6 +128,7 @@ class QuranDataService internal constructor(
     private val scope = CoroutineScope(Dispatchers.Main + serviceJob)
     private val syncStatusTracker = SyncStatusTracker()
     private val syncHistoryRecorder = SyncHistory(syncDatabase)
+    private val heldItemsReader = HeldItems(syncDatabase, scope)
     private val syncClient: SynchronizationClient
     private val initializationMutex = Mutex()
     private var initializationAttempt: Deferred<Unit>? = null
@@ -220,6 +221,14 @@ class QuranDataService internal constructor(
      */
     @NativeCoroutines
     val syncHistory: Flow<List<SyncRun>> get() = syncHistoryRecorder.runs
+
+    /**
+     * The items that don't sync: held ones, then the ones waiting on them. It changes as soon as an item is held or
+     * released, without waiting for a sync: an edit that fixes a held item takes it (and what waited on it) out at
+     * once. Logout and an account switch clear it with the rest of the data.
+     */
+    @NativeCoroutines
+    val heldItems: Flow<List<HeldSyncItem>> get() = heldItemsReader.flow
 
     private val bookmarksRepository = pipeline.bookmarksRepository
     private val readingBookmarksRepository = pipeline.readingBookmarksRepository

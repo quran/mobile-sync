@@ -3,6 +3,7 @@ package com.quran.shared.syncv2
 import com.quran.shared.syncv2.fake.FakeSyncServer
 import com.quran.shared.syncv2.fake.HttpError
 import com.quran.shared.syncv2.types.NoteRange
+import com.quran.shared.syncv2.types.syncTypes
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -66,7 +67,10 @@ class NotesSyncTest {
         }
     }
 
-    /** A synced note edited too short is held on its UPDATE; deleting it then is a new change, so the DELETE is pushed. */
+    /**
+     * A synced note edited too short is held on its UPDATE; deleting it then is a new change, not that hold: the
+     * DELETE is pushed and the note is no longer listed as held.
+     */
     @Test
     fun `deleting a note held for an edit pushes the delete`() = FakeSyncServer().use { server ->
         Device(server).use { device ->
@@ -77,6 +81,7 @@ class NotesSyncTest {
 
             device.notes.deleteNote(note)
 
+            assertEquals(emptyList(), SyncEngineV2.held(device.database, syncTypes(device.database)), "released before any sync")
             assertEquals(emptyList(), device.settle().held)
             assertEquals(emptyList(), Remote(server).noteBodies())
         }

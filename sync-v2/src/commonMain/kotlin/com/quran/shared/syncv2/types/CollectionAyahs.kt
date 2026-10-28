@@ -25,6 +25,9 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
+/** One verse in one collection, by the collection's local id. */
+data class CollectionVerse(val collectionLocalId: Long, val sura: Int, val ayah: Int)
+
 /**
  * "Verse in collection": one type for the server's BOOKMARK, COLLECTION_BOOKMARK and Favorites flag.
  * Natural key = (collection, verse). Every row maps to a key-based COLLECTION_BOOKMARK, Favorites included
@@ -45,6 +48,9 @@ class CollectionAyahsType(private val database: SyncV2Database, collections: Col
     override val ignoredFields = setOf(ADDED_AT.name)
 
     override fun naturalKey(state: State) = "${state[COLLECTION]}:${state[SURA]}:${state[AYAH]}"
+
+    /** The collection and verse of [state], such as the base of a membership deleted locally. */
+    fun verseOf(state: State) = CollectionVerse(state[COLLECTION], state[SURA], state[AYAH])
     override fun clock(state: State) = state[ADDED_AT]
 
     override fun readAll(): Map<Long, State> = queries.collectionAyahsAll().executeAsList().associate {

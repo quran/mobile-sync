@@ -205,6 +205,9 @@ class CollectionsType(private val database: SyncV2Database) : SyncType {
         }
     }
 
+    /** The name of [state], such as the one a hold recorded. */
+    fun nameOf(state: State): String = state[NAME]
+
     private fun nameLength(state: State) = "NAME_LENGTH".takeUnless { ServerTextLimit.COLLECTION_NAME.accepts(state[NAME]) }
 
     private fun isHighlight(key: String) = key.startsWith(HIGHLIGHTS_PREFIX) && key.removePrefix(HIGHLIGHTS_PREFIX) in PROTECTED_COLORS

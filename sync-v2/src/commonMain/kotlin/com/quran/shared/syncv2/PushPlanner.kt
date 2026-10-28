@@ -58,13 +58,9 @@ class PushPlanner(private val store: SyncStore, private val types: List<SyncType
                     if (merger.same(row.heldState, state)) return@forEach
                     store.put(type.name, row.unheld())
                 }
-                val base = row?.base
-                if (base != null && merger.same(state, base)) return@forEach
-                // Its key is still a held item's on the server: it waits for that one (Holds lists it).
-                if (type.naturalKey(state)?.let(heldKeys::get)?.let { it != localId } == true) return@forEach
-                val change = if (base == null) Change.Create(state) else Change.Update(row.remoteId!!, base, state)
-                type.validate(change)?.let { reason ->
-                    store.put(type.name, SyncRow(localId, row?.remoteId, base, reason, state))
+                val (change, hold) = planItem(type, merger, localId, row, state, heldKeys) ?: return@forEach
+                if (hold != null) {
+                    store.put(type.name, hold)
                     return@forEach
                 }
                 val mutation = type.mutation(change, refs) ?: return@forEach
@@ -110,4 +106,25 @@ class PushPlanner(private val store: SyncStore, private val types: List<SyncType
         const val UPDATE = "UPDATE"
         const val DELETE = "DELETE"
     }
+}
+
+/**
+ * How the next push plans [localId]'s working [state], once any hold on it is released ([row]: its sync row, if any).
+ * Null when there is nothing to push (it is back at its base) or it waits for a held item that still has its key on
+ * the server (Holds lists it); otherwise its change and, when the server would refuse that change, the row that holds
+ * it instead. [PushPlanner] and [Holds.list] share it, so the held items listed are the ones the next push holds.
+ */
+internal fun planItem(
+    type: SyncType,
+    merger: Merger,
+    localId: Long,
+    row: SyncRow?,
+    state: State,
+    heldKeys: Map<String, Long>
+): Pair<Change, SyncRow?>? {
+    val base = row?.base
+    if (base != null && merger.same(state, base)) return null
+    if (type.naturalKey(state)?.let(heldKeys::get)?.let { it != localId } == true) return null
+    val change = if (base == null) Change.Create(state) else Change.Update(row.remoteId!!, base, state)
+    return change to type.validate(change)?.let { reason -> SyncRow(localId, row?.remoteId, base, reason, state) }
 }
