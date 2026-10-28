@@ -98,7 +98,6 @@ jobs:
         with:
           java-version: "25"
           distribution: "temurin"
-          cache: gradle
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
