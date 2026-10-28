@@ -15,7 +15,8 @@ import com.quran.shared.persistence.util.PlatformDateTime
  * @param attempts the attempts the run made: the first one plus each retry.
  * @param pushed the local changes the server accepted during the run.
  * @param pulled the local items the run created, changed, or deleted to take the server's changes.
- * @param held the items that were not syncing when the run ended: held items and the items waiting on them.
+ * @param held the items that were not syncing when the run ended, counted like [QuranDataService.heldItems]: held
+ *   items and the items waiting on them.
  * @param error why the run failed: non-null exactly when [result] is [SyncRunResult.FAILED], and then equal to the
  *   error [SyncStatus.Failed] reports for it.
  */

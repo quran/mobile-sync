@@ -1,6 +1,11 @@
 package com.quran.shared.pipeline.integration.scenarios
 
 import com.quran.shared.auth.model.AuthState
+import com.quran.shared.persistence.input.ImportNote
+import com.quran.shared.persistence.input.PersistenceImportData
+import com.quran.shared.pipeline.HeldReason
+import com.quran.shared.pipeline.HeldSyncItem
+import com.quran.shared.pipeline.SyncResourceType
 import com.quran.shared.pipeline.SyncRunResult
 import com.quran.shared.pipeline.SyncRunTrigger
 import com.quran.shared.pipeline.SyncStatus
@@ -9,16 +14,22 @@ import com.quran.shared.pipeline.integration.SyncDevice
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.server.ServerFaults
 import com.quran.shared.pipeline.integration.syncScenario
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 import com.quran.shared.pipeline.SyncRun as HistoryRun
 
-/** The sync history (`syncHistory`), through the public API only. */
+/** The sync history (`syncHistory`) and the held items (`heldItems`), through the public API only. */
 class SyncHistoryScenariosTest {
 
     @Test
@@ -57,27 +68,32 @@ class SyncHistoryScenariosTest {
     }
 
     @Test
-    fun `HIST-03 sign-out clears the history`() = syncScenario {
+    fun `HIST-03 sign-out clears the history and the held items`() = syncScenario {
         val (phone) = signedIn("phone")
+        phone.importShortNote()
         assertSucceeded(phone.syncNow())
+        assertEquals(1, phone.held().size)
 
         phone.logout()
 
         assertEquals(emptyList(), phone.history())
+        assertEquals(emptyList(), phone.held())
     }
 
     @Test
-    fun `HIST-04 an account switch clears the previous account's history`() = syncScenario {
+    fun `HIST-04 an account switch clears the previous account's history and held items`() = syncScenario {
         val phone = device("phone")
         assertSucceeded(phone.login(ALICE))
+        phone.importShortNote()
         assertSucceeded(phone.syncNow())
-        assertEquals(2, phone.history().size)
+        assertEquals(2 to 1, phone.history().size to phone.held().size)
         phone.auth.expireSession()
         assertEquals(true, phone.syncNow().skipped, "the expired session skips the sync, unrecorded")
 
         assertSucceeded(phone.login(BOB))
 
         assertEquals(listOf(SyncRunTrigger.SIGN_IN), phone.history().map { it.trigger }, "only Bob's first run")
+        assertEquals(emptyList(), phone.held())
     }
 
     @Test
@@ -112,6 +128,22 @@ class SyncHistoryScenariosTest {
     }
 
     @Test
+    fun `HIST-07 a short note is held and counted, and leaves the held items as soon as it is fixed`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.importShortNote()
+
+        assertSucceeded(phone.syncNow())
+
+        val note = phone.note("Good")
+        val held = listOf(HeldSyncItem(SyncResourceType.NOTE, note.id, null, HeldReason.TOO_SHORT, null, null, null))
+        assertEquals(held, phone.held())
+        assertEquals(1, phone.history().first().held, "the run counts it")
+        val requests = server.requests("phone").size
+        phone.awaitHeldChange(held, emptyList()) { phone.data.updateNote(note.id, "Good enough to sync") }
+        assertEquals(requests, server.requests("phone").size, "no sync in between")
+    }
+
+    @Test
     fun `HIST-08 a token refresh that publishes the session again starts no run`() = syncScenario {
         val (phone) = signedIn("phone")
         phone.auth.profileName = "Alice B."
@@ -127,4 +159,26 @@ class SyncHistoryScenariosTest {
     }
 
     private suspend fun SyncDevice.history(): List<HistoryRun> = data.syncHistory.first()
+
+    private suspend fun SyncDevice.held(): List<HeldSyncItem> = data.heldItems.first()
+
+    private suspend fun SyncDevice.importShortNote() {
+        data.importData(PersistenceImportData(notes = listOf(ImportNote("Good", 1, 1, 1, 1, at(0), at(0)))))
+    }
+
+    /** Subscribes to `heldItems`, checks it shows [before], runs [change], and waits for it to show [after]. */
+    private suspend fun SyncDevice.awaitHeldChange(before: List<HeldSyncItem>, after: List<HeldSyncItem>, change: suspend () -> Unit) =
+        coroutineScope {
+            val values = Channel<List<HeldSyncItem>>(Channel.UNLIMITED)
+            val collector = launch(Dispatchers.Default) { data.heldItems.collect { values.send(it) } }
+            try {
+                withTimeout(10.seconds) {
+                    assertEquals(before, values.receive())
+                    change()
+                    while (true) if (values.receive() == after) break
+                }
+            } finally {
+                collector.cancel()
+            }
+        }
 }

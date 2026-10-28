@@ -193,6 +193,9 @@ class NotesType(private val database: SyncV2Database) : SyncType {
         }
     }
 
+    /** The body of [state], such as the one a hold recorded. */
+    fun bodyOf(state: State): String = state[BODY]
+
     private fun rangesOf(localId: Long) = queries.rangesOf(localId).executeAsList()
         .joinToString(",") { "${it.start_sura}:${it.start_ayah}-${it.end_sura}:${it.end_ayah}" }
 
