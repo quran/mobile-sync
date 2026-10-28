@@ -57,6 +57,10 @@ class SyncClientRunRecordTest {
     private var foregroundDelay: Duration = 1.hours
     private var foregroundSkip: Duration = Duration.ZERO
 
+    /** Added to the system clock for the client, to move its clock as a user setting the time would. */
+    @Volatile
+    private var clockOffset = 0L
+
     /** How many times sync asked the session for headers. */
     private val headerRequests = AtomicInteger()
 
@@ -92,7 +96,10 @@ class SyncClientRunRecordTest {
         val retrying = FailureRetryingConfig(retryBase, 2.5, 5, jitter = retryJitter)
         val timings = SchedulerTimings(1.hours, 1.hours, 1.hours, foregroundDelay, foregroundSkip, retrying)
         val gate = object : SyncLifecycleGate {}
-        SyncClient.create(database.synced, SynchronizationEnvironment(server.url), account, gate, observer, timings) { jitterSample }
+        val environment = SynchronizationEnvironment(server.url)
+        SyncClient.create(database.synced, environment, account, gate, observer, timings, { jitterSample }) {
+            System.currentTimeMillis() + clockOffset
+        }
     }
 
     @AfterTest
@@ -286,6 +293,21 @@ class SyncClientRunRecordTest {
         client.triggerSyncImmediately()
 
         assertEquals(SyncRunTrigger.MANUAL, next().trigger)
+    }
+
+    /** A clock set back after a sync makes it seem to end in the future: that ends the skip instead of stretching it. */
+    @Test
+    fun `a return to the foreground after the clock was set back syncs`() {
+        foregroundDelay = Duration.ZERO
+        foregroundSkip = 1.hours
+        client.triggerSyncImmediately()
+        assertEquals(SyncRunResult.SUCCEEDED, next().result)
+        settle()
+
+        clockOffset = -10.minutes.inWholeMilliseconds
+        client.appForegrounded()
+
+        assertEquals(SyncRunTrigger.FOREGROUND, next().trigger)
     }
 
     @Test

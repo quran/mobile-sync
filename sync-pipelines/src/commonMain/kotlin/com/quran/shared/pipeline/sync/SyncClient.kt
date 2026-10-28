@@ -100,12 +100,13 @@ internal class SyncClient(
     /**
      * Dropped within [SchedulerTimings.foregroundSkipAfterSync] of the end of a run that pulled the server's changes
      * (succeeded, or pulled only during a push backoff): the app already has them. A run that failed since then ends
-     * the skip, so returning after a failure syncs; a cancelled run neither starts nor ends it.
+     * the skip, so returning after a failure syncs; a cancelled run neither starts nor ends it. A clock set back since
+     * that run (it seems to end in the future) ends the skip too, rather than stretch it.
      */
     override fun appForegrounded() {
-        val pulledAt = lastPulledAt
-        if (pulledAt != null && now() - pulledAt < timings.foregroundSkipAfterSync.inWholeMilliseconds) {
-            logger.d { "Skipping the foreground sync: a sync pulled ${now() - pulledAt} ms ago" }
+        val sincePulled = lastPulledAt?.let { now() - it }
+        if (sincePulled != null && sincePulled in 0 until timings.foregroundSkipAfterSync.inWholeMilliseconds) {
+            logger.d { "Skipping the foreground sync: a sync pulled $sincePulled ms ago" }
             return
         }
         trigger(SyncTrigger.FOREGROUND)
@@ -346,13 +347,14 @@ internal class SyncClient(
             gate: SyncLifecycleGate,
             observer: SyncRunObserver,
             timings: SchedulerTimings = DefaultSyncTimings,
-            random: () -> Double = { Random.nextDouble() }
+            random: () -> Double = { Random.nextDouble() },
+            now: () -> Long = { Clock.System.now().toEpochMilliseconds() }
         ): SyncClient {
             lateinit var client: SyncClient
             val httpClient = createSyncHttpClient()
             val api = SyncApi(httpClient, environment.endPointURL) { client.requestHeaders() }
             val engine = SyncEngineV2(database, api, syncTypes(database), ENGINE_VERSION)
-            client = SyncClient(engine, account, gate, observer, timings, httpClient = httpClient, random = random)
+            client = SyncClient(engine, account, gate, observer, timings, now = now, httpClient = httpClient, random = random)
             return client
         }
 
