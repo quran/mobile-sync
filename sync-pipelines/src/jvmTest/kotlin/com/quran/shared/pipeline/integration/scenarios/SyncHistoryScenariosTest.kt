@@ -14,11 +14,14 @@ import com.quran.shared.pipeline.SyncStatus
 import com.quran.shared.pipeline.UnsyncedItemCounts
 import com.quran.shared.pipeline.integration.DeviceTimings
 import com.quran.shared.pipeline.integration.SyncDevice
+import com.quran.shared.pipeline.integration.SyncRun
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.server.ServerFaults
 import com.quran.shared.pipeline.integration.server.text
 import com.quran.shared.pipeline.integration.syncScenario
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
@@ -316,8 +319,7 @@ class SyncHistoryScenariosTest {
         phone.data.addNote("A note pushed on the return", 2, 255, 2, 255)
         web(ALICE).createNote("A note pulled on the return", "1:1-1:7")
 
-        phone.data.syncOnForeground()
-        val run = phone.awaitSync()
+        val run = phone.awaitSyncOf { phone.data.syncOnForeground() }
 
         assertSucceeded(run)
         val recorded = phone.history().first()
@@ -335,8 +337,7 @@ class SyncHistoryScenariosTest {
         val failed = assertIs<SyncStatus.Failed>(phone.syncNow().status)
         web(ALICE).createNote("A note from the web", "1:1-1:7")
 
-        phone.data.syncOnForeground()
-        val pulled = phone.awaitSync()
+        val pulled = phone.awaitSyncOf { phone.data.syncOnForeground() }
 
         assertEquals(failed, pulled.status, "syncStatus keeps the failure")
         assertEquals(0, pulled.posts)
@@ -351,7 +352,9 @@ class SyncHistoryScenariosTest {
         phone.data.addNote("A note written signed out", 2, 255, 2, 255)
 
         phone.data.syncOnForeground()
-        // Signed out, the run ends before it asks the OIDC boundary for headers, so there is nothing to wait on but time.
+        // A smoke test: signed out, the run ends before it asks the OIDC boundary for headers, so there is nothing to
+        // wait on but time, and it can't tell a skipped run from one that hasn't started. SyncClientRunRecordTest
+        // proves the skip.
         delay(500.milliseconds)
 
         assertEquals(emptyList(), server.requests("phone"))
@@ -376,6 +379,13 @@ class SyncHistoryScenariosTest {
     }
 
     private suspend fun SyncDevice.history(): List<HistoryRun> = data.syncHistory.first()
+
+    /** Waits for the run [start] starts: the wait begins first, so even a run that starts at once is seen. */
+    private suspend fun SyncDevice.awaitSyncOf(start: suspend () -> Unit): SyncRun = coroutineScope {
+        val run = async(start = CoroutineStart.UNDISPATCHED) { awaitSync() }
+        start()
+        run.await()
+    }
 
     private suspend fun SyncDevice.held(): List<HeldSyncItem> = data.heldItems.first()
 

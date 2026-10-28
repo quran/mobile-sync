@@ -146,9 +146,11 @@ class SyncDevice internal constructor(
 
     /**
      * Runs one sync now, with its retries, and returns it. Waits first for an attempt already
-     * running, so the returned run started after this call; a run waiting to retry has its retry
-     * replaced by this one (and ends cancelled). A run that finds no session is returned with no
-     * status ([SyncRun.skipped]); [assertSucceeded] fails on it.
+     * running, so the returned run started after this call. A run waiting to retry doesn't hold it
+     * up: the sync now usually replaces its retry (that run then ends cancelled), but the retry's
+     * timer may fire between the two, and then the returned run is the earlier one, as its retry
+     * ends it. A run that finds no session is returned with no status ([SyncRun.skipped]);
+     * [assertSucceeded] fails on it.
      *
      * A run publishes its end before the scheduler has finished it, and a scheduler may drop an
      * immediate trigger that arrives in between. So the trigger is repeated until a run starts

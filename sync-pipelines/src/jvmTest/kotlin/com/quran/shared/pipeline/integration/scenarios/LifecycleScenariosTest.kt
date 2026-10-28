@@ -21,11 +21,13 @@ import com.quran.shared.pipeline.integration.server.ClientTimes
 import com.quran.shared.pipeline.integration.server.CollectionRules
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
@@ -36,6 +38,8 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Clock
+import java.util.concurrent.CopyOnWriteArrayList
 
 /** Login, logout, account switches and relaunches. */
 class LifecycleScenariosTest {
@@ -482,6 +486,32 @@ class LifecycleScenariosTest {
         assertSucceeded(phone.login(ALICE))
         assertEquals(listOf("Synced before the logout"), phone.noteBodies())
         assertConverged(ALICE, phone)
+    }
+
+    /** A logout during the wait for a retry cancels the retry: syncStatus goes Idle and no attempt runs after it. */
+    @Test
+    fun `LIFE-18 a logout while a run waits to retry clears the status and the retry never runs`() = syncScenario {
+        val phone = device("phone", DeviceTimings(retryBaseDelay = 1.seconds))
+        assertSucceeded(phone.login(ALICE))
+        server.faults.networkDown()
+        phone.data.addNote("Written offline, then logged out", 1, 1, 1, 7)
+        phone.data.triggerSync(immediately = true)
+        val retrying = withTimeout(10.seconds) { phone.data.syncStatus.first { it is SyncStatus.Retrying } }
+        val retryAt = assertIs<SyncStatus.Retrying>(retrying).nextAttemptAt
+        val statuses = CopyOnWriteArrayList<SyncStatus>()
+
+        coroutineScope {
+            val collector = launch(Dispatchers.Unconfined, start = CoroutineStart.UNDISPATCHED) {
+                phone.data.syncStatus.collect { statuses += it }
+            }
+            phone.logout()
+            // Past the time the retry was due, so one that survived the logout would have started.
+            delay(retryAt - Clock.System.now() + 500.milliseconds)
+            collector.cancel()
+        }
+
+        assertEquals(listOf(retrying, SyncStatus.Idle), statuses.toList(), "no attempt after the logout")
+        assertEquals(emptyList(), phone.data.syncHistory.first())
     }
 
     private class ServerBefore(val data: UserDataSnapshot, val head: Long, val logoutWarnings: List<LogoutWarning>)

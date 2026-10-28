@@ -614,6 +614,23 @@ class QuranDataServiceLifecycleTest {
     }
 
     @Test
+    fun `a return to the foreground is skipped during a reset and forwarded otherwise`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+        advanceUntilIdle()
+
+        fixture.lifecycleCoordinator.runManagedReset {
+            fixture.service.syncOnForeground()
+        }
+        assertEquals(0, fixture.syncClient.appForegroundedCount, "skipped during the reset")
+
+        fixture.service.syncOnForeground()
+
+        assertEquals(1, fixture.syncClient.appForegroundedCount)
+        assertEquals(0, fixture.syncClient.localDataUpdatedCount, "not a local change")
+        fixture.clearAndJoin()
+    }
+
+    @Test
     fun `updateCollection delegates to repository and triggers local sync`() = runTest(dispatcher) {
         val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
         advanceUntilIdle()
@@ -1286,6 +1303,8 @@ private class ServiceSynchronizationClient : SynchronizationClient, AutoCloseabl
         private set
     var applicationStartedCount = 0
         private set
+    var appForegroundedCount = 0
+        private set
     var triggerSyncImmediatelyCount = 0
         private set
     var signedInCount = 0
@@ -1301,7 +1320,9 @@ private class ServiceSynchronizationClient : SynchronizationClient, AutoCloseabl
         localDataUpdatedCount += 1
     }
 
-    override fun appForegrounded() = Unit
+    override fun appForegrounded() {
+        appForegroundedCount += 1
+    }
 
     override fun applicationStarted() {
         applicationStartedCount += 1
