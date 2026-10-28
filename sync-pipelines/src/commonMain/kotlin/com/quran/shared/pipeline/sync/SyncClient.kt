@@ -357,11 +357,15 @@ internal class SyncClient(
         }
 
         /**
-         * The client behind the sync API's GETs and POSTs. The explicit timeouts, the same on every platform, keep a
-         * request that never answers (an app suspended mid-request, a stalled network) from holding the run, which
-         * then fails as a network error and is retried. A full page or a 100-mutation POST gets a minute. [engine] is
-         * for tests; null uses the platform's engine (OkHttp on Android and the JVM, Darwin on iOS) from this module's
-         * dependencies.
+         * The client behind the sync API's GETs and POSTs. The explicit timeouts keep a request that never answers (an
+         * app suspended mid-request, a stalled network) from holding the run, which then fails as a network error and
+         * is retried. A full page or a 100-mutation POST gets a minute overall. [engine] is for tests; null uses the
+         * platform's engine (OkHttp on Android and the JVM, Darwin on iOS) from this module's dependencies.
+         *
+         * The engines apply them differently. OkHttp takes all three: connecting gives up after 15 s, and a connection
+         * that stalls mid-response after 60 s of silence (OkHttp's own default is 10 s). Ktor's Darwin engine (3.6.0)
+         * ignores the connect timeout and uses the socket timeout as the request's idle timeout, so on iOS the 60 s
+         * idle timeout covers connecting too. The 60 s overall request timeout applies on both.
          */
         internal fun createSyncHttpClient(engine: HttpClientEngine? = null): HttpClient {
             val configure: HttpClientConfig<*>.() -> Unit = {
