@@ -26,6 +26,7 @@ class SyncSchedulerTest {
         appRefreshInterval = 30.seconds,
         localDataModifiedInterval = 5.seconds,
         foregroundInterval = 3.seconds,
+        foregroundSkipAfterSync = Duration.ZERO,
         failureRetryingConfig = FailureRetryingConfig(baseDelay = 200.milliseconds, multiplier = 2.5, maximumRetries = 5)
     )
 

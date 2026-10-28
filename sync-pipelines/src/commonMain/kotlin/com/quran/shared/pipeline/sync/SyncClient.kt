@@ -62,7 +62,7 @@ internal class SyncClient(
     private val account: SyncAccount,
     private val gate: SyncLifecycleGate,
     private val observer: SyncRunObserver,
-    timings: SchedulerTimings,
+    private val timings: SchedulerTimings,
     dispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val now: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     /** Closed with this client. */
@@ -76,9 +76,25 @@ internal class SyncClient(
     @Volatile
     private var pushBackoffUntil = 0L
 
+    /** When the latest run that pulled the server's changes (succeeded or pulled only) ended; null after a failure. */
+    @Volatile
+    private var lastPulledAt: Long? = null
+
     override fun localDataUpdated() = trigger(SyncTrigger.LOCAL_CHANGE)
 
-    override fun appForegrounded() = trigger(SyncTrigger.FOREGROUND)
+    /**
+     * Dropped within [SchedulerTimings.foregroundSkipAfterSync] of the end of a run that pulled the server's changes
+     * (succeeded, or pulled only during a push backoff): the app already has them. A run that failed since then ends
+     * the skip, so returning after a failure syncs; a cancelled run neither starts nor ends it.
+     */
+    override fun appForegrounded() {
+        val pulledAt = lastPulledAt
+        if (pulledAt != null && now() - pulledAt < timings.foregroundSkipAfterSync.inWholeMilliseconds) {
+            logger.d { "Skipping the foreground sync: a sync pulled ${now() - pulledAt} ms ago" }
+            return
+        }
+        trigger(SyncTrigger.FOREGROUND)
+    }
 
     override fun applicationStarted() = trigger(SyncTrigger.APP_START)
 
@@ -94,6 +110,7 @@ internal class SyncClient(
     override suspend fun cancelSyncingAndJoin() {
         scheduler.cancelAndJoin()
         run = null
+        lastPulledAt = null
     }
 
     /** Stops the scheduler for good and closes the HTTP client: the service that owns this client is gone. */
@@ -235,6 +252,11 @@ internal class SyncClient(
     private fun end(result: SyncRunResult, error: SyncError? = null, held: Int? = null) {
         val tally = run ?: return
         run = null
+        when (result) {
+            SyncRunResult.SUCCEEDED, SyncRunResult.PULLED_ONLY -> lastPulledAt = now()
+            SyncRunResult.FAILED -> lastPulledAt = null
+            SyncRunResult.CANCELLED -> Unit
+        }
         observer.syncEnded(tally.toRun(result, now(), held ?: heldCount(), error))
     }
 

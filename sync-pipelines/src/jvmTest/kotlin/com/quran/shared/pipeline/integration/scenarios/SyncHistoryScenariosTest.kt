@@ -37,6 +37,8 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.fail
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import com.quran.shared.pipeline.SyncRun as HistoryRun
@@ -376,6 +378,29 @@ class SyncHistoryScenariosTest {
         phone.data.addNote("A note written after the sync", 1, 1, 1, 7)
 
         phone.awaitUnsynced(pending = 1, held = 3, message = "the note pending; the collection and its verses held")
+    }
+
+    /**
+     * A return to the foreground soon after a sync that pulled is dropped; after a failed one it syncs. With no
+     * foreground delay, one that was not dropped would start at once and be the run the sync now waits for.
+     */
+    @Test
+    fun `HIST-22 a return to the foreground right after a sync is skipped, but not after a failed one`() = syncScenario {
+        val phone = device("phone", DeviceTimings(foregroundDelay = Duration.ZERO, foregroundSkipAfterSync = 1.hours))
+        assertSucceeded(phone.login(ALICE))
+        // The login's run reports its end before the scheduler is done with it; a trigger in between would wait for it.
+        delay(100.milliseconds)
+
+        phone.data.syncOnForeground()
+        assertSucceeded(phone.syncNow())
+
+        assertEquals(listOf(SyncRunTrigger.MANUAL, SyncRunTrigger.SIGN_IN), phone.history().map { it.trigger }, "no foreground run")
+        server.faults.networkDown()
+        phone.data.addNote("Written while the network is down", 1, 1, 1, 7)
+        assertIs<SyncStatus.Failed>(phone.syncNow().status)
+        server.faults.networkUp()
+        assertSucceeded(phone.awaitSyncOf { phone.data.syncOnForeground() })
+        assertEquals(SyncRunTrigger.FOREGROUND to SyncRunResult.SUCCEEDED, phone.history().first().let { it.trigger to it.result })
     }
 
     private suspend fun SyncDevice.history(): List<HistoryRun> = data.syncHistory.first()

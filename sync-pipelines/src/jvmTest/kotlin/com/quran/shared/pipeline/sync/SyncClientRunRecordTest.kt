@@ -53,6 +53,7 @@ class SyncClientRunRecordTest {
     private var retryJitter = 0.0
     private var jitterSample = 0.5
     private var foregroundDelay: Duration = 1.hours
+    private var foregroundSkip: Duration = Duration.ZERO
 
     /** How many times sync asked the session for headers. */
     private val headerRequests = AtomicInteger()
@@ -87,7 +88,7 @@ class SyncClientRunRecordTest {
             }
         })
         val retrying = FailureRetryingConfig(retryBase, 2.5, 5, jitter = retryJitter)
-        val timings = SchedulerTimings(1.hours, 1.hours, 1.hours, foregroundDelay, retrying)
+        val timings = SchedulerTimings(1.hours, 1.hours, 1.hours, foregroundDelay, foregroundSkip, retrying)
         val gate = object : SyncLifecycleGate {}
         SyncClient.create(database.synced, SynchronizationEnvironment(server.url), account, gate, observer, timings) { jitterSample }
     }
@@ -104,6 +105,12 @@ class SyncClientRunRecordTest {
     private fun stored(): List<SyncRun> = runBlocking { history.runs.first() }
 
     private fun awaitSkip() = runBlocking { withTimeout(15.seconds) { skips.receive() } }
+
+    /**
+     * Gives the scheduler time to finish the run that just ended: [next] returns as the run reports its end, before the
+     * scheduler is done with it, and a trigger during the run is held until after it, where a "sync now" displaces it.
+     */
+    private fun settle() = runBlocking { delay(100.milliseconds) }
 
     /** 101 notes, so the first POST lands 100 of them before the second one fails with [status]. */
     private fun failSecondPost(status: Int, code: String, beforeAnswer: () -> Unit = {}) {
@@ -242,6 +249,57 @@ class SyncClientRunRecordTest {
         assertEquals(emptyList(), stored())
         assertTrue(ended.tryReceive().isFailure, "nothing ended")
         assertEquals(SyncStatus.Idle, status.status.value)
+    }
+
+    /**
+     * A return to the foreground right after a sync is dropped. With no foreground delay, one that was not would start
+     * at once and take the "sync now" that follows it, so the run after them would be recorded as FOREGROUND.
+     */
+    @Test
+    fun `a return to the foreground soon after a successful sync is skipped`() {
+        foregroundDelay = Duration.ZERO
+        foregroundSkip = 1.hours
+        client.triggerSyncImmediately()
+        assertEquals(SyncRunResult.SUCCEEDED, next().result)
+        settle()
+
+        client.appForegrounded()
+        client.triggerSyncImmediately()
+
+        assertEquals(SyncRunTrigger.MANUAL, next().trigger)
+        assertEquals(listOf(SyncRunTrigger.MANUAL, SyncRunTrigger.MANUAL), stored().map { it.trigger })
+    }
+
+    /** A pull during a push backoff got the server's changes too, so a return to the foreground right after skips. */
+    @Test
+    fun `a return to the foreground soon after a pulled-only sync is skipped`() {
+        foregroundDelay = Duration.ZERO
+        foregroundSkip = 1.hours
+        server.faults.failRequests(times = 1, status = 403, code = "ForbiddenError")
+        notes.addNote("A note whose push is paused", listOf(NoteRange(2, 255, 2, 255)), 0)
+        client.triggerSyncImmediately()
+        assertEquals(SyncRunResult.FAILED, next().result)
+        client.appForegrounded()
+        assertEquals(SyncRunTrigger.FOREGROUND to SyncRunResult.PULLED_ONLY, next().let { it.trigger to it.result }, "a failure doesn't skip it")
+        settle()
+
+        client.appForegrounded()
+        client.triggerSyncImmediately()
+
+        assertEquals(SyncRunTrigger.MANUAL, next().trigger)
+    }
+
+    @Test
+    fun `a return to the foreground after the skip window syncs`() {
+        foregroundDelay = Duration.ZERO
+        foregroundSkip = 50.milliseconds
+        client.triggerSyncImmediately()
+        assertEquals(SyncRunResult.SUCCEEDED, next().result)
+        runBlocking { delay(100.milliseconds) }
+
+        client.appForegrounded()
+
+        assertEquals(SyncRunTrigger.FOREGROUND, next().trigger)
     }
 
     @Test

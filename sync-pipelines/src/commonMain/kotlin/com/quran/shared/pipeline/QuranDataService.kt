@@ -403,11 +403,13 @@ class QuranDataService internal constructor(
      * Tells sync the app came back to the foreground, so it syncs soon; [syncHistory] records the run as
      * [SyncRunTrigger.FOREGROUND]. Call it on each return from the background, not at launch, which has its own sync.
      *
-     * It is automatic, like a local change: the run starts after a few seconds, and while pushes back off after a
-     * failure (see [SyncRunResult.PULLED_ONLY]) it only pulls. A run already due sooner (a pending local change) runs
-     * in its place, keeping its own trigger; one due later (the periodic sync) is brought forward. During a run it runs
-     * again after it; while a failed run waits to retry, it is dropped, as the retry comes sooner. Signed out, the run
-     * finds no session and ends before any request, unrecorded, leaving [syncStatus] as it was.
+     * It is automatic, like a local change: the run starts after 2 seconds, and while pushes back off after a failure
+     * (see [SyncRunResult.PULLED_ONLY]) it only pulls. It is dropped within a minute of the end of a sync that pulled
+     * the server's changes ([SyncRunResult.SUCCEEDED] or [SyncRunResult.PULLED_ONLY]), unless a sync failed since; a
+     * cancelled sync doesn't count either way. A run already due sooner (a pending local change) runs in its place, keeping its own
+     * trigger; one due later (the periodic sync) is brought forward. During a run it runs again after it; while a
+     * failed run waits to retry, it is dropped, as the retry comes sooner. Signed out, the run finds no session and
+     * ends before any request, unrecorded, leaving [syncStatus] as it was.
      */
     fun syncOnForeground() {
         if (!sessionLifecycleCoordinator.canStartSync()) {

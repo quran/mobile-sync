@@ -43,13 +43,15 @@ import java.util.Properties
  * Scheduler timings for a simulated device. By default nothing syncs on its own: app start, local
  * edits, a return to the foreground and the periodic sync wait an hour, so a device is "offline" until the test syncs it.
  * Retries keep production's count and multiplier with a 5 ms base and no jitter, so a run that
- * fails for good gives up in well under a second, at the same times on every run. With
+ * fails for good gives up in well under a second, at the same times on every run. A return to
+ * the foreground is never skipped for a recent sync unless [foregroundSkipAfterSync] says. With
  * [retryJitter], each attempt's jitter sample comes from [retryJitterSample] (`0 until 1`).
  */
 data class DeviceTimings(
     val localChangeDelay: Duration = 1.hours,
     val appStartDelay: Duration = 1.hours,
     val foregroundDelay: Duration = 1.hours,
+    val foregroundSkipAfterSync: Duration = Duration.ZERO,
     val periodicInterval: Duration = 1.hours,
     val retryBaseDelay: Duration = 5.milliseconds,
     val retryMultiplier: Double = 3.0,
@@ -62,6 +64,7 @@ data class DeviceTimings(
         appRefreshInterval = appStartDelay,
         localDataModifiedInterval = localChangeDelay,
         foregroundInterval = foregroundDelay,
+        foregroundSkipAfterSync = foregroundSkipAfterSync,
         failureRetryingConfig = FailureRetryingConfig(retryBaseDelay, retryMultiplier, maximumRetries, retryJitter)
     )
 }

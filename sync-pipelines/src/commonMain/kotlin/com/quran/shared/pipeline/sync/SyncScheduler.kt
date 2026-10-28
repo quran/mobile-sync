@@ -24,13 +24,15 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * How long [SyncScheduler] waits: [standardInterval] between periodic runs, [appRefreshInterval] after an app start,
  * [localDataModifiedInterval] after a local change, [foregroundInterval] after the app came to the foreground, and
- * [failureRetryingConfig] between retries.
+ * [failureRetryingConfig] between retries. [SyncClient] drops a return to the foreground that comes less than
+ * [foregroundSkipAfterSync] after a run that pulled the server's changes.
  */
 internal data class SchedulerTimings(
     val standardInterval: Duration,
     val appRefreshInterval: Duration,
     val localDataModifiedInterval: Duration,
     val foregroundInterval: Duration,
+    val foregroundSkipAfterSync: Duration,
     val failureRetryingConfig: FailureRetryingConfig
 )
 
@@ -48,14 +50,16 @@ internal data class FailureRetryingConfig(
 )
 
 /**
- * Production timings: 30 s after app start, 5 s after a local change or a return to the foreground, 30 min periodic.
+ * Production timings: 30 s after app start, 5 s after a local change, 2 s after a return to the foreground (none within a
+ * minute of a sync that pulled), 30 min periodic.
  * Retries wait about 2, 6, 18 and 54 s, each ±50% and at most 60 s.
  */
 internal val DefaultSyncTimings = SchedulerTimings(
     standardInterval = 30.minutes,
     appRefreshInterval = 30.seconds,
     localDataModifiedInterval = 5.seconds,
-    foregroundInterval = 5.seconds,
+    foregroundInterval = 2.seconds,
+    foregroundSkipAfterSync = 60.seconds,
     failureRetryingConfig = FailureRetryingConfig(
         baseDelay = 2.seconds,
         multiplier = 3.0,
