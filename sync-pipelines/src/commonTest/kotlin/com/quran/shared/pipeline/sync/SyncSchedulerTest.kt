@@ -12,6 +12,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -130,6 +131,14 @@ class SyncSchedulerTest {
         assertEquals(listOf(2.seconds, 6.seconds, 18.seconds, 54.seconds), delays(0.5), "no jitter")
         assertEquals(listOf(1.seconds, 3.seconds, 9.seconds, 27.seconds), delays(0.0), "half")
         assertEquals(listOf(3.seconds, 9.seconds, 27.seconds, 60.seconds), delays(1.0), "one and a half, the last capped")
+    }
+
+    @Test
+    fun `a jitter outside 0 to 1 is refused`() {
+        listOf(-0.1, 1.5, Double.NaN).forEach { jitter ->
+            assertFailsWith<IllegalArgumentException>("$jitter") { FailureRetryingConfig(1.seconds, 2.0, 1, jitter = jitter) }
+        }
+        listOf(0.0, 1.0).forEach { FailureRetryingConfig(1.seconds, 2.0, 1, jitter = it) }
     }
 
     /** Each attempt samples its own jitter, and the delay it is told is the one the scheduler waits. */

@@ -39,7 +39,8 @@ internal data class SchedulerTimings(
 /**
  * Exponential backoff: the first retry waits [baseDelay], each next one [multiplier] times longer, for up to
  * [maximumRetries]. Each wait is spread at random by up to [jitter] of itself either way (0.5: from half to one and a
- * half times), so devices that failed together don't retry together, then capped at [maximumDelay].
+ * half times), so devices that failed together don't retry together, then capped at [maximumDelay]. [jitter] is from 0
+ * to 1: more could make a wait negative.
  */
 internal data class FailureRetryingConfig(
     val baseDelay: Duration,
@@ -47,7 +48,11 @@ internal data class FailureRetryingConfig(
     val maximumRetries: Int,
     val jitter: Double = 0.0,
     val maximumDelay: Duration = Duration.INFINITE
-)
+) {
+    init {
+        require(jitter in 0.0..1.0) { "jitter must be from 0 to 1, was $jitter" }
+    }
+}
 
 /**
  * Production timings: 30 s after app start, 5 s after a local change, 2 s after a return to the foreground (none
