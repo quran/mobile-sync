@@ -2,8 +2,12 @@ package com.quran.shared.pipeline.sync
 
 import co.touchlab.kermit.Logger
 import com.quran.shared.logging.installHttpLogging
+import com.quran.shared.persistence.util.toPlatform
 import com.quran.shared.pipeline.SyncError
 import com.quran.shared.pipeline.SyncErrorKind
+import com.quran.shared.pipeline.SyncRun
+import com.quran.shared.pipeline.SyncRunResult
+import com.quran.shared.pipeline.SyncRunTrigger
 import com.quran.shared.pipeline.SynchronizationEnvironment
 import com.quran.shared.syncv2.SyncApi
 import com.quran.shared.syncv2.SyncEngineV2
@@ -22,6 +26,7 @@ import io.ktor.http.HttpHeaders
 import kotlinx.io.IOException
 import kotlin.concurrent.Volatile
 import kotlin.time.Clock
+import kotlin.time.Instant
 
 /** The signed-in session, as sync needs it. */
 internal interface SyncAccount {
@@ -40,8 +45,9 @@ internal class SignedOutException : IllegalStateException("No session")
 
 /**
  * Runs [SyncEngineV2] when [SyncScheduler] says, for the signed-in account, and reports each run to [observer]:
- * [SyncRunObserver.syncStarted] once signed in (again for each retry), then exactly one of succeeded, skipped (no
- * session, a logout or reset) or failed (when it won't be retried).
+ * [SyncRunObserver.syncStarted] once signed in (again for each retry), then skipped (no session, a logout or reset)
+ * or ended ([SyncRun]: succeeded, pulled only, failed when it won't be retried, or cancelled), as [SyncRunObserver]
+ * says. A run's record sums its attempts: their count, and what each pushed and pulled.
  *
  * - A 401 forces one token refresh and runs again; a refused refresh ends the session.
  * - A failure that asks for a push backoff (a 403 that may be the token's scope) stops pushing for that long; the
@@ -76,7 +82,11 @@ internal class SyncClient(
 
     override fun cancelSyncing() = scheduler.cancel()
 
-    override suspend fun cancelSyncingAndJoin() = scheduler.cancelAndJoin()
+    /** Also forgets a run waiting for a retry: cancelled for a logout or reset, it isn't recorded. */
+    override suspend fun cancelSyncingAndJoin() {
+        scheduler.cancelAndJoin()
+        run = null
+    }
 
     /** Stops the scheduler for good and closes the HTTP client: the service that owns this client is gone. */
     override fun close() {
@@ -88,8 +98,20 @@ internal class SyncClient(
         if (gate.canStartSync()) scheduler.trigger(trigger) else logger.d { "Sync lifecycle unavailable, skipping $trigger" }
     }
 
-    private suspend fun runAttempt(attempt: SyncAttempt, willRetry: (AttemptOutcome.Failed) -> Boolean): AttemptOutcome {
+    /**
+     * Runs one attempt. A run cancelled while the sync lifecycle is open (the service is cleared) is reported
+     * [SyncRunResult.CANCELLED]; one a logout or reset cancels reports nothing, as its data is wiped.
+     */
+    private suspend fun runAttempt(attempt: SyncAttempt, willRetry: (AttemptOutcome.Failed) -> Boolean): AttemptOutcome = try {
+        attemptOnce(attempt, willRetry)
+    } catch (cancellation: CancellationException) {
+        if (gate.canStartSync()) end(SyncRunResult.CANCELLED) else run = null
+        throw cancellation
+    }
+
+    private suspend fun attemptOnce(attempt: SyncAttempt, willRetry: (AttemptOutcome.Failed) -> Boolean): AttemptOutcome {
         val epoch = startEpoch() ?: return skipped("the sync lifecycle is unavailable")
+        val tally = startRun(attempt, epoch)
         // A retry continues a failed run, so it reports syncing even if fetching headers fails again.
         if (attempt.number > 0) observer.syncStarted()
         val push = attempt.trigger.isImmediate || now() >= pushBackoffUntil
@@ -97,7 +119,7 @@ internal class SyncClient(
             if (account.authHeaders().isEmpty()) return skipped("no one is signed in")
             val accountId = account.accountId() ?: return skipped("the signed-in account is unknown")
             if (attempt.number == 0) observer.syncStarted()
-            sync(accountId, push)
+            sync(accountId, push, tally)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (error: Exception) {
@@ -106,14 +128,8 @@ internal class SyncClient(
         if (!epochIsCurrent(epoch)) return skipped("a logout or reset began during the run")
         return when (result) {
             is SyncResult.Success -> {
-                if (push) {
-                    pushBackoffUntil = 0L
-                    observer.syncSucceeded()
-                } else {
-                    // A pull during a push backoff doesn't clear the failure that started it: syncStatus keeps
-                    // Failed until a run that pushes succeeds.
-                    observer.syncSkipped()
-                }
+                if (push) pushBackoffUntil = 0L
+                end(if (push) SyncRunResult.SUCCEEDED else SyncRunResult.PULLED_ONLY, held = result.held.size)
                 AttemptOutcome.Done
             }
             is SyncResult.Failed -> failed(result, willRetry)
@@ -125,20 +141,20 @@ internal class SyncClient(
      * server just issued, isn't retried in this run: the next run (periodic, or a user's) may refresh once more. So a
      * server that keeps rejecting tokens gets at most one refresh per run, never a storm.
      */
-    private suspend fun sync(accountId: String, push: Boolean): SyncResult {
-        val result = engine.sync(accountId, push)
+    private suspend fun sync(accountId: String, push: Boolean, tally: RunTally): SyncResult {
+        val result = tally.add(engine.sync(accountId, push))
         if ((result as? SyncResult.Failed)?.httpStatus != UNAUTHORIZED) return result
         logger.i { "The server rejected the token; refreshing it" }
         if (!account.forceTokenRefresh()) {
             return SyncResult.Failed("the session ended", retryable = false, cause = SignedOutException())
         }
-        val again = engine.sync(accountId, push)
+        val again = tally.add(engine.sync(accountId, push))
         if ((again as? SyncResult.Failed)?.httpStatus != UNAUTHORIZED) return again
         logger.w { "The server rejected a freshly refreshed token; not retrying in this run" }
         return again.copy(retryable = false)
     }
 
-    private fun failed(result: SyncResult.Failed, willRetry: (AttemptOutcome.Failed) -> Boolean): AttemptOutcome {
+    private suspend fun failed(result: SyncResult.Failed, willRetry: (AttemptOutcome.Failed) -> Boolean): AttemptOutcome {
         when (result.cause) {
             is SignedOutException -> return skipped("the session ended")
             is SyncOperationInvalidatedException -> return skipped("a logout or reset began during the run")
@@ -147,15 +163,64 @@ internal class SyncClient(
         val outcome = AttemptOutcome.Failed(result.retryable, result.retryAfterMillis)
         if (!willRetry(outcome)) {
             logger.w { "Sync failed: ${result.reason}" }
-            observer.syncFailed(result.toSyncError())
+            end(SyncRunResult.FAILED, result.toSyncError())
         }
         return outcome
     }
 
-    private fun skipped(why: String): AttemptOutcome {
-        logger.i { "Sync skipped: $why" }
+    /**
+     * Ends the attempt without a result. A run that already sent a request (in this attempt, or in one before the
+     * retry that found no session) is recorded [SyncRunResult.CANCELLED] with what it did, unless a logout or reset
+     * began since; any other is forgotten. Either way it is skipped, so `syncStatus` goes back to what it was.
+     */
+    private suspend fun skipped(why: String): AttemptOutcome {
+        val open = run
+        if (open != null && open.contactedServer && gate.canStartSync() && epochIsCurrent(open.epoch)) {
+            logger.i { "Sync stopped: $why" }
+            end(SyncRunResult.CANCELLED)
+        } else {
+            logger.i { "Sync skipped: $why" }
+            run = null
+        }
         observer.syncSkipped()
         return AttemptOutcome.Done
+    }
+
+    /**
+     * The run in progress, from its first attempt until it ends. Attempts run one at a time, and the scheduler's
+     * cancel-and-join clears it only once none runs.
+     */
+    @Volatile
+    private var run: RunTally? = null
+
+    /**
+     * The run [attempt] belongs to. A first attempt starts a new run; a run still open then was waiting for a retry
+     * that an immediate trigger replaced, and is reported cancelled (unless a logout or reset moved the epoch since).
+     */
+    private fun startRun(attempt: SyncAttempt, epoch: Long): RunTally {
+        val open = run
+        val tally = if (attempt.number > 0 && open != null) open else {
+            if (open != null && open.epoch == epoch) end(SyncRunResult.CANCELLED)
+            RunTally(attempt.trigger, now(), epoch)
+        }
+        tally.attempts += 1
+        run = tally
+        return tally
+    }
+
+    /** Ends the open run as [result] and reports it, with the [held] items it leaves (counted now if not given). */
+    private fun end(result: SyncRunResult, error: SyncError? = null, held: Int? = null) {
+        val tally = run ?: return
+        run = null
+        observer.syncEnded(tally.toRun(result, now(), held ?: heldCount(), error))
+    }
+
+    /** The items that don't sync now, for a run's record; 0 when they can't be read. */
+    private fun heldCount(): Int = try {
+        engine.held().size
+    } catch (e: Exception) {
+        logger.w(e) { "Could not count held items" }
+        0
     }
 
     @Volatile
@@ -179,11 +244,12 @@ internal class SyncClient(
 
     /**
      * Headers for each request of a run: none once a logout or reset began (admitted under the gate's lock, so a
-     * request can't slip out after a reset started), or once the session ended.
+     * request can't slip out after a reset started), or once the session ended. Headers given mark the run as one
+     * that contacted the server.
      */
     private suspend fun requestHeaders(): Map<String, String> {
         runEpoch?.let { gate.admitSyncPost(it) }
-        return account.authHeaders().ifEmpty { throw SignedOutException() }
+        return account.authHeaders().ifEmpty { throw SignedOutException() }.also { run?.contactedServer = true }
     }
 
     companion object {
@@ -242,4 +308,40 @@ private fun SyncResult.Failed.httpOrUnknown(cause: Throwable?): SyncError = when
     }
     null -> SyncError(SyncErrorKind.UNKNOWN, null, null, "Sync failed unexpectedly ($reason)")
     else -> SyncError(SyncErrorKind.UNKNOWN, null, null, "Sync failed unexpectedly (${cause::class.simpleName})")
+}
+
+/**
+ * A run's progress so far: its trigger, start, the gate epoch it started under, and its attempts' sums.
+ * [contactedServer]: an attempt sent a request, so the run may have changed something here or on the server.
+ */
+private class RunTally(val trigger: SyncTrigger, val startedAt: Long, val epoch: Long) {
+    var attempts = 0
+    var pushed = 0
+    var pulled = 0
+    var contactedServer = false
+
+    fun add(result: SyncResult): SyncResult = result.also {
+        pushed += it.pushed
+        pulled += it.pulled
+    }
+
+    fun toRun(result: SyncRunResult, endedAt: Long, held: Int, error: SyncError?) = SyncRun(
+        startedAt = Instant.fromEpochMilliseconds(startedAt).toPlatform(),
+        endedAt = Instant.fromEpochMilliseconds(endedAt).toPlatform(),
+        trigger = trigger.toRunTrigger(),
+        result = result,
+        attempts = attempts,
+        pushed = pushed,
+        pulled = pulled,
+        held = held,
+        error = error
+    )
+}
+
+private fun SyncTrigger.toRunTrigger(): SyncRunTrigger = when (this) {
+    SyncTrigger.APP_START, SyncTrigger.SESSION_RESTORED -> SyncRunTrigger.APP_START
+    SyncTrigger.LOCAL_CHANGE -> SyncRunTrigger.LOCAL_CHANGE
+    SyncTrigger.PERIODIC -> SyncRunTrigger.PERIODIC
+    SyncTrigger.IMMEDIATE -> SyncRunTrigger.MANUAL
+    SyncTrigger.SIGN_IN -> SyncRunTrigger.SIGN_IN
 }

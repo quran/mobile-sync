@@ -10,7 +10,8 @@ is the reference.
 - **Base:** `sync_item` holds, per item, its remote id and the state both sides last agreed on. A row with a base and
   no domain row is a local delete.
 - **Sync state:** `sync_meta` holds the token (the GET head), the account, the outbox (the last POST batch, saved
-  before it is sent), the wipe epoch, and the hold bookkeeping.
+  before it is sent), the wipe epoch, and the hold bookkeeping. `sync_run` holds sync-pipelines' run history; the
+  engine only wipes it with the rest.
 
 A run compares three states of each item, all in the same canonical shape (`State`): working, base, and remote (what
 `GET /v1/sync` returns). Every step is idempotent, so a crash anywhere is repaired by the next run.
@@ -31,6 +32,9 @@ A run compares three states of each item, all in the same canonical shape (`Stat
    its dependents instead of blocking the rest. A hold ends when the user edits the item (or deletes it, unless the
    hold is on its delete), the app version changes, or it expires.
 
+A run's `SyncResult` carries what it `pushed` and `pulled` (the local rows its merges created, changed or deleted to
+take remote changes).
+
 A logout or account switch bumps the wipe epoch (`Generation`), so a sync in flight can't write back wiped data.
 
 ## Types
@@ -41,7 +45,7 @@ from the server's resources. To add one, see `AGENTS.md`.
 ## In sync-pipelines
 
 - `SyncClient` runs the engine for the signed-in account: it refreshes the token once on a 401, backs pushes off on a
-  403 that may be the token's scope, and reports each run to `QuranDataService.syncStatus`.
+  403 that may be the token's scope, and reports each run to `QuranDataService.syncStatus` and `syncHistory`.
 - `SyncScheduler` decides when runs happen (app start, local change, "sync now", periodic) and retries failures with
   backoff. `AGENTS.md` lists the timings.
 - `SessionLifecycleCoordinator` (`SyncLifecycleGate`) stops a run's requests once a logout or reset begins.

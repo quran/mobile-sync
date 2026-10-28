@@ -43,6 +43,7 @@ flowchart LR
 - **When it syncs.** A run starts 30 seconds after app start (at once when the saved session is restored), 5 seconds after a local change, and at once for `triggerSync(immediately = true)` and a sign-in. A token refresh starts no run. After every run, success or not, the next one is due in 30 minutes, so sync never stops. Runs never overlap. A failed run is retried with exponential backoff (200 ms, ×2.5, up to 5 retries). A 403 that may be the token's scope pauses pushes for a while; automatic runs keep pulling.
 - **Auth.** The sync account is the ID token's `sub`. Signing in to a different account wipes the previous account's local data before anything is pushed. A 401 forces one token refresh and runs again; a refused refresh ends the session, while a network error, a timeout or a server error during a refresh keeps it.
 - **Status.** `QuranDataService.syncStatus` shows `Idle`, `Syncing`, or how the latest run ended: `Succeeded` with its time, or `Failed` with its time and a `SyncError`.
+- **History.** `QuranDataService.syncHistory` lists the newest 50 runs, newest first, one `SyncRun` per run (retries included): when it started and ended, its trigger (`APP_START`, `LOCAL_CHANGE`, `PERIODIC`, `MANUAL` for `triggerSync(immediately = true)`, `SIGN_IN`), its result (`SUCCEEDED`, `PULLED_ONLY` during a push backoff, `FAILED` with its `SyncError`, `CANCELLED`), its attempts, and how many items it pushed, pulled and left held. A run that found no session before it reached the server, or that a logout or reset stopped, is not recorded; one the session's end stops after it reached the server (a refused token refresh, or a retry that finds no one signed in) is recorded as `CANCELLED` with what it did. It holds no user data; it lives in the database (`sync_run`) and is cleared with the rest of the data on logout and on an account switch.
 
 ## Modules
 
@@ -271,7 +272,7 @@ backup is enabled.
 ### 3. Use managed services
 
 Core API examples:
-- Observe: `authState`, `syncStatus`, `bookmarks`, `collectionsWithBookmarks`, `notes`
+- Observe: `authState`, `syncStatus`, `syncHistory`, `bookmarks`, `collectionsWithBookmarks`, `notes`
 - Mutations: `addBookmark`, `deleteBookmark`, `addCollection`, `deleteCollection`, `addNote`, `deleteNote`
 - Trigger sync: `triggerSync()` after a burst of edits, or `triggerSync(immediately = true)` for a user's "Sync now"
 - Auth: use `SyncAuthService.login()`, `loginWithReauthentication()`, `logout()`, and `clearError()`
