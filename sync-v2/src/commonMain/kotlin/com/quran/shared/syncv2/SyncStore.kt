@@ -132,9 +132,11 @@ class SyncStore(val database: SyncV2Database) {
             if (value.isEmpty()) queries.metaDelete(FAILURES) else queries.metaSet(FAILURES, json.encodeToString(failuresSerializer, value))
         }
 
+    /** Forgets every item's sync state and all of `sync_meta`, and the sync history (`sync_run`) with them. */
     fun wipe() {
         queries.deleteAll()
         queries.metaDeleteAll()
+        database.sync_runQueries.deleteAll()
     }
 
     private fun meta(key: String): String? = queries.metaGet(key).executeAsOneOrNull()

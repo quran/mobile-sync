@@ -1,0 +1,130 @@
+package com.quran.shared.pipeline.integration.scenarios
+
+import com.quran.shared.auth.model.AuthState
+import com.quran.shared.pipeline.SyncRunResult
+import com.quran.shared.pipeline.SyncRunTrigger
+import com.quran.shared.pipeline.SyncStatus
+import com.quran.shared.pipeline.integration.DeviceTimings
+import com.quran.shared.pipeline.integration.SyncDevice
+import com.quran.shared.pipeline.integration.assertSucceeded
+import com.quran.shared.pipeline.integration.server.ServerFaults
+import com.quran.shared.pipeline.integration.syncScenario
+import kotlinx.coroutines.flow.first
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.time.Duration.Companion.milliseconds
+import com.quran.shared.pipeline.SyncRun as HistoryRun
+
+/** The sync history (`syncHistory`), through the public API only. */
+class SyncHistoryScenariosTest {
+
+    @Test
+    fun `HIST-01 a successful run is recorded with what it pushed and pulled`() = syncScenario {
+        val (phone) = signedIn("phone")
+        assertEquals(listOf(SyncRunTrigger.SIGN_IN to SyncRunResult.SUCCEEDED), phone.history().map { it.trigger to it.result }, "the login's run")
+        phone.data.addNote("A note pushed by this run", 2, 255, 2, 255)
+        phone.data.addCollection("Study")
+        web(ALICE).createNote("A note pulled by this run", "1:1-1:7")
+
+        assertSucceeded(phone.syncNow())
+
+        val run = phone.history().first()
+        assertEquals(SyncRunTrigger.MANUAL to SyncRunResult.SUCCEEDED, run.trigger to run.result)
+        assertEquals(listOf(1, 2, 1, 0), listOf(run.attempts, run.pushed, run.pulled, run.held), "attempts, pushed, pulled, held")
+        assertNull(run.error)
+        assertEquals(assertIs<SyncStatus.Succeeded>(phone.data.syncStatus.value).at, run.endedAt, "syncStatus shows the same end")
+        assertEquals(2, phone.history().size)
+    }
+
+    @Test
+    fun `HIST-02 a failing run records its status and error code once, retries included`() = syncScenario {
+        val (phone) = signedIn("phone")
+        server.faults.failRequests(times = ServerFaults.ALWAYS, status = 503, code = "ServiceUnavailableError")
+        phone.data.addNote("Rejected on every attempt", 2, 255, 2, 255)
+
+        val status = assertIs<SyncStatus.Failed>(phone.syncNow().status)
+
+        val history = phone.history()
+        assertEquals(2, history.size, "one record for the run and its retries, after the login's")
+        val run = history.first()
+        assertEquals(SyncRunResult.FAILED to 6, run.result to run.attempts, "the first attempt and five retries")
+        assertEquals(503 to "ServiceUnavailableError", run.error?.httpStatus to run.error?.serverCode)
+        assertEquals(status.error, run.error, "the error syncStatus shows")
+        assertEquals(0, run.pushed)
+    }
+
+    @Test
+    fun `HIST-03 sign-out clears the history`() = syncScenario {
+        val (phone) = signedIn("phone")
+        assertSucceeded(phone.syncNow())
+
+        phone.logout()
+
+        assertEquals(emptyList(), phone.history())
+    }
+
+    @Test
+    fun `HIST-04 an account switch clears the previous account's history`() = syncScenario {
+        val phone = device("phone")
+        assertSucceeded(phone.login(ALICE))
+        assertSucceeded(phone.syncNow())
+        assertEquals(2, phone.history().size)
+        phone.auth.expireSession()
+        assertEquals(true, phone.syncNow().skipped, "the expired session skips the sync, unrecorded")
+
+        assertSucceeded(phone.login(BOB))
+
+        assertEquals(listOf(SyncRunTrigger.SIGN_IN), phone.history().map { it.trigger }, "only Bob's first run")
+    }
+
+    @Test
+    fun `HIST-05 a run during a push backoff is recorded as pulled only`() = syncScenario {
+        val phone = device("phone", DeviceTimings(localChangeDelay = 50.milliseconds))
+        assertSucceeded(phone.login(ALICE))
+        // A 403 without a mutation index may be the session's scope: pushes back off for hours.
+        server.faults.failRequests(times = 1, status = 403, code = "ForbiddenError")
+        phone.data.addNote("Pushed once the backoff ends", 2, 255, 2, 255)
+        assertIs<SyncStatus.Failed>(phone.awaitSync().status, "the local change's run")
+        web(ALICE).createNote("A note from the web", "1:1-1:7")
+
+        phone.data.addReadingSession(18, 1)
+        val pulled = phone.awaitSync()
+
+        assertIs<SyncStatus.Failed>(pulled.status, "syncStatus keeps the failure")
+        val run = phone.history().first()
+        assertEquals(SyncRunTrigger.LOCAL_CHANGE to SyncRunResult.PULLED_ONLY, run.trigger to run.result)
+        assertEquals(0 to 1, run.pushed to run.pulled)
+        assertNull(run.error)
+        assertSucceeded(phone.syncNow(), "a sync now pushes anyway")
+        assertEquals(SyncRunResult.SUCCEEDED to 2, phone.history().first().let { it.result to it.pushed })
+    }
+
+    @Test
+    fun `HIST-06 the sync a relaunch starts while signed in is the app start, not a sign-in`() = syncScenario {
+        val (phone) = signedIn("phone")
+
+        assertSucceeded(assertNotNull(phone.restart(), "still signed in"))
+
+        assertEquals(listOf(SyncRunTrigger.APP_START, SyncRunTrigger.SIGN_IN), phone.history().map { it.trigger })
+    }
+
+    @Test
+    fun `HIST-08 a token refresh that publishes the session again starts no run`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.auth.profileName = "Alice B."
+        server.expireTokens(ALICE)
+
+        val refreshed = phone.syncNow()
+        assertSucceeded(refreshed)
+        assertEquals(401, refreshed.requests.first().status, "the run refreshed the token after a 401")
+        assertEquals("Alice B.", assertIs<AuthState.Success>(phone.data.authState.value).userInfo?.name, "a new profile")
+        assertSucceeded(phone.syncNow())
+
+        assertEquals(listOf(SyncRunTrigger.MANUAL, SyncRunTrigger.MANUAL, SyncRunTrigger.SIGN_IN), phone.history().map { it.trigger })
+    }
+
+    private suspend fun SyncDevice.history(): List<HistoryRun> = data.syncHistory.first()
+}

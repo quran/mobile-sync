@@ -35,6 +35,8 @@ class PushMemory {
     var landed = false
     /** Items pushed (settled) in this sync. */
     var pushed = 0
+    /** Local rows the merges of this sync created, changed or deleted to take remote changes (see [Reconciler.pulled]). */
+    var pulled = 0
     /** Items settled, held, reverted or forgotten in this sync. */
     var progress = 0
     /** Children the merge dropped because their parent was gone. */

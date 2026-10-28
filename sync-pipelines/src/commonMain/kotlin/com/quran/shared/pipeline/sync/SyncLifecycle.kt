@@ -1,6 +1,6 @@
 package com.quran.shared.pipeline.sync
 
-import com.quran.shared.pipeline.SyncError
+import com.quran.shared.pipeline.SyncRun
 
 /**
  * Lets sync runs and their requests check that no logout or reset began since they started.
@@ -25,8 +25,10 @@ interface SyncLifecycleGate {
 internal class SyncOperationInvalidatedException(message: String) : Exception(message)
 
 /**
- * Observes sync runs. A run spans its first attempt and every retry, and ends with exactly one of
- * [syncSucceeded], [syncSkipped], or [syncFailed], unless it is cancelled.
+ * Observes sync runs. A run spans its first attempt and every retry, and ends with exactly one of [syncSkipped] or
+ * [syncEnded], unless it is cancelled during a logout or reset, which reports nothing. A run the session's end stops
+ * after it reached the server (a refused token refresh, or a retry that finds no session) reports both, in order:
+ * [syncEnded], cancelled, so the history keeps what it did, then [syncSkipped], as for any run without a session.
  *
  * Calls arrive on background threads.
  */
@@ -34,17 +36,26 @@ internal interface SyncRunObserver {
     /** A signed-in run is contacting the server. Retries report it again. */
     fun syncStarted() {}
 
-    /** The run synced every resource. */
-    fun syncSucceeded() {}
-
     /**
-     * The run ended without a result: no one is signed in, or a logout or reset stopped it or
-     * began while it ran.
+     * The run ended without a result: no one is signed in, the sync lifecycle is unavailable, or a logout or reset
+     * stopped it or began while it ran.
      */
     fun syncSkipped() {}
 
-    /** The run failed and has no retries left. */
-    fun syncFailed(error: SyncError) {}
+    /**
+     * The run ended as [run] says: it synced, pulled only (pushes back off), failed with no retries left, or was
+     * cancelled.
+     */
+    fun syncEnded(run: SyncRun) {}
+}
+
+/** Tells each of [observers] about each run, in order. */
+internal class SyncRunObservers(private vararg val observers: SyncRunObserver) : SyncRunObserver {
+    override fun syncStarted() = observers.forEach { it.syncStarted() }
+
+    override fun syncSkipped() = observers.forEach { it.syncSkipped() }
+
+    override fun syncEnded(run: SyncRun) = observers.forEach { it.syncEnded(run) }
 }
 
 /** Starts and stops sync runs for [com.quran.shared.pipeline.QuranDataService]. */
