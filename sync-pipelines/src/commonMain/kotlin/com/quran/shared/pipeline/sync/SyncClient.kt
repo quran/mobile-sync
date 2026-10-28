@@ -169,6 +169,8 @@ internal class SyncClient(
             if (headers.isEmpty()) return skipped("no one is signed in")
             val accountId = account.accountId() ?: return skipped("the signed-in account is unknown")
             if (!startReported) observer.syncStarted()
+            // A pause that ran out is forgotten quietly; one still running ends if the token changed.
+            if (pushBackoffUntil != 0L && now() >= pushBackoffUntil) endPushBackoff(why = null)
             pushBackoffHeaders?.let { if (it != headers.hashCode()) endPushBackoff("the access token changed") }
             push = attempt.trigger.isImmediate || now() >= pushBackoffUntil
             sync(accountId, push, tally)
@@ -327,9 +329,10 @@ internal class SyncClient(
         }
     }
 
-    private fun endPushBackoff(why: String) {
+    /** Ends the push pause, logging [why] unless it is null (the pause ran out). */
+    private fun endPushBackoff(why: String?) {
         if (pushBackoffUntil == 0L && pushBackoffHeaders == null) return
-        logger.i { "Pushing again: $why" }
+        if (why != null) logger.i { "Pushing again: $why" }
         pushBackoffUntil = 0L
         pushBackoffHeaders = null
     }
