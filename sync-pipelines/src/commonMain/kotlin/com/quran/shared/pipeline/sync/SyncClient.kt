@@ -45,7 +45,7 @@ internal class SignedOutException : IllegalStateException("No session")
  *
  * - A 401 forces one token refresh and runs again; a refused refresh ends the session.
  * - A failure that asks for a push backoff (a 403 that may be the token's scope) stops pushing for that long; the
- *   periodic and other automatic runs still pull. A "sync now" pushes anyway.
+ *   periodic and other automatic runs still pull. A "sync now" or a sign-in pushes anyway.
  */
 internal class SyncClient(
     private val engine: SyncEngineV2,
@@ -70,6 +70,10 @@ internal class SyncClient(
 
     override fun triggerSyncImmediately() = trigger(SyncTrigger.IMMEDIATE)
 
+    override fun signedIn() = trigger(SyncTrigger.SIGN_IN)
+
+    override fun sessionRestored() = trigger(SyncTrigger.SESSION_RESTORED)
+
     override fun cancelSyncing() = scheduler.cancel()
 
     override suspend fun cancelSyncingAndJoin() = scheduler.cancelAndJoin()
@@ -88,7 +92,7 @@ internal class SyncClient(
         val epoch = startEpoch() ?: return skipped("the sync lifecycle is unavailable")
         // A retry continues a failed run, so it reports syncing even if fetching headers fails again.
         if (attempt.number > 0) observer.syncStarted()
-        val push = attempt.trigger == SyncTrigger.IMMEDIATE || now() >= pushBackoffUntil
+        val push = attempt.trigger.isImmediate || now() >= pushBackoffUntil
         val result = try {
             if (account.authHeaders().isEmpty()) return skipped("no one is signed in")
             val accountId = account.accountId() ?: return skipped("the signed-in account is unknown")
