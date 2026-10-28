@@ -213,7 +213,7 @@ class QuranDataService internal constructor(
     val syncStatus: StateFlow<SyncStatus> get() = syncStatusTracker.status
 
     /**
-     * The newest sync runs first, at most 50, one entry per run (its retries included). A run is recorded when it
+     * The newest sync runs first, at most 100, one entry per run (its retries included). A run is recorded when it
      * succeeds, pulls only, fails with no retries left, or is cancelled (also when the session ends after it reached
      * the server); a run that found no session before that, or that a logout or reset stopped, is not, nor is one
      * waiting for a retry when [clear] tears the service down. Logout and an account switch clear the history with the

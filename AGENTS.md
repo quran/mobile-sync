@@ -80,7 +80,7 @@ Synced types (`sync-v2` `syncTypes`, in dependency order): collections, verses i
 - retry backoff: 2 s base, 3x multiplier, maximum 4 retries (about 2, 6, 18, 54 s), each delay jittered ±50% and capped at 60 s; the jitter is sampled once per attempt (injectable `random`), so `SyncStatus.Retrying.nextAttemptAt` is the delay the scheduler waits; a failure that asks for a longer backoff (a 403 that may be the token's scope, `Pusher.FORBIDDEN_BACKOFF_MILLIS`: 1 hour) stops pushes for that long, while automatic runs keep pulling and "sync now" (or a sign-in) pushes again; a new access token (any refresh, seen as different request headers), a sign-in, or a logout or reset ends it
 - each failed attempt that will be retried is reported to `SyncRunObserver.syncRetrying` (`SyncStatus.Retrying`: the error and when the retry comes) and the retry to `syncStarted` (`Syncing`)
 - sync HTTP timeouts (`SyncClient.createSyncHttpClient`, constants in its companion like `AuthModule`'s): connect 15 s, request 60 s, socket 60 s on every platform; a timeout is a retried network failure
-- every run that ends is reported once to `SyncRunObserver.syncEnded` as a `SyncRun`: `SyncHistory` stores it (`sync_run`, newest 50) before `SyncStatusTracker` publishes `syncStatus`. Skipped runs (no session, a logout or reset) are not recorded, unless the session ended after the run sent a request (`CANCELLED`)
+- every run that ends is reported once to `SyncRunObserver.syncEnded` as a `SyncRun`: `SyncHistory` stores it (`sync_run`, newest 100) before `SyncStatusTracker` publishes `syncStatus`. Skipped runs (no session, a logout or reset) are not recorded, unless the session ended after the run sent a request (`CANCELLED`)
 
 ## sync-v2
 
