@@ -33,7 +33,7 @@ class ProfileApiTest {
     }
 
     @Test
-    fun `blank and missing fields are null, and the name falls back to the first and last names`() {
+    fun `blank and missing fields are null and the name falls back to the first and last names`() {
         val profile = parseProfile(
             """{"success":true,"data":{"id":"user-id","firstName":"Muhammad","lastName":"","fullName":"","photoUrl":""}}""",
             AVATARS_HOST,
@@ -79,7 +79,7 @@ class ProfileApiTest {
     }
 
     @Test
-    fun `an uploaded photo's file name, extension and version default as the backend's do`() {
+    fun `an uploaded photo's folder extension and version default as the backend's do`() {
         assertEquals(
             "$AVATARS_HOST/events/banner/en/avatars/folder/medium.jpg?v=7",
             profilePhotoUrl("folder.jpg.7", "user-id", AVATARS_HOST),
