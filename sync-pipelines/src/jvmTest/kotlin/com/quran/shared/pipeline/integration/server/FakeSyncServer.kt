@@ -31,7 +31,13 @@ data class RequestRecord(
 }
 
 /**
- * An in-process stand-in for `quran.com-users-backend` `GET`/`POST /v1/sync` on loopback HTTP,
+ * An account's profile as the users backend stores it: the website edits it ([WebActor.editProfile]). [photoUrl] is the
+ * backend's raw value: a full URL for a social login's photo, `.<extension>.<version>` for one uploaded on Quran.com.
+ */
+data class FakeProfile(val firstName: String?, val lastName: String? = null, val photoUrl: String? = null)
+
+/**
+ * An in-process stand-in for `quran.com-users-backend` `GET`/`POST /v1/sync` (and `GET /v1/users/profile`) on loopback HTTP,
  * shared by every simulated device. It fakes the network boundary only: devices talk to it through
  * the production Ktor/OkHttp client.
  *
@@ -68,6 +74,7 @@ class FakeSyncServer : AutoCloseable {
     init {
         http.executor = executor
         http.createContext("/v1/sync") { exchange -> handle(exchange) }
+        http.createContext("/v1/users/profile") { exchange -> handleProfile(exchange) }
         http.start()
     }
 
@@ -110,6 +117,59 @@ class FakeSyncServer : AutoCloseable {
     fun head(account: String): Long = synchronized(lock) { account(account).head }
 
     fun resetRequestLog() = synchronized(log) { log.clear() }
+    // endregion
+
+    // region Profiles
+    private val profiles = HashMap<String, FakeProfile>()
+    private val profileLog = mutableListOf<RequestRecord>()
+
+    /** Fails every profile request with it while set. */
+    @Volatile var profileFailure: HttpError? = null
+
+    /** [account]'s profile: its name as the first name, and no photo, until the website edits it. */
+    fun profile(account: String): FakeProfile = synchronized(lock) { profiles[account] ?: FakeProfile(firstName = account) }
+
+    internal fun setProfile(account: String, profile: FakeProfile) = synchronized(lock) { profiles[account] = profile }
+
+    /** The profile requests [device] made, kept apart from [requests], the sync requests. */
+    fun profileRequests(device: String): List<RequestRecord> = synchronized(profileLog) { profileLog.filter { it.device == device } }
+
+    /**
+     * `GET /v1/users/profile` (`getUserProfile`): `processOAuth2User`, then the account read live, in the users API's
+     * envelope. `fullName` is the first and last names joined, as `getFullName` makes it.
+     */
+    private fun handleProfile(exchange: HttpExchange) {
+        val token = exchange.requestHeaders.getFirst("x-auth-token")
+        val tokenInfo = synchronized(lock) { token?.let(tokens::get) }
+        fun answer(status: Int, body: String) {
+            synchronized(profileLog) {
+                profileLog += RequestRecord(exchange.requestMethod, tokenInfo?.device, tokenInfo?.account, emptyMap(), null, status, body)
+            }
+            respondQuietly(exchange, status, body)
+        }
+        try {
+            if (exchange.requestMethod != "GET") throw notFound("Not found")
+            profileFailure?.let { throw it }
+            val account = authenticate(tokenInfo).name
+            val profile = profile(account)
+            answer(200, buildJsonObject {
+                put("success", true)
+                put("data", buildJsonObject {
+                    put("id", account)
+                    put("email", "$account@example.com")
+                    profile.firstName?.let { put("firstName", it) }
+                    profile.lastName?.let { put("lastName", it) }
+                    put("username", account)
+                    put("fullName", listOfNotNull(profile.firstName, profile.lastName).filter { it.isNotBlank() }.joinToString(" "))
+                    profile.photoUrl?.let { put("photoUrl", it) }
+                    put("isAdmin", false)
+                    put("isPasswordSet", true)
+                })
+            }.toString())
+        } catch (error: HttpError) {
+            answer(error.status, errorBody(error))
+        }
+    }
     // endregion
 
     private fun handle(exchange: HttpExchange) {

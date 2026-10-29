@@ -16,6 +16,10 @@ class WebActor internal constructor(private val server: FakeSyncServer, val acco
 
     private fun text(value: String, field: String): String = htmlStrip(value) ?: throw validationError("\"$field\" must not contain html tags")
 
+    /** `PATCH /users/profile` (and the photo upload): the name and photo the account's profile returns from now on. */
+    fun editProfile(firstName: String?, lastName: String? = null, photoUrl: String? = null) =
+        server.setProfile(account, FakeProfile(firstName, lastName, photoUrl))
+
     // region Bookmarks and collections
     /** `POST /bookmarks`: a new bookmark goes into Favorites. Returns the bookmark id. */
     fun addBookmark(sura: Int, ayah: Int, mushafId: Int = 1, times: ClientTimes = ClientTimes()): String =
