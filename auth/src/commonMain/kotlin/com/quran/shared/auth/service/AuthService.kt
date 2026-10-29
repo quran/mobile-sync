@@ -91,6 +91,13 @@ class AuthService private constructor(
     private var lifecycle: AuthPublicationLifecycle = AuthPublicationLifecycle.Idle(generation = 0)
 
     /**
+     * Orders [publishCurrentSession]'s reads: each takes the next number before it reads the session, and
+     * [publishedReadSequence] is the newest one published. Both change only under [sessionPublicationMutex].
+     */
+    private var lastReadSequence = 0L
+    private var publishedReadSequence = 0L
+
+    /**
      * The session's state. [AuthState.Success]'s user is the ID token's, with the profile fetched from the account API
      * on top ([storeFetchedProfile]). A token refresh can change the stored user (its ID token's profile claims replace
      * the stored ones), so [AuthState.Success] is republished with the new user after a refresh, whether it ran through
@@ -655,9 +662,9 @@ class AuthService private constructor(
         expectedGeneration: Long,
         source: PublishSource
     ): PublishSessionResult {
-        if (!isLifecyclePublishSourceCurrent(expectedGeneration, source)) {
-            return PublishSessionResult.Stale
-        }
+        val readSequence = sessionPublicationMutex.withLock {
+            if (lifecycle.matchesPublishSource(expectedGeneration, source)) ++lastReadSequence else null
+        } ?: return PublishSessionResult.Stale
         authRepository.getAccessToken() ?: return if (isLifecyclePublishSourceCurrent(expectedGeneration, source)) {
             PublishSessionResult.NoSession
         } else {
@@ -681,6 +688,12 @@ class AuthService private constructor(
             if (!repositoryLoggedIn || repositoryAccessToken == null) {
                 return@withLock PublishSessionResult.NoSession
             }
+            // Republishing the session: a publish whose read started later already showed it, so this read (say, a
+            // user read before a fetched profile was stored) may be older and must not replace it.
+            if (source == PublishSource.Authenticated && readSequence < publishedReadSequence) {
+                return@withLock PublishSessionResult.Published
+            }
+            publishedReadSequence = readSequence
             cachedAccessToken = repositoryAccessToken
             lifecycle = AuthPublicationLifecycle.Authenticated(expectedGeneration)
             // A new session (from idle or a sign-in), not a refresh publishing the current one again.

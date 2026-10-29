@@ -7,13 +7,16 @@ import com.quran.shared.auth.model.FetchedProfileWrite
 import com.quran.shared.auth.model.TokenResponse
 import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.auth.persistence.AuthStorage
+import com.quran.shared.auth.repository.AuthRepository
 import com.quran.shared.auth.repository.BlockingRefreshOidcClient
 import com.quran.shared.auth.repository.RecordingTokenStore
 import com.quran.shared.auth.repository.oidcRepository
 import com.quran.shared.auth.testIdToken
 import com.russhwolf.settings.MapSettings
 import com.russhwolf.settings.coroutines.toSuspendSettings
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
@@ -22,6 +25,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.serialization.json.Json
@@ -32,6 +36,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /** A fetched profile reaches [AuthService.authState], once per change, and outlasts token refreshes. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -104,6 +109,35 @@ class AuthServiceFetchedProfileTest {
         service.clearAndJoin()
     }
 
+    /**
+     * A sync request's republish reads the session before the profile is stored and publishes after the store's own
+     * republish: the older read must not bring back the old name.
+     */
+    @Test
+    fun `a session read before a profile was stored does not publish over it`() = runTest(main) {
+        val repository = HeldUserReads(oidcRepository(storage, oldNameRefresh))
+        val service = signedInService(repository)
+        val session = assertNotNull(service.profileFetchSession())
+        val states = recordStates(service)
+        settings.putLong("token_expiration", 0L)
+        val readCanFinish = CompletableDeferred<Unit>()
+        repository.holdNextUserRead = readCanFinish
+
+        val headers = async { service.getAuthHeaders() }
+        runCurrent()
+        assertTrue(repository.userRead.isCompleted, "the refreshed session's republish has read the user")
+        val store = async { service.storeFetchedProfile(session, renamed) }
+        runCurrent()
+        readCanFinish.complete(Unit)
+        assertEquals("Bearer refreshed-access-token", headers.await()["Authorization"])
+        assertEquals(FetchedProfileWrite.STORED, store.await())
+        advanceUntilIdle()
+
+        assertEquals(AuthState.Success(renamedUser), service.authState.value)
+        assertEquals(AuthState.Success(renamedUser), states.last(), "$states")
+        service.clearAndJoin()
+    }
+
     @Test
     fun `another account's profile is dropped and the session kept`() = runTest(main) {
         val service = signedInService()
@@ -141,7 +175,9 @@ class AuthServiceFetchedProfileTest {
     }
 
     /** A service whose stored session for [sessionUser] it has published. */
-    private suspend fun TestScope.signedInService(): AuthService {
+    private suspend fun TestScope.signedInService(
+        repository: AuthRepository = oidcRepository(storage, oldNameRefresh)
+    ): AuthService {
         val generation = storage.retrieveSessionGeneration() + 1
         storage.storeNewSessionTokens(
             TokenResponse(
@@ -155,7 +191,7 @@ class AuthServiceFetchedProfileTest {
         )
         storage.storeSessionGeneration(generation)
         storage.storeCommittedTokenGeneration(generation)
-        val service = AuthService(oidcRepository(storage, oldNameRefresh))
+        val service = AuthService(repository)
         advanceUntilIdle()
         assertEquals(AuthState.Success(sessionUser), service.authState.value)
         return service
@@ -167,5 +203,24 @@ class AuthServiceFetchedProfileTest {
             service.authState.toList(states)
         }
         return states
+    }
+}
+
+/**
+ * The real repository, with the next [getCurrentUser] held after it has read the user and before it returns: the gap
+ * between a publish's read and its publication, where a newer publish can land.
+ */
+private class HeldUserReads(private val repository: AuthRepository) : AuthRepository by repository {
+    var holdNextUserRead: CompletableDeferred<Unit>? = null
+    val userRead = CompletableDeferred<Unit>()
+
+    override suspend fun getCurrentUser(): UserInfo? {
+        val user = repository.getCurrentUser()
+        holdNextUserRead?.let { hold ->
+            holdNextUserRead = null
+            userRead.complete(Unit)
+            hold.await()
+        }
+        return user
     }
 }
