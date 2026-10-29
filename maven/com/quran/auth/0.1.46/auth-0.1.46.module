@@ -1,0 +1,395 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.quran",
+    "module": "auth",
+    "version": "0.1.46",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.8.2"
+    }
+  },
+  "variants": [
+    {
+      "name": "metadataApiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-metadata",
+        "org.jetbrains.kotlin.platform.type": "common"
+      },
+      "dependencies": [
+        {
+          "group": "io.github.kalinjul.kotlin.multiplatform",
+          "module": "oidc-appsupport",
+          "version": {
+            "requires": "0.18.4"
+          }
+        },
+        {
+          "group": "com.russhwolf",
+          "module": "multiplatform-settings",
+          "version": {
+            "requires": "1.3.0"
+          }
+        },
+        {
+          "group": "com.russhwolf",
+          "module": "multiplatform-settings-coroutines",
+          "version": {
+            "requires": "1.3.0"
+          }
+        },
+        {
+          "group": "io.github.kalinjul.kotlin.multiplatform",
+          "module": "oidc-tokenstore",
+          "version": {
+            "requires": "0.18.4"
+          }
+        },
+        {
+          "group": "androidx.lifecycle",
+          "module": "lifecycle-viewmodel",
+          "version": {
+            "requires": "2.11.0"
+          }
+        },
+        {
+          "group": "com.quran",
+          "module": "mutations-definitions",
+          "version": {
+            "requires": "0.1.46"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        },
+        {
+          "group": "dev.zacsweers.metro",
+          "module": "runtime",
+          "version": {
+            "requires": "1.5.0"
+          }
+        },
+        {
+          "group": "com.rickclephas.kmp",
+          "module": "kmp-nativecoroutines-core",
+          "version": {
+            "requires": "1.0.6"
+          }
+        },
+        {
+          "group": "com.rickclephas.kmp",
+          "module": "kmp-nativecoroutines-annotations",
+          "version": {
+            "requires": "1.0.6"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-core",
+          "version": {
+            "requires": "1.11.0"
+          }
+        },
+        {
+          "group": "io.ktor",
+          "module": "ktor-client-core",
+          "version": {
+            "requires": "3.6.0"
+          }
+        },
+        {
+          "group": "io.ktor",
+          "module": "ktor-client-content-negotiation",
+          "version": {
+            "requires": "3.6.0"
+          }
+        },
+        {
+          "group": "io.ktor",
+          "module": "ktor-serialization-kotlinx-json",
+          "version": {
+            "requires": "3.6.0"
+          }
+        },
+        {
+          "group": "org.kotlincrypto.hash",
+          "module": "sha2",
+          "version": {
+            "requires": "0.8.0"
+          }
+        },
+        {
+          "group": "co.touchlab",
+          "module": "kermit",
+          "version": {
+            "requires": "2.2.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-serialization-json",
+          "version": {
+            "requires": "1.12.0"
+          }
+        },
+        {
+          "group": "com.quran",
+          "module": "logging",
+          "version": {
+            "requires": "0.1.46"
+          }
+        },
+        {
+          "group": "io.ktor",
+          "module": "ktor-client-darwin",
+          "version": {
+            "requires": "3.6.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "auth-metadata-0.1.46.jar",
+          "url": "auth-0.1.46.jar",
+          "size": 25779,
+          "sha512": "a00a33ad6c1a0316f5b1af9186dacc8c3124c6034d04918c1bd255cd1debacb6fd9b4bb8d463c9828279b1dfdb703b407f10c138382fef62238a324697da0127",
+          "sha256": "fb974a87f45d0cf6880e8d5dfdcb9051401d9340b6ab33f6dbfd79b30e563f94",
+          "sha1": "28611afaaf5af2a0fc621de783b65c6118ae9d63",
+          "md5": "a1d57d4e8dae9dbcdd33620fd9f19607"
+        }
+      ]
+    },
+    {
+      "name": "metadataSourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.platform.type": "common"
+      },
+      "files": [
+        {
+          "name": "auth-kotlin-0.1.46-sources.jar",
+          "url": "auth-0.1.46-sources.jar",
+          "size": 35120,
+          "sha512": "714f8ffcd058a2b393690d79876bb9aa7229f343511d85c31e53d00102e7368f773b20889d7712638c2de78051d7d9f22e5f1d448360554f23c4cc7d72e552fe",
+          "sha256": "618f8c95aa850e24b45050e2ca829d9de2894fb96a295072503f6753b5ae5c1e",
+          "sha1": "b3c2a4978a40b41eeb56666394c84da284fa97e8",
+          "md5": "2f6711ea045fb0e8985f9dd6c9f1fe34"
+        }
+      ]
+    },
+    {
+      "name": "androidApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "available-at": {
+        "url": "../../auth-android/0.1.46/auth-android-0.1.46.module",
+        "group": "com.quran",
+        "module": "auth-android",
+        "version": "0.1.46"
+      }
+    },
+    {
+      "name": "androidRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "available-at": {
+        "url": "../../auth-android/0.1.46/auth-android-0.1.46.module",
+        "group": "com.quran",
+        "module": "auth-android",
+        "version": "0.1.46"
+      }
+    },
+    {
+      "name": "androidSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "available-at": {
+        "url": "../../auth-android/0.1.46/auth-android-0.1.46.module",
+        "group": "com.quran",
+        "module": "auth-android",
+        "version": "0.1.46"
+      }
+    },
+    {
+      "name": "iosArm64ApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-api",
+        "org.jetbrains.kotlin.native.target": "ios_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../auth-iosarm64/0.1.46/auth-iosarm64-0.1.46.module",
+        "group": "com.quran",
+        "module": "auth-iosarm64",
+        "version": "0.1.46"
+      }
+    },
+    {
+      "name": "iosArm64SourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.native.target": "ios_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../auth-iosarm64/0.1.46/auth-iosarm64-0.1.46.module",
+        "group": "com.quran",
+        "module": "auth-iosarm64",
+        "version": "0.1.46"
+      }
+    },
+    {
+      "name": "iosArm64MetadataElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-metadata",
+        "org.jetbrains.kotlin.native.target": "ios_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../auth-iosarm64/0.1.46/auth-iosarm64-0.1.46.module",
+        "group": "com.quran",
+        "module": "auth-iosarm64",
+        "version": "0.1.46"
+      }
+    },
+    {
+      "name": "iosSimulatorArm64ApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-api",
+        "org.jetbrains.kotlin.native.target": "ios_simulator_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../auth-iossimulatorarm64/0.1.46/auth-iossimulatorarm64-0.1.46.module",
+        "group": "com.quran",
+        "module": "auth-iossimulatorarm64",
+        "version": "0.1.46"
+      }
+    },
+    {
+      "name": "iosSimulatorArm64SourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.native.target": "ios_simulator_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../auth-iossimulatorarm64/0.1.46/auth-iossimulatorarm64-0.1.46.module",
+        "group": "com.quran",
+        "module": "auth-iossimulatorarm64",
+        "version": "0.1.46"
+      }
+    },
+    {
+      "name": "iosSimulatorArm64MetadataElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-metadata",
+        "org.jetbrains.kotlin.native.target": "ios_simulator_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../auth-iossimulatorarm64/0.1.46/auth-iossimulatorarm64-0.1.46.module",
+        "group": "com.quran",
+        "module": "auth-iossimulatorarm64",
+        "version": "0.1.46"
+      }
+    },
+    {
+      "name": "jvmApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "available-at": {
+        "url": "../../auth-jvm/0.1.46/auth-jvm-0.1.46.module",
+        "group": "com.quran",
+        "module": "auth-jvm",
+        "version": "0.1.46"
+      }
+    },
+    {
+      "name": "jvmRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "available-at": {
+        "url": "../../auth-jvm/0.1.46/auth-jvm-0.1.46.module",
+        "group": "com.quran",
+        "module": "auth-jvm",
+        "version": "0.1.46"
+      }
+    },
+    {
+      "name": "jvmSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "available-at": {
+        "url": "../../auth-jvm/0.1.46/auth-jvm-0.1.46.module",
+        "group": "com.quran",
+        "module": "auth-jvm",
+        "version": "0.1.46"
+      }
+    }
+  ]
+}
