@@ -11,9 +11,8 @@ enum class AppEnvironment(
     PRELIVE(
         authEnvironment = AuthEnvironment.PRELIVE,
         syncBaseUrl = "https://apis-prelive.quran.foundation/auth",
-        // Unconfirmed: prelive's avatar host couldn't be checked (prelive QuranReflect was down on 2026-10-29), so it
-        // assumes production's bucket.
-        avatarsHost = PRODUCTION_AVATARS_HOST
+        // Confirmed against an avatar uploaded on prelive (2026-10-29): production's bucket answers 403 for it.
+        avatarsHost = "https://s3.amazonaws.com/qreflect-bucket-prelive"
     ),
     PRODUCTION(
         authEnvironment = AuthEnvironment.PRODUCTION,

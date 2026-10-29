@@ -22,13 +22,18 @@ class AppEnvironmentTest {
     }
 
     @Test
-    fun `both environments serve uploaded avatars from production's host`() {
-        AppEnvironment.entries.forEach { environment ->
-            assertEquals(
-                "https://s3.amazonaws.com/qreflect-bucket",
-                environment.synchronizationEnvironment().avatarsHost,
-                "$environment"
-            )
-        }
+    fun `prelive serves uploaded avatars from its own bucket`() {
+        assertEquals(
+            "https://s3.amazonaws.com/qreflect-bucket-prelive",
+            AppEnvironment.PRELIVE.synchronizationEnvironment().avatarsHost
+        )
+    }
+
+    @Test
+    fun `production serves uploaded avatars from its bucket`() {
+        assertEquals(
+            "https://s3.amazonaws.com/qreflect-bucket",
+            AppEnvironment.PRODUCTION.synchronizationEnvironment().avatarsHost
+        )
     }
 }
