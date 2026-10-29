@@ -1,0 +1,276 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.quran",
+    "module": "mutations-definitions",
+    "version": "0.1.45",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.8.2"
+    }
+  },
+  "variants": [
+    {
+      "name": "metadataApiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-metadata",
+        "org.jetbrains.kotlin.platform.type": "common"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-core",
+          "version": {
+            "requires": "1.11.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mutations-definitions-metadata-0.1.45.jar",
+          "url": "mutations-definitions-0.1.45.jar",
+          "size": 3960,
+          "sha512": "025b72f5d443211e8f60ca478a25203f780efe96037fc827163027ac6fb388cabcf4dc130278212e468fdde4425173b853061e9d2469c9cde6709e0f0f149cd5",
+          "sha256": "61696fcc1cda75fc3877600ee36b4f75964071b1c129a5538c40b4e73a998bb0",
+          "sha1": "10f7590500720d6b91729b34c2050a0306a809d5",
+          "md5": "8a844fd66439bbc84533441f86260bc1"
+        }
+      ]
+    },
+    {
+      "name": "metadataSourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.platform.type": "common"
+      },
+      "files": [
+        {
+          "name": "mutations-definitions-kotlin-0.1.45-sources.jar",
+          "url": "mutations-definitions-0.1.45-sources.jar",
+          "size": 3110,
+          "sha512": "ae4cdd921ae1d2bffea2b86d679a6e69846a2ab6d8221357f19a035d6337328315904524dc7d665874000bab111174d4063464f48b2db45f86f9a7a8324d1433",
+          "sha256": "bfbbcae73d198d794212067658801637c7810bf49a5a23b1dce6c57cf8a0d71b",
+          "sha1": "67fda9352b7f107810a8a3b0a9e9f1b1ef246d63",
+          "md5": "dd1499251ce8b6acd101d8ef3518f503"
+        }
+      ]
+    },
+    {
+      "name": "iosArm64ApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-api",
+        "org.jetbrains.kotlin.native.target": "ios_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../mutations-definitions-iosarm64/0.1.45/mutations-definitions-iosarm64-0.1.45.module",
+        "group": "com.quran",
+        "module": "mutations-definitions-iosarm64",
+        "version": "0.1.45"
+      }
+    },
+    {
+      "name": "iosArm64SourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.native.target": "ios_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../mutations-definitions-iosarm64/0.1.45/mutations-definitions-iosarm64-0.1.45.module",
+        "group": "com.quran",
+        "module": "mutations-definitions-iosarm64",
+        "version": "0.1.45"
+      }
+    },
+    {
+      "name": "iosArm64MetadataElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-metadata",
+        "org.jetbrains.kotlin.native.target": "ios_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../mutations-definitions-iosarm64/0.1.45/mutations-definitions-iosarm64-0.1.45.module",
+        "group": "com.quran",
+        "module": "mutations-definitions-iosarm64",
+        "version": "0.1.45"
+      }
+    },
+    {
+      "name": "iosSimulatorArm64ApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-api",
+        "org.jetbrains.kotlin.native.target": "ios_simulator_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../mutations-definitions-iossimulatorarm64/0.1.45/mutations-definitions-iossimulatorarm64-0.1.45.module",
+        "group": "com.quran",
+        "module": "mutations-definitions-iossimulatorarm64",
+        "version": "0.1.45"
+      }
+    },
+    {
+      "name": "iosSimulatorArm64SourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.native.target": "ios_simulator_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../mutations-definitions-iossimulatorarm64/0.1.45/mutations-definitions-iossimulatorarm64-0.1.45.module",
+        "group": "com.quran",
+        "module": "mutations-definitions-iossimulatorarm64",
+        "version": "0.1.45"
+      }
+    },
+    {
+      "name": "iosSimulatorArm64MetadataElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-metadata",
+        "org.jetbrains.kotlin.native.target": "ios_simulator_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../mutations-definitions-iossimulatorarm64/0.1.45/mutations-definitions-iossimulatorarm64-0.1.45.module",
+        "group": "com.quran",
+        "module": "mutations-definitions-iossimulatorarm64",
+        "version": "0.1.45"
+      }
+    },
+    {
+      "name": "jvmApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "available-at": {
+        "url": "../../mutations-definitions-jvm/0.1.45/mutations-definitions-jvm-0.1.45.module",
+        "group": "com.quran",
+        "module": "mutations-definitions-jvm",
+        "version": "0.1.45"
+      }
+    },
+    {
+      "name": "jvmRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "available-at": {
+        "url": "../../mutations-definitions-jvm/0.1.45/mutations-definitions-jvm-0.1.45.module",
+        "group": "com.quran",
+        "module": "mutations-definitions-jvm",
+        "version": "0.1.45"
+      }
+    },
+    {
+      "name": "jvmSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "available-at": {
+        "url": "../../mutations-definitions-jvm/0.1.45/mutations-definitions-jvm-0.1.45.module",
+        "group": "com.quran",
+        "module": "mutations-definitions-jvm",
+        "version": "0.1.45"
+      }
+    },
+    {
+      "name": "macosArm64ApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-api",
+        "org.jetbrains.kotlin.native.target": "macos_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../mutations-definitions-macosarm64/0.1.45/mutations-definitions-macosarm64-0.1.45.module",
+        "group": "com.quran",
+        "module": "mutations-definitions-macosarm64",
+        "version": "0.1.45"
+      }
+    },
+    {
+      "name": "macosArm64SourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.native.target": "macos_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../mutations-definitions-macosarm64/0.1.45/mutations-definitions-macosarm64-0.1.45.module",
+        "group": "com.quran",
+        "module": "mutations-definitions-macosarm64",
+        "version": "0.1.45"
+      }
+    },
+    {
+      "name": "macosArm64MetadataElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "non-jvm",
+        "org.gradle.usage": "kotlin-metadata",
+        "org.jetbrains.kotlin.native.target": "macos_arm64",
+        "org.jetbrains.kotlin.platform.type": "native"
+      },
+      "available-at": {
+        "url": "../../mutations-definitions-macosarm64/0.1.45/mutations-definitions-macosarm64-0.1.45.module",
+        "group": "com.quran",
+        "module": "mutations-definitions-macosarm64",
+        "version": "0.1.45"
+      }
+    }
+  ]
+}
