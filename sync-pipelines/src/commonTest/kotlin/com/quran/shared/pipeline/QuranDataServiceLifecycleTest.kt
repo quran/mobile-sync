@@ -428,23 +428,6 @@ class QuranDataServiceLifecycleTest {
     }
 
     @Test
-    fun `sync auth facade reauthentication throws during reset before committing tokens`() = runTest(dispatcher) {
-        val fixture = quranDataServiceFixture()
-        val authFacade = SyncAuthService(fixture.authService, fixture.service, fixture.lifecycleCoordinator)
-        advanceUntilIdle()
-
-        fixture.lifecycleCoordinator.runManagedReset {
-            assertFailsWith<SessionResetInProgressException> {
-                authFacade.loginWithReauthentication()
-            }
-        }
-
-        assertEquals(null, fixture.authRepository.getAccessToken())
-        assertEquals(0, fixture.authRepository.reauthenticationCalls)
-        fixture.clearAndJoin()
-    }
-
-    @Test
     fun `remote logout cancellation propagates instead of returning warning`() = runTest(dispatcher) {
         val fixture = quranDataServiceFixture(
             authRepository = ServiceAuthRepository(
@@ -1201,17 +1184,10 @@ private class ServiceAuthRepository(
     val remoteLogoutModes = mutableListOf<RemoteLogoutMode>()
     var loginCalls = 0
         private set
-    var reauthenticationCalls = 0
-        private set
     private var authHeadersCalls = 0
 
     override suspend fun login() {
         loginCalls += 1
-        accessToken = "access-token"
-    }
-
-    override suspend fun loginWithReauthentication() {
-        reauthenticationCalls += 1
         accessToken = "access-token"
     }
 

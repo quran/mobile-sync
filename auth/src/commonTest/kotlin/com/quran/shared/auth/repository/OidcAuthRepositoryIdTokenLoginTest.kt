@@ -179,14 +179,14 @@ class OidcAuthRepositoryIdTokenLoginTest {
     }
 
     @Test
-    fun `a reauthentication with an unusable ID token keeps the previous session and its account`() =
+    fun `a new login with an unusable ID token keeps the previous session and its account`() =
         runTest(UnconfinedTestDispatcher()) {
             repositoryAnsweringTokenRequestsWith(idToken = testIdToken(claims = mapOf("name" to "Old Name"))).login()
             val repository = repositoryAnsweringTokenRequestsWith(
                 idToken = testIdToken(issuer = "https://evil.example")
             )
 
-            assertFailsWith<IllegalStateException> { repository.loginWithReauthentication() }
+            assertFailsWith<IllegalStateException> { repository.login() }
 
             assertTrue(repository.isLoggedIn())
             assertEquals(UserInfo(id = TEST_SUBJECT, name = "Old Name"), repository.getCurrentUser())

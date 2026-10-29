@@ -8,29 +8,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
-import androidx.compose.runtime.*
-
 @Composable
 fun LoginButtonContent(
-    onLoginClick: () -> Unit,
-    onReauthenticateLoginClick: () -> Unit
+    onLoginClick: () -> Unit
 ) {
-    var forcePrompt by remember { mutableStateOf(false) }
-
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = forcePrompt, onCheckedChange = { forcePrompt = it })
-            Text("Force prompt login", style = MaterialTheme.typography.bodySmall)
-        }
-
         Button(
-            onClick = {
-                if (forcePrompt) {
-                    onReauthenticateLoginClick()
-                } else {
-                    onLoginClick()
-                }
-            },
+            onClick = onLoginClick,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(50.dp),

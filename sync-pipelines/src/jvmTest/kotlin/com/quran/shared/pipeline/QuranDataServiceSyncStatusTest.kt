@@ -251,7 +251,6 @@ private class SyncRunEvents : SyncRunObserver {
 
 private class SignedOutAuthRepository : AuthRepository {
     override suspend fun login(): Unit = error("Login is not used by sync status tests")
-    override suspend fun loginWithReauthentication(): Unit = error("Login is not used by sync status tests")
     override suspend fun refreshTokensIfNeeded() = false
     override suspend fun logout() = Unit
     override suspend fun captureLogoutTokenMaterial() = LogoutTokenMaterial(null, null)

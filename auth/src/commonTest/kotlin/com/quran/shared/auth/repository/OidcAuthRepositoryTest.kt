@@ -686,7 +686,7 @@ class OidcAuthRepositoryTest {
             val repository = oidcRepository(storage)
 
             assertFailsWith<IllegalStateException> {
-                repository.loginWithReauthentication()
+                repository.login()
             }
 
             assertEquals("old-access-token", repository.getAccessToken())
@@ -1103,7 +1103,7 @@ class OidcAuthRepositoryTest {
         }
 
     @Test
-    fun `same intent repository login waits for active exchange result`() =
+    fun `concurrent repository login waits for active exchange result`() =
         runTest(UnconfinedTestDispatcher()) {
             val storage = AuthStorage(
                 tokenStore = RecordingTokenStore(),
@@ -1159,7 +1159,7 @@ class OidcAuthRepositoryTest {
         }
 
     @Test
-    fun `same intent repository login shares active exchange failure`() =
+    fun `concurrent repository login shares active exchange failure`() =
         runTest(UnconfinedTestDispatcher()) {
             val storage = AuthStorage(
                 tokenStore = RecordingTokenStore(),
@@ -1217,7 +1217,7 @@ class OidcAuthRepositoryTest {
         }
 
     @Test
-    fun `same intent repository waiter fails pre commit cancellation while old session exists`() =
+    fun `concurrent repository waiter fails pre commit cancellation while old session exists`() =
         runTest(UnconfinedTestDispatcher()) {
             val storage = AuthStorage(
                 tokenStore = RecordingTokenStore(
@@ -1365,7 +1365,7 @@ class OidcAuthRepositoryTest {
         }
 
     @Test
-    fun `repository reauthentication waits for active normal login and starts its own prompt`() =
+    fun `login asks the provider to prompt for credentials`() =
         runTest(UnconfinedTestDispatcher()) {
             val storage = AuthStorage(
                 tokenStore = RecordingTokenStore(),
@@ -1389,78 +1389,15 @@ class OidcAuthRepositoryTest {
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
             val repository = oidcRepository(storage)
 
-            val normalLogin = async(start = CoroutineStart.UNDISPATCHED) {
-                repository.login()
-            }
-            withContext(Dispatchers.Default) {
-                withTimeout(1_000) {
-                    authFlow.loginStarted.await()
-                }
-            }
-
-            val reauthentication = async(start = CoroutineStart.UNDISPATCHED) {
-                repository.loginWithReauthentication()
-            }
-
             authFlow.loginCanFinish.complete(Unit)
-            normalLogin.await()
-            reauthentication.await()
+            repository.login()
 
-            assertEquals(2, authFlow.getAccessTokenCalls)
             assertEquals(1, authFlow.promptLoginCalls)
+            assertEquals("login-access-token", repository.getAccessToken())
         }
 
     @Test
-    fun `repository reauthentication fails when local clear invalidates active normal login`() =
-        runTest(UnconfinedTestDispatcher()) {
-            val storage = AuthStorage(
-                tokenStore = RecordingTokenStore(),
-                settings = MapSettings().toSuspendSettings(),
-                json = Json { ignoreUnknownKeys = true }
-            )
-            val authFlow = BlockingLoginAuthFlow(
-                pendingResponse = AccessTokenResponse(
-                    access_token = "unused-pending-access-token",
-                    token_type = "Bearer",
-                    expires_in = 3600
-                ),
-                loginResponse = AccessTokenResponse(
-                    access_token = "stale-access-token",
-                    token_type = "Bearer",
-                    expires_in = 3600,
-                    id_token = testIdToken("login-id-token")
-                )
-            )
-            AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
-            val repository = oidcRepository(storage)
-
-            val normalLogin = async(start = CoroutineStart.UNDISPATCHED) {
-                runCatching { repository.login() }
-            }
-            authFlow.loginStarted.await()
-
-            val reauthentication = async(start = CoroutineStart.UNDISPATCHED) {
-                runCatching { repository.loginWithReauthentication() }
-            }
-            assertFalse(reauthentication.isCompleted)
-
-            repository.clearLocalSession()
-
-            val reauthResult = withContext(Dispatchers.Default) {
-                withTimeout(1_000) {
-                    reauthentication.await()
-                }
-            }
-            assertTrue(reauthResult.isFailure)
-            assertEquals(1, authFlow.getAccessTokenCalls)
-            assertEquals(0, authFlow.promptLoginCalls)
-
-            authFlow.loginCanFinish.complete(Unit)
-            assertTrue(normalLogin.await().isFailure)
-        }
-
-    @Test
-    fun `superseded active token exchange completes same intent waiters exceptionally`() =
+    fun `superseded active token exchange completes its waiters exceptionally`() =
         runTest(UnconfinedTestDispatcher()) {
             val settings = MapSettings().toSuspendSettings()
             val tokenStore = RecordingTokenStore()
@@ -1574,6 +1511,7 @@ class OidcAuthRepositoryTest {
                 }
             }
             assertTrue(duplicateResult.isFailure)
+            assertEquals(1, authFlow.getAccessTokenCalls)
 
             authFlow.loginCanFinish.complete(Unit)
             assertTrue(login.await().isFailure)
@@ -1948,7 +1886,7 @@ class OidcAuthRepositoryTest {
         }
 
     @Test
-    fun `same intent repository waiter succeeds after post commit caller cancellation`() =
+    fun `concurrent repository waiter succeeds after post commit caller cancellation`() =
         runTest(UnconfinedTestDispatcher()) {
             val storage = AuthStorage(
                 tokenStore = RecordingTokenStore(),
@@ -1997,7 +1935,7 @@ class OidcAuthRepositoryTest {
         }
 
     @Test
-    fun `same intent repository waiter succeeds after post commit cancellation with reused token`() =
+    fun `concurrent repository waiter succeeds after post commit cancellation with reused token`() =
         runTest(UnconfinedTestDispatcher()) {
             val storage = AuthStorage(
                 tokenStore = RecordingTokenStore(

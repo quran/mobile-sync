@@ -131,15 +131,15 @@ class AuthService private constructor(
         }
     }
 
-    suspend fun login(): Unit = runLogin(LoginIntent.Normal)
-
-    suspend fun loginWithReauthentication(): Unit = runLogin(LoginIntent.Reauthenticate)
-
-    private suspend fun runLogin(intent: LoginIntent) {
+    /**
+     * Signs in through the browser, asking the identity provider for credentials again (`prompt=login`).
+     * A call made while another sign-in runs waits on that one instead of opening the browser again.
+     */
+    suspend fun login() {
         try {
-            val loginReservation = awaitDifferentIntentOrReserveLogin(intent) ?: return
+            val loginReservation = reserveLoginOrAwaitActive() ?: return
             runActiveLogin(loginReservation) {
-                runRepositoryLogin(intent, loginReservation)
+                runRepositoryLogin(loginReservation)
             }
         } catch (e: CancellationException) {
             throw e
@@ -148,83 +148,60 @@ class AuthService private constructor(
         }
     }
 
-    private suspend fun runRepositoryLogin(
-        intent: LoginIntent,
-        loginReservation: LoginReservation
-    ) {
+    private suspend fun runRepositoryLogin(loginReservation: LoginReservation) {
         val commitAwareRepository = authRepository as? AuthRepositoryLoginCommitCallbacks
         if (commitAwareRepository != null) {
-            val onDurableCommit: suspend () -> Unit = {
+            commitAwareRepository.login(onDurableCommit = {
                 completeRepositoryCommitIfLoadingCurrent(loginReservation)
-            }
-            when (intent) {
-                LoginIntent.Normal -> commitAwareRepository.login(onDurableCommit)
-                LoginIntent.Reauthenticate -> commitAwareRepository.loginWithReauthentication(onDurableCommit)
-            }
+            })
         } else {
-            when (intent) {
-                LoginIntent.Normal -> authRepository.login()
-                LoginIntent.Reauthenticate -> authRepository.loginWithReauthentication()
-            }
+            authRepository.login()
             completeRepositoryCommitIfLoadingCurrent(loginReservation)
         }
     }
 
-    private suspend fun awaitDifferentIntentOrReserveLogin(intent: LoginIntent): LoginReservation? {
-        while (true) {
-            var loginReservation: LoginReservation? = null
-            val existingLogin = sessionPublicationMutex.withLock {
-                when (val current = lifecycle) {
-                    is AuthPublicationLifecycle.Loading -> current.activeLogin
-                    is AuthPublicationLifecycle.Clearing -> throw LoginInvalidatedException()
-                    is AuthPublicationLifecycle.Idle,
-                    is AuthPublicationLifecycle.Authenticated -> {
-                        val generation = current.generation + 1
-                        val completion = CompletableDeferred<Unit>()
-                        val repositoryCommit = CompletableDeferred<Unit>()
-                        val activeLogin = ActiveLogin(
-                            intent = intent,
-                            completion = completion,
-                            generation = generation,
-                            repositoryCommit = repositoryCommit
-                        )
-                        cachedAccessToken = null
-                        _authState.value = AuthState.Loading
-                        lifecycle = AuthPublicationLifecycle.Loading(
-                            generation = generation,
-                            activeLogin = activeLogin
-                        )
-                        loginReservation = LoginReservation(
-                            completion = completion,
-                            generation = generation,
-                            repositoryCommit = repositoryCommit
-                        )
-                        null
-                    }
+    /** Reserves a new login, or waits on the one already running and returns null. */
+    private suspend fun reserveLoginOrAwaitActive(): LoginReservation? {
+        var loginReservation: LoginReservation? = null
+        val existingLogin = sessionPublicationMutex.withLock {
+            when (val current = lifecycle) {
+                is AuthPublicationLifecycle.Loading -> current.activeLogin
+                is AuthPublicationLifecycle.Clearing -> throw LoginInvalidatedException()
+                is AuthPublicationLifecycle.Idle,
+                is AuthPublicationLifecycle.Authenticated -> {
+                    val generation = current.generation + 1
+                    val completion = CompletableDeferred<Unit>()
+                    val repositoryCommit = CompletableDeferred<Unit>()
+                    val activeLogin = ActiveLogin(
+                        completion = completion,
+                        generation = generation,
+                        repositoryCommit = repositoryCommit
+                    )
+                    cachedAccessToken = null
+                    _authState.value = AuthState.Loading
+                    lifecycle = AuthPublicationLifecycle.Loading(
+                        generation = generation,
+                        activeLogin = activeLogin
+                    )
+                    loginReservation = LoginReservation(
+                        completion = completion,
+                        generation = generation,
+                        repositoryCommit = repositoryCommit
+                    )
+                    null
                 }
-            }
-            if (existingLogin == null) {
-                return loginReservation
-            }
-            if (existingLogin.intent == intent) {
-                try {
-                    existingLogin.completion.await()
-                } catch (e: CancellationException) {
-                    currentCoroutineContext().ensureActive()
-                    throw e
-                }
-                return null
-            }
-            try {
-                existingLogin.completion.await()
-            } catch (e: CancellationException) {
-                currentCoroutineContext().ensureActive()
-            } catch (e: LoginInvalidatedException) {
-                throw e
-            } catch (_: Exception) {
-                // A different login intent still needs its own prompt after the previous attempt ends.
             }
         }
+        if (existingLogin == null) {
+            return loginReservation
+        }
+        try {
+            existingLogin.completion.await()
+        } catch (e: CancellationException) {
+            currentCoroutineContext().ensureActive()
+            throw e
+        }
+        return null
     }
 
     private suspend fun runActiveLogin(
@@ -872,11 +849,6 @@ private enum class CachedAccessToken {
     NotCurrent
 }
 
-private enum class LoginIntent {
-    Normal,
-    Reauthenticate
-}
-
 private enum class PublishSource {
     Idle,
     ActiveLogin,
@@ -906,7 +878,6 @@ private fun AuthPublicationLifecycle.matchesPublishSource(
     }
 
 private data class ActiveLogin(
-    val intent: LoginIntent,
     val completion: CompletableDeferred<Unit>,
     val generation: Long,
     val repositoryCommit: CompletableDeferred<Unit>,

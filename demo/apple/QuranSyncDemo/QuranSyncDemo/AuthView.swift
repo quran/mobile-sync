@@ -39,9 +39,6 @@ struct AuthView: View {
                         LoginButtonContent(
                             onLogin: {
                                 try? await viewModel.login()
-                            },
-                            onReauthenticateLogin: {
-                                try? await viewModel.loginWithReauthentication()
                             }
                         )
                         .padding(.horizontal, 16)

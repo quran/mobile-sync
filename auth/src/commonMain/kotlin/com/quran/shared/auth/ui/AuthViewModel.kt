@@ -45,19 +45,6 @@ class AuthViewModel(
     }
 
     /**
-     * Initiates the OAuth login flow and forces re-authentication.
-     */
-    fun loginWithReauthentication() {
-        viewModelScope.launch {
-            try {
-                authService.loginWithReauthentication()
-            } catch (e: Exception) {
-                // Error is handled by the service state
-            }
-        }
-    }
-
-    /**
      * Signs out the user.
      */
     fun logout() {

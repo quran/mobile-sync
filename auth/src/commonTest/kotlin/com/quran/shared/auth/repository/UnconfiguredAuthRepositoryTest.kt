@@ -41,9 +41,6 @@ class UnconfiguredAuthRepositoryTest {
         assertFailsWith<AuthNotConfiguredException> {
             repository.login()
         }
-        assertFailsWith<AuthNotConfiguredException> {
-            repository.loginWithReauthentication()
-        }
         assertFalse(repository.refreshTokensIfNeeded())
         assertFalse(repository.isLoggedIn())
         assertEquals(emptyMap(), repository.getAuthHeaders())

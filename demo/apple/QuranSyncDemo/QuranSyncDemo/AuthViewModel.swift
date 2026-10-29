@@ -36,11 +36,6 @@ class AuthViewModel: ObservableObject {
         try await asyncFunction(for: authService.login())
     }
 
-    func loginWithReauthentication() async throws {
-        try await asyncFunction(for: authService.loginWithReauthentication())
-    }
-
-
     func logout() async throws {
         try await asyncFunction(for: authService.logout(clearLocalData: true))
     }

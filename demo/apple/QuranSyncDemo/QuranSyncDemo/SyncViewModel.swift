@@ -161,10 +161,6 @@ class SyncViewModel: ObservableObject {
         try await asyncFunction(for: authService.login())
     }
 
-    func loginWithReauthentication() async throws {
-        try await asyncFunction(for: authService.loginWithReauthentication())
-    }
-
     func setAyahReadingBookmark(
         slot: Shared.ReadingBookmarkSlot,
         sura: Int32,

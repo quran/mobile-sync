@@ -31,10 +31,6 @@ class UnconfiguredAuthRepository(
         throw AuthNotConfiguredException()
     }
 
-    override suspend fun loginWithReauthentication() {
-        throw AuthNotConfiguredException()
-    }
-
     override suspend fun refreshTokensIfNeeded(): Boolean {
         clearLocalSession()
         return false

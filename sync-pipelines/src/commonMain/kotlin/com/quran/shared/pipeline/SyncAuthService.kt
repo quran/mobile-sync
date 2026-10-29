@@ -39,7 +39,8 @@ class SyncAuthService internal constructor(
         get() = authRuntimeConfig.isConfigured
 
     /**
-     * Signs in through the browser and publishes the session, which starts a sync.
+     * Signs in through the browser and publishes the session, which starts a sync. The identity provider always
+     * asks for credentials again (`prompt=login`), so a sign-in after a logout never reuses its browser session.
      *
      * Local writes and imports don't wait for it, however long the user takes. A logout during it ends
      * the sign-in: the call that opened the browser throws [CancellationException], and a call made
@@ -53,20 +54,6 @@ class SyncAuthService internal constructor(
         sessionLifecycleCoordinator.withLogin {
             authService.login()
         }
-    }
-
-    /** Like [login], but asks the identity provider to prompt for credentials again. */
-    @NativeCoroutines
-    suspend fun loginWithReauthentication() {
-        quranDataService.awaitInitialization()
-        sessionLifecycleCoordinator.withLogin {
-            authService.loginWithReauthentication()
-        }
-    }
-
-    @NativeCoroutines
-    suspend fun signInWithReauthentication() {
-        loginWithReauthentication()
     }
 
     @NativeCoroutines
