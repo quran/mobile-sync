@@ -17,7 +17,8 @@ enum class AppEnvironment(
     PRODUCTION(
         authEnvironment = AuthEnvironment.PRODUCTION,
         syncBaseUrl = "https://apis.quran.foundation/auth",
-        avatarsHost = PRODUCTION_AVATARS_HOST
+        // Read from live avatar URLs on quranreflect.com (2026-10-29).
+        avatarsHost = "https://s3.amazonaws.com/qreflect-bucket"
     );
 
     fun synchronizationEnvironment(): SynchronizationEnvironment {
@@ -40,6 +41,3 @@ data class SynchronizationEnvironment(
     val endPointURL: String,
     val avatarsHost: String
 )
-
-/** Production's `AVATARS_HOST`, read from live avatar URLs on quranreflect.com (2026-10-29). */
-private const val PRODUCTION_AVATARS_HOST = "https://s3.amazonaws.com/qreflect-bucket"
