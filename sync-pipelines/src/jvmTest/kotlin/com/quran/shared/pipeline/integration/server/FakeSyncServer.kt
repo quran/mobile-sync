@@ -126,6 +126,15 @@ class FakeSyncServer : AutoCloseable {
     /** Fails every profile request with it while set. */
     @Volatile var profileFailure: HttpError? = null
 
+    @Volatile private var profileGate: RequestGate? = null
+    private val profileGates = mutableListOf<RequestGate>()
+
+    /** Holds the next profile request at the server, unanswered, until the returned gate is released (or [close]). */
+    fun holdNextProfileRequest(): RequestGate = RequestGate().also { gate ->
+        synchronized(profileGates) { profileGates += gate }
+        profileGate = gate
+    }
+
     /** [account]'s profile: its name as the first name, and no photo, until the website edits it. */
     fun profile(account: String): FakeProfile = synchronized(lock) { profiles[account] ?: FakeProfile(firstName = account) }
 
@@ -149,6 +158,10 @@ class FakeSyncServer : AutoCloseable {
         }
         try {
             if (exchange.requestMethod != "GET") throw notFound("Not found")
+            profileGate?.let { gate ->
+                profileGate = null
+                gate.hold()
+            }
             profileFailure?.let { throw it }
             val account = authenticate(tokenInfo).name
             val profile = profile(account)
@@ -428,6 +441,7 @@ class FakeSyncServer : AutoCloseable {
      */
     override fun close() {
         faults.releaseGates()
+        synchronized(profileGates) { profileGates.forEach(RequestGate::release) }
         http.stop(0)
         executor.shutdown()
         if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {

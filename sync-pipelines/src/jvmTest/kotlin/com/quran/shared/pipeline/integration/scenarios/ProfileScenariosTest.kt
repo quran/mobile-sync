@@ -9,10 +9,14 @@ import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.awaitUntil
 import com.quran.shared.pipeline.integration.server.HttpError
 import com.quran.shared.pipeline.integration.syncScenario
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * The signed-in user's name and photo follow the account's profile on the server, which the website edits: a sign-in's
@@ -78,6 +82,24 @@ class ProfileScenariosTest {
         phone.awaitUserName("Bob Jones")
 
         assertEquals(UserInfo(id = BOB, firstName = "Bob", lastName = "Jones", name = "Bob Jones", email = "bob@example.com"), phone.user())
+    }
+
+    @Test
+    fun `PROFILE-05 a profile request that never answers doesn't hold up sync`() = syncScenario {
+        val profileRequest = server.holdNextProfileRequest()
+        val phone = profileDevice("phone")
+
+        withTimeout(5.seconds) {
+            assertSucceeded(phone.login(ALICE))
+            withContext(Dispatchers.IO) { profileRequest.awaitArrived() }
+            phone.data.addNote("Patience is light", 2, 153, 2, 153, at(0))
+            assertSucceeded(phone.syncNow())
+        }
+
+        assertEquals(1, server.state(ALICE).notes.size, "the sync pushed while the profile request hung")
+        assertEquals(0, server.profileRequests("phone").size, "the profile request is still unanswered")
+        profileRequest.release()
+        phone.awaitUserName(ALICE)
     }
 
     /** A device whose sessions keep the profiles they fetch. */
