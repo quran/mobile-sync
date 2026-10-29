@@ -415,7 +415,8 @@ class QuranDataService internal constructor(
     /**
      * Fetches the signed-in user's profile from Quran.com now, so a name or photo changed there shows in [authState]
      * (whose [AuthState.Success] republishes only when the user changed). Call it when the user may have just edited
-     * their profile, such as when a Quran.com account page the app opened closes. A call while a fetch runs joins it.
+     * their profile, such as when a Quran.com account page the app opened closes. A call while a fetch for the same
+     * session runs joins it.
      *
      * The engine also fetches on its own: during the sign-in's sync, and during the first sync that starts a day or more
      * after the last fetch (an hour or more after a failed one). The ID token can't bring such an edit: a token refresh

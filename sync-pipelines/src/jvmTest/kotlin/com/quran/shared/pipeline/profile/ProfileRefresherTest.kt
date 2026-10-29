@@ -110,7 +110,7 @@ class ProfileRefresherTest {
                     lastName = "Name",
                     name = "New Name",
                     email = "user@example.com",
-                    photoUrl = "https://s3.amazonaws.com/qreflect-bucket/events/banner/en/avatars/$ACCOUNT/medium.png?v=1788192266"
+                    photoUrl = "$AVATARS_HOST/events/banner/en/avatars/$ACCOUNT/medium.png?v=1788192266"
                 )
             ),
             authService.authState.value
@@ -226,6 +226,37 @@ class ProfileRefresherTest {
         assertEquals(1, profileRequests.size)
     }
 
+    /** The previous session's fetch would be dropped, so a refresh after a logout and sign-in starts its own. */
+    @Test
+    fun `a fetch for a previous session is not joined`() = runTest(main) {
+        start()
+        val firstArrived = CompletableDeferred<Unit>()
+        val firstAnswer = CompletableDeferred<Unit>()
+        answerProfile = {
+            if (profileRequests.size == 1) {
+                firstArrived.complete(Unit)
+                firstAnswer.await()
+                respondJson(profileJson(fullName = "Previous Session"))
+            } else {
+                respondJson(serverProfile)
+            }
+        }
+        val first = async { refresher.refresh() }
+        firstArrived.await()
+        authService.clearLocalSession()
+        signIn()
+        assertTrue(authService.refreshAccessTokenIfNeeded(), "the new session is published")
+
+        refresher.refresh()
+
+        assertEquals(2, profileRequests.size)
+        assertEquals("New Name", storage.retrieveFetchedProfile()?.name)
+        firstAnswer.complete(Unit)
+        first.await()
+        advanceUntilIdle()
+        assertEquals("New Name", storage.retrieveFetchedProfile()?.name, "the previous session's answer is dropped")
+    }
+
     @Test
     fun `signed out nothing is fetched`() = runTest(main) {
         start(signedIn = false)
@@ -317,7 +348,7 @@ class ProfileRefresherTest {
         )
         authService = AuthService(OidcAuthRepository(authConfig, storage, oidcClient))
         advanceUntilIdle()
-        val environment = SynchronizationEnvironment("https://apis.quran.foundation/auth")
+        val environment = SynchronizationEnvironment("https://apis.quran.foundation/auth", avatarsHost = AVATARS_HOST)
         refresher = ProfileRefresher(
             ProfileApi(SyncClient.createSyncHttpClient(engine), environment),
             AuthServiceSyncAccount(authService),
@@ -372,6 +403,7 @@ class ProfileRefresherTest {
         const val ACCOUNT = "6f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5"
         const val CLIENT_ID = "client-id"
         const val TOKEN_PATH = "/oauth2/token"
+        const val AVATARS_HOST = "https://avatars.example.invalid"
     }
 }
 

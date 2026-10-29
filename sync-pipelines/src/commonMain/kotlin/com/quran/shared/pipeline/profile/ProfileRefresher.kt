@@ -3,6 +3,7 @@ package com.quran.shared.pipeline.profile
 import co.touchlab.kermit.Logger
 import com.quran.shared.auth.model.FetchedProfile
 import com.quran.shared.auth.model.FetchedProfileWrite
+import com.quran.shared.auth.model.ProfileFetchSession
 import com.quran.shared.pipeline.sync.SyncAccount
 import com.quran.shared.pipeline.sync.SyncLifecycleGate
 import kotlinx.coroutines.CancellationException
@@ -30,7 +31,8 @@ import kotlin.time.Duration.Companion.hours
  *   or it has none (a new sign-in clears it, so a sign-in's sync fetches it), and it last tried more than
  *   [RETRY_INTERVAL] ago. So it costs about one request a day, and an outage one an hour. It runs no timer of its own.
  *
- * One fetch runs at a time: a call during a fetch joins it. A 401 forces one token refresh and tries once more. A
+ * One fetch runs at a time per session: a call during a fetch for the same session joins it, and one after a logout or
+ * sign-in starts its own, since the previous session's would be dropped. A 401 forces one token refresh and tries once more. A
  * failure (the network, an error status, a response that isn't a profile) keeps the stored profile and the session.
  * A profile for another account, or one whose session a logout or sign-in replaced during the request, is dropped.
  * Nothing here ends the session, though the forced refresh does when the refresh token is refused, as for sync.
@@ -45,24 +47,29 @@ internal class ProfileRefresher(
     private val logger = Logger.withTag("ProfileRefresher")
     private val scope = CoroutineScope(dispatcher + SupervisorJob())
     private val lock = Mutex()
-    private var running: Deferred<Unit>? = null
+    private var running: RunningFetch? = null
+
+    /** A fetch in progress and the session it is for. */
+    private class RunningFetch(val session: ProfileFetchSession, val fetch: Deferred<Unit>)
 
     /**
-     * Fetches the profile now, or joins the fetch in progress. Returns without a request when no one is signed in or
-     * a logout or reset is running.
+     * Fetches the profile now, or joins the current session's fetch in progress. Returns without a request when no one
+     * is signed in or a logout or reset is running.
      *
      * @throws Exception the fetch's failure: [IOException] for the network, [ProfileHttpException] for an error
      * status, [UnexpectedProfileResponseException] for a response that isn't a profile.
      */
     suspend fun refresh() {
-        fetchOrJoin().await()
+        val session = currentSession() ?: return
+        fetchOrJoin(session).await()
     }
 
     /** Starts a fetch in the background when it is due (see [ProfileRefresher]). Failures are only logged. */
     fun refreshIfDue() {
         scope.launch {
             try {
-                if (isDue()) fetchOrJoin().await()
+                val session = currentSession() ?: return@launch
+                if (isDue(session)) fetchOrJoin(session).await()
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Exception) {
@@ -76,8 +83,19 @@ internal class ProfileRefresher(
         scope.cancel()
     }
 
-    private suspend fun isDue(): Boolean {
-        val session = account.profileFetchSession() ?: return false
+    /** The session to fetch for; null when no one is signed in or a logout or reset is running. */
+    private suspend fun currentSession(): ProfileFetchSession? {
+        if (!gate.canStartSync()) {
+            logger.d { "Not fetching the profile: a logout or reset is running" }
+            return null
+        }
+        return account.profileFetchSession() ?: run {
+            logger.d { "Not fetching the profile: no one is signed in" }
+            null
+        }
+    }
+
+    private fun isDue(session: ProfileFetchSession): Boolean {
         val now = now()
         return session.fetchedAt.isOlderThan(FETCH_INTERVAL, now) && session.attemptedAt.isOlderThan(RETRY_INTERVAL, now)
     }
@@ -86,19 +104,16 @@ internal class ProfileRefresher(
     private fun Long?.isOlderThan(interval: Duration, now: Long): Boolean =
         this == null || now - this !in 0 until interval.inWholeMilliseconds
 
-    private suspend fun fetchOrJoin(): Deferred<Unit> = lock.withLock {
-        running?.takeIf { it.isActive } ?: scope.async { fetch() }.also { running = it }
+    /** Joins the fetch in progress when it is for [session]'s session, or starts one for it. */
+    private suspend fun fetchOrJoin(session: ProfileFetchSession): Deferred<Unit> = lock.withLock {
+        running?.takeIf { it.fetch.isActive && it.session.isSameSession(session) }?.fetch
+            ?: scope.async { fetch(session) }.also { running = RunningFetch(session, it) }
     }
 
-    private suspend fun fetch() {
-        if (!gate.canStartSync()) {
-            logger.d { "Not fetching the profile: a logout or reset is running" }
-            return
-        }
-        val session = account.profileFetchSession() ?: run {
-            logger.d { "Not fetching the profile: no one is signed in" }
-            return
-        }
+    private fun ProfileFetchSession.isSameSession(other: ProfileFetchSession): Boolean =
+        generation == other.generation && accountId == other.accountId
+
+    private suspend fun fetch(session: ProfileFetchSession) {
         account.recordProfileFetchAttempt(session, now())
         val profile = try {
             fetchWithOneRefresh()
