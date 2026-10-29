@@ -1316,6 +1316,8 @@ private class ServiceSynchronizationClient : SynchronizationClient, AutoCloseabl
         sessionRestoredCount += 1
     }
 
+    override suspend fun refreshProfile() = Unit
+
     override fun cancelSyncing() {
         cancelSyncingCount += 1
     }

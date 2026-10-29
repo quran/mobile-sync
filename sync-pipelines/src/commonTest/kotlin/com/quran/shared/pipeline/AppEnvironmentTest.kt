@@ -20,4 +20,15 @@ class AppEnvironmentTest {
             AppEnvironment.PRODUCTION.synchronizationEnvironment().endPointURL
         )
     }
+
+    @Test
+    fun `both environments serve uploaded avatars from production's host`() {
+        AppEnvironment.entries.forEach { environment ->
+            assertEquals(
+                "https://s3.amazonaws.com/qreflect-bucket",
+                environment.synchronizationEnvironment().avatarsHost,
+                "$environment"
+            )
+        }
+    }
 }

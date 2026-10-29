@@ -161,6 +161,7 @@ internal class ImportSyncClientSpy : SynchronizationClient {
     override fun triggerSyncImmediately() = Unit
     override fun signedIn() = Unit
     override fun sessionRestored() = Unit
+    override suspend fun refreshProfile() = Unit
     override fun cancelSyncing() = Unit
     override suspend fun cancelSyncingAndJoin() = Unit
 }

@@ -31,6 +31,7 @@ import com.quran.shared.persistence.repository.importdata.PersistenceImportRepos
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.currentPlatformDateTime
 import com.quran.shared.persistence.util.toPlatform
+import com.quran.shared.pipeline.sync.AuthServiceSyncAccount
 import com.quran.shared.pipeline.sync.SyncAccount
 import com.quran.shared.pipeline.sync.SyncClient
 import com.quran.shared.pipeline.sync.SyncLifecycleGate
@@ -305,17 +306,9 @@ class QuranDataService internal constructor(
     val readingSessions: Flow<List<ReadingSession>> get() = readingSessionsRepository.getReadingSessionsFlow()
 
     init {
-        val account = object : SyncAccount {
-            override suspend fun authHeaders(): Map<String, String> = authService.getAuthHeaders()
-
-            override suspend fun accountId(): String? = authService.currentAccountId()
-
-            override suspend fun forceTokenRefresh(): Boolean = authService.forceRefreshAccessToken()
-        }
-
         syncClient = syncClientFactory.create(
             environment = environment,
-            account = account,
+            account = AuthServiceSyncAccount(authService),
             syncLifecycleGate = sessionLifecycleCoordinator,
             // The history first, so a run is recorded before syncStatus shows its end.
             syncRunObserver = SyncRunObservers(syncHistoryRecorder, syncStatusTracker)
@@ -417,6 +410,27 @@ class QuranDataService internal constructor(
             return
         }
         syncClient.appForegrounded()
+    }
+
+    /**
+     * Fetches the signed-in user's profile from Quran.com now, so a name or photo changed there shows in [authState]
+     * (whose [AuthState.Success] republishes only when the user changed). Call it when the user may have just edited
+     * their profile, such as when a Quran.com account page the app opened closes. A call while a fetch runs joins it.
+     *
+     * The engine also fetches on its own: during the sign-in's sync, and during the first sync that starts a day or more
+     * after the last fetch (an hour or more after a failed one). The ID token can't bring such an edit: a token refresh
+     * repeats the claims captured when the user consented, and no longer replaces a fetched name.
+     *
+     * Signed out, or while a logout runs, it returns without a request. The fetched profile is stored for the session's
+     * account only, and dropped when it names another account or a logout or sign-in happened during the request.
+     * A 401 refreshes the token and tries once more. A failure keeps the published user and the session.
+     *
+     * @throws Exception when the fetch failed: no network, an error status, or a response that isn't a profile.
+     */
+    @NativeCoroutines
+    suspend fun refreshProfile() {
+        awaitInitialization()
+        syncClient.refreshProfile()
     }
 
     private suspend fun resetLocalAuthDataAndToken() {
