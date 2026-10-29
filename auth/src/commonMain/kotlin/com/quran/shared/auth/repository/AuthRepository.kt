@@ -1,5 +1,8 @@
 package com.quran.shared.auth.repository
 
+import com.quran.shared.auth.model.FetchedProfile
+import com.quran.shared.auth.model.FetchedProfileWrite
+import com.quran.shared.auth.model.ProfileFetchSession
 import com.quran.shared.auth.model.UserInfo
 import kotlin.native.HiddenFromObjC
 
@@ -104,9 +107,30 @@ interface AuthRepository {
     suspend fun isLoggedIn(): Boolean
 
     /**
-     * Returns the current authenticated user info if available.
+     * Returns the current authenticated user info if available: the ID token's user, with the session's fetched
+     * profile on top (see [storeFetchedProfile]).
      */
     suspend fun getCurrentUser(): UserInfo?
+
+    /**
+     * The current session, captured before a profile fetch, with its last fetch and attempt; null without a committed
+     * session or a known account. A repository without sessions to fetch for keeps the default.
+     */
+    suspend fun captureProfileFetchSession(): ProfileFetchSession? = null
+
+    /**
+     * Records that [session] tried to fetch its profile at [attemptedAt], if it is still the current session.
+     * @return false when the session ended or changed, and nothing was written.
+     */
+    suspend fun recordProfileFetchAttempt(session: ProfileFetchSession, attemptedAt: Long): Boolean = false
+
+    /**
+     * Stores [profile] for [session] when [session] is still the current session (no logout or sign-in since it was
+     * captured) and [profile] is its account's. [getCurrentUser] then shows it over the ID token's user, through later
+     * token refreshes too, until the session ends.
+     */
+    suspend fun storeFetchedProfile(session: ProfileFetchSession, profile: FetchedProfile): FetchedProfileWrite =
+        FetchedProfileWrite.SESSION_CHANGED
 
     /**
      * Provides the headers required for authorized requests, refreshing the token if needed.

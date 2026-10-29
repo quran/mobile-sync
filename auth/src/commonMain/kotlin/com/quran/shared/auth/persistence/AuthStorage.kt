@@ -1,5 +1,6 @@
 package com.quran.shared.auth.persistence
 
+import com.quran.shared.auth.model.FetchedProfile
 import com.quran.shared.auth.model.TokenResponse
 import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.auth.utils.currentTimeMillis
@@ -20,8 +21,8 @@ import org.publicvalue.multiplatform.oidc.types.remote.AccessTokenResponse
  * Persists authentication token material and non-secret session metadata across app restarts.
  *
  * The OIDC token response is stored through [TokenStore] so each platform can use its secure
- * storage implementation. App-specific commit markers, normalized expiry, scope, and the session's
- * user (read from its ID token) remain in settings.
+ * storage implementation. App-specific commit markers, normalized expiry, scope, the session's
+ * user (read from its ID token), and its fetched profile remain in settings.
  */
 @SingleIn(AppScope::class)
 @HiddenFromObjC
@@ -183,6 +184,30 @@ class AuthStorage(
     }
 
     /**
+     * The session's profile as the account API last returned it, kept apart from the ID token's user, which a token
+     * refresh rewrites. Null when none was fetched for this session, or it can't be read.
+     */
+    suspend fun retrieveFetchedProfile(): FetchedProfile? {
+        val profileJson = settings.getStringOrNull(KEY_FETCHED_PROFILE) ?: return null
+        return try {
+            json.decodeFromString<FetchedProfile>(profileJson)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    suspend fun storeFetchedProfile(profile: FetchedProfile) {
+        settings.putString(KEY_FETCHED_PROFILE, json.encodeToString(profile))
+    }
+
+    /** When this session last tried to fetch its profile (epoch milliseconds), whatever came of it. */
+    suspend fun retrieveProfileFetchAttemptedAt(): Long? = settings.getLongOrNull(KEY_PROFILE_FETCH_ATTEMPTED_AT)
+
+    suspend fun storeProfileFetchAttemptedAt(attemptedAt: Long) {
+        settings.putLong(KEY_PROFILE_FETCH_ATTEMPTED_AT, attemptedAt)
+    }
+
+    /**
      * Clears secure token material and non-token auth metadata.
      */
     suspend fun clearAllTokens() {
@@ -276,7 +301,9 @@ class AuthStorage(
             scope = settings.getStringOrNull(KEY_SCOPE),
             expiration = settings.getLongOrNull(KEY_TOKEN_EXPIRATION),
             retrievedAt = settings.getLongOrNull(KEY_TOKEN_RETRIEVED_AT),
-            userInfo = settings.getStringOrNull(KEY_USER_INFO)
+            userInfo = settings.getStringOrNull(KEY_USER_INFO),
+            fetchedProfile = settings.getStringOrNull(KEY_FETCHED_PROFILE),
+            profileFetchAttemptedAt = settings.getLongOrNull(KEY_PROFILE_FETCH_ATTEMPTED_AT)
         )
 
     private suspend fun restoreSessionMetadata(metadata: SessionMetadata) {
@@ -286,6 +313,16 @@ class AuthStorage(
             retrievedAt = metadata.retrievedAt
         )
         restoreUserInfo(metadata.userInfo)
+        if (metadata.fetchedProfile == null) {
+            settings.remove(KEY_FETCHED_PROFILE)
+        } else {
+            settings.putString(KEY_FETCHED_PROFILE, metadata.fetchedProfile)
+        }
+        if (metadata.profileFetchAttemptedAt == null) {
+            settings.remove(KEY_PROFILE_FETCH_ATTEMPTED_AT)
+        } else {
+            settings.putLong(KEY_PROFILE_FETCH_ATTEMPTED_AT, metadata.profileFetchAttemptedAt)
+        }
     }
 
     private suspend fun restoreUserInfo(userInfo: String?) {
@@ -296,9 +333,12 @@ class AuthStorage(
         }
     }
 
+    /** The session's own data: a logout and a new session (a sign-in, maybe to another account) remove it all. */
     private suspend fun clearSessionMetadata() {
         settings.remove(KEY_SCOPE)
         settings.remove(KEY_USER_INFO)
+        settings.remove(KEY_FETCHED_PROFILE)
+        settings.remove(KEY_PROFILE_FETCH_ATTEMPTED_AT)
         settings.remove(KEY_TOKEN_EXPIRATION)
         settings.remove(KEY_TOKEN_RETRIEVED_AT)
     }
@@ -308,6 +348,8 @@ class AuthStorage(
         private const val KEY_TOKEN_EXPIRATION = "token_expiration"
         private const val KEY_TOKEN_RETRIEVED_AT = "token_retrieved_at"
         private const val KEY_USER_INFO = "user_info"
+        private const val KEY_FETCHED_PROFILE = "fetched_profile"
+        private const val KEY_PROFILE_FETCH_ATTEMPTED_AT = "profile_fetch_attempted_at"
         private const val KEY_SESSION_GENERATION = "session_generation"
         private const val KEY_COMMITTED_TOKEN_GENERATION = "committed_token_generation"
         private const val KEY_TOKEN_WRITE_GENERATION = "token_write_generation"
@@ -319,5 +361,7 @@ private data class SessionMetadata(
     val scope: String?,
     val expiration: Long?,
     val retrievedAt: Long?,
-    val userInfo: String?
+    val userInfo: String?,
+    val fetchedProfile: String?,
+    val profileFetchAttemptedAt: Long?
 )

@@ -2,6 +2,9 @@ package com.quran.shared.auth.service
 
 import com.quran.shared.auth.model.AuthState
 import com.quran.shared.auth.model.AuthenticationCancelledException
+import com.quran.shared.auth.model.FetchedProfile
+import com.quran.shared.auth.model.FetchedProfileWrite
+import com.quran.shared.auth.model.ProfileFetchSession
 import com.quran.shared.auth.model.asAuthenticationException
 import com.quran.shared.auth.repository.AuthRepository
 import com.quran.shared.auth.repository.AuthRepositoryLoginCommitCallbacks
@@ -88,9 +91,11 @@ class AuthService private constructor(
     private var lifecycle: AuthPublicationLifecycle = AuthPublicationLifecycle.Idle(generation = 0)
 
     /**
-     * The session's state. A token refresh can change the stored user (its ID token's profile claims replace the
-     * stored ones), so [AuthState.Success] is republished with the new user after a refresh, whether it ran through
-     * [refreshAccessTokenIfNeeded], [forceRefreshAccessToken] or [getAuthHeaders].
+     * The session's state. [AuthState.Success]'s user is the ID token's, with the profile fetched from the account API
+     * on top ([storeFetchedProfile]). A token refresh can change the stored user (its ID token's profile claims replace
+     * the stored ones), so [AuthState.Success] is republished with the new user after a refresh, whether it ran through
+     * [refreshAccessTokenIfNeeded], [forceRefreshAccessToken] or [getAuthHeaders]; a fetched profile still shows over
+     * it. Storing a fetched profile republishes it too. Each republish emits only when the user changed.
      */
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
@@ -435,6 +440,40 @@ class AuthService private constructor(
         return authRepository.getCurrentUser()?.id?.takeIf { it.isNotBlank() }
     }
 
+    /**
+     * The published session as a profile fetch needs it: its generation, account, and last fetch and attempt. Null
+     * without a published session (signed out, or while a sign-in or logout runs) or a known account.
+     */
+    @HiddenFromObjC
+    suspend fun profileFetchSession(): ProfileFetchSession? {
+        if (lifecycleSnapshot() !is AuthPublicationLifecycle.Authenticated) return null
+        return authRepository.captureProfileFetchSession()
+    }
+
+    /**
+     * Records that [session] tried to fetch its profile at [attemptedAt] (epoch milliseconds), for the fetch's back-off.
+     * Nothing is written once the session ended or changed.
+     */
+    @HiddenFromObjC
+    suspend fun recordProfileFetchAttempt(session: ProfileFetchSession, attemptedAt: Long): Boolean =
+        authRepository.recordProfileFetchAttempt(session, attemptedAt)
+
+    /**
+     * Stores [profile], fetched for [session], and republishes [authState] when that changed the user. It is dropped,
+     * and the session kept, when it names another account or the session changed during the fetch (see
+     * [AuthRepository.storeFetchedProfile]).
+     */
+    @HiddenFromObjC
+    suspend fun storeFetchedProfile(session: ProfileFetchSession, profile: FetchedProfile): FetchedProfileWrite {
+        val current = lifecycleSnapshot() as? AuthPublicationLifecycle.Authenticated
+            ?: return FetchedProfileWrite.SESSION_CHANGED
+        val write = authRepository.storeFetchedProfile(session, profile)
+        if (write == FetchedProfileWrite.STORED) {
+            republishSession(current.generation)
+        }
+        return write
+    }
+
     private suspend fun refreshAuthenticatedSession(generation: Long, force: Boolean = false): Boolean {
         if (!isPublicationGuardAllowed()) {
             clearAuthenticatedIfGenerationCurrent(generation)
@@ -525,7 +564,7 @@ class AuthService private constructor(
         }
         when (cacheAccessTokenIfAuthenticated(generation)) {
             CachedAccessToken.Unchanged -> Unit
-            CachedAccessToken.Rotated -> if (!republishRefreshedSession(generation)) {
+            CachedAccessToken.Rotated -> if (!republishSession(generation)) {
                 return emptyMap()
             }
             CachedAccessToken.NotCurrent -> {
@@ -783,7 +822,7 @@ class AuthService private constructor(
 
     /**
      * Caches the repository's access token for the authenticated [expectedGeneration]. A token other than the cached
-     * one means it was refreshed since the session was last published; it is then left for [republishRefreshedSession]
+     * one means it was refreshed since the session was last published; it is then left for [republishSession]
      * to cache with the user, so a republish that fails or is cancelled is retried on the next call.
      */
     private suspend fun cacheAccessTokenIfAuthenticated(expectedGeneration: Long): CachedAccessToken {
@@ -803,15 +842,16 @@ class AuthService private constructor(
     }
 
     /**
-     * Republishes the authenticated [generation] after [getAuthHeaders] found its token refreshed: a refresh's ID token
-     * replaces the stored user, so the published one may be out of date. [publishCurrentSession]'s guards keep it out
-     * of a session that logout or login has moved on. Publishing also caches the new token. A failure to read the
-     * session keeps the published user and the old cached token, since the headers are still valid; the next
+     * Republishes the authenticated [generation] after its stored user may have changed: [getAuthHeaders] found its
+     * token refreshed (a refresh's ID token replaces the stored user), or a fetched profile was stored.
+     * [publishCurrentSession]'s guards keep it out of a session that logout or login has moved on, and [authState]
+     * emits only when the user changed. Publishing also caches the current token. A failure to read the session keeps
+     * the published user and the old cached token, since the headers are still valid; after a refresh, the next
      * [getAuthHeaders] call then sees the token as refreshed again and retries.
      *
      * @return false when the repository no longer has a session, which is then cleared.
      */
-    private suspend fun republishRefreshedSession(generation: Long): Boolean {
+    private suspend fun republishSession(generation: Long): Boolean {
         val result = try {
             publishCurrentSession(generation, PublishSource.Authenticated)
         } catch (e: CancellationException) {
