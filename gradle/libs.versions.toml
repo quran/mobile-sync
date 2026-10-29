@@ -9,7 +9,7 @@ native-coroutines = "1.0.6"
 
 maven-publish = "0.37.0"
 
-metro = "1.5.0"
+metro = "1.5.1"
 compose = "2026.09.00"
 coroutines = "1.11.0"
 sha2 = "0.8.0"
