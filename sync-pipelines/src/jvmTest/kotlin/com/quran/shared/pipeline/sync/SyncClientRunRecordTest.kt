@@ -96,7 +96,7 @@ class SyncClientRunRecordTest {
         val retrying = FailureRetryingConfig(retryBase, 2.5, 5, jitter = retryJitter)
         val timings = SchedulerTimings(1.hours, 1.hours, 1.hours, foregroundDelay, foregroundSkip, retrying)
         val gate = object : SyncLifecycleGate {}
-        val environment = SynchronizationEnvironment(server.url)
+        val environment = SynchronizationEnvironment(server.url, avatarsHost = "https://avatars.example.invalid")
         SyncClient.create(database.synced, environment, account, gate, observer, timings, { jitterSample }) {
             System.currentTimeMillis() + clockOffset
         }

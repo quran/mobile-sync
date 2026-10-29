@@ -2,6 +2,7 @@ package com.quran.shared.pipeline.integration.scenarios
 
 import com.quran.shared.auth.model.AuthState
 import com.quran.shared.auth.model.UserInfo
+import com.quran.shared.pipeline.integration.AVATARS_HOST
 import com.quran.shared.pipeline.integration.SyncDevice
 import com.quran.shared.pipeline.integration.SyncScenario
 import com.quran.shared.pipeline.integration.assertSucceeded
@@ -27,7 +28,7 @@ class ProfileScenariosTest {
         phone.awaitUserName("Alice Smith")
 
         assertEquals(
-            "https://s3.amazonaws.com/qreflect-bucket/events/banner/en/avatars/alice/medium.png?v=1788192266",
+            "$AVATARS_HOST/events/banner/en/avatars/alice/medium.png?v=1788192266",
             phone.user().photoUrl
         )
         assertSucceeded(phone.syncNow())

@@ -39,7 +39,7 @@ fun defaultAppEnvironment(): AppEnvironment {
  */
 data class SynchronizationEnvironment(
     val endPointURL: String,
-    val avatarsHost: String = PRODUCTION_AVATARS_HOST
+    val avatarsHost: String
 )
 
 /** Production's `AVATARS_HOST`, read from live avatar URLs on quranreflect.com (2026-10-29). */
