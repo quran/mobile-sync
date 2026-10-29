@@ -10,6 +10,8 @@ import com.quran.shared.pipeline.SyncRun
 import com.quran.shared.pipeline.SyncRunResult
 import com.quran.shared.pipeline.SyncRunTrigger
 import com.quran.shared.pipeline.SynchronizationEnvironment
+import com.quran.shared.pipeline.profile.ProfileApi
+import com.quran.shared.pipeline.profile.ProfileRefresher
 import com.quran.shared.syncv2.SyncApi
 import com.quran.shared.syncv2.SyncEngineV2
 import com.quran.shared.syncv2.SyncHttpException
@@ -34,18 +36,6 @@ import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Instant
 
-/** The signed-in session, as sync needs it. */
-internal interface SyncAccount {
-    /** Headers for a sync request; empty when no one is signed in. */
-    suspend fun authHeaders(): Map<String, String>
-
-    /** The signed-in account's stable id (the token's `sub`). */
-    suspend fun accountId(): String?
-
-    /** Refreshes the token the server rejected; false when the session ended instead. */
-    suspend fun forceTokenRefresh(): Boolean
-}
-
 /** The session ended during a run: its requests have no token. */
 internal class SignedOutException : IllegalStateException("No session")
 
@@ -60,6 +50,8 @@ internal class SignedOutException : IllegalStateException("No session")
  * - A failure that asks for a push backoff (a 403 that may be the token's scope) stops pushing for that long; the
  *   periodic and other automatic runs still pull. A "sync now" or a sign-in pushes anyway. A sign-in, a logout or
  *   reset, or a new access token (a refresh, by any path) ends the backoff: the 403 may have been the old token's.
+ * - Each signed-in run starts [profiles]' fetch in the background, which the run never waits for: a manual sync's first
+ *   attempt fetches now, and any other attempt when the fetch is due ([profileFetch]).
  */
 internal class SyncClient(
     private val engine: SyncEngineV2,
@@ -72,7 +64,9 @@ internal class SyncClient(
     /** Closed with this client. */
     private val httpClient: HttpClient? = null,
     /** The retries' jitter: a uniform sample in `0 until 1` per attempt (see [SyncScheduler]); tests fix it. */
-    random: () -> Double = { Random.nextDouble() }
+    random: () -> Double = { Random.nextDouble() },
+    /** Keeps the user's profile current; closed with this client. Null fetches no profile. */
+    private val profiles: ProfileRefresher? = null
 ) : SynchronizationClient, AutoCloseable {
     private val logger = Logger.withTag("SyncClient")
     private val scheduler = SyncScheduler(timings, dispatcher, now, ::runAttempt, random)
@@ -137,10 +131,23 @@ internal class SyncClient(
     /** Waits until the scheduler has handled the end of the attempt running now, if any (see [SyncScheduler.awaitIdle]). */
     internal suspend fun awaitSchedulerIdle() = scheduler.awaitIdle()
 
-    /** Stops the scheduler for good and closes the HTTP client: the service that owns this client is gone. */
+    /** Fetches the user's profile now, or joins the fetch in progress (see [ProfileRefresher.refresh]). */
+    override suspend fun refreshProfile() {
+        profiles?.refresh()
+    }
+
+    /** Stops the scheduler and the profile fetches for good and closes the HTTP client: the owning service is gone. */
     override fun close() {
         scheduler.close()
+        profiles?.close()
         httpClient?.close()
+    }
+
+    /** [close], and waits until the attempt and the profile fetch that were running, if any, have stopped. */
+    override suspend fun closeAndJoin() {
+        close()
+        scheduler.cancelAndJoin()
+        profiles?.closeAndJoin()
     }
 
     private fun trigger(trigger: SyncTrigger) {
@@ -172,6 +179,10 @@ internal class SyncClient(
             if (headers.isEmpty()) return skipped("no one is signed in")
             val accountId = account.accountId() ?: return skipped("the signed-in account is unknown")
             if (!startReported) observer.syncStarted()
+            when (attempt.profileFetch()) {
+                ProfileFetch.NOW -> profiles?.refreshInBackground()
+                ProfileFetch.IF_DUE -> profiles?.refreshIfDue()
+            }
             // A pause that ran out is forgotten quietly; one still running ends if the token changed.
             if (pushBackoffUntil != 0L && now() >= pushBackoffUntil) endPushBackoff(why = null)
             pushBackoffHeaders?.let { if (it != headers.hashCode()) endPushBackoff("the access token changed") }
@@ -354,13 +365,19 @@ internal class SyncClient(
             observer: SyncRunObserver,
             timings: SchedulerTimings = DefaultSyncTimings,
             random: () -> Double = { Random.nextDouble() },
+            /** The HTTP engine; null uses the platform's (see [createSyncHttpClient]). Tests pass a mock. */
+            engine: HttpClientEngine? = null,
             now: () -> Long = { Clock.System.now().toEpochMilliseconds() }
         ): SyncClient {
             lateinit var client: SyncClient
-            val httpClient = createSyncHttpClient()
+            val httpClient = createSyncHttpClient(engine)
             val api = SyncApi(httpClient, environment.endPointURL) { client.requestHeaders() }
             val engine = SyncEngineV2(database, api, syncTypes(database), ENGINE_VERSION)
-            client = SyncClient(engine, account, gate, observer, timings, now = now, httpClient = httpClient, random = random)
+            val profiles = ProfileRefresher(ProfileApi(httpClient, environment), account, gate, now = now)
+            client = SyncClient(
+                engine, account, gate, observer, timings, now = now, httpClient = httpClient, random = random,
+                profiles = profiles
+            )
             return client
         }
 
@@ -392,6 +409,23 @@ internal class SyncClient(
         internal const val SYNC_SOCKET_TIMEOUT_MS = 60_000L
     }
 }
+
+/** When a signed-in attempt fetches the user's profile. */
+internal enum class ProfileFetch {
+    /** Now, whenever the last fetches were ([ProfileRefresher.refreshInBackground]). */
+    NOW,
+
+    /** Only when it is due: a day after the last fetch, and an hour after the last attempt ([ProfileRefresher.refreshIfDue]). */
+    IF_DUE
+}
+
+/**
+ * A manual sync ("sync now") is the user asking for their account to be current, so its first attempt fetches the
+ * profile now; its retries, and every automatic run (a sign-in, app start, local change, foreground, periodic), only
+ * when it is due.
+ */
+internal fun SyncAttempt.profileFetch(): ProfileFetch =
+    if (trigger == SyncTrigger.IMMEDIATE && number == 0) ProfileFetch.NOW else ProfileFetch.IF_DUE
 
 private val SyncResult.Failed.httpStatus: Int? get() = (cause as? SyncHttpException)?.status
 

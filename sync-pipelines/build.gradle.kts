@@ -48,6 +48,8 @@ kotlin {
             implementation(projects.syncV2)
             implementation(projects.logging)
             implementation(libs.ktor.client.core)
+            // The profile response is read as a JSON tree.
+            implementation(libs.kotlinx.serialization.json)
         }
 
         // The sync client's HTTP engine.
@@ -73,6 +75,9 @@ kotlin {
         jvmTest.dependencies {
             implementation(libs.sqldelight.sqlite.driver)
             implementation(libs.kotlinx.serialization.json)
+            // The OIDC client's token responses, in tests that fake the token endpoint with a mock engine.
+            implementation(libs.ktor.client.content.negotiation)
+            implementation(libs.ktor.serialization.json)
         }
 
         // The common tests open an in-memory database on each platform's own SQLite driver.

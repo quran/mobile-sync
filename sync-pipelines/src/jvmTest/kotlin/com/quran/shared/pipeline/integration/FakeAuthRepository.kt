@@ -1,5 +1,8 @@
 package com.quran.shared.pipeline.integration
 
+import com.quran.shared.auth.model.FetchedProfile
+import com.quran.shared.auth.model.FetchedProfileWrite
+import com.quran.shared.auth.model.ProfileFetchSession
 import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.auth.repository.AuthRepository
 import com.quran.shared.auth.repository.LogoutTokenMaterial
@@ -25,6 +28,9 @@ import org.publicvalue.multiplatform.oidc.tokenstore.TokenStore
  * Also like `OidcAuthRepository`, [refreshTokensIfNeeded] refreshes only when the token has expired
  * by the device's own clock ([expireLocally]); the server rejecting a token does not refresh it.
  * Tokens never expire locally unless a test says so.
+ *
+ * With [storesProfiles], it keeps the session's fetched profile as `OidcAuthRepository` does: for the session that
+ * fetched it and its account only, shown over the user until the session ends.
  */
 class FakeAuthRepository(private val device: String, private val server: FakeSyncServer) : AuthRepository {
     @Volatile private var pendingAccount: String? = null
@@ -116,6 +122,7 @@ class FakeAuthRepository(private val device: String, private val server: FakeSyn
             hold.release.await()
         }
         this.account = account
+        newSession()
         tokenStore.saveTokens(server.issueToken(account, device), null, null)
         expireOnNextRefresh = false
         expiredLocally = false
@@ -163,6 +170,7 @@ class FakeAuthRepository(private val device: String, private val server: FakeSyn
 
     override suspend fun clearLocalSession() {
         account = null
+        newSession()
         tokenStore.removeTokens()
     }
 
@@ -180,7 +188,53 @@ class FakeAuthRepository(private val device: String, private val server: FakeSyn
     /** The profile name the session reads from now on (the account's by default), like a name edited on the web. */
     @Volatile var profileName: String? = null
 
-    override suspend fun getCurrentUser(): UserInfo? = account?.let { UserInfo(id = it, name = profileName ?: it) }
+    /**
+     * Whether a session keeps the profile the device fetches. Off by default: a session then has no profile to fetch,
+     * so the device makes no profile request and the user stays the one [getCurrentUser] makes up.
+     */
+    @Volatile var storesProfiles = false
+
+    @Volatile private var sessionGeneration = 0L
+    @Volatile private var fetchedProfile: FetchedProfile? = null
+    @Volatile private var profileAttemptedAt: Long? = null
+
+    /** A sign-in or the session's end: the session's profile goes with it. */
+    private fun newSession() {
+        sessionGeneration += 1
+        fetchedProfile = null
+        profileAttemptedAt = null
+    }
+
+    override suspend fun getCurrentUser(): UserInfo? = account?.let { account ->
+        val user = UserInfo(id = account, name = profileName ?: account)
+        val profile = fetchedProfile?.takeIf { it.id == account } ?: return@let user
+        user.copy(
+            name = profile.name,
+            firstName = profile.firstName,
+            lastName = profile.lastName,
+            email = profile.email ?: user.email,
+            photoUrl = profile.photoUrl
+        )
+    }
+
+    override suspend fun captureProfileFetchSession(): ProfileFetchSession? {
+        if (!storesProfiles || accessToken() == null) return null
+        val account = account ?: return null
+        return ProfileFetchSession(sessionGeneration, account, fetchedProfile?.fetchedAt, profileAttemptedAt)
+    }
+
+    override suspend fun recordProfileFetchAttempt(session: ProfileFetchSession, attemptedAt: Long): Boolean {
+        if (session.generation != sessionGeneration) return false
+        profileAttemptedAt = attemptedAt
+        return true
+    }
+
+    override suspend fun storeFetchedProfile(session: ProfileFetchSession, profile: FetchedProfile): FetchedProfileWrite =
+        when {
+            session.generation != sessionGeneration || account != session.accountId -> FetchedProfileWrite.SESSION_CHANGED
+            profile.id != session.accountId -> FetchedProfileWrite.OTHER_ACCOUNT
+            else -> FetchedProfileWrite.STORED.also { fetchedProfile = profile }
+        }
 
     override suspend fun getAuthHeaders(): Map<String, String> {
         // Like OidcAuthRepository: refresh first, then read the (possibly new) token.

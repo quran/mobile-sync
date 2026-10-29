@@ -86,6 +86,12 @@ internal interface SynchronizationClient {
 
     /** The stored session was restored (at launch): run the app start's sync now instead of after its delay. */
     fun sessionRestored()
+
+    /** Fetches the signed-in user's profile now, joining a fetch in progress; nothing when signed out. */
+    suspend fun refreshProfile()
     fun cancelSyncing()
     suspend fun cancelSyncingAndJoin()
+
+    /** Stops for good, as closing it does, and waits until the work it stopped (such as a profile fetch) has ended. */
+    suspend fun closeAndJoin()
 }

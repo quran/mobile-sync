@@ -73,7 +73,7 @@ class QuranDataServiceImportTest {
             .create(
                 authService = authService,
                 pipeline = pipeline,
-                environment = SynchronizationEnvironment("https://example.invalid"),
+                environment = SynchronizationEnvironment("https://example.invalid", avatarsHost = "https://avatars.example.invalid"),
                 persistenceResetRepository = PersistenceResetRepositoryImpl(synced),
                 persistenceImportRepository = PersistenceImportRepositoryImpl(database.quran, synced),
                 sessionLifecycleCoordinator = lifecycleCoordinator,
@@ -161,8 +161,10 @@ internal class ImportSyncClientSpy : SynchronizationClient {
     override fun triggerSyncImmediately() = Unit
     override fun signedIn() = Unit
     override fun sessionRestored() = Unit
+    override suspend fun refreshProfile() = Unit
     override fun cancelSyncing() = Unit
     override suspend fun cancelSyncingAndJoin() = Unit
+    override suspend fun closeAndJoin() = Unit
 }
 
 internal class LoggedOutAuthRepository : AuthRepository {

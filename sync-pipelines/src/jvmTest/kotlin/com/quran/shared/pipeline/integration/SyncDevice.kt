@@ -247,7 +247,7 @@ class SyncDevice internal constructor(
             .create(
                 driverFactory = DriverFactory(),
                 storage = storage,
-                environment = SynchronizationEnvironment(server.url),
+                environment = SynchronizationEnvironment(server.url, avatarsHost = AVATARS_HOST),
                 authRuntimeConfig = AuthRuntimeConfig.Configured(AuthConfig(clientId = FakeAuthRepository.CLIENT_ID))
             )
 
@@ -291,6 +291,9 @@ internal class DeviceBindings(
             ).also(onSyncClient)
         }
 }
+
+/** Where a device's profile photos uploaded on the website are served from. */
+const val AVATARS_HOST = "https://avatars.example.invalid"
 
 private class InMemorySettingsStore : SettingsStore {
     private val values = mutableMapOf<String, String>()

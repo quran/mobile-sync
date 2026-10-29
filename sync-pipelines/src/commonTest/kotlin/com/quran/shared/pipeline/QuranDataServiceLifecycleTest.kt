@@ -1104,7 +1104,7 @@ private class QuranDataServiceFixture(
         return factory.create(
             authService = authService,
             pipeline = pipeline,
-            environment = SynchronizationEnvironment("https://example.invalid"),
+            environment = SynchronizationEnvironment("https://example.invalid", avatarsHost = "https://avatars.example.invalid"),
             persistenceResetRepository = resetRepository,
             persistenceImportRepository = importRepository,
             sessionLifecycleCoordinator = lifecycleCoordinator,
@@ -1315,6 +1315,10 @@ private class ServiceSynchronizationClient : SynchronizationClient, AutoCloseabl
     override fun sessionRestored() {
         sessionRestoredCount += 1
     }
+
+    override suspend fun refreshProfile() = Unit
+
+    override suspend fun closeAndJoin() = Unit
 
     override fun cancelSyncing() {
         cancelSyncingCount += 1

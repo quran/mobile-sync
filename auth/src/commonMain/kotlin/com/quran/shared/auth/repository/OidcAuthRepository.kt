@@ -3,10 +3,14 @@ package com.quran.shared.auth.repository
 import co.touchlab.kermit.Logger
 import com.quran.shared.auth.di.AuthFlowFactoryProvider
 import com.quran.shared.auth.model.AuthConfig
+import com.quran.shared.auth.model.FetchedProfile
+import com.quran.shared.auth.model.FetchedProfileWrite
 import com.quran.shared.auth.model.IdTokenUser
+import com.quran.shared.auth.model.ProfileFetchSession
 import com.quran.shared.auth.model.TokenResponse
 import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.auth.model.parseIdTokenUser
+import com.quran.shared.auth.model.withProfile
 import com.quran.shared.auth.persistence.AuthStorage
 import com.quran.shared.auth.utils.currentTimeMillis
 import com.quran.shared.di.AppScope
@@ -578,9 +582,69 @@ class OidcAuthRepository(
                 if (!isCurrentSessionCommittedAndPublishableLocked()) {
                     return@withLock null
                 }
-                authStorage.retrieveUserInfo()
+                authStorage.retrieveUserInfo()?.withProfile(authStorage.retrieveFetchedProfile())
             }
         }
+
+    override suspend fun captureProfileFetchSession(): ProfileFetchSession? =
+        sessionMutex.withLock {
+            persistedSessionWriteMutex.withLock {
+                refreshSessionStateFromStorageLocked()
+                if (!isCurrentSessionCommittedAndPublishableLocked()) {
+                    return@withLock null
+                }
+                val accountId = authStorage.retrieveUserInfo()?.id?.takeIf { it.isNotBlank() } ?: return@withLock null
+                ProfileFetchSession(
+                    generation = sessionGeneration,
+                    accountId = accountId,
+                    fetchedAt = authStorage.retrieveFetchedProfile()?.takeIf { it.id == accountId }?.fetchedAt,
+                    attemptedAt = authStorage.retrieveProfileFetchAttemptedAt()
+                )
+            }
+        }
+
+    override suspend fun recordProfileFetchAttempt(session: ProfileFetchSession, attemptedAt: Long): Boolean =
+        sessionMutex.withLock {
+            persistedSessionWriteMutex.withLock {
+                if (!isProfileFetchSessionCurrentLocked(session)) {
+                    return@withLock false
+                }
+                authStorage.storeProfileFetchAttemptedAt(attemptedAt)
+                true
+            }
+        }
+
+    /**
+     * Stores the profile under the same guard as a token refresh: the session generation it was fetched for must still
+     * be the committed one, so a logout or a sign-in (maybe to another account) during the request writes nothing. A
+     * profile for another account is dropped without ending the session: the profile endpoint is no identity proof.
+     */
+    override suspend fun storeFetchedProfile(
+        session: ProfileFetchSession,
+        profile: FetchedProfile
+    ): FetchedProfileWrite =
+        sessionMutex.withLock {
+            persistedSessionWriteMutex.withLock {
+                if (!isProfileFetchSessionCurrentLocked(session)) {
+                    logger.i { "Dropping a fetched profile: the session changed during the fetch" }
+                    return@withLock FetchedProfileWrite.SESSION_CHANGED
+                }
+                if (profile.id != session.accountId) {
+                    logger.w { "Dropping a fetched profile: it is for another account than the session's" }
+                    return@withLock FetchedProfileWrite.OTHER_ACCOUNT
+                }
+                authStorage.storeFetchedProfile(profile)
+                FetchedProfileWrite.STORED
+            }
+        }
+
+    private suspend fun isProfileFetchSessionCurrentLocked(session: ProfileFetchSession): Boolean {
+        refreshSessionStateFromStorageLocked()
+        return sessionGeneration == session.generation &&
+            committedTokenGeneration == session.generation &&
+            isCurrentSessionCommittedAndPublishableLocked() &&
+            authStorage.retrieveUserInfo()?.id == session.accountId
+    }
 
     private suspend fun isGenerationCurrentAndPublishable(expectedGeneration: Long): Boolean =
         sessionMutex.withLock {

@@ -20,4 +20,20 @@ class AppEnvironmentTest {
             AppEnvironment.PRODUCTION.synchronizationEnvironment().endPointURL
         )
     }
+
+    @Test
+    fun `prelive serves uploaded avatars from its own bucket`() {
+        assertEquals(
+            "https://s3.amazonaws.com/qreflect-bucket-prelive",
+            AppEnvironment.PRELIVE.synchronizationEnvironment().avatarsHost
+        )
+    }
+
+    @Test
+    fun `production serves uploaded avatars from its bucket`() {
+        assertEquals(
+            "https://s3.amazonaws.com/qreflect-bucket",
+            AppEnvironment.PRODUCTION.synchronizationEnvironment().avatarsHost
+        )
+    }
 }

@@ -65,7 +65,7 @@ class QuranDataServiceWriteLoggingTest {
             .create(
                 authService = authService,
                 pipeline = pipeline,
-                environment = SynchronizationEnvironment("https://example.invalid"),
+                environment = SynchronizationEnvironment("https://example.invalid", avatarsHost = "https://avatars.example.invalid"),
                 persistenceResetRepository = PersistenceResetRepositoryImpl(synced),
                 persistenceImportRepository = PersistenceImportRepositoryImpl(database.quran, synced),
                 sessionLifecycleCoordinator = SessionLifecycleCoordinator(
