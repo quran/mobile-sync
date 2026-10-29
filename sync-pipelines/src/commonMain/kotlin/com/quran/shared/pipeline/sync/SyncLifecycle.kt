@@ -91,4 +91,7 @@ internal interface SynchronizationClient {
     suspend fun refreshProfile()
     fun cancelSyncing()
     suspend fun cancelSyncingAndJoin()
+
+    /** Stops for good, as closing it does, and waits until the work it stopped (such as a profile fetch) has ended. */
+    suspend fun closeAndJoin()
 }

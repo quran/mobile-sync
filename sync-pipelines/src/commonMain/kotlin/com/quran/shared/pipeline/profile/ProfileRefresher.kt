@@ -14,6 +14,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -83,6 +86,12 @@ internal class ProfileRefresher(
         scope.cancel()
     }
 
+    /** [close], and waits until the fetch in progress, if any, has stopped. */
+    suspend fun closeAndJoin() {
+        close()
+        scope.coroutineContext.job.join()
+    }
+
     /** The session to fetch for; null when no one is signed in or a logout or reset is running. */
     private suspend fun currentSession(): ProfileFetchSession? {
         if (!gate.canStartSync()) {
@@ -130,6 +139,8 @@ internal class ProfileRefresher(
             logger.i { "Not storing the profile: the session ended during the fetch" }
             return
         }
+        // A fetch cancelled after its answer arrived (the service is being torn down) stores nothing.
+        currentCoroutineContext().ensureActive()
         if (account.storeFetchedProfile(session, profile) == FetchedProfileWrite.STORED) {
             logger.d { "Stored the fetched profile" }
         }

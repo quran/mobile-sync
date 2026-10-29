@@ -143,11 +143,13 @@ class QuranDataService internal constructor(
         (syncClient as? AutoCloseable)?.close()
     }
 
+    /** [clear], and waits until the work it stopped has ended: its own, a sync run, and a profile fetch. */
     @HiddenFromObjC
     suspend fun clearAndJoin() {
         clear()
         serviceJob.cancelAndJoin()
         syncClient.cancelSyncingAndJoin()
+        syncClient.closeAndJoin()
     }
 
     @HiddenFromObjC

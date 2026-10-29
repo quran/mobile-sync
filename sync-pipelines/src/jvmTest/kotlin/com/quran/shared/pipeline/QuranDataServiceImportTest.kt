@@ -164,6 +164,7 @@ internal class ImportSyncClientSpy : SynchronizationClient {
     override suspend fun refreshProfile() = Unit
     override fun cancelSyncing() = Unit
     override suspend fun cancelSyncingAndJoin() = Unit
+    override suspend fun closeAndJoin() = Unit
 }
 
 internal class LoggedOutAuthRepository : AuthRepository {

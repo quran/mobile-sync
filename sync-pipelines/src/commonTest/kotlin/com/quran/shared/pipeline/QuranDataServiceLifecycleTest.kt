@@ -1318,6 +1318,8 @@ private class ServiceSynchronizationClient : SynchronizationClient, AutoCloseabl
 
     override suspend fun refreshProfile() = Unit
 
+    override suspend fun closeAndJoin() = Unit
+
     override fun cancelSyncing() {
         cancelSyncingCount += 1
     }

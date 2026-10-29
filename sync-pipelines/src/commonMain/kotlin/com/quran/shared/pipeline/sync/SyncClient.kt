@@ -143,6 +143,13 @@ internal class SyncClient(
         httpClient?.close()
     }
 
+    /** [close], and waits until the attempt and the profile fetch that were running, if any, have stopped. */
+    override suspend fun closeAndJoin() {
+        close()
+        scheduler.cancelAndJoin()
+        profiles?.closeAndJoin()
+    }
+
     private fun trigger(trigger: SyncTrigger) {
         if (gate.canStartSync()) scheduler.trigger(trigger) else logger.d { "Sync lifecycle unavailable, skipping $trigger" }
     }
@@ -355,10 +362,12 @@ internal class SyncClient(
             observer: SyncRunObserver,
             timings: SchedulerTimings = DefaultSyncTimings,
             random: () -> Double = { Random.nextDouble() },
+            /** The HTTP engine; null uses the platform's (see [createSyncHttpClient]). Tests pass a mock. */
+            engine: HttpClientEngine? = null,
             now: () -> Long = { Clock.System.now().toEpochMilliseconds() }
         ): SyncClient {
             lateinit var client: SyncClient
-            val httpClient = createSyncHttpClient()
+            val httpClient = createSyncHttpClient(engine)
             val api = SyncApi(httpClient, environment.endPointURL) { client.requestHeaders() }
             val engine = SyncEngineV2(database, api, syncTypes(database), ENGINE_VERSION)
             val profiles = ProfileRefresher(ProfileApi(httpClient, environment), account, gate, now = now)
