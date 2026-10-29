@@ -296,6 +296,18 @@ class ProfileRefresherTest {
     }
 
     @Test
+    fun `a background refresh ignores how recent the last fetch was`() = runTest(main) {
+        start()
+        syncRunAfter(Duration.ZERO)
+        assertEquals(1, profileRequests.size)
+
+        refresher.refreshInBackground()
+        advanceUntilIdle()
+
+        assertEquals(2, profileRequests.size)
+    }
+
+    @Test
     fun `an explicit refresh ignores the back-off`() = runTest(main) {
         start()
         syncRunAfter(Duration.ZERO)

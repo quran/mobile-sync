@@ -3,6 +3,7 @@ package com.quran.shared.pipeline.integration.scenarios
 import com.quran.shared.auth.model.AuthState
 import com.quran.shared.auth.model.UserInfo
 import com.quran.shared.pipeline.integration.AVATARS_HOST
+import com.quran.shared.pipeline.integration.DeviceTimings
 import com.quran.shared.pipeline.integration.SyncDevice
 import com.quran.shared.pipeline.integration.SyncScenario
 import com.quran.shared.pipeline.integration.assertSucceeded
@@ -10,12 +11,14 @@ import com.quran.shared.pipeline.integration.awaitUntil
 import com.quran.shared.pipeline.integration.server.HttpError
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -35,8 +38,7 @@ class ProfileScenariosTest {
             "$AVATARS_HOST/events/banner/en/avatars/alice/medium.png?v=1788192266",
             phone.user().photoUrl
         )
-        assertSucceeded(phone.syncNow())
-        assertEquals(1, server.profileRequests("phone").size, "a later sync doesn't fetch a profile less than a day old")
+        assertEquals(1, server.profileRequests("phone").size, "the sign-in's sync fetched it once")
     }
 
     @Test
@@ -100,6 +102,29 @@ class ProfileScenariosTest {
         assertEquals(0, server.profileRequests("phone").size, "the profile request is still unanswered")
         profileRequest.release()
         phone.awaitUserName(ALICE)
+    }
+
+    @Test
+    fun `PROFILE-06 a manual sync fetches the profile again within a day, an automatic one doesn't`() = syncScenario {
+        val phone = device("phone", DeviceTimings(localChangeDelay = 10.milliseconds))
+        // Without a profile to keep, the sign-in's sync fetches none; the refresh below then fetches one, and returns
+        // once it is stored.
+        assertSucceeded(phone.login(ALICE))
+        phone.auth.storesProfiles = true
+        phone.data.refreshProfile()
+        assertEquals(1, server.profileRequests("phone").size)
+
+        web(ALICE).editProfile(firstName = "Alice", lastName = "B.")
+        assertSucceeded(phone.syncNow())
+        phone.awaitUserName("Alice B.")
+        assertEquals(2, server.profileRequests("phone").size, "the manual sync fetched the profile")
+
+        phone.data.addNote("Patience is light", 2, 153, 2, 153, at(0))
+        assertSucceeded(phone.awaitSync())
+        assertSucceeded(phone.syncNow())
+        awaitUntil("the second manual sync's profile fetch") { server.profileRequests("phone").size >= 3 }
+        delay(200.milliseconds)
+        assertEquals(3, server.profileRequests("phone").size, "the local change's sync fetched no profile")
     }
 
     /** A device whose sessions keep the profiles they fetch. */

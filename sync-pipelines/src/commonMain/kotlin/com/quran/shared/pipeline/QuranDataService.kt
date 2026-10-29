@@ -381,6 +381,8 @@ class QuranDataService internal constructor(
      * @param immediately `false` waits a few seconds so a burst of local edits syncs once. `true`
      *   starts right away, such as for a user's "Sync now". An immediate request made while a sync
      *   is running starts another right after it; one made while a sync waits to retry starts now.
+     *   Signed in, an immediate sync also fetches the user's profile at once (see [refreshProfile]), in
+     *   the background: the sync never waits for it or fails because of it.
      */
     fun triggerSync(immediately: Boolean = false) {
         if (!sessionLifecycleCoordinator.canStartSync()) {
@@ -421,7 +423,8 @@ class QuranDataService internal constructor(
      * session runs joins it.
      *
      * The engine also fetches on its own: during the sign-in's sync, and during the first sync that starts a day or more
-     * after the last fetch (an hour or more after a failed one). The ID token can't bring such an edit: a token refresh
+     * after the last fetch (an hour or more after a failed one); and at once, like this, during a manual sync
+     * ([triggerSync] with `immediately`). The ID token can't bring such an edit: a token refresh
      * repeats the claims captured when the user consented, and no longer replaces a fetched name.
      *
      * Signed out, or while a logout runs, it returns without a request. The fetched profile is stored for the session's

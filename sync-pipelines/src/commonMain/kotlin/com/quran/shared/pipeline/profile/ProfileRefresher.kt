@@ -29,7 +29,8 @@ import kotlin.time.Duration.Companion.hours
  * so an edit on Quran.com reaches the app only through the account's profile ([ProfileApi]). A fetched profile is
  * stored with the session, which republishes `authState` when it changed the user.
  *
- * - [refresh] fetches now: the app calls it when the user may have just edited their profile.
+ * - [refresh] fetches now: the app calls it when the user may have just edited their profile. A manual sync ("sync
+ *   now") fetches now too, in the background ([refreshInBackground]).
  * - [refreshIfDue] fetches in the background, from each sync run, when this session's profile is [FETCH_INTERVAL] old
  *   or it has none (a new sign-in clears it, so a sign-in's sync fetches it), and it last tried more than
  *   [RETRY_INTERVAL] ago. So it costs about one request a day, and an outage one an hour. It runs no timer of its own.
@@ -68,11 +69,16 @@ internal class ProfileRefresher(
     }
 
     /** Starts a fetch in the background when it is due (see [ProfileRefresher]). Failures are only logged. */
-    fun refreshIfDue() {
+    fun refreshIfDue() = launchFetch(onlyIfDue = true)
+
+    /** Starts a fetch in the background now, whenever the last ones were, as [refresh] does. Failures are only logged. */
+    fun refreshInBackground() = launchFetch(onlyIfDue = false)
+
+    private fun launchFetch(onlyIfDue: Boolean) {
         scope.launch {
             try {
                 val session = currentSession() ?: return@launch
-                if (isDue(session)) fetchOrJoin(session).await()
+                if (!onlyIfDue || isDue(session)) fetchOrJoin(session).await()
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Exception) {
