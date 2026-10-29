@@ -87,14 +87,6 @@ fun AuthScreen(
                                         } catch (e: Exception) {
                                         }
                                     }
-                                },
-                                onReauthenticateLoginClick = {
-                                    scope.launch {
-                                        try {
-                                            viewModel.loginWithReauthentication()
-                                        } catch (e: Exception) {
-                                        }
-                                    }
                                 }
                             )
 

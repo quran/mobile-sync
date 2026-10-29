@@ -121,8 +121,6 @@ class FakeAuthRepository(private val device: String, private val server: FakeSyn
         expiredLocally = false
     }
 
-    override suspend fun loginWithReauthentication() = login()
-
     override suspend fun refreshTokensIfNeeded(): Boolean {
         if (expireOnNextRefresh && accessToken() != null) {
             expireOnNextRefresh = false

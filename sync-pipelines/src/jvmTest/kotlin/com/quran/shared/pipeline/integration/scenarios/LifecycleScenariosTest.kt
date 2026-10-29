@@ -474,7 +474,7 @@ class LifecycleScenariosTest {
         val hold = phone.auth.holdNextLogin()
 
         coroutineScope {
-            val signIn = async { runCatching { phone.authService.loginWithReauthentication() } }
+            val signIn = async { runCatching { phone.authService.login() } }
             withTimeout(10.seconds) { hold.reached.await() }
             // The browser is never closed, so a logout that waited for the sign-in would never return.
             withTimeout(10.seconds) { phone.logout() }

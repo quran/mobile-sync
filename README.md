@@ -277,7 +277,7 @@ Core API examples:
 - Observe: `authState`, `syncStatus`, `syncHistory`, `heldItems`, `unsyncedItems`, `bookmarks`, `collectionsWithBookmarks`, `notes`
 - Mutations: `addBookmark`, `deleteBookmark`, `addCollection`, `deleteCollection`, `addNote`, `deleteNote`
 - Trigger sync: `triggerSync()` after a burst of edits, `triggerSync(immediately = true)` for a user's "Sync now", or `syncOnForeground()` each time the app returns from the background
-- Auth: use `SyncAuthService.login()`, `loginWithReauthentication()`, `logout()`, and `clearError()`
+- Auth: use `SyncAuthService.login()` (it always sends `prompt=login`, so the provider asks for credentials again), `logout()`, and `clearError()`
 
 Reading bookmarks are three slots (`ReadingBookmarkSlot`), each an ayah, a page, or empty. Page
 bookmarks work across mushafs: tell the library which `Mushaf` the app shows, and it does the page

@@ -44,19 +44,12 @@ data class RemoteLogoutFailure(
 interface AuthRepository {
     /**
      * Performs the complete OAuth2 login flow.
-     * This launches the browser, handles the redirect, and exchanges the code for tokens.
+     * This launches the browser, handles the redirect, and exchanges the code for tokens. The provider always
+     * asks for credentials again (`prompt=login` in the OIDC authorization request).
      *
      * @throws Exception if authentication fails or is cancelled
      */
     suspend fun login()
-
-    /**
-     * Performs a login flow while forcing re-authentication on the provider.
-     * Equivalent to passing `prompt=login` in the OIDC authorization request.
-     *
-     * @throws Exception if authentication fails or is cancelled
-     */
-    suspend fun loginWithReauthentication()
 
     /**
      * Refreshes the access token if it's expired or near expiration.
@@ -123,6 +116,4 @@ interface AuthRepository {
 
 internal interface AuthRepositoryLoginCommitCallbacks : AuthRepository {
     suspend fun login(onDurableCommit: suspend () -> Unit)
-
-    suspend fun loginWithReauthentication(onDurableCommit: suspend () -> Unit)
 }

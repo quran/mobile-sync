@@ -1036,80 +1036,6 @@ class AuthServiceTest {
     }
 
     @Test
-    fun `reauthentication waits for active normal login then runs reauthentication separately`() =
-        runTest(dispatcher) {
-            val repository = RecordingAuthRepository(
-                accessToken = null,
-                loginAccessToken = "normal-access-token",
-                reauthenticationAccessToken = "reauth-access-token",
-                currentUser = null,
-                suspendFirstLogin = true
-            )
-            val service = AuthService(repository)
-            advanceUntilIdle()
-
-            val normalLogin = async {
-                service.login()
-            }
-            runCurrent()
-            assertTrue(repository.firstLoginStarted.isCompleted)
-
-            val reauthentication = async {
-                service.loginWithReauthentication()
-            }
-            runCurrent()
-            assertFalse(reauthentication.isCompleted)
-
-            repository.firstLoginCanFinish.complete(Unit)
-
-            normalLogin.await()
-            reauthentication.await()
-            advanceUntilIdle()
-
-            assertEquals(1, repository.loginCalls)
-            assertEquals(1, repository.reauthenticationCalls)
-            assertEquals("reauth-access-token", service.getAccessToken())
-            assertIs<AuthState.Success>(service.authState.value)
-        }
-
-    @Test
-    fun `reauthentication waits through active normal login cancellation and starts its own prompt`() =
-        runTest(dispatcher) {
-            val repository = RecordingAuthRepository(
-                accessToken = null,
-                loginAccessToken = "normal-access-token",
-                reauthenticationAccessToken = "reauth-access-token",
-                currentUser = null,
-                suspendFirstLoginAndCancel = true
-            )
-            val service = AuthService(repository)
-            advanceUntilIdle()
-
-            val normalLogin = async {
-                runCatching { service.login() }
-            }
-            runCurrent()
-            assertTrue(repository.firstLoginStarted.isCompleted)
-
-            val reauthentication = async {
-                runCatching { service.loginWithReauthentication() }
-            }
-            runCurrent()
-            assertFalse(reauthentication.isCompleted)
-
-            repository.firstLoginCanFail.complete(Unit)
-
-            assertTrue(normalLogin.await().isFailure)
-            assertTrue(reauthentication.await().isSuccess)
-            advanceUntilIdle()
-
-            assertEquals(1, repository.loginCalls)
-            assertEquals(1, repository.reauthenticationCalls)
-            assertEquals("reauth-access-token", service.getAccessToken())
-            assertIs<AuthState.Success>(service.authState.value)
-        }
-
-    @Test
     fun `cancelled active login releases duplicate service login waiter`() =
         runTest(dispatcher) {
             val repository = RecordingAuthRepository(
@@ -1172,41 +1098,6 @@ class AuthServiceTest {
 
             assertTrue(firstLogin.await().isFailure)
             assertTrue(duplicateLogin.await().isFailure)
-            advanceUntilIdle()
-
-            assertNull(service.getAccessToken())
-            assertIs<AuthState.Idle>(service.authState.value)
-        }
-
-    @Test
-    fun `cancelled pre commit reauthentication waiter fails while old session exists`() =
-        runTest(dispatcher) {
-            val repository = RecordingAuthRepository(
-                accessToken = "old-access-token",
-                reauthenticationAccessToken = "reauth-access-token",
-                currentUser = null,
-                suspendFirstReauthenticationAndCancel = true
-            )
-            val service = AuthService(repository)
-            advanceUntilIdle()
-            assertEquals("old-access-token", service.getAccessToken())
-
-            val firstReauthentication = async {
-                runCatching { service.loginWithReauthentication() }
-            }
-            runCurrent()
-            assertTrue(repository.firstReauthenticationStarted.isCompleted)
-
-            val duplicateReauthentication = async {
-                runCatching { service.loginWithReauthentication() }
-            }
-            runCurrent()
-            assertFalse(duplicateReauthentication.isCompleted)
-
-            repository.firstReauthenticationCanFail.complete(Unit)
-
-            assertTrue(firstReauthentication.await().isFailure)
-            assertTrue(duplicateReauthentication.await().isFailure)
             advanceUntilIdle()
 
             assertNull(service.getAccessToken())
@@ -1507,45 +1398,7 @@ class AuthServiceTest {
             runCurrent()
 
             assertTrue(duplicateLogin.await().isFailure)
-
-            repository.firstLoginCanFinish.complete(Unit)
-
-            assertTrue(firstLogin.await().isFailure)
-            advanceUntilIdle()
-            assertNull(service.getAccessToken())
-            assertIs<AuthState.Idle>(service.authState.value)
-        }
-
-    @Test
-    fun `different intent reauthentication waiter fails after local clear without starting reauth`() =
-        runTest(dispatcher) {
-            val repository = RecordingAuthRepository(
-                accessToken = null,
-                loginAccessToken = "stale-access-token",
-                reauthenticationAccessToken = "reauth-access-token",
-                currentUser = null,
-                suspendFirstLogin = true
-            )
-            val service = AuthService(repository)
-            advanceUntilIdle()
-
-            val firstLogin = async {
-                runCatching { service.login() }
-            }
-            runCurrent()
-            assertTrue(repository.firstLoginStarted.isCompleted)
-
-            val reauthentication = async {
-                runCatching { service.loginWithReauthentication() }
-            }
-            runCurrent()
-            assertFalse(reauthentication.isCompleted)
-
-            service.clearLocalSession()
-            runCurrent()
-
-            assertTrue(reauthentication.await().isFailure)
-            assertEquals(0, repository.reauthenticationCalls)
+            assertEquals(1, repository.loginCalls)
 
             repository.firstLoginCanFinish.complete(Unit)
 
@@ -1842,7 +1695,6 @@ class AuthServiceTest {
 private class RecordingAuthRepository(
     private var accessToken: String?,
     private val loginAccessToken: String? = accessToken,
-    private val reauthenticationAccessToken: String? = loginAccessToken,
     private val currentUser: UserInfo?,
     private val throwAfterLocalLogoutClear: Boolean = false,
     private val throwOnClearLocalSession: Boolean = false,
@@ -1868,7 +1720,6 @@ private class RecordingAuthRepository(
     private val duplicateLoginReturnsWithoutTokenWhileFirstSuspended: Boolean = false,
     private val suspendFirstLoginAndFail: Boolean = false,
     private val suspendFirstLoginAndCancel: Boolean = false,
-    private val suspendFirstReauthenticationAndCancel: Boolean = false,
     private val ignoreFirstLoginCancellation: Boolean = false,
     private val loginFailure: Exception? = null,
     private val suspendFirstAccessTokenRead: Boolean = false,
@@ -1900,8 +1751,6 @@ private class RecordingAuthRepository(
     val firstLoginAfterTokenWriteStarted = CompletableDeferred<Unit>()
     val firstLoginAfterTokenWriteCanFinish = CompletableDeferred<Unit>()
     val firstLoginCanFail = CompletableDeferred<Unit>()
-    val firstReauthenticationStarted = CompletableDeferred<Unit>()
-    val firstReauthenticationCanFail = CompletableDeferred<Unit>()
     val firstLoginCancellationObserved = CompletableDeferred<Unit>()
     val firstAccessTokenReadStarted = CompletableDeferred<Unit>()
     val firstAccessTokenReadCanFinish = CompletableDeferred<Unit>()
@@ -1912,8 +1761,6 @@ private class RecordingAuthRepository(
     var clearLocalSessionCalls = 0
         private set
     var loginCalls = 0
-        private set
-    var reauthenticationCalls = 0
         private set
     var refreshCalls = 0
         private set
@@ -1991,21 +1838,6 @@ private class RecordingAuthRepository(
                 }
             }
         }
-    }
-
-    override suspend fun loginWithReauthentication() {
-        loginWithReauthentication(onDurableCommit = {})
-    }
-
-    override suspend fun loginWithReauthentication(onDurableCommit: suspend () -> Unit) {
-        reauthenticationCalls += 1
-        if (suspendFirstReauthenticationAndCancel && reauthenticationCalls == 1) {
-            firstReauthenticationStarted.complete(Unit)
-            firstReauthenticationCanFail.await()
-            throw CancellationException("reauthentication cancelled")
-        }
-        accessToken = reauthenticationAccessToken
-        onDurableCommit()
     }
 
     override suspend fun refreshTokensIfNeeded(): Boolean {

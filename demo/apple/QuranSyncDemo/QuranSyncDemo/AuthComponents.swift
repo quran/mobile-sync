@@ -3,21 +3,12 @@ import Shared
 
 struct LoginButtonContent: View {
     let onLogin: () async -> Void
-    let onReauthenticateLogin: () async -> Void
-    @State private var forcePrompt: Bool = false
 
     var body: some View {
         VStack(spacing: 16) {
-            Toggle("Force prompt login", isOn: $forcePrompt)
-                .font(.caption)
-            
             Button(action: {
                 Task {
-                    if forcePrompt {
-                        await onReauthenticateLogin()
-                    } else {
-                        await onLogin()
-                    }
+                    await onLogin()
                 }
             }) {
                 Text("Sign in with OAuth")

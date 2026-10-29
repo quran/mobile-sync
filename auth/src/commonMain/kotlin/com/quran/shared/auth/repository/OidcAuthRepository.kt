@@ -77,39 +77,18 @@ class OidcAuthRepository(
     }
 
     override suspend fun login() {
-        login(forcePrompt = false, onDurableCommit = {})
+        login(onDurableCommit = {})
     }
 
     override suspend fun login(onDurableCommit: suspend () -> Unit) {
-        login(forcePrompt = false, onDurableCommit = onDurableCommit)
-    }
-
-    override suspend fun loginWithReauthentication() {
-        login(forcePrompt = true, onDurableCommit = {})
-    }
-
-    override suspend fun loginWithReauthentication(onDurableCommit: suspend () -> Unit) {
-        login(forcePrompt = true, onDurableCommit = onDurableCommit)
-    }
-
-    private suspend fun login(
-        forcePrompt: Boolean,
-        onDurableCommit: suspend () -> Unit
-    ) {
-        val intent = if (forcePrompt) {
-            TokenExchangeIntent.Reauthenticate
-        } else {
-            TokenExchangeIntent.Normal
-        }
-        val exchange = beginReplacementTokenExchange(intent) ?: return
+        val exchange = beginReplacementTokenExchange() ?: return
         var failure: Throwable? = null
         try {
             val authFlow = AuthFlowFactoryProvider.factory.createAuthFlow(oidcClient)
             val response = authFlow.getAccessToken(
                 configureAuthUrl = {
-                    if (forcePrompt) {
-                        parameters.append("prompt", "login")
-                    }
+                    // Always ask for credentials, so a sign-in after a logout never reuses the provider's browser session.
+                    parameters.append("prompt", "login")
                 },
                 configureTokenExchange = configureTokenExchange
             )
@@ -269,14 +248,8 @@ class OidcAuthRepository(
         val generation: Long
     )
 
-    private data class TokenExchangeWait(
-        val exchange: ActiveTokenExchange,
-        val shareResult: Boolean
-    )
-
     private data class ActiveTokenExchange(
         val generation: Long,
-        val intent: TokenExchangeIntent,
         val completion: CompletableDeferred<Unit>,
         var committedGeneration: Long? = null
     )
@@ -285,11 +258,6 @@ class OidcAuthRepository(
         val generation: Long,
         val failure: Exception?
     )
-
-    private enum class TokenExchangeIntent {
-        Normal,
-        Reauthenticate
-    }
 
     private class LoginSupersededException : IllegalStateException("Login was superseded by a newer session lifecycle change")
 
@@ -302,58 +270,49 @@ class OidcAuthRepository(
     private fun Exception.isExpectedLoginEnd(): Boolean =
         this is OpenIdConnectException.AuthenticationCancelled || this is LoginSupersededException
 
-    private suspend fun beginReplacementTokenExchange(intent: TokenExchangeIntent): TokenExchange? {
-        while (true) {
-            var waitForExchange: TokenExchangeWait? = null
-            val exchange = tokenExchangeMutex.withLock tokenLock@ {
-                sessionMutex.withLock {
-                    persistedSessionWriteMutex.withLock {
-                        refreshSessionStateFromStorageLocked()
-                        removeActiveTokenExchangesMatching { exchange ->
-                            exchange.completion.isCompleted
-                        }
-                        val activeExchange = activeTokenExchanges.values
-                            .firstOrNull { exchange -> !exchange.completion.isCompleted }
-                        if (activeExchange != null) {
-                            waitForExchange = TokenExchangeWait(
-                                exchange = activeExchange,
-                                shareResult = activeExchange.intent == intent
-                            )
-                            return@tokenLock null
-                        }
+    /** Starts a token exchange, or waits on the one already running and returns null. */
+    private suspend fun beginReplacementTokenExchange(): TokenExchange? {
+        var activeExchange: ActiveTokenExchange? = null
+        val exchange = tokenExchangeMutex.withLock tokenLock@ {
+            sessionMutex.withLock {
+                persistedSessionWriteMutex.withLock {
+                    refreshSessionStateFromStorageLocked()
+                    removeActiveTokenExchangesMatching { exchange ->
+                        exchange.completion.isCompleted
+                    }
+                    activeExchange = activeTokenExchanges.values
+                        .firstOrNull { exchange -> !exchange.completion.isCompleted }
+                    if (activeExchange != null) {
+                        return@tokenLock null
+                    }
 
-                        val exchangeId = ++nextTokenExchangeId
-                        val completion = CompletableDeferred<Unit>()
-                        val pendingGeneration = nextLifecycleGenerationLocked()
-                        activeTokenExchanges[exchangeId] = ActiveTokenExchange(
-                            generation = pendingGeneration,
-                            intent = intent,
-                            completion = completion
-                        )
-                        TokenExchange(
-                            id = exchangeId,
-                            generation = pendingGeneration
-                        )
-                    }
+                    val exchangeId = ++nextTokenExchangeId
+                    val completion = CompletableDeferred<Unit>()
+                    val pendingGeneration = nextLifecycleGenerationLocked()
+                    activeTokenExchanges[exchangeId] = ActiveTokenExchange(
+                        generation = pendingGeneration,
+                        completion = completion
+                    )
+                    TokenExchange(
+                        id = exchangeId,
+                        generation = pendingGeneration
+                    )
                 }
             }
-            if (exchange != null) {
-                return exchange
-            }
-            val wait = waitForExchange ?: return null
-            if (wait.shareResult) {
-                try {
-                    wait.exchange.completion.await()
-                } catch (e: CancellationException) {
-                    currentCoroutineContext().ensureActive()
-                    if (!isCommittedExchangeStillPublishable(wait.exchange)) {
-                        throw e
-                    }
-                }
-                return null
-            }
-            awaitExchangeBeforeRetry(wait.exchange.completion)
         }
+        if (exchange != null) {
+            return exchange
+        }
+        val running = activeExchange ?: return null
+        try {
+            running.completion.await()
+        } catch (e: CancellationException) {
+            currentCoroutineContext().ensureActive()
+            if (!isCommittedExchangeStillPublishable(running)) {
+                throw e
+            }
+        }
+        return null
     }
 
     private suspend fun isCommittedExchangeStillPublishable(exchange: ActiveTokenExchange): Boolean {
@@ -369,18 +328,6 @@ class OidcAuthRepository(
             if (!exchange.completion.isCompleted) {
                 exchange.completion.completeExceptionally(LoginSupersededException())
             }
-        }
-    }
-
-    private suspend fun awaitExchangeBeforeRetry(completion: CompletableDeferred<Unit>) {
-        try {
-            completion.await()
-        } catch (e: CancellationException) {
-            currentCoroutineContext().ensureActive()
-        } catch (e: LoginSupersededException) {
-            throw e
-        } catch (e: Exception) {
-            currentCoroutineContext().ensureActive()
         }
     }
 

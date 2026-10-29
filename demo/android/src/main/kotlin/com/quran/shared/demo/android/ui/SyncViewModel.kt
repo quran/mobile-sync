@@ -35,10 +35,6 @@ class SyncViewModel(
         authService.login()
     }
 
-    suspend fun loginWithReauthentication() {
-        authService.loginWithReauthentication()
-    }
-
     suspend fun logout(clearLocalData: Boolean = true) {
         authService.logout(clearLocalData)
     }

@@ -54,7 +54,7 @@ class AuthServiceSessionStartTest {
         advanceUntilIdle()
         val restored = service.sessionStart.value
 
-        service.loginWithReauthentication()
+        service.login()
 
         val signedIn = service.sessionStart.value
         assertEquals(true, signedIn?.interactive)
@@ -97,8 +97,6 @@ private class TokenAuthRepository(private var accessToken: String?) : AuthReposi
     override suspend fun login() {
         accessToken = "signed-in"
     }
-
-    override suspend fun loginWithReauthentication() = login()
 
     override suspend fun refreshTokensIfNeeded(): Boolean = accessToken != null
 
