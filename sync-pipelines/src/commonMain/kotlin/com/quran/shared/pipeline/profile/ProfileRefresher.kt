@@ -145,7 +145,8 @@ internal class ProfileRefresher(
             logger.i { "Not storing the profile: the session ended during the fetch" }
             return
         }
-        // A fetch cancelled after its answer arrived (the service is being torn down) stores nothing.
+        // A fetch cancelled after its answer arrived (the service is being torn down) stores nothing. The store's own
+        // storage reads would stop it too, as they suspend; this check doesn't rely on that.
         currentCoroutineContext().ensureActive()
         if (account.storeFetchedProfile(session, profile) == FetchedProfileWrite.STORED) {
             logger.d { "Stored the fetched profile" }

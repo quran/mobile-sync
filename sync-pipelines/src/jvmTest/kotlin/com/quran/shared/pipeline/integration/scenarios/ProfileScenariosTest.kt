@@ -121,10 +121,12 @@ class ProfileScenariosTest {
 
         phone.data.addNote("Patience is light", 2, 153, 2, 153, at(0))
         assertSucceeded(phone.awaitSync())
+        delay(200.milliseconds)
+        assertEquals(2, server.profileRequests("phone").size, "the local change's sync fetched no profile")
         assertSucceeded(phone.syncNow())
         awaitUntil("the second manual sync's profile fetch") { server.profileRequests("phone").size >= 3 }
         delay(200.milliseconds)
-        assertEquals(3, server.profileRequests("phone").size, "the local change's sync fetched no profile")
+        assertEquals(3, server.profileRequests("phone").size, "the second manual sync fetched once")
     }
 
     /** A device whose sessions keep the profiles they fetch. */

@@ -27,6 +27,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -81,6 +82,12 @@ class ProfileRefresherTest {
     private val profileRequests = mutableListOf<HttpRequestData>()
     private var tokenRefreshes = 0
     private var clock = 1_800_000_000_000L
+
+    /**
+     * Closes the refresher the next time it reads the clock. A fetch reads it to stamp the answer, between parsing the
+     * answer and storing it, with no suspension in between: a cancellation that lands there isn't noticed by any call.
+     */
+    private var closeOnNextClockRead = false
 
     private lateinit var authService: AuthService
     private lateinit var refresher: ProfileRefresher
@@ -172,6 +179,26 @@ class ProfileRefresherTest {
         assertEquals(AuthState.Idle, authService.authState.value)
         assertNull(storage.retrieveFetchedProfile())
         assertNull(storage.retrieveProfileFetchAttemptedAt())
+    }
+
+    /**
+     * The cancellation lands after the answer was read and before the store. The refresher's own check stops it, and
+     * so would the store's first storage read, so this pins the outcome rather than either mechanism.
+     */
+    @Test
+    fun `a fetch cancelled after its answer arrived stores nothing`() = runTest(main) {
+        start()
+        answerProfile = {
+            closeOnNextClockRead = true
+            respondJson(serverProfile)
+        }
+
+        val refresh = runCatching { refresher.refresh() }
+        advanceUntilIdle()
+
+        assertTrue(refresh.exceptionOrNull() is CancellationException, "$refresh")
+        assertNull(storage.retrieveFetchedProfile())
+        assertEquals(AuthState.Success(sessionUser), authService.authState.value)
     }
 
     @Test
@@ -366,7 +393,13 @@ class ProfileRefresherTest {
             AuthServiceSyncAccount(authService),
             object : SyncLifecycleGate {},
             main
-        ) { clock }
+        ) {
+            if (closeOnNextClockRead) {
+                closeOnNextClockRead = false
+                refresher.close()
+            }
+            clock
+        }
     }
 
     private suspend fun signIn() {
