@@ -85,7 +85,7 @@ class AuthService private constructor(
     private val serviceJob = SupervisorJob()
     private val scope = CoroutineScope(Dispatchers.Main + serviceJob)
 
-    private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
+    private val _authState = MutableStateFlow<AuthState>(AuthState.Restoring)
     private var cachedAccessToken: String? = null
     private val sessionPublicationMutex = Mutex()
     private var lifecycle: AuthPublicationLifecycle = AuthPublicationLifecycle.Idle(generation = 0)
@@ -98,7 +98,9 @@ class AuthService private constructor(
     private var publishedReadSequence = 0L
 
     /**
-     * The session's state. [AuthState.Success]'s user is the ID token's, with the profile fetched from the account API
+     * The session's state. It starts as [AuthState.Restoring] until the launch check has read the stored session from
+     * local storage, then shows it as [AuthState.Success] before its tokens are refreshed, or [AuthState.Idle] without
+     * one. [AuthState.Success]'s user is the ID token's, with the profile fetched from the account API
      * on top ([storeFetchedProfile]). A token refresh can change the stored user (its ID token's profile claims replace
      * the stored ones), so [AuthState.Success] is republished with the new user after a refresh, whether it ran through
      * [refreshAccessTokenIfNeeded], [forceRefreshAccessToken] or [getAuthHeaders]; a fetched profile still shows over
@@ -117,9 +119,10 @@ class AuthService private constructor(
     val sessionStart: StateFlow<SessionStart?> = _sessionStart.asStateFlow()
 
     init {
+        // The completion handler also ends restoring when the service is cleared before the check runs.
         scope.launch {
             checkCurrentSession()
-        }
+        }.invokeOnCompletion { endRestoring() }
     }
 
     /**
@@ -135,12 +138,53 @@ class AuthService private constructor(
         serviceJob.cancelAndJoin()
     }
 
+    /**
+     * Publishes the stored session from local storage, without the network, and only then refreshes its tokens as a
+     * published session's: a refused refresh token ends it, while a transient failure (offline) keeps it. [authState]
+     * leaves [AuthState.Restoring] once storage was read, whatever the outcome.
+     */
     private suspend fun checkCurrentSession() {
-        val generation = idleGenerationOrNull() ?: return
-        when (tryPublishValidatedStoredSessionFromIdle(generation)) {
-            PublishSessionResult.Published, PublishSessionResult.Stale -> Unit
-            PublishSessionResult.NoSession -> clearIdleIfGenerationCurrent(generation)
+        val generation = try {
+            publishStoredSessionAtLaunch()
+        } finally {
+            endRestoring()
         }
+        if (generation != null) {
+            refreshSessionPublishedAtLaunch(generation)
+        }
+    }
+
+    /** The generation the stored session was published at, or null when none was. */
+    private suspend fun publishStoredSessionAtLaunch(): Long? {
+        val generation = idleGenerationOrNull() ?: return null
+        return when (tryPublishStoredSessionFromIdle(generation)) {
+            PublishSessionResult.Published -> generation
+            PublishSessionResult.Stale -> null
+            PublishSessionResult.NoSession -> {
+                clearIdleIfGenerationCurrent(generation)
+                null
+            }
+        }
+    }
+
+    /**
+     * Refreshes the session published at launch as any published session is refreshed: [refreshAuthenticatedSession]
+     * has already reconciled a failure with storage (keeping the session only while it is still stored and publishable)
+     * when it throws, so the failure is only dropped here, with no caller to report it to.
+     */
+    private suspend fun refreshSessionPublishedAtLaunch(generation: Long) {
+        try {
+            refreshAuthenticatedSession(generation)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // The next request that needs a token refreshes it again.
+        }
+    }
+
+    /** Ends [AuthState.Restoring] as signed out, unless a session, a sign-in or a logout already replaced it. */
+    private fun endRestoring() {
+        _authState.compareAndSet(AuthState.Restoring, AuthState.Idle)
     }
 
     /**
@@ -416,15 +460,16 @@ class AuthService private constructor(
     ): List<RemoteLogoutFailure> =
         authRepository.attemptRemoteLogout(tokenMaterial, mode)
 
+    /**
+     * Refreshes the access token when it is near expiry. Without a published session, the stored one is published
+     * first, from local storage, and then refreshed. A refused refresh token ends the session, which [authState] then
+     * reports; a transient failure keeps the session and is thrown.
+     *
+     * @return true when the session's token is valid; false when there is no session or it ended.
+     */
     suspend fun refreshAccessTokenIfNeeded(): Boolean {
-        return when (val current = lifecycleSnapshot()) {
-            is AuthPublicationLifecycle.Idle -> {
-                publishValidatedStoredSessionFromIdle(current.generation) == PublishSessionResult.Published
-            }
-            is AuthPublicationLifecycle.Authenticated -> refreshAuthenticatedSession(current.generation)
-            is AuthPublicationLifecycle.Loading,
-            is AuthPublicationLifecycle.Clearing -> false
-        }
+        val generation = publishedOrStoredSessionGeneration() ?: return false
+        return refreshAuthenticatedSession(generation)
     }
 
     /**
@@ -524,23 +569,38 @@ class AuthService private constructor(
      * The headers for an authorized request, refreshing the token first when it is near expiry. When the token was
      * refreshed, the session is republished so [authState] carries the refreshed user.
      *
+     * Without a published session, the stored one is published first, from local storage, as for
+     * [refreshAccessTokenIfNeeded].
+     *
      * @return an empty map when there is no session or it ended, while a login or logout is in progress, or when the
      * session publication guard blocks the stored session.
      * @throws Exception when a refresh failed for a transient reason (network, server error); the session is kept.
      */
     suspend fun getAuthHeaders(): Map<String, String> {
-        return when (val current = lifecycleSnapshot()) {
-            is AuthPublicationLifecycle.Authenticated -> getAuthHeadersForAuthenticated(current.generation)
-            is AuthPublicationLifecycle.Idle -> {
-                when (publishValidatedStoredSessionFromIdle(current.generation)) {
-                    PublishSessionResult.Published -> getAuthHeadersForAuthenticated(current.generation)
-                    PublishSessionResult.NoSession, PublishSessionResult.Stale -> emptyMap()
-                }
+        val generation = publishedOrStoredSessionGeneration() ?: return emptyMap()
+        return getAuthHeadersForAuthenticated(generation)
+    }
+
+    /**
+     * The published session's generation. When none is published, the stored session is published first, from local
+     * storage only, so that its token refresh runs as a published session's and only a refused refresh token ends it.
+     * Null without a session, while a login or logout is in progress, or when the publication guard blocks it.
+     */
+    private suspend fun publishedOrStoredSessionGeneration(): Long? =
+        when (val current = lifecycleSnapshot()) {
+            is AuthPublicationLifecycle.Authenticated -> current.generation
+            is AuthPublicationLifecycle.Idle -> when (publishStoredSessionFromIdle(current.generation)) {
+                PublishSessionResult.Published -> current.generation
+                PublishSessionResult.NoSession -> null
+                // Another caller (say, the launch check) may have published the same stored session first.
+                PublishSessionResult.Stale ->
+                    (lifecycleSnapshot() as? AuthPublicationLifecycle.Authenticated)
+                        ?.generation
+                        ?.takeIf { it == current.generation }
             }
             is AuthPublicationLifecycle.Loading,
-            is AuthPublicationLifecycle.Clearing -> emptyMap()
+            is AuthPublicationLifecycle.Clearing -> null
         }
-    }
 
     private suspend fun getAuthHeadersForAuthenticated(generation: Long): Map<String, String> {
         if (!isAuthenticatedGenerationCurrent(generation)) {
@@ -586,7 +646,11 @@ class AuthService private constructor(
         }
     }
 
-    private suspend fun publishValidatedStoredSessionFromIdle(expectedGeneration: Long): PublishSessionResult {
+    /**
+     * Publishes the committed stored session as it is in local storage, without refreshing its tokens: the caller
+     * refreshes it next as a published session, so a transient refresh failure (offline) keeps it.
+     */
+    private suspend fun publishStoredSessionFromIdle(expectedGeneration: Long): PublishSessionResult {
         if (!isIdleGenerationCurrent(expectedGeneration)) {
             return PublishSessionResult.Stale
         }
@@ -594,19 +658,11 @@ class AuthService private constructor(
             clearIdleIfGenerationCurrent(expectedGeneration)
             return PublishSessionResult.Stale
         }
-        val valid = authRepository.refreshTokensIfNeeded()
-        if (!isIdleGenerationCurrent(expectedGeneration)) {
-            return PublishSessionResult.Stale
-        }
-        if (!isPublicationGuardAllowed()) {
+        val result = publishCurrentSession(expectedGeneration, PublishSource.Idle)
+        if (result == PublishSessionResult.NoSession) {
             clearIdleIfGenerationCurrent(expectedGeneration)
-            return PublishSessionResult.Stale
         }
-        if (!valid) {
-            clearIdleIfGenerationCurrent(expectedGeneration)
-            return PublishSessionResult.NoSession
-        }
-        return publishCurrentSession(expectedGeneration, PublishSource.Idle)
+        return result
     }
 
     private suspend fun publishValidatedActiveLoginSession(expectedGeneration: Long): PublishSessionResult {
@@ -629,9 +685,9 @@ class AuthService private constructor(
         return publishCurrentSession(expectedGeneration, PublishSource.ActiveLogin)
     }
 
-    private suspend fun tryPublishValidatedStoredSessionFromIdle(expectedGeneration: Long): PublishSessionResult =
+    private suspend fun tryPublishStoredSessionFromIdle(expectedGeneration: Long): PublishSessionResult =
         try {
-            publishValidatedStoredSessionFromIdle(expectedGeneration)
+            publishStoredSessionFromIdle(expectedGeneration)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {

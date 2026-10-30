@@ -119,7 +119,7 @@ fun AuthScreen(
                     }
                 }
 
-                is AuthState.Loading -> {
+                is AuthState.Restoring, is AuthState.Loading -> {
                     LoadingContent()
                 }
 

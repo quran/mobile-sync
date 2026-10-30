@@ -13,7 +13,7 @@ class SyncViewModel: ObservableObject {
     private let quranDataService: QuranDataService
     private let authService: SyncAuthService
 
-    @Published var authState: AuthState = AuthState.Idle()
+    @Published var authState: AuthState = AuthState.Restoring()
     let mushaf: Shared.Mushaf = .madani1440
     @Published var readingBookmarks: [Shared.ReadingBookmark] = []
     @Published var collectionsWithBookmarks: [Shared.CollectionWithAyahBookmarks] = []

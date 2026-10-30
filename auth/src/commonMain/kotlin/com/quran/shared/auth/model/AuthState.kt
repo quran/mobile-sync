@@ -5,11 +5,17 @@ import com.quran.shared.auth.model.UserInfo
 /**
  * Sealed class representing authentication state.
  *
- * The auth flow is handled entirely by the OIDC library's CodeAuthFlow,
- * so we only need states for: Idle, Loading, Success, and Error.
+ * The auth flow is handled entirely by the OIDC library's CodeAuthFlow, so we only need states for: Restoring, Idle,
+ * Loading, Success, and Error.
  */
 sealed class AuthState {
-    /** Initial state - user not logged in, ready to start */
+    /**
+     * Initial state: the stored session has not been read yet. It is replaced by [Success] or [Idle] once the launch
+     * check has read local storage, without waiting on the network.
+     */
+    data object Restoring : AuthState()
+
+    /** User not logged in, ready to start */
     data object Idle : AuthState()
 
     /** Authentication in progress (browser may be open) */

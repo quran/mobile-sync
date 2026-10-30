@@ -42,7 +42,7 @@ struct AuthView: View {
                             }
                         )
                         .padding(.horizontal, 16)
-                    } else if state is Shared.AuthState.Loading {
+                    } else if state is Shared.AuthState.Restoring || state is Shared.AuthState.Loading {
                         LoadingContent()
                     } else if let successState = state as? Shared.AuthState.Success {
                         SuccessTabView(viewModel: viewModel, userInfo: successState.userInfo)
