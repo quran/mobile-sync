@@ -145,7 +145,8 @@ class OidcAuthRepository(
 
     /**
      * Refreshes the token when it is inside the expiry safety margin, or always when [force]d. A refused refresh
-     * token ends the session; a transient failure (network, a server error) keeps it and is thrown.
+     * token ends the session; a transient failure (network, a server error) keeps it and is thrown. A refresh whose
+     * caller is cancelled keeps it too and ends as that cancellation, whatever the request failed with.
      *
      * A refreshed ID token must be valid and name the session's account. Uploads go to whichever account the access
      * token belongs to, so tokens for another account would mix two accounts' data: such a response ends the session.
@@ -190,6 +191,10 @@ class OidcAuthRepository(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                // The OIDC library's wrapExceptions turns everything, cancellation included, into a TechnicalFailure, so
+                // a refresh whose caller was cancelled mid-request ends here: it stays this coroutine's cancellation and
+                // keeps the session.
+                currentCoroutineContext().ensureActive()
                 if (e.isTransientRefreshFailure()) {
                     logger.w(e) { "Token refresh failed for a transient reason; keeping the session" }
                     throw e

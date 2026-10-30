@@ -86,7 +86,7 @@ abstract class AuthModule {
         internal const val AUTH_REQUEST_TIMEOUT_MS = 30_000L
         internal const val AUTH_SOCKET_TIMEOUT_MS = 30_000L
 
-        private fun createOpenIdConnectClient(
+        internal fun createOpenIdConnectClient(
             config: AuthConfig,
             httpClient: HttpClient
         ): OpenIdConnectClient {
