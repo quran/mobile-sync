@@ -24,9 +24,17 @@ internal class ReadingBookmarkStore(private val database: SyncV2Database) {
     fun rename(slot: ReadingBookmarkSlot, name: String?, at: Long): Reading_bookmark =
         write(slot, at) { it.copy(name = name?.trimLikeServer()?.ifEmpty { null }) }
 
+    /**
+     * A write that leaves the slot's fields as they are (a rename to its own name, a set to its own location) is no
+     * edit: it returns the row untouched, so `updated_at` stays and the sync engine's clock doesn't move.
+     * `updated_at` is also the merge clock, so a newer edit of the same field from another device wins over a no-op
+     * save: saving unchanged isn't a decision against an edit the user never saw.
+     */
     private fun write(slot: ReadingBookmarkSlot, at: Long, change: (Fields) -> Fields): Reading_bookmark {
         val existing = get(slot)
-        val next = change(existing?.fields() ?: Fields(name = null, location = null))
+        val current = existing?.fields()
+        val next = change(current ?: Fields(name = null, location = null))
+        if (existing != null && next == current) return existing
         val location = next.location
         if (existing == null) {
             queries.insert(

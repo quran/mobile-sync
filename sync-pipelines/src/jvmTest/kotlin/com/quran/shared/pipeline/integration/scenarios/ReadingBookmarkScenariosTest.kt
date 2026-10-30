@@ -261,4 +261,27 @@ class ReadingBookmarkScenariosTest {
         assertEquals(300 to Mushaf.WARSH, warsh.page to warsh.mushaf)
         assertIs<EmptyReadingBookmark>(phone.data.readingBookmarks(Mushaf.MADANI_1440).first().single())
     }
+
+    /**
+     * A rename to the slot's own name (once trimmed) or a set to its own verse is no edit: the slot keeps its time. It
+     * also pushes nothing.
+     */
+    @Test
+    fun `RB-14 an unchanged rename or set keeps the slot's time`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 78, 1, at(0))
+        phone.data.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "Juz 30", Mushaf.MADANI_1440, at(0))
+        syncUntilQuiescent(phone)
+        val synced = phone.data.readingBookmarks(Mushaf.MADANI_1440).first().single()
+
+        val renamed = phone.data.renameReadingBookmark(ReadingBookmarkSlot.TEAL, " Juz 30 \n", Mushaf.MADANI_1440, at(5_000))
+        val placed = phone.data.setAyahReadingBookmark(ReadingBookmarkSlot.TEAL, 78, 1, at(6_000))
+        val run = phone.syncNow()
+
+        assertSucceeded(run)
+        assertEquals(0, run.posts, "nothing pushed")
+        assertEquals(listOf(synced, synced), listOf(renamed, placed), "the slot as it was, its time included")
+        assertEquals(synced, phone.data.readingBookmarks(Mushaf.MADANI_1440).first().single())
+        assertConverged(ALICE, phone)
+    }
 }
