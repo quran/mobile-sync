@@ -6,12 +6,17 @@ import com.quran.shared.persistence.at
 import com.quran.shared.persistence.createTestDatabase
 import com.quran.shared.persistence.input.ImportCollection
 import com.quran.shared.persistence.input.PersistenceImportData
+import com.quran.shared.persistence.markSynced
 import com.quran.shared.persistence.model.Collection
 import com.quran.shared.persistence.model.DEFAULT_COLLECTION_NAME
+import com.quran.shared.persistence.pending
 import com.quran.shared.persistence.repository.collection.repository.CollectionsRepositoryImpl
 import com.quran.shared.persistence.repository.collectionbookmark.repository.CollectionBookmarksRepositoryImpl
 import com.quran.shared.persistence.repository.importdata.PersistenceImportRepositoryImpl
 import com.quran.shared.persistence.util.fromPlatform
+import com.quran.shared.persistence.util.toEpochMillisecondsFromPlatform
+import com.quran.shared.syncv2.ItemRef
+import com.quran.shared.syncv2.types.CollectionsType
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
@@ -139,6 +144,42 @@ class CollectionsRepositoryTest {
         assertEquals(2345L, updated.lastUpdated.fromPlatform().toEpochMilliseconds())
         assertEquals(1000L, record.created_at)
         assertEquals(2345L, record.updated_at)
+    }
+
+    @Test
+    fun `an unchanged rename keeps the collection's time and leaves nothing to push`() = runTest {
+        val collection = repository.addCollection("Study", at(100L))
+        database.markSynced(CollectionsType(database.synced))
+
+        val renamed = listOf("Study", " Study \n").map { repository.updateCollection(collection.id, it, at(200L)) }
+
+        assertEquals(listOf(100L, 100L), renamed.map { it.lastUpdated.toEpochMillisecondsFromPlatform() })
+        assertEquals("Study" to 100L, row(collection.id).let { it.name to it.updated_at })
+        assertEquals(emptyList(), database.pending())
+    }
+
+    @Test
+    fun `an unchanged rename after a real one keeps that change pending with its time`() = runTest {
+        val collection = repository.addCollection("Study", at(100L))
+        database.markSynced(CollectionsType(database.synced))
+
+        repository.updateCollection(collection.id, "Review", at(200L))
+        repository.updateCollection(collection.id, "  Review", at(300L))
+
+        assertEquals("Review" to 200L, row(collection.id).let { it.name to it.updated_at })
+        assertEquals(listOf(ItemRef("COLLECTION", collection.id.toLong())), database.pending())
+    }
+
+    @Test
+    fun `a rename that changes only the case is an edit`() = runTest {
+        val collection = repository.addCollection("Study", at(100L))
+        database.markSynced(CollectionsType(database.synced))
+
+        val renamed = repository.updateCollection(collection.id, "study", at(200L))
+
+        assertEquals("study" to 200L, renamed.name to renamed.lastUpdated.toEpochMillisecondsFromPlatform())
+        assertEquals("study" to 200L, row(collection.id).let { it.name to it.updated_at })
+        assertEquals(listOf(ItemRef("COLLECTION", collection.id.toLong())), database.pending())
     }
 
     @Test

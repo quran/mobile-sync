@@ -360,4 +360,25 @@ class CollectionScenariosTest {
         assertEquals(setOf("2:255"), server.state(ALICE).favorites)
         assertConverged(ALICE, phone)
     }
+
+    /**
+     * A rename to the collection's own name (once trimmed) is no edit: the collection keeps its time. It also pushes
+     * nothing.
+     */
+    @Test
+    fun `COL-20 an unchanged rename keeps the collection's time`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.data.addCollection("Study", at(0))
+        syncUntilQuiescent(phone)
+        val synced = checkNotNull(phone.collection("Study")).collection
+
+        val renamed = phone.data.updateCollection(synced.id, " Study \n", at(5_000))
+        val run = phone.syncNow()
+
+        assertSucceeded(run)
+        assertEquals(0, run.posts, "nothing pushed")
+        assertEquals(synced, renamed, "the collection as it was, its time included")
+        assertEquals(synced, phone.collection("Study")?.collection)
+        assertConverged(ALICE, phone)
+    }
 }

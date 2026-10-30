@@ -56,9 +56,17 @@ internal class NoteStore(private val database: SyncV2Database) {
         return localId
     }
 
-    /** Edits the body; the ranges and the creation time never change. */
-    fun updateBody(localId: Long, body: String, updatedAt: Long) {
-        queries.updateBody(body.trimLikeServer(), updatedAt, localId)
+    /**
+     * Edits the body; the ranges and the creation time never change. A save of the note's own body (once trimmed) is
+     * no edit: the row stays untouched, so `updated_at` stays and the sync engine's clock doesn't move. `updated_at` is
+     * also the merge clock, so a newer edit from another device wins over a no-op save: saving unchanged isn't a
+     * decision against an edit the user never saw. The store trusts [note] as the stored row, so read it in the
+     * caller's transaction.
+     */
+    fun updateBody(note: StoredNote, body: String, updatedAt: Long) {
+        val trimmed = body.trimLikeServer()
+        if (trimmed == note.body) return
+        queries.updateBody(trimmed, updatedAt, note.localId)
     }
 
     fun delete(localId: Long) {

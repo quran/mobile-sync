@@ -79,7 +79,7 @@ class NotesRepositoryImpl(
                 requireNotNull(existing) { "Expected note id=$id before update." }
                 // Only a changed body is checked, so a legacy note outside the limits can still be saved unchanged.
                 if (existing.body != body.trimLikeServer()) requireServerTextLength(TextLengthField.NOTE_BODY, body)
-                store.updateBody(existing.localId, body, at)
+                store.updateBody(existing, body, at)
                 requireNotNull(store.get(existing.localId)) { "Expected note id=$id after update." }.toNote()
             }
         }

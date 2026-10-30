@@ -3,19 +3,17 @@ package com.quran.shared.persistence.repository
 import com.quran.shared.persistence.MobileSyncDatabase
 import com.quran.shared.persistence.at
 import com.quran.shared.persistence.createTestDatabase
+import com.quran.shared.persistence.markSynced
 import com.quran.shared.persistence.model.AyahReadingBookmark
 import com.quran.shared.persistence.model.EmptyReadingBookmark
 import com.quran.shared.persistence.model.Mushaf
 import com.quran.shared.persistence.model.PageReadingBookmark
 import com.quran.shared.persistence.model.ReadingBookmarkSlot
+import com.quran.shared.persistence.pending
 import com.quran.shared.persistence.repository.readingbookmark.repository.ReadingBookmarksRepositoryImpl
 import com.quran.shared.persistence.util.toEpochMillisecondsFromPlatform
 import com.quran.shared.syncv2.ItemRef
-import com.quran.shared.syncv2.SyncEngineV2
-import com.quran.shared.syncv2.SyncRow
-import com.quran.shared.syncv2.SyncStore
 import com.quran.shared.syncv2.types.ReadingBookmarksType
-import com.quran.shared.syncv2.types.syncTypes
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
@@ -112,27 +110,27 @@ class ReadingBookmarksRepositoryTest {
     fun `an unchanged write keeps the slot's time and leaves nothing to push`() = runTest {
         repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 582, Mushaf.MADANI_1440, at(100))
         repository.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "Juz 30", Mushaf.MADANI_1440, at(200))
-        markSynced()
+        database.markSynced(ReadingBookmarksType(database.synced))
 
         val renamed = repository.renameReadingBookmark(ReadingBookmarkSlot.TEAL, " Juz 30 \n", Mushaf.MADANI_1440, at(300))
         val placed = repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 582, Mushaf.MADANI_1440, at(400))
 
         assertEquals(listOf(200L, 200L), listOf(renamed, placed).map { it.lastUpdated.toEpochMillisecondsFromPlatform() })
         assertEquals(200L, slotRow(1).updated_at)
-        assertEquals(emptyList(), pending())
+        assertEquals(emptyList(), database.pending())
     }
 
     @Test
     fun `an unchanged write after a real one keeps that change pending with its time`() = runTest {
         repository.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "Juz 30", Mushaf.MADANI_1440, at(100))
-        markSynced()
+        database.markSynced(ReadingBookmarksType(database.synced))
 
         repository.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "Juz 29", Mushaf.MADANI_1440, at(200))
         repository.renameReadingBookmark(ReadingBookmarkSlot.TEAL, "  Juz 29", Mushaf.MADANI_1440, at(300))
 
         val row = slotRow(1)
         assertEquals("Juz 29" to 200L, row.name to row.updated_at)
-        assertEquals(listOf(ItemRef(READING_BOOKMARK, row.local_id)), pending())
+        assertEquals(listOf(ItemRef("READING_BOOKMARK", row.local_id)), database.pending())
     }
 
     @Test
@@ -369,16 +367,6 @@ class ReadingBookmarksRepositoryTest {
         assertEquals(ReadingBookmarkSlot.ORANGE, bookmark.slot)
     }
 
-    /** Records every slot as the server has it now, as a sync would, so only later edits are pending. */
-    private fun markSynced() {
-        val store = SyncStore(database.synced)
-        ReadingBookmarksType(database.synced).readAll().forEach { (localId, state) ->
-            store.put(READING_BOOKMARK, SyncRow(localId, "remote-$localId", state))
-        }
-    }
-
-    private fun pending() = SyncEngineV2.unsynced(database.synced, syncTypes(database.synced)).pending
-
     private fun rows() = database.synced.readingBookmarksQueries.all().executeAsList()
 
     private suspend fun pages(mushaf: Mushaf) = repository.getReadingBookmarks(mushaf).map { assertIs<PageReadingBookmark>(it).page }
@@ -387,6 +375,5 @@ class ReadingBookmarksRepositoryTest {
 
     private companion object {
         const val METADATA = """{"color":"teal"}"""
-        const val READING_BOOKMARK = "READING_BOOKMARK"
     }
 }
