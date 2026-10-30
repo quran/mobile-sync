@@ -3,11 +3,15 @@ package com.quran.shared.persistence.repository
 import com.quran.shared.persistence.MobileSyncDatabase
 import com.quran.shared.persistence.at
 import com.quran.shared.persistence.createTestDatabase
+import com.quran.shared.persistence.markSynced
 import com.quran.shared.persistence.model.NoteRange as PublicNoteRange
+import com.quran.shared.persistence.pending
 import com.quran.shared.persistence.repository.note.NoteStore
 import com.quran.shared.persistence.repository.note.repository.NotesRepositoryImpl
 import com.quran.shared.persistence.util.fromPlatform
+import com.quran.shared.syncv2.ItemRef
 import com.quran.shared.syncv2.types.NoteRange
+import com.quran.shared.syncv2.types.NotesType
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
@@ -97,6 +101,31 @@ class NotesRepositoryTest {
         assertEquals(1_700_000_002_345L, updated.lastUpdated.fromPlatform().toEpochMilliseconds())
         assertEquals(1_700_000_001_000L, record.created_at)
         assertEquals(1_700_000_002_345L, record.updated_at)
+    }
+
+    @Test
+    fun `an unchanged update keeps the note's time and leaves nothing to push`() = runTest {
+        val note = repository.addNote("Reflect on this verse", 2, 13, 2, 13, at(1_000L))
+        database.markSynced(NotesType(database.synced))
+
+        val updated = listOf("Reflect on this verse", "\n Reflect on this verse  ")
+            .map { repository.updateNote(note.id, it, at(2_000L)) }
+
+        assertEquals(listOf(note, note), updated)
+        assertEquals("Reflect on this verse" to 1_000L, noteRow(note.id).let { it.body to it.updated_at })
+        assertEquals(emptyList(), database.pending())
+    }
+
+    @Test
+    fun `an unchanged update after a real one keeps that change pending with its time`() = runTest {
+        val note = repository.addNote("Reflect on this verse", 2, 13, 2, 13, at(1_000L))
+        database.markSynced(NotesType(database.synced))
+
+        repository.updateNote(note.id, "Reflect again", at(2_000L))
+        repository.updateNote(note.id, "Reflect again\n", at(3_000L))
+
+        assertEquals("Reflect again" to 2_000L, noteRow(note.id).let { it.body to it.updated_at })
+        assertEquals(listOf(ItemRef("NOTE", note.id.toLong())), database.pending())
     }
 
     @Test

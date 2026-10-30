@@ -334,4 +334,21 @@ class NoteScenariosTest {
         assertEquals(emptyList(), server.accepted("tablet").of("NOTE"), "the tablet pushed no note")
         assertConverged(ALICE, phone, tablet)
     }
+
+    /** Saving a note with its own body (once trimmed) is no edit: the note keeps its time. It also pushes nothing. */
+    @Test
+    fun `NOTE-20 an unchanged edit keeps the note's time`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.data.addNote("Patience is light", 2, 153, 2, 153, at(0))
+        syncUntilQuiescent(phone)
+        val synced = phone.note("Patience is light")
+
+        phone.data.updateNote(synced.id, "\n Patience is light  ", at(5_000))
+        val run = phone.syncNow()
+
+        assertSucceeded(run)
+        assertEquals(0, run.posts, "nothing pushed")
+        assertEquals(listOf(synced), phone.data.notes.first(), "the note as it was, its time included")
+        assertConverged(ALICE, phone)
+    }
 }

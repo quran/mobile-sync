@@ -35,9 +35,17 @@ internal class CollectionStore(private val database: SyncV2Database) {
         return queries.lastInsertId().executeAsOne()
     }
 
+    /**
+     * A rename to the collection's own name (once trimmed) is no edit: the row stays untouched, so `updated_at` stays
+     * and the sync engine's clock doesn't move. `updated_at` is also the merge clock, so a newer rename from another
+     * device wins over a no-op save: saving unchanged isn't a decision against an edit the user never saw. A change of
+     * case is an edit, though the name's key (lowercased) stays the same, so the stored name is compared, not the key.
+     */
     fun rename(row: CollectionRow, name: String, updatedAt: Long) {
         val trimmed = name.trimLikeServer()
-        queries.collectionUpdate(trimmed, collectionNameKey(trimmed), row.is_system, row.is_read_only, updatedAt, row.local_id)
+        val key = collectionNameKey(trimmed)
+        if (trimmed == row.name && key == row.name_key) return
+        queries.collectionUpdate(trimmed, key, row.is_system, row.is_read_only, updatedAt, row.local_id)
     }
 
     /** Deletes the collection and the verses in it. */
