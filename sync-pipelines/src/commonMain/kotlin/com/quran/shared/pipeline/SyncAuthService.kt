@@ -46,6 +46,9 @@ class SyncAuthService internal constructor(
      * the sign-in: the call that opened the browser throws [CancellationException], and a call made
      * while it ran, which waits on it, throws
      * [AuthenticationFailedException][com.quran.shared.auth.model.AuthenticationFailedException].
+     * A call waiting on another sign-in throws
+     * [AuthenticationCancelledException][com.quran.shared.auth.model.AuthenticationCancelledException] when that
+     * sign-in is cancelled, say because the call that opened the browser was cancelled.
      * Started while a logout is running, it fails with [SessionResetInProgressException].
      */
     @NativeCoroutines
