@@ -117,6 +117,14 @@ class OidcAuthRepository(
             failure = e
             throw e
         } catch (e: Exception) {
+            // The OIDC library's wrapExceptions turns everything, cancellation included, into a TechnicalFailure, so
+            // a sign-in cancelled while the browser is open ends here: it stays this coroutine's cancellation.
+            try {
+                currentCoroutineContext().ensureActive()
+            } catch (cancellation: CancellationException) {
+                failure = cancellation
+                throw cancellation
+            }
             failure = e
             if (e.isExpectedLoginEnd()) {
                 logger.i { "Login ended without a session: ${e::class.simpleName}" }

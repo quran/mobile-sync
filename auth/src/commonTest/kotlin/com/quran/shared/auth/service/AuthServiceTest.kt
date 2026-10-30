@@ -1023,7 +1023,8 @@ class AuthServiceTest {
         repository.firstLoginCanFail.complete(Unit)
 
         assertTrue(staleLogin.await().isFailure)
-        assertTrue(duplicateLogin.await().isFailure)
+        val duplicateFailure = assertIs<AuthenticationFailedException>(duplicateLogin.await().exceptionOrNull())
+        assertEquals("stale login failed", duplicateFailure.cause?.message)
         advanceUntilIdle()
 
         val errorState = assertIs<AuthState.Error>(service.authState.value)
@@ -1062,11 +1063,43 @@ class AuthServiceTest {
             repository.firstLoginCanFail.complete(Unit)
 
             assertTrue(normalLogin.await().isFailure)
-            assertTrue(duplicateLogin.await().isFailure)
+            assertIs<AuthenticationCancelledException>(duplicateLogin.await().exceptionOrNull())
             advanceUntilIdle()
 
             assertEquals(1, repository.loginCalls)
             assertNull(service.getAccessToken())
+        }
+
+    @Test
+    fun `duplicate login waiter ends as cancelled sign in when the first caller is cancelled`() =
+        runTest(dispatcher) {
+            val repository = RecordingAuthRepository(
+                accessToken = null,
+                loginAccessToken = "unused-access-token",
+                currentUser = null,
+                suspendFirstLogin = true
+            )
+            val service = AuthService(repository)
+            advanceUntilIdle()
+
+            val firstLogin = launch {
+                service.login()
+            }
+            runCurrent()
+            assertTrue(repository.firstLoginStarted.isCompleted)
+
+            val duplicateLogin = async {
+                runCatching { service.login() }
+            }
+            runCurrent()
+            assertFalse(duplicateLogin.isCompleted)
+
+            firstLogin.cancelAndJoin()
+
+            assertIs<AuthenticationCancelledException>(duplicateLogin.await().exceptionOrNull())
+            assertEquals(1, repository.loginCalls)
+            assertNull(service.getAccessToken())
+            assertIs<AuthState.Idle>(service.authState.value)
         }
 
     @Test
@@ -1097,7 +1130,7 @@ class AuthServiceTest {
             repository.firstLoginCanFail.complete(Unit)
 
             assertTrue(firstLogin.await().isFailure)
-            assertTrue(duplicateLogin.await().isFailure)
+            assertIs<AuthenticationCancelledException>(duplicateLogin.await().exceptionOrNull())
             advanceUntilIdle()
 
             assertNull(service.getAccessToken())

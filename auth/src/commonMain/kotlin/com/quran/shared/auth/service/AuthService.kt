@@ -145,7 +145,8 @@ class AuthService private constructor(
 
     /**
      * Signs in through the browser, asking the identity provider for credentials again (`prompt=login`).
-     * A call made while another sign-in runs waits on that one instead of opening the browser again.
+     * A call made while another sign-in runs waits on that one instead of opening the browser again, and ends as it
+     * does; when that one is cancelled, this call throws [AuthenticationCancelledException].
      */
     suspend fun login() {
         try {
@@ -211,7 +212,9 @@ class AuthService private constructor(
             existingLogin.completion.await()
         } catch (e: CancellationException) {
             currentCoroutineContext().ensureActive()
-            throw e
+            // The awaited login was cancelled (say, its caller went away) while this caller still runs: to this caller
+            // that is a cancelled sign-in, not a cancellation of its own coroutine.
+            throw AuthenticationCancelledException(e)
         }
         return null
     }
