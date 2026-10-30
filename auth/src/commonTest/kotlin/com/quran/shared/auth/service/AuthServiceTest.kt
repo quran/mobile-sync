@@ -16,6 +16,7 @@ import kotlinx.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -90,7 +91,7 @@ class AuthServiceTest {
     }
 
     @Test
-    fun `startup validation keeps expired stored session logged out`() = runTest(dispatcher) {
+    fun `startup publishes a stored session and ends it when its refresh token is refused`() = runTest(dispatcher) {
         val repository = RecordingAuthRepository(
             accessToken = "expired-access-token",
             currentUser = null,
@@ -104,6 +105,62 @@ class AuthServiceTest {
         assertFalse(service.isLoggedIn())
         assertNull(service.getAccessToken())
         assertIs<AuthState.Idle>(service.authState.value)
+    }
+
+    @Test
+    fun `startup ends a stored session whose failed refresh cleared it`() = runTest(dispatcher) {
+        val repository = RecordingAuthRepository(
+            accessToken = "expired-access-token",
+            currentUser = null,
+            // Such as a refused refresh token whose storage clear then failed after removing the token.
+            refreshFailure = IllegalStateException("session clear failed"),
+            clearTokenBeforeRefreshFailure = true
+        )
+        val service = AuthService(repository)
+
+        advanceUntilIdle()
+
+        assertEquals(1, repository.refreshCalls)
+        assertFalse(service.isLoggedIn())
+        assertNull(service.getAccessToken())
+        assertIs<AuthState.Idle>(service.authState.value)
+    }
+
+    @Test
+    fun `refresh publishes a stored session and keeps it after a transient failure`() = runTest(dispatcher) {
+        val repository = RecordingAuthRepository(
+            accessToken = "expired-access-token",
+            currentUser = null,
+            refreshFailure = IOException("offline")
+        )
+        val service = AuthService(repository)
+
+        // Before the startup check runs, so the stored session is not published yet.
+        assertFailsWith<IOException> { service.refreshAccessTokenIfNeeded() }
+
+        assertIs<AuthState.Success>(service.authState.value)
+        assertTrue(service.isLoggedIn())
+        assertEquals("expired-access-token", service.getAccessToken())
+    }
+
+    @Test
+    fun `auth headers use the stored session the startup check published first`() = runTest(dispatcher) {
+        val repository = RecordingAuthRepository(
+            accessToken = "access-token",
+            currentUser = null,
+            suspendFirstAccessTokenRead = true
+        )
+        val service = AuthService(repository)
+
+        // Starts before the startup check, which then publishes the same stored session while this read waits.
+        val headers = async(start = CoroutineStart.UNDISPATCHED) { service.getAuthHeaders() }
+        assertTrue(repository.firstAccessTokenReadStarted.isCompleted)
+        runCurrent()
+        assertIs<AuthState.Success>(service.authState.value)
+
+        repository.firstAccessTokenReadCanFinish.complete(Unit)
+
+        assertEquals(mapOf("Authorization" to "Bearer access-token"), headers.await())
     }
 
     @Test
@@ -605,7 +662,7 @@ class AuthServiceTest {
     fun `startup validation during active login does not clear or fail login`() =
         runTest(dispatcher) {
             val repository = RecordingAuthRepository(
-                accessToken = null,
+                accessToken = "stored-access-token",
                 loginAccessToken = "login-access-token",
                 currentUser = null,
                 refreshResults = listOf(false, true),
@@ -922,7 +979,8 @@ class AuthServiceTest {
             accessToken = "old-access-token",
             currentUser = null,
             forcedAuthHeaders = mapOf("Authorization" to "Bearer old-access-token"),
-            suspendThirdAccessTokenRead = true
+            // The launch check reads it twice to publish the session and twice to republish it after its refresh.
+            suspendAccessTokenReadOnCall = 5
         )
         val service = AuthService(repository)
         advanceUntilIdle()
@@ -931,13 +989,13 @@ class AuthServiceTest {
             service.getAuthHeaders()
         }
         runCurrent()
-        assertTrue(repository.thirdAccessTokenReadStarted.isCompleted)
+        assertTrue(repository.accessTokenReadStarted.isCompleted)
 
         service.logout()
         assertNull(service.getAccessToken())
         assertIs<AuthState.Idle>(service.authState.value)
 
-        repository.thirdAccessTokenReadCanFinish.complete(Unit)
+        repository.accessTokenReadCanFinish.complete(Unit)
 
         assertEquals(emptyMap(), headers.await())
         advanceUntilIdle()
@@ -1139,7 +1197,7 @@ class AuthServiceTest {
                 loginAccessToken = "login-access-token",
                 currentUser = null,
                 refreshFailure = CancellationException("validation cancelled"),
-                refreshFailureOnCall = 2
+                refreshFailureOnCall = 1
             )
             val service = AuthService(repository)
             advanceUntilIdle()
@@ -1206,9 +1264,10 @@ class AuthServiceTest {
                 loginAccessToken = "same-access-token",
                 currentUser = null,
                 suspendCurrentUser = true,
-                suspendCurrentUserOnCall = 2,
+                // The launch check reads the user to publish the session and again after its refresh.
+                suspendCurrentUserOnCall = 3,
                 failCurrentUserOnce = CancellationException("publication cancelled"),
-                failCurrentUserOnCall = 2
+                failCurrentUserOnCall = 3
             )
             val service = AuthService(repository)
             advanceUntilIdle()
@@ -1729,7 +1788,7 @@ private class RecordingAuthRepository(
     private val suspendBeforeLocalLogoutClear: Boolean = false,
     private val suspendCurrentUserOnCall: Int? = null,
     private val suspendSecondIsLoggedInRead: Boolean = false,
-    private val suspendThirdAccessTokenRead: Boolean = false,
+    private val suspendAccessTokenReadOnCall: Int? = null,
     private val accessTokenAfterCurrentUserRead: String? = null,
     private val failCurrentUserOnce: Exception? = null,
     private val failCurrentUserOnCall: Int = 1
@@ -1754,8 +1813,8 @@ private class RecordingAuthRepository(
     val firstLoginCancellationObserved = CompletableDeferred<Unit>()
     val firstAccessTokenReadStarted = CompletableDeferred<Unit>()
     val firstAccessTokenReadCanFinish = CompletableDeferred<Unit>()
-    val thirdAccessTokenReadStarted = CompletableDeferred<Unit>()
-    val thirdAccessTokenReadCanFinish = CompletableDeferred<Unit>()
+    val accessTokenReadStarted = CompletableDeferred<Unit>()
+    val accessTokenReadCanFinish = CompletableDeferred<Unit>()
     val secondIsLoggedInReadStarted = CompletableDeferred<Unit>()
     val secondIsLoggedInReadCanFinish = CompletableDeferred<Unit>()
     var clearLocalSessionCalls = 0
@@ -1940,10 +1999,10 @@ private class RecordingAuthRepository(
             firstAccessTokenReadCanFinish.await()
             return capturedAccessToken
         }
-        if (suspendThirdAccessTokenRead && accessTokenReadCalls == 3) {
+        if (accessTokenReadCalls == suspendAccessTokenReadOnCall) {
             val capturedAccessToken = accessToken
-            thirdAccessTokenReadStarted.complete(Unit)
-            thirdAccessTokenReadCanFinish.await()
+            accessTokenReadStarted.complete(Unit)
+            accessTokenReadCanFinish.await()
             return capturedAccessToken
         }
         return accessToken

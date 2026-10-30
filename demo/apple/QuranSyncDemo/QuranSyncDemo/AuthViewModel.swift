@@ -13,7 +13,7 @@ import Combine
 class AuthViewModel: ObservableObject {
     private let authService: SyncAuthService
 
-    @Published var authState: AuthState = AuthState.Idle()
+    @Published var authState: AuthState = AuthState.Restoring()
 
     init(
         authService: SyncAuthService

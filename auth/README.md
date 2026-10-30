@@ -173,8 +173,9 @@ val authState by viewModel.authState.collectAsState()
 when (val state = authState) {
     is AuthState.Success -> WelcomeView(state.userInfo)
     is AuthState.Error -> ErrorView(state.message)
-    is AuthState.Loading -> LoadingView()
-    else -> LoginView()
+    // Restoring: the stored session hasn't been read yet, so don't offer a sign-in.
+    is AuthState.Restoring, is AuthState.Loading -> LoadingView()
+    is AuthState.Idle -> LoginView()
 }
 ```
 
