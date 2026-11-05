@@ -5,6 +5,7 @@ import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.flow.first
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
@@ -276,5 +277,26 @@ class ReadingSessionScenariosTest {
             assertEquals("2:255" to at(2_000), "${session.sura}:${session.ayah}" to session.lastUpdated, device.name)
         }
         assertEquals(listOf("2:255"), server.state(ALICE).sessionVerses)
+    }
+
+    @Test
+    fun `RS-15 moving a session the web deleted records a visit instead`() = syncScenario {
+        val (phone) = signedIn("phone")
+        // The reader keeps the id of its last write while it stays open.
+        val held = phone.data.addReadingSession(2, 255, at(0))
+        syncUntilQuiescent(phone)
+        val web = web(ALICE)
+        web.deleteReadingSession(web.sessionId(2, 255)!!)
+        assertSucceeded(phone.syncNow())
+        assertEquals(emptyList(), phone.sessionVerses())
+
+        val moved = phone.data.updateReadingSession(held.id, 3, 7, at(1_000))
+
+        assertNotEquals(held.id, moved.id, "a new session, not the deleted one")
+        assertEquals("3:7" to at(1_000), "${moved.sura}:${moved.ayah}" to moved.lastUpdated)
+        assertEquals(listOf(moved.id), phone.data.readingSessions.first().map { it.id })
+        assertSucceeded(phone.syncNow())
+        assertEquals(listOf("3:7"), server.state(ALICE).sessionVerses)
+        assertConverged(ALICE, phone)
     }
 }

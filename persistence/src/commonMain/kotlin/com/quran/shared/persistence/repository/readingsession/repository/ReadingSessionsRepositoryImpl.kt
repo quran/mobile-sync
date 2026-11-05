@@ -47,12 +47,7 @@ class ReadingSessionsRepositoryImpl(
         logger.i { "Adding reading session ($sura:$ayah)" }
         val at = timestamp.toEpochMillisecondsFromPlatform()
         return withContext(Dispatchers.IO) {
-            database.transactionWithResult {
-                val localId = store.visit(sura, ayah, at)
-                // A visit older than the newest twenty is pruned at once; it is still the session that was added.
-                store.get(localId)?.toReadingSession()
-                    ?: ReadingSession(sura, ayah, Instant.fromEpochMilliseconds(at).toPlatform(), localId.toString())
-            }
+            database.transactionWithResult { visit(sura, ayah, at) }
         }
     }
 
@@ -69,13 +64,25 @@ class ReadingSessionsRepositoryImpl(
         val at = timestamp.toEpochMillisecondsFromPlatform()
         return withContext(Dispatchers.IO) {
             database.transactionWithResult {
-                val existing = requireNotNull(id.toLongOrNull()?.let(store::get)) {
-                    "Expected active reading session id=$id before update."
+                val existing = id.toLongOrNull()?.let(store::get)
+                if (existing == null) {
+                    // A sync, the prune, a delete or a reset removed the session the caller still holds; record the
+                    // visit so the reader's place is kept, and the caller adopts the returned id.
+                    logger.i { "Reading session id=$id is gone; recording a visit at $sura:$ayah instead" }
+                    return@transactionWithResult visit(sura, ayah, at)
                 }
                 val kept = store.move(existing.local_id, sura, ayah, at)
                 requireNotNull(store.get(kept)) { "Expected active reading session id=$kept after update." }.toReadingSession()
             }
         }
+    }
+
+    /** Records a visit at the verse. Callers run it in a transaction. */
+    private fun visit(sura: Int, ayah: Int, at: Long): ReadingSession {
+        val localId = store.visit(sura, ayah, at)
+        // A visit older than the newest twenty is pruned at once; it is still the session that was added.
+        return store.get(localId)?.toReadingSession()
+            ?: ReadingSession(sura, ayah, Instant.fromEpochMilliseconds(at).toPlatform(), localId.toString())
     }
 
     override suspend fun deleteReadingSession(sura: Int, ayah: Int): Boolean {

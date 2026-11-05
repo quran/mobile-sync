@@ -678,8 +678,12 @@ class QuranDataService internal constructor(
 
     /**
      * Updates a reading session, merging it into an existing destination session when needed.
+     * When [id] names no session (a sync, the recent-session prune, a delete or a reset removed
+     * it), a visit is recorded at the verse as [addReadingSession] does.
      *
-     * The returned session is authoritative because a merge returns the destination's ID.
+     * The returned session is authoritative: keep its ID. A merge returns the destination's ID,
+     * and when the original session no longer exists the visit's session is returned, with a
+     * new ID or that of the session already at the verse.
      */
     @NativeCoroutines
     suspend fun updateReadingSession(id: String, sura: Int, ayah: Int): ReadingSession {

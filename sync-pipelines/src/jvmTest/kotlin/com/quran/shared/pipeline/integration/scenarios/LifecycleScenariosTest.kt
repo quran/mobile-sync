@@ -514,6 +514,21 @@ class LifecycleScenariosTest {
         assertEquals(emptyList(), phone.data.syncHistory.first())
     }
 
+    @Test
+    fun `LIFE-19 moving a session the logout cleared records a visit instead`() = syncScenario {
+        val (phone) = signedIn("phone")
+        // The reader keeps the id of its last write while it stays open, across the logout's reset.
+        val held = phone.data.addReadingSession(2, 255, at(0))
+        syncUntilQuiescent(phone)
+        phone.logout()
+        assertEquals(emptyList(), phone.sessionVerses())
+
+        val moved = phone.data.updateReadingSession(held.id, 3, 7, at(1_000))
+
+        assertEquals("3:7" to at(1_000), "${moved.sura}:${moved.ayah}" to moved.lastUpdated)
+        assertEquals(listOf(moved.id), phone.data.readingSessions.first().map { it.id })
+    }
+
     private class ServerBefore(val data: UserDataSnapshot, val head: Long, val logoutWarnings: List<LogoutWarning>)
 
     /** Syncs one of each type, makes unsynced edits, then logs out. Returns the server as it was before the edits. */
