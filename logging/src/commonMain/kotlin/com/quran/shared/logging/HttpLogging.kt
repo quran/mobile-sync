@@ -8,6 +8,7 @@ import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.plugins.logging.LoggingFormat
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.HttpSendPipeline
+import io.ktor.client.utils.unwrapCancellationException
 import io.ktor.http.URLBuilder
 import io.ktor.http.takeFrom
 import kotlin.coroutines.cancellation.CancellationException
@@ -28,6 +29,9 @@ private val sensitiveHeaders = listOf("Authorization", "Cookie", "Set-Cookie", "
  * was cancelled) and, when [MobileSyncLogging] allows debug, the whole entry at debug. A failed
  * call's summary names its request, such as `<-- HTTP FAILED GET https://… (60012ms): <cause>`.
  * [redact] runs on everything logged.
+ *
+ * Install it once per client: a second install (through `client.config {}`, say) would log failed calls with the
+ * first install's logger and [redact], apart from the client's other lines.
  */
 @HiddenFromObjC
 fun HttpClientConfig<*>.installHttpLogging(tag: String, redact: (String) -> String = { it }) {
@@ -68,9 +72,12 @@ internal class HttpCallLogger(
     }
 
     fun logFailure(request: HttpRequestBuilder, cause: Throwable, duration: Duration) {
+        // HttpTimeout fails a call by cancelling it with an HttpRequestTimeoutException as the cause, so only a
+        // cancellation with no other cause is the caller's own.
+        val failure = cause.unwrapCancellationException()
         val url = URLBuilder().takeFrom(request.url).build()
-        val message = "$FAILED_CALL_PREFIX ${request.method.value} $url (${duration.inWholeMilliseconds}ms): $cause"
-        log(message, warn = cause !is CancellationException)
+        val message = "$FAILED_CALL_PREFIX ${request.method.value} $url (${duration.inWholeMilliseconds}ms): $failure"
+        log(message, warn = failure !is CancellationException)
     }
 
     private fun log(message: String, warn: Boolean) {

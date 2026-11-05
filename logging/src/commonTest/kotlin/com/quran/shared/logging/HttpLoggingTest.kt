@@ -4,6 +4,8 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.respondError
+import io.ktor.client.plugins.HttpRequestTimeoutException
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -225,6 +227,25 @@ class HttpLoggingTest {
             failureSummaries().toSet()
         )
         assertEquals(2, failureSummaries().size)
+    }
+
+    @Test
+    fun `timed out call logs a warning naming its request`() = runTest {
+        configure(MobileSyncLogSeverity.INFO)
+        // HttpTimeout times the request on the client's own dispatcher, in real time, not runTest's virtual time.
+        // The engine never answers, so the timeout always fires.
+        val client = HttpClient(MockEngine { awaitCancellation() }) {
+            installHttpLogging(tag = "TestHttp")
+            install(HttpTimeout) { requestTimeoutMillis = 50 }
+        }
+
+        val result = runCatching { client.post("https://example.com/v1/sync") }
+
+        assertTrue(result.exceptionOrNull() is HttpRequestTimeoutException)
+        val (severity, message) = failureSummaries().single()
+        assertEquals(MobileSyncLogSeverity.WARN, severity)
+        assertTrue(message.startsWith("<-- HTTP FAILED POST https://example.com/v1/sync: "), message)
+        assertTrue("HttpRequestTimeoutException: Request timeout has expired" in message, message)
     }
 
     @Test
