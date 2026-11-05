@@ -33,10 +33,18 @@ interface ReadingSessionsRepository {
      * session already occupies the destination, the source is deleted and the destination
      * is updated instead.
      *
+     * When [id] names no session (a sync, the recent-session prune, a delete or a reset
+     * removed it, or it never existed), a visit is recorded at the verse as
+     * [addReadingSession] does, so the reader's place is still kept.
+     *
+     * The returned session is authoritative: callers should keep its ID, which may be the
+     * existing destination's ID, or a new ID (or that of the session already at the verse)
+     * when the original session no longer exists.
+     *
      * @param id the mobile-sync ID of the session to update
      * @param sura the new sura number of the session
      * @param ayah the new ayah number of the session
-     * @return the updated [ReadingSession], whose ID may be the existing destination's ID
+     * @return the updated [ReadingSession]
      */
     @NativeCoroutines
     suspend fun updateReadingSession(id: String, sura: Int, ayah: Int): ReadingSession

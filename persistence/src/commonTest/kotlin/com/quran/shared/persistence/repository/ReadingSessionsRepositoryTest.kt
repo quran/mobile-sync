@@ -19,8 +19,8 @@ import kotlinx.coroutines.withTimeout
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -129,14 +129,53 @@ class ReadingSessionsRepositoryTest {
     }
 
     @Test
-    fun `updateReadingSession rejects an id that names no session`() = runTest {
+    fun `updateReadingSession of a deleted session records a visit at the verse`() = runTest {
         val deleted = repository.addReadingSession(2, 255, at(1000L))
         assertTrue(repository.deleteReadingSession(2, 255))
 
-        assertFailsWith<IllegalArgumentException> { repository.updateReadingSession(deleted.id, 3, 10, at(2000L)) }
-        assertFailsWith<IllegalArgumentException> { repository.updateReadingSession("999", 3, 10, at(2000L)) }
-        assertFailsWith<IllegalArgumentException> { repository.updateReadingSession("not-a-number", 3, 10, at(2000L)) }
-        assertEquals(emptyList(), repository.getReadingSessions(), "the deleted session is not resurrected")
+        val updated = repository.updateReadingSession(deleted.id, 3, 10, at(2000L))
+
+        val record = sessionAt(3, 10)
+        assertNotEquals(deleted.id, updated.id, "the deleted session is not resurrected")
+        assertEquals(record.local_id.toString(), updated.id)
+        assertEquals(3 to 10, updated.sura to updated.ayah)
+        assertEquals(2000L, updated.lastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(2000L, record.created_at)
+        assertEquals(2000L, record.updated_at)
+        assertEquals(listOf(updated.id), repository.getReadingSessions().map { it.id })
+    }
+
+    @Test
+    fun `updateReadingSession of an id that never existed records a visit at the verse`() = runTest {
+        val kept = repository.addReadingSession(2, 255, at(1000L))
+
+        val unknown = repository.updateReadingSession("999", 3, 10, at(2000L))
+        val malformed = repository.updateReadingSession("not-a-number", 4, 5, at(3000L))
+
+        assertEquals(sessionAt(3, 10).local_id.toString(), unknown.id)
+        assertEquals(2000L, unknown.lastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(sessionAt(4, 5).local_id.toString(), malformed.id)
+        assertEquals(3000L, malformed.lastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(
+            listOf(malformed.id to (4 to 5), unknown.id to (3 to 10), kept.id to (2 to 255)),
+            repository.getReadingSessions().map { it.id to (it.sura to it.ayah) }
+        )
+    }
+
+    @Test
+    fun `updateReadingSession of a deleted session onto an existing session bumps that session`() = runTest {
+        val deleted = repository.addReadingSession(2, 255, at(1000L))
+        val target = repository.addReadingSession(3, 10, at(2000L))
+        assertTrue(repository.deleteReadingSession(2, 255))
+
+        val updated = repository.updateReadingSession(deleted.id, 3, 10, at(3000L))
+
+        val record = sessionAt(3, 10)
+        assertEquals(target.id, updated.id)
+        assertEquals(3000L, updated.lastUpdated.fromPlatform().toEpochMilliseconds())
+        assertEquals(2000L, record.created_at)
+        assertEquals(3000L, record.updated_at)
+        assertEquals(listOf(target.id), repository.getReadingSessions().map { it.id })
     }
 
     @Test
