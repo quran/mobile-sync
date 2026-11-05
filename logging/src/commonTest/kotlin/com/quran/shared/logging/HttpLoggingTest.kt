@@ -131,22 +131,104 @@ class HttpLoggingTest {
         assertFalse(entries.any { "secret" in it.message })
     }
 
+    // The failure summaries without their duration, which varies.
+    private fun failureSummaries() = entries
+        .filter { it.severity != MobileSyncLogSeverity.DEBUG && it.message.startsWith("<-- HTTP FAILED") }
+        .map { it.severity to it.message.replace(Regex(""" \(\d+ms\)"""), "") }
+
     @Test
-    fun `failed call logs a warning`() = runTest {
+    fun `failed call logs a warning naming its request`() = runTest {
         configure(MobileSyncLogSeverity.INFO)
-        val client = HttpClient(MockEngine { error("offline") }) {
+        val client = HttpClient(MockEngine { throw IllegalStateException("offline") }) {
             installHttpLogging(tag = "TestHttp")
         }
 
-        runCatching { client.get("https://example.com/v1/sync") }
+        runCatching { client.get("https://example.com/v1/sync?page=2") }
 
-        val failure = entries.last()
-        assertEquals(MobileSyncLogSeverity.WARN, failure.severity)
-        assertTrue(failure.message.startsWith("<-- HTTP FAILED"))
+        assertEquals(
+            listOf(
+                MobileSyncLogSeverity.WARN to
+                    "<-- HTTP FAILED GET https://example.com/v1/sync?page=2: ${IllegalStateException("offline")}"
+            ),
+            failureSummaries()
+        )
+        assertTrue(Regex("""^<-- HTTP FAILED GET \S+ \(\d+ms\): """).containsMatchIn(entries.last().message))
     }
 
     @Test
-    fun `cancelled call logs at info`() = runTest {
+    fun `failed call with a multi-line cause names its request in the summary and logs the cause at debug`() =
+        runTest {
+            configure(MobileSyncLogSeverity.DEBUG)
+            val cause = IllegalStateException("Code=-1005 \"The network connection was lost.\"\nUserInfo={...}")
+            val client = HttpClient(MockEngine { throw cause }) {
+                installHttpLogging(tag = "TestHttp")
+            }
+
+            runCatching { client.post("https://example.com/v1/sync") }
+
+            val (summary, details) = entries.takeLast(2)
+            assertEquals(MobileSyncLogSeverity.WARN, summary.severity)
+            assertTrue(summary.message.startsWith("<-- HTTP FAILED POST https://example.com/v1/sync ("))
+            assertTrue(summary.message.endsWith("\"The network connection was lost.\""))
+            assertEquals(MobileSyncLogSeverity.DEBUG, details.severity)
+            assertEquals("${summary.message}\nUserInfo={...}", details.message)
+            assertEquals(1, failureSummaries().size)
+        }
+
+    @Test
+    fun `failed call redacts its url`() = runTest {
+        configure(MobileSyncLogSeverity.DEBUG)
+        val secret = Regex("secret-[a-z]+")
+        val client = HttpClient(MockEngine { throw IllegalStateException("offline") }) {
+            installHttpLogging(tag = "TestHttp", redact = { it.replace(secret, "***") })
+        }
+
+        runCatching { client.get("https://example.com/token?code=secret-code") }
+
+        assertEquals(
+            listOf(
+                MobileSyncLogSeverity.WARN to
+                    "<-- HTTP FAILED GET https://example.com/token?code=***: ${IllegalStateException("offline")}"
+            ),
+            failureSummaries()
+        )
+        assertFalse(entries.any { "secret" in it.message })
+    }
+
+    @Test
+    fun `concurrent failed calls each name their own request`() = runTest {
+        configure(MobileSyncLogSeverity.INFO)
+        // Both calls are in flight before either fails.
+        val started = mapOf("/first" to CompletableDeferred<Unit>(), "/second" to CompletableDeferred<Unit>())
+        val client = HttpClient(
+            MockEngine { request ->
+                started.getValue(request.url.encodedPath).complete(Unit)
+                started.values.forEach { it.await() }
+                throw IllegalStateException("offline ${request.url.encodedPath}")
+            }
+        ) {
+            installHttpLogging(tag = "TestHttp")
+        }
+
+        val first = launch { runCatching { client.get("https://example.com/first") } }
+        val second = launch { runCatching { client.get("https://example.com/second") } }
+        first.join()
+        second.join()
+
+        assertEquals(
+            setOf(
+                MobileSyncLogSeverity.WARN to
+                    "<-- HTTP FAILED GET https://example.com/first: ${IllegalStateException("offline /first")}",
+                MobileSyncLogSeverity.WARN to
+                    "<-- HTTP FAILED GET https://example.com/second: ${IllegalStateException("offline /second")}",
+            ),
+            failureSummaries().toSet()
+        )
+        assertEquals(2, failureSummaries().size)
+    }
+
+    @Test
+    fun `cancelled call logs at info naming its request`() = runTest {
         configure(MobileSyncLogSeverity.INFO)
         val started = CompletableDeferred<Unit>()
         val client = HttpClient(
@@ -162,9 +244,12 @@ class HttpLoggingTest {
         started.await()
         call.cancelAndJoin()
 
-        val failure = entries.last()
-        assertEquals(MobileSyncLogSeverity.INFO, failure.severity)
-        assertTrue(failure.message.startsWith("<-- HTTP FAILED"))
+        val failures = failureSummaries()
+        assertEquals(1, failures.size)
+        val (severity, message) = failures.single()
+        assertEquals(MobileSyncLogSeverity.INFO, severity)
+        assertTrue(message.startsWith("<-- HTTP FAILED GET https://example.com/v1/sync: "))
+        assertTrue("CancellationException" in message)
     }
 
     @Test
