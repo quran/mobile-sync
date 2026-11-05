@@ -1,0 +1,123 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "url": "../../logging/0.1.54/logging-0.1.54.module",
+    "group": "com.quran",
+    "module": "logging",
+    "version": "0.1.54",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.8.2"
+    }
+  },
+  "variants": [
+    {
+      "name": "jvmApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "logging-jvm-0.1.54.jar",
+          "url": "logging-jvm-0.1.54.jar",
+          "size": 16538,
+          "sha512": "7d2849c151a2ea7e15dda374c1476511c8b7a9af7f112f729692be2189bc1f52c6f4e3a7a8bf37214c155616c672e4a49a699bec25bb62a189ab7c8a51056c89",
+          "sha256": "b3feb06e10972a73e0d42204f242853c288b8297ba9230ed0367e48d4c2c3d1c",
+          "sha1": "be0e5ac2891e001368338248c2fb0e1a7900c93e",
+          "md5": "addb3019010ba604b6fc0b86903a770d"
+        }
+      ]
+    },
+    {
+      "name": "jvmRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        },
+        {
+          "group": "co.touchlab",
+          "module": "kermit",
+          "version": {
+            "requires": "2.2.0"
+          }
+        },
+        {
+          "group": "io.ktor",
+          "module": "ktor-client-core",
+          "version": {
+            "requires": "3.6.0"
+          }
+        },
+        {
+          "group": "io.ktor",
+          "module": "ktor-client-logging",
+          "version": {
+            "requires": "3.6.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "logging-jvm-0.1.54.jar",
+          "url": "logging-jvm-0.1.54.jar",
+          "size": 16538,
+          "sha512": "7d2849c151a2ea7e15dda374c1476511c8b7a9af7f112f729692be2189bc1f52c6f4e3a7a8bf37214c155616c672e4a49a699bec25bb62a189ab7c8a51056c89",
+          "sha256": "b3feb06e10972a73e0d42204f242853c288b8297ba9230ed0367e48d4c2c3d1c",
+          "sha1": "be0e5ac2891e001368338248c2fb0e1a7900c93e",
+          "md5": "addb3019010ba604b6fc0b86903a770d"
+        }
+      ]
+    },
+    {
+      "name": "jvmSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "files": [
+        {
+          "name": "logging-jvm-0.1.54-sources.jar",
+          "url": "logging-jvm-0.1.54-sources.jar",
+          "size": 3858,
+          "sha512": "8f7de0d298199f8116be017db32b8821205903a08fc18ed8a4709f28c5e54b00153d9bedb5f8144e466d435212e55cbabf331729dee084bcf674ea17b46acc38",
+          "sha256": "a422052623f794658f075f0b36f31bc9748f1ee95378534ab47a0975044e8bb3",
+          "sha1": "08d787b87e22994e7a6a933cc65b96d71c37c6ef",
+          "md5": "e4e48dd15a194e05be3664a1934ccc77"
+        }
+      ]
+    }
+  ]
+}
