@@ -1,5 +1,6 @@
 package com.quran.shared.pipeline.integration.scenarios
 
+import com.quran.shared.persistence.DuplicateCollectionNameException
 import com.quran.shared.persistence.TextLengthBound
 import com.quran.shared.persistence.TextLengthField
 import com.quran.shared.persistence.TextLengthLimitException
@@ -139,14 +140,14 @@ class TextScenariosTest {
     }
 
     @Test
-    fun `TXT-08 a name that differs only in case or whitespace returns the existing collection`() = syncScenario {
+    fun `TXT-08 a name that differs only in case or whitespace throws a duplicate name error`() = syncScenario {
         val (phone) = signedIn("phone")
-        val study = phone.data.addCollection("Study")
+        phone.data.addCollection("Study")
         syncUntilQuiescent(phone)
 
-        val again = phone.data.addCollection("  STUDY ")
+        val error = assertFailsWith<DuplicateCollectionNameException> { phone.data.addCollection("  STUDY ") }
 
-        assertEquals(study.id, again.id)
+        assertEquals("Study", error.name)
         assertEquals(listOf("Study"), phone.collectionNames())
         val run = phone.syncNow()
         assertSucceeded(run)
@@ -198,10 +199,11 @@ class TextScenariosTest {
         web(ALICE).createCollection("Study")
 
         val ideographicSpace = phone.data.addCollection(" Study\u3000")
-        val byteOrderMark = phone.data.addCollection("\uFEFFStudy")
+        val byteOrderMark = assertFailsWith<DuplicateCollectionNameException> { phone.data.addCollection("\uFEFFStudy") }
         syncUntilQuiescent(phone)
 
-        assertEquals(ideographicSpace.id, byteOrderMark.id, "both names are one collection")
+        assertEquals("Study", ideographicSpace.name, "trimmed on add")
+        assertEquals("Study", byteOrderMark.name, "both names are one collection")
         assertEquals(listOf("Study"), server.state(ALICE).collections.map { it.name })
         assertEquals(listOf("Study"), phone.collectionNames())
         assertConverged(ALICE, phone)

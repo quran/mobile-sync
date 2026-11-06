@@ -49,7 +49,7 @@ class CollectionsRepositoryImpl(
 
     override suspend fun addCollection(name: String): Collection = addCollection(name, currentPlatformDateTime())
 
-    /** Adding a name that is taken (trimmed, case-insensitive) returns the existing collection. */
+    /** Adding a name that is taken (trimmed, case-insensitive) throws [DuplicateCollectionNameException]. */
     override suspend fun addCollection(name: String, timestamp: PlatformDateTime): Collection {
         logger.i { "Adding collection with name=$name" }
         if (isSystemCollectionName(name)) throw ReservedCollectionNameException(name)
@@ -57,7 +57,8 @@ class CollectionsRepositoryImpl(
         val at = timestamp.toEpochMillisecondsFromPlatform()
         return withContext(Dispatchers.IO) {
             database.transactionWithResult {
-                val localId = store.byName(name)?.local_id ?: store.insertUser(name, at)
+                store.byName(name)?.let { throw DuplicateCollectionNameException(it.name) }
+                val localId = store.insertUser(name, at)
                 requireNotNull(store.get(localId)).toCollection()
             }
         }

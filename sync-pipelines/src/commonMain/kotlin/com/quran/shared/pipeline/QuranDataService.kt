@@ -720,6 +720,7 @@ class QuranDataService internal constructor(
     }
 
     /**
+     * @throws com.quran.shared.persistence.DuplicateCollectionNameException when another collection has [name].
      * @throws com.quran.shared.persistence.ReservedCollectionNameException when [name] is reserved.
      * @throws TextLengthLimitException when [name] is outside the server's length limits.
      */
@@ -729,6 +730,7 @@ class QuranDataService internal constructor(
     }
 
     /**
+     * @throws com.quran.shared.persistence.DuplicateCollectionNameException when another collection has [name].
      * @throws com.quran.shared.persistence.ReservedCollectionNameException when [name] is reserved.
      * @throws TextLengthLimitException when [name] is outside the server's length limits.
      */

@@ -1,8 +1,8 @@
 package com.quran.shared.persistence
 
 /**
- * Thrown when renaming a collection to a name another collection has. Names compare as the server compares them:
- * trimmed and case-insensitive.
+ * Thrown when creating a collection, or renaming one, with a name another collection has. Names compare as the server
+ * compares them: trimmed and case-insensitive.
  */
 class DuplicateCollectionNameException(val name: String) :
     IllegalArgumentException("A collection named \"$name\" already exists.")
