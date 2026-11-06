@@ -19,6 +19,7 @@ import com.russhwolf.settings.MapSettings
 import com.russhwolf.settings.coroutines.toSuspendSettings
 import dev.zacsweers.metro.createDynamicGraphFactory
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -41,6 +42,7 @@ class QuranDataServiceWriteLoggingTest {
         }
     }
     private val dispatcher = StandardTestDispatcher()
+    private val syncClient = ImportSyncClientSpy()
     private lateinit var database: MobileSyncDatabase
     private lateinit var authService: AuthService
     private lateinit var service: QuranDataService
@@ -60,7 +62,7 @@ class QuranDataServiceWriteLoggingTest {
             notesRepository = NotesRepositoryImpl(synced),
             readingSessionsRepository = ReadingSessionsRepositoryImpl(synced)
         )
-        val bindings = ImportSyncBindings(ImportSyncClientSpy())
+        val bindings = ImportSyncBindings(syncClient)
         service = createDynamicGraphFactory<QuranDataServiceTestGraph.Factory>(bindings)
             .create(
                 authService = authService,
@@ -105,6 +107,23 @@ class QuranDataServiceWriteLoggingTest {
         val entry = failure("Failed to update collection")
         assertEquals(Severity.Info, entry.severity)
         assertNull(entry.throwable)
+    }
+
+    @Test
+    fun `adding a collection with a taken name logs at info and triggers no sync`() = runTest(dispatcher) {
+        service.addCollection("Tafsir")
+        val syncsAfterFirstAdd = syncClient.localDataUpdatedCount
+        assertEquals(1, syncsAfterFirstAdd, "the first add syncs")
+
+        val error = assertFailsWith<DuplicateCollectionNameException> { service.addCollection(" tafsir ") }
+
+        assertEquals("Tafsir", error.name)
+        val entry = failure("Failed to add collection")
+        assertEquals(Severity.Info, entry.severity)
+        assertNull(entry.throwable)
+        assertEquals(syncsAfterFirstAdd, syncClient.localDataUpdatedCount)
+        val names = service.collectionsWithBookmarks.first().map { it.collection }.filterNot { it.isDefault }.map { it.name }
+        assertEquals(listOf("Tafsir"), names)
     }
 
     @Test

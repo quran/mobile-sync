@@ -7,20 +7,25 @@ import com.quran.shared.persistence.repository.collection.repository.Collections
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 
 class CollectionNameUniquenessTest {
     private val repository = CollectionsRepositoryImpl(createTestDatabase().synced)
 
     @Test
-    fun `adding a case or whitespace variant returns the existing collection`() = runTest {
-        val study = repository.addCollection("Study", at(1_000L))
+    fun `adding a case or whitespace variant throws a duplicate name error`() = runTest {
+        repository.addCollection("Study", at(1_000L))
 
-        val lowercase = repository.addCollection("study", at(2_000L))
-        val padded = repository.addCollection("﻿ study　", at(3_000L))
+        val lowercase = assertFailsWith<DuplicateCollectionNameException> {
+            repository.addCollection("study", at(2_000L))
+        }
+        val padded = assertFailsWith<DuplicateCollectionNameException> {
+            repository.addCollection("﻿ study　", at(3_000L))
+        }
 
-        assertEquals(study, lowercase)
-        assertEquals(study, padded)
+        assertEquals("Study", lowercase.name)
+        assertEquals("Study", padded.name)
         assertEquals(listOf("Study"), userCollectionNames())
     }
 
