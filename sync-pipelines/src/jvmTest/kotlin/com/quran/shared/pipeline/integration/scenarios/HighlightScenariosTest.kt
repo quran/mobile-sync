@@ -1,6 +1,7 @@
 package com.quran.shared.pipeline.integration.scenarios
 
 import com.quran.shared.persistence.model.AyahHighlightColor
+import com.quran.shared.pipeline.integration.SyncDevice
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.flow.first
@@ -181,5 +182,50 @@ class HighlightScenariosTest {
         assertEquals(setOf("3:18"), state.versesIn(state.collectionNamed(HIGHLIGHTS_BLUE)!!.id))
         assertEquals(listOf("3:18 blue"), phone.highlightList())
         assertConverged(ALICE, phone)
+    }
+
+    @Test
+    fun `HL-10 deleting every highlight of a color syncs like deleting each one`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+        val (laptop) = signedIn("laptop", account = BOB)
+        listOf(phone, laptop).forEach { it.highlightTwoVersesBlue() }
+        syncUntilQuiescent(phone, tablet)
+        syncUntilQuiescent(laptop)
+
+        assertEquals(2, phone.data.deleteHighlights(AyahHighlightColor.BLUE))
+        listOf(2 to 255, 3 to 18).forEach { (sura, ayah) -> assertTrue(laptop.data.deleteHighlight(sura, ayah)) }
+        val run = phone.syncNow()
+        val singles = laptop.syncNow()
+        assertSucceeded(run)
+        assertSucceeded(singles)
+        assertSucceeded(tablet.syncNow())
+
+        assertEquals(List(2) { "COLLECTION_BOOKMARK DELETE" }, run.accepted.map { "${it.resource} ${it.type}" })
+        assertEquals(singles.acceptedByCollectionName(server.state(BOB)), run.acceptedByCollectionName(server.state(ALICE)), "the pushes")
+        assertEquals(server.state(BOB).ayahDataByName, server.state(ALICE).ayahDataByName, "the server's data")
+        val state = server.state(ALICE)
+        assertEquals(emptySet(), state.versesIn(state.collectionNamed(HIGHLIGHTS_BLUE)!!.id), "the empty blue collection stays")
+        assertEquals(setOf("4:1"), state.versesIn(state.collectionNamed(HIGHLIGHTS_GREEN)!!.id))
+        assertEquals(setOf("2:255"), state.favorites)
+        assertEquals(setOf("3:18"), state.versesIn(state.collectionNamed("Study")!!.id))
+        listOf(phone, tablet).forEach {
+            assertEquals(listOf("4:1 green"), it.highlightList(), "${it.name} highlights")
+            assertEquals(listOf("2:255"), it.favoriteVerses(), "${it.name} Favorites")
+            assertEquals(listOf("3:18"), it.versesIn("Study"), "${it.name} Study")
+        }
+        assertConverged(ALICE, phone, tablet)
+        assertConverged(BOB, laptop)
+
+        assertEquals(0, phone.data.deleteHighlights(AyahHighlightColor.BLUE), "no blue highlight is left")
+        assertEquals(0, phone.syncNow().also(::assertSucceeded).posts, "nothing to push")
+    }
+
+    /** Blue on 2:255 (also in Favorites) and 3:18 (also in Study), green on 4:1. */
+    private suspend fun SyncDevice.highlightTwoVersesBlue() {
+        addToFavorites(2, 255)
+        data.addAyahBookmarkToCollection(data.addCollection("Study").id, 3, 18)
+        data.setHighlight(2, 255, AyahHighlightColor.BLUE)
+        data.setHighlight(3, 18, AyahHighlightColor.BLUE)
+        data.setHighlight(4, 1, AyahHighlightColor.GREEN)
     }
 }

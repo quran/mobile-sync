@@ -7,6 +7,7 @@ import com.quran.shared.persistence.model.highlightColorForCollectionName
 import com.quran.shared.syncv2.db.Collection_ayah
 import com.quran.shared.syncv2.db.SyncV2Database
 import com.quran.shared.syncv2.types.CollectionsType
+import com.quran.shared.syncv2.types.Verses
 import com.quran.shared.syncv2.db.Collection as CollectionRow
 
 /**
@@ -94,6 +95,16 @@ internal class CollectionStore(private val database: SyncV2Database) {
     }
 
     /**
+     * Removes every verse that exists from the collection, which stays; returns how many were removed. A stored verse
+     * that doesn't exist (such as 2:999) is kept: the app never shows it, so no single removal reaches it, and the
+     * server would refuse its DELETE (422), leaving it held.
+     */
+    fun removeAllVerses(collectionLocalId: Long): Int =
+        versesIn(collectionLocalId).filter { Verses.exists(it.sura.toInt(), it.ayah.toInt()) }
+            .onEach { queries.collectionAyahDelete(it.local_id) }
+            .size
+
+    /**
      * Highlights the verse in [color] and removes its other colors: one color per verse. Returns the membership,
      * which keeps its date when the verse already had this color.
      */
@@ -114,6 +125,14 @@ internal class CollectionStore(private val database: SyncV2Database) {
     /** Removes every highlight color of the verse; returns whether it had one. */
     fun clearHighlights(sura: Int, ayah: Int): Boolean =
         highlightCollections().values.map { removeVerse(it.local_id, sura, ayah) }.any { it }
+
+    /**
+     * Removes every verse's [color] highlight, as [removeAllVerses] does (verses that don't exist are kept); returns how
+     * many were removed. The color's collection stays, and other colors and the verses' Favorites and user collection
+     * memberships are kept.
+     */
+    fun clearHighlights(color: AyahHighlightColor): Int =
+        highlightCollections()[color]?.let { removeAllVerses(it.local_id) } ?: 0
 }
 
 /** Highlight collections (`system:highlights:<color>`), which the app changes only through the highlight API. */

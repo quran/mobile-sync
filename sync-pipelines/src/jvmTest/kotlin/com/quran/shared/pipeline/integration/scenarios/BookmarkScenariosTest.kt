@@ -492,6 +492,100 @@ class BookmarkScenariosTest {
         assertConverged(ALICE, phone, tablet)
     }
 
+    @Test
+    fun `BMK-23 emptying a collection keeps it and syncs like removing each verse`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+        val (laptop) = signedIn("laptop", account = BOB)
+        listOf(phone, laptop).forEach { device ->
+            val study = device.data.addCollection("Study")
+            listOf(2 to 255, 3 to 18).forEach { (sura, ayah) -> device.data.addAyahBookmarkToCollection(study.id, sura, ayah) }
+            device.data.addAyahBookmarkToCollection(device.data.addCollection("Review").id, 2, 255)
+            device.addToFavorites(3, 18)
+            device.data.setHighlight(2, 255, AyahHighlightColor.BLUE)
+        }
+        syncUntilQuiescent(phone, tablet)
+        syncUntilQuiescent(laptop)
+        // Added offline just before Delete All, so the server never hears of it.
+        listOf(phone, laptop).forEach { it.data.addAyahBookmarkToCollection(it.collectionId("Study"), 5, 5) }
+
+        assertEquals(3, phone.data.removeAllAyahBookmarksFromCollection(phone.collectionId("Study")))
+        listOf(2 to 255, 3 to 18, 5 to 5).forEach { (sura, ayah) -> assertTrue(laptop.removeFromCollection("Study", sura, ayah)) }
+        val run = phone.syncNow()
+        val singles = laptop.syncNow()
+        assertSucceeded(run)
+        assertSucceeded(singles)
+        assertSucceeded(tablet.syncNow())
+
+        assertEquals(List(2) { "COLLECTION_BOOKMARK DELETE" }, run.accepted.map { "${it.resource} ${it.type}" })
+        assertEquals(
+            emptyList(),
+            server.posts("phone").flatMap { it.mutations }.filter { it.data("key") == "5" && it.data("verseNumber") == "5" },
+            "no CREATE or DELETE of 5:5"
+        )
+        assertEquals(singles.acceptedByCollectionName(server.state(BOB)), run.acceptedByCollectionName(server.state(ALICE)), "the pushes")
+        assertEquals(server.state(BOB).ayahDataByName, server.state(ALICE).ayahDataByName, "the server's data")
+        val state = server.state(ALICE)
+        assertNull(state.bookmarkAt(5, 5))
+        assertEquals(emptySet(), state.versesIn(assertNotNull(state.collectionNamed("Study"), "Study stays").id))
+        assertEquals(setOf("2:255"), state.versesIn(state.collectionNamed("Review")!!.id))
+        assertEquals(setOf("3:18"), state.favorites)
+        listOf(phone, tablet).forEach {
+            assertEquals(emptyList(), it.versesIn("Study"), "${it.name} Study")
+            assertEquals(listOf("2:255"), it.versesIn("Review"), "${it.name} Review")
+            assertEquals(listOf("3:18"), it.favoriteVerses(), "${it.name} Favorites")
+            assertEquals(listOf("2:255 blue"), it.highlightList(), "${it.name} highlights")
+        }
+        assertConverged(ALICE, phone, tablet)
+        assertConverged(BOB, laptop)
+
+        assertEquals(0, phone.data.removeAllAyahBookmarksFromCollection(phone.collectionId("Study")), "Study is empty")
+        assertEquals(0, phone.syncNow().also(::assertSucceeded).posts, "nothing to push")
+    }
+
+    @Test
+    fun `BMK-24 emptying Favorites syncs like removing each favorite`() = syncScenario {
+        val (phone, tablet) = signedIn("phone", "tablet")
+        val (laptop) = signedIn("laptop", account = BOB)
+        // A legacy favorite: the server never logged its __default__ membership, only the bookmark's flag.
+        server.faults.legacyFavorites = true
+        listOf(ALICE, BOB).forEach { web(it).addBookmark(1, 2) }
+        server.faults.legacyFavorites = false
+        listOf(phone, laptop).forEach { device ->
+            listOf(2 to 255, 3 to 18, 4 to 1).forEach { (sura, ayah) -> device.addToFavorites(sura, ayah) }
+            device.data.addAyahBookmarkToCollection(device.data.addCollection("Study").id, 3, 18)
+            device.data.setHighlight(4, 1, AyahHighlightColor.GREEN)
+        }
+        syncUntilQuiescent(phone, tablet)
+        syncUntilQuiescent(laptop)
+
+        assertEquals(listOf("1:2", "2:255", "3:18", "4:1"), phone.favoriteVerses())
+
+        assertEquals(4, phone.data.removeAllAyahBookmarksFromCollection(phone.favoritesId()))
+        listOf(1 to 2, 2 to 255, 3 to 18, 4 to 1).forEach { (sura, ayah) -> assertTrue(laptop.removeFromFavorites(sura, ayah)) }
+        val run = phone.syncNow()
+        val singles = laptop.syncNow()
+        assertSucceeded(run)
+        assertSucceeded(singles)
+        syncUntilQuiescent(phone, tablet)
+        syncUntilQuiescent(laptop)
+
+        assertEquals(List(4) { "COLLECTION_BOOKMARK DELETE" }, run.accepted.map { "${it.resource} ${it.type}" })
+        assertEquals(singles.acceptedByCollectionName(server.state(BOB)), run.acceptedByCollectionName(server.state(ALICE)), "the pushes")
+        assertEquals(server.state(BOB).ayahDataByName, server.state(ALICE).ayahDataByName, "the server's data")
+        val state = server.state(ALICE)
+        assertEquals(emptySet(), state.favorites)
+        assertNull(state.bookmarkAt(2, 255), "a verse in no other collection loses its bookmark")
+        assertNull(state.bookmarkAt(1, 2), "the legacy favorite's bookmark goes too")
+        assertEquals(setOf("3:18"), state.versesIn(state.collectionNamed("Study")!!.id))
+        listOf(phone, tablet).forEach {
+            assertEquals(emptyList(), it.favoriteVerses(), "${it.name} Favorites stays, empty")
+            assertEquals(listOf("3:18"), it.versesIn("Study"), "${it.name} Study")
+            assertEquals(listOf("4:1 green"), it.highlightList(), "${it.name} highlights")
+        }
+        assertConverged(ALICE, phone, tablet)
+        assertConverged(BOB, laptop)
+    }
+
     /** The last entry of the run's first GET page and the first entry of its second. */
     private fun SyncRun.firstPageBoundary(): List<String> {
         val (first, second) = requests.filter { it.method == "GET" && it.status == 200 }.take(2).map { page ->

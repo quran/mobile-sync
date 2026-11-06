@@ -48,6 +48,17 @@ interface CollectionBookmarksRepository {
     suspend fun deleteHighlight(sura: Int, ayah: Int, timestamp: PlatformDateTime): Boolean
 
     /**
+     * Deletes every ayah's [color] highlight in one transaction, by removing the memberships of the color's highlight
+     * collection. The collection itself stays, as it does when [deleteHighlight] removes its last verse. Other colors
+     * and default and user collection memberships are preserved. A stored verse that doesn't exist (such as 2:999) is
+     * kept and not counted: the app never shows it, and the server would refuse its delete.
+     *
+     * @param color the highlight color to clear.
+     * @return how many highlight memberships were removed; `0` when no existing ayah had [color].
+     */
+    suspend fun deleteHighlights(color: AyahHighlightColor): Int
+
+    /**
      * Returns all bookmarks linked to a collection.
      */
     suspend fun getBookmarksForCollection(collectionId: String): List<CollectionAyahBookmark>
@@ -80,6 +91,20 @@ interface CollectionBookmarksRepository {
      * @return whether an active membership was removed.
      */
     suspend fun removeAyahBookmarkFromCollection(collectionId: String, bookmarkId: String): Boolean
+
+    /**
+     * Removes every ayah bookmark from the collection [collectionId] in one transaction, keeping the collection. Like
+     * [removeAyahBookmarkFromCollection], it works on read-only collections such as the default collection (read-only
+     * only blocks renaming and deleting a collection). Highlight collections are rejected, as in
+     * [addAyahBookmarkToCollection]: they change through [deleteHighlights]. The verses' memberships in other
+     * collections are preserved. A stored verse that doesn't exist (such as 2:999) is kept and not counted: the app
+     * never shows it, and the server would refuse its delete.
+     *
+     * @return how many memberships were removed; `0` when the collection has no existing verse or [collectionId] names
+     *   none.
+     * @throws IllegalArgumentException when [collectionId] is a highlight collection.
+     */
+    suspend fun removeAllAyahBookmarksFromCollection(collectionId: String): Int
 
     /**
      * Observe the bookmarks for a collection as a Flow.
