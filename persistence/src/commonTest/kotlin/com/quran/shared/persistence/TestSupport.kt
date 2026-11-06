@@ -2,7 +2,10 @@ package com.quran.shared.persistence
 
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.toPlatform
+import com.quran.shared.syncv2.HeldItem
 import com.quran.shared.syncv2.ItemRef
+import com.quran.shared.syncv2.PushPlanner
+import com.quran.shared.syncv2.Refs
 import com.quran.shared.syncv2.SyncEngineV2
 import com.quran.shared.syncv2.SyncRow
 import com.quran.shared.syncv2.SyncStore
@@ -23,3 +26,16 @@ internal fun MobileSyncDatabase.markSynced(type: SyncType) {
 
 /** The items the next push would send. */
 internal fun MobileSyncDatabase.pending(): List<ItemRef> = SyncEngineV2.unsynced(synced, syncTypes(synced)).pending
+
+/** Plans a push without sending it, as a sync does first, which records the holds of changes the server would refuse. */
+internal fun MobileSyncDatabase.planPush() {
+    val store = SyncStore(synced)
+    val refs = object : Refs {
+        override fun remoteId(type: SyncType, localId: Long): String? = store.row(type.name, localId)?.remoteId
+        override fun localId(type: SyncType, remoteId: String): Long? = store.rowByRemote(type.name, remoteId)?.localId
+    }
+    synced.transaction { PushPlanner(store, syncTypes(synced), refs).plan() }
+}
+
+/** The items the next push would hold back, and why. */
+internal fun MobileSyncDatabase.held(): List<HeldItem> = SyncEngineV2.unsynced(synced, syncTypes(synced)).held

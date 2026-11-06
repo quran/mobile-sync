@@ -93,6 +93,16 @@ internal val ServerSession.verseKey: String get() = "$chapter:$verse"
 
 /** The server's session verses, sorted. */
 internal val ServerState.sessionVerses: List<String> get() = sessions.map { it.verseKey }.sorted()
+
+/**
+ * The account's ayah data by name, which two accounts compare by as their server ids differ: each collection's verses,
+ * Favorites', and every ayah bookmark's.
+ */
+internal val ServerState.ayahDataByName: Map<String, Set<String>>
+    get() = collections.associate { "collection ${it.name}" to versesIn(it.id) } + mapOf(
+        "Favorites" to favorites,
+        "ayah bookmarks" to bookmarks.filter { it.type == "ayah" }.map { "${it.key}:${it.verse}" }.toSet()
+    )
 // endregion
 
 // region Request log
@@ -100,6 +110,19 @@ internal val RequestRecord.isPost: Boolean get() = method == "POST"
 
 /** Mutations in this run's POSTs that the server accepted. */
 internal val SyncRun.accepted: List<JsonObject> get() = requests.filter { it.isPost && it.status == 200 }.flatMap { it.mutations }
+
+/**
+ * This run's accepted mutations, sorted, each with its `collectionId` replaced by that collection's name on [state]'s
+ * server: the pushes of two accounts, whose server ids differ, compare equal when they change the same data.
+ */
+internal fun SyncRun.acceptedByCollectionName(state: ServerState): List<String> {
+    val names = state.collections.associate { it.id to it.name }
+    return accepted.map { mutation ->
+        val data = mutation["data"] as? JsonObject
+        val name = data?.get("collectionId")?.let { (it as? JsonPrimitive)?.contentOrNull }?.let(names::get)
+        if (data == null || name == null) mutation else JsonObject(mutation + ("data" to JsonObject(data + ("collectionId" to JsonPrimitive(name)))))
+    }.map(JsonObject::toString).sorted()
+}
 
 /** Every POST [device] made, in order. */
 internal fun FakeSyncServer.posts(device: String): List<RequestRecord> = requests(device).filter { it.isPost }

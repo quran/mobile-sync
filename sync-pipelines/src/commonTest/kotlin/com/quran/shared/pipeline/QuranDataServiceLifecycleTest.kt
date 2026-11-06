@@ -788,6 +788,45 @@ class QuranDataServiceLifecycleTest {
     }
 
     @Test
+    fun `deleteHighlights triggers local sync only when a highlight was deleted`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+        advanceUntilIdle()
+
+        fixture.collectionBookmarksRepository.deleteHighlightsResult = 0
+        assertEquals(0, fixture.service.deleteHighlights(AyahHighlightColor.BLUE))
+        assertEquals(0, fixture.syncClient.localDataUpdatedCount)
+
+        fixture.collectionBookmarksRepository.deleteHighlightsResult = 3
+        assertEquals(3, fixture.service.deleteHighlights(AyahHighlightColor.GREEN))
+        assertEquals(1, fixture.syncClient.localDataUpdatedCount)
+        assertEquals(
+            listOf(AyahHighlightColor.BLUE, AyahHighlightColor.GREEN),
+            fixture.collectionBookmarksRepository.deleteHighlightsCalls
+        )
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `removeAllAyahBookmarksFromCollection triggers local sync only when a membership was removed`() =
+        runTest(dispatcher) {
+            val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+            advanceUntilIdle()
+
+            fixture.collectionBookmarksRepository.removeAllFromCollectionResult = 0
+            assertEquals(0, fixture.service.removeAllAyahBookmarksFromCollection("empty-id"))
+            assertEquals(0, fixture.syncClient.localDataUpdatedCount)
+
+            fixture.collectionBookmarksRepository.removeAllFromCollectionResult = 2
+            assertEquals(2, fixture.service.removeAllAyahBookmarksFromCollection("collection-id"))
+            assertEquals(1, fixture.syncClient.localDataUpdatedCount)
+            assertEquals(
+                listOf("empty-id", "collection-id"),
+                fixture.collectionBookmarksRepository.removeAllFromCollectionCalls
+            )
+            fixture.clearAndJoin()
+        }
+
+    @Test
     fun `removeAyahBookmarkFromCollection returns false without triggering sync when nothing is removed`() =
         runTest(dispatcher) {
             val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
@@ -1523,6 +1562,10 @@ private class ServiceCollectionBookmarksRepository :
     var deleteHighlightResult = true
     val removeFromCollectionCalls = mutableListOf<CollectionBookmarkRemoveCall>()
     var removeFromCollectionResult = true
+    val deleteHighlightsCalls = mutableListOf<AyahHighlightColor>()
+    var deleteHighlightsResult = 0
+    val removeAllFromCollectionCalls = mutableListOf<String>()
+    var removeAllFromCollectionResult = 0
     val highlights = MutableStateFlow<List<AyahHighlight>>(emptyList())
     private val bookmarksByCollectionId = mutableMapOf<String, MutableStateFlow<List<CollectionAyahBookmark>>>()
 
@@ -1550,6 +1593,11 @@ private class ServiceCollectionBookmarksRepository :
         return deleteHighlightResult
     }
 
+    override suspend fun deleteHighlights(color: AyahHighlightColor): Int {
+        deleteHighlightsCalls += color
+        return deleteHighlightsResult
+    }
+
     fun setBookmarksForCollection(collectionId: String, bookmarks: List<CollectionAyahBookmark>) {
         bookmarksFlow(collectionId).value = bookmarks
     }
@@ -1570,6 +1618,10 @@ private class ServiceCollectionBookmarksRepository :
     override suspend fun removeAyahBookmarkFromCollection(collectionId: String, bookmarkId: String): Boolean {
         removeFromCollectionCalls += CollectionBookmarkRemoveCall(collectionId, bookmarkId)
         return removeFromCollectionResult
+    }
+    override suspend fun removeAllAyahBookmarksFromCollection(collectionId: String): Int {
+        removeAllFromCollectionCalls += collectionId
+        return removeAllFromCollectionResult
     }
     override fun getBookmarksForCollectionFlow(collectionId: String): Flow<List<CollectionAyahBookmark>> {
         flowRequests += collectionId

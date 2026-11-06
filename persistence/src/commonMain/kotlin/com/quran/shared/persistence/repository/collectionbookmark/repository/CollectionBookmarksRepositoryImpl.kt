@@ -78,6 +78,11 @@ class CollectionBookmarksRepositoryImpl(
             database.transactionWithResult { store.clearHighlights(sura, ayah) }
         }
 
+    override suspend fun deleteHighlights(color: AyahHighlightColor): Int =
+        withContext(Dispatchers.IO) {
+            database.transactionWithResult { store.clearHighlights(color) }
+        }
+
     override suspend fun getBookmarksForCollection(collectionId: String): List<CollectionAyahBookmark> =
         withContext(Dispatchers.IO) { bookmarksIn(collectionId) }
 
@@ -120,6 +125,16 @@ class CollectionBookmarksRepositoryImpl(
             val collection = collectionId.toLongOrNull() ?: return@withContext false
             val (sura, ayah) = parseAyahBookmarkId(bookmarkId) ?: return@withContext false
             database.transactionWithResult { store.removeVerse(collection, sura, ayah) }
+        }
+
+    override suspend fun removeAllAyahBookmarksFromCollection(collectionId: String): Int =
+        withContext(Dispatchers.IO) {
+            val localId = collectionId.toLongOrNull() ?: return@withContext 0
+            database.transactionWithResult {
+                val collection = store.get(localId) ?: return@transactionWithResult 0
+                require(!collection.isHighlight) { "Highlight collections must be changed through deleteHighlights." }
+                store.removeAllVerses(collection.local_id)
+            }
         }
 
     private fun dates() = AyahBookmarkDates(

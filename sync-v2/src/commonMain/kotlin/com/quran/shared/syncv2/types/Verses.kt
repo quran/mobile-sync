@@ -1,7 +1,10 @@
 package com.quran.shared.syncv2.types
 
-/** Verse counts per sura, for local validation (the server rejects verses that don't exist: 422, or 500 for a note range). */
-internal object Verses {
+/**
+ * Verse counts per sura, for local validation (the server rejects verses that don't exist: 422, or 500 for a note range).
+ * Public for `persistence`, whose bulk removals leave alone the stored verses the server would refuse to delete.
+ */
+object Verses {
     private val counts = intArrayOf(
         7, 286, 200, 176, 120, 165, 206, 75, 129, 109, 123, 111, 43, 52, 99, 128, 111, 110, 98, 135,
         112, 78, 118, 64, 77, 227, 93, 88, 69, 60, 34, 30, 73, 54, 45, 83, 182, 88, 75, 85, 54, 53,

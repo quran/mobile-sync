@@ -569,6 +569,26 @@ class QuranDataService internal constructor(
         }
     }
 
+    /**
+     * Deletes every ayah's [color] highlight in one transaction and schedules sync only when one was removed.
+     *
+     * Other colors and default and user collection memberships are preserved, and the color's collection stays. Each
+     * removed highlight syncs as [deleteHighlight] removing it would: one verse-in-collection DELETE per verse. A stored
+     * verse that doesn't exist (such as 2:999) is kept and not counted, as the server would refuse its delete.
+     *
+     * @param color the highlight color to clear.
+     * @return how many highlights were removed; `0` when no existing ayah had [color].
+     */
+    @NativeCoroutines
+    suspend fun deleteHighlights(color: AyahHighlightColor): Int {
+        return mutatingCall(
+            errorMessage = "Failed to delete ayah highlights",
+            shouldTriggerSync = { removed -> removed > 0 }
+        ) {
+            collectionBookmarksRepository.deleteHighlights(color)
+        }
+    }
+
     @NativeCoroutines
     suspend fun replaceAyahBookmarkCollections(
         sura: Int,
@@ -822,6 +842,33 @@ class QuranDataService internal constructor(
             shouldTriggerSync = { removed -> removed }
         ) {
             collectionBookmarksRepository.removeAyahBookmarkFromCollection(collectionId, bookmarkId)
+        }
+    }
+
+    /**
+     * Removes every ayah bookmark from the collection [collectionId] in one transaction, keeping the collection, and
+     * schedules sync only when a membership was removed. Each removal syncs as [removeAyahBookmarkFromCollection]
+     * would.
+     *
+     * Like [removeAyahBookmarkFromCollection], it accepts read-only collections such as the default collection
+     * (read-only only blocks renaming and deleting a collection). Highlight collections are rejected, as in
+     * [addAyahBookmarkToCollection]: clear a color with [deleteHighlights]. The verses' memberships in other
+     * collections are preserved, so a verse removed from Favorites stays in its user collections and keeps its
+     * highlight. A stored verse that doesn't exist (such as 2:999) is kept and not counted, as the server would refuse
+     * its delete.
+     *
+     * @param collectionId the mobile-sync identifier of the collection to empty.
+     * @return how many memberships were removed; `0` when the collection has no existing verse or [collectionId] names
+     *   none.
+     * @throws IllegalArgumentException when [collectionId] is a highlight collection.
+     */
+    @NativeCoroutines
+    suspend fun removeAllAyahBookmarksFromCollection(collectionId: String): Int {
+        return mutatingCall(
+            errorMessage = "Failed to remove all bookmarks from collection",
+            shouldTriggerSync = { removed -> removed > 0 }
+        ) {
+            collectionBookmarksRepository.removeAllAyahBookmarksFromCollection(collectionId)
         }
     }
 
