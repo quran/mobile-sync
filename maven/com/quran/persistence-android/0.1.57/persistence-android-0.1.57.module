@@ -1,0 +1,200 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "url": "../../persistence/0.1.57/persistence-0.1.57.module",
+    "group": "com.quran",
+    "module": "persistence",
+    "version": "0.1.57",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.9.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "androidApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "com.quran",
+          "module": "mutations-definitions",
+          "version": {
+            "requires": "0.1.57"
+          }
+        },
+        {
+          "group": "app.cash.sqldelight",
+          "module": "runtime",
+          "version": {
+            "requires": "2.4.1"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "persistence.aar",
+          "url": "persistence-android-0.1.57.aar",
+          "size": 428561,
+          "sha512": "b5955db87f35e3b23629bfe0a06afa7cf3d43590295fbf34103d72a1064442e4b6e8f7f5e4d8a8e1cad1a7a16aa47507dba1025d4fcc335b818fada5fb0a5f7f",
+          "sha256": "fb6408356cb4313cdec835923472fb44172c2d79d682c87292862bc229fc635d",
+          "sha1": "6ee7d045819c2acf7c7b988e21e7d44f37584201",
+          "md5": "88201885dfc642ab6fa5c67d1b63b092"
+        }
+      ]
+    },
+    {
+      "name": "androidRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "com.quran",
+          "module": "mutations-definitions",
+          "version": {
+            "requires": "0.1.57"
+          }
+        },
+        {
+          "group": "app.cash.sqldelight",
+          "module": "runtime",
+          "version": {
+            "requires": "2.4.1"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        },
+        {
+          "group": "app.cash.sqldelight",
+          "module": "android-driver",
+          "version": {
+            "requires": "2.4.1"
+          }
+        },
+        {
+          "group": "dev.zacsweers.metro",
+          "module": "runtime",
+          "version": {
+            "requires": "1.5.2"
+          }
+        },
+        {
+          "group": "com.rickclephas.kmp",
+          "module": "kmp-nativecoroutines-core",
+          "version": {
+            "requires": "1.0.6"
+          }
+        },
+        {
+          "group": "com.rickclephas.kmp",
+          "module": "kmp-nativecoroutines-annotations",
+          "version": {
+            "requires": "1.0.6"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-core",
+          "version": {
+            "requires": "1.11.0"
+          }
+        },
+        {
+          "group": "app.cash.sqldelight",
+          "module": "coroutines-extensions",
+          "version": {
+            "requires": "2.4.1"
+          }
+        },
+        {
+          "group": "co.touchlab",
+          "module": "kermit",
+          "version": {
+            "requires": "2.2.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-datetime",
+          "version": {
+            "requires": "0.8.0-0.6.x-compat"
+          }
+        },
+        {
+          "group": "org.kotlincrypto.hash",
+          "module": "sha2",
+          "version": {
+            "requires": "0.8.0"
+          }
+        },
+        {
+          "group": "com.quran",
+          "module": "sync-v2",
+          "version": {
+            "requires": "0.1.57"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "persistence.aar",
+          "url": "persistence-android-0.1.57.aar",
+          "size": 428561,
+          "sha512": "b5955db87f35e3b23629bfe0a06afa7cf3d43590295fbf34103d72a1064442e4b6e8f7f5e4d8a8e1cad1a7a16aa47507dba1025d4fcc335b818fada5fb0a5f7f",
+          "sha256": "fb6408356cb4313cdec835923472fb44172c2d79d682c87292862bc229fc635d",
+          "sha1": "6ee7d045819c2acf7c7b988e21e7d44f37584201",
+          "md5": "88201885dfc642ab6fa5c67d1b63b092"
+        }
+      ]
+    },
+    {
+      "name": "androidSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "files": [
+        {
+          "name": "persistence-android-0.1.57-sources.jar",
+          "url": "persistence-android-0.1.57-sources.jar",
+          "size": 73286,
+          "sha512": "650baacfa6ebd6efe9b1e3f9f302181903f1fcd86f4317667deec59b20d69afb0d58fa7de511d869dbf1cae3e6deb681a4628a4a125184f2c38941b7a50f3560",
+          "sha256": "8ef4d005ba0ac577c06225841a6e8d948a829c5a6d5b8bae6fe593c8038968f3",
+          "sha1": "688b35fe452f31d6b7cf5d5f57b9069326e76052",
+          "md5": "4c3303242a678bf70625bd4eb10ff83d"
+        }
+      ]
+    }
+  ]
+}
