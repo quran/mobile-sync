@@ -3,6 +3,7 @@ package com.quran.shared.pipeline.sync
 import co.touchlab.kermit.Logger
 import com.quran.shared.pipeline.SyncNowResult
 import com.quran.shared.pipeline.SyncRun
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -137,10 +138,11 @@ internal sealed interface AttemptOutcome {
  * immediate trigger (a user's "sync now") during a run runs right after it; one while a retry waits replaces the retry
  * with an immediate run. Otherwise an immediate trigger runs at once as itself, in place of a scheduled run that isn't
  * immediate, even one already due; while an immediate run is due, it joins that one. An app start (or a restored
- * session) during a run, and any trigger but an immediate one while a retry waits, is dropped. A failed attempt is retried with exponential backoff, jittered and capped as
- * [FailureRetryingConfig] says, up to the configured number of retries, unless it is not retryable or asks for a longer
- * backoff. After every run, whatever its outcome, the next one is scheduled after the periodic interval, so sync never
- * stops after its retries run out.
+ * session) during a run, and any trigger but an immediate one while a retry waits, is dropped. A failed attempt is
+ * retried with exponential backoff, jittered and capped as [FailureRetryingConfig] says, up to the configured number of
+ * retries, unless it is not retryable or asks for a longer backoff. After every run, whatever its outcome (an attempt
+ * that throws included), the next one is scheduled after the periodic interval, so sync never stops after its retries
+ * run out.
  *
  * [triggerAndAwait] waits for the run an immediate trigger asked for: the next run to start, which is the one after a
  * run in flight. Its first attempt reports how it went ([run]'s `waiters`): it ended, or it failed and waits to retry,
@@ -326,12 +328,20 @@ internal class SyncScheduler(
         val waiters = if (attempt.number == 0) runWaiters.toList().also { runWaiters.clear() } else emptyList()
         runningWaiters = waiters
         running = scope.launch {
+            var outcome: AttemptOutcome = AttemptOutcome.Done
             try {
-                val outcome = run(attempt, waiters) { failed -> retryDelay(attempt, failed, jitterSample) }
-                commands.send(Command.Finished(generation, attempt, jitterSample, outcome))
+                outcome = run(attempt, waiters) { failed -> retryDelay(attempt, failed, jitterSample) }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (e: Exception) {
+                logger.e(e) { "A sync attempt failed unexpectedly" }
             } finally {
                 // The attempt reported how it went; one that failed to (it threw) must not leave a caller waiting.
                 waiters.report(SyncNowResult.Unavailable)
+                // Every attempt ends here, even one that threw or stopped with a cancellation of its own, so the next
+                // run is scheduled. One a cancel stopped has an old generation and is ignored; after close, nothing is
+                // sent.
+                commands.trySend(Command.Finished(generation, attempt, jitterSample, outcome))
             }
         }
     }

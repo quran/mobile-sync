@@ -409,10 +409,13 @@ class QuranDataService internal constructor(
      * (see [refreshProfile]). Only when another immediate run is already due and hasn't started, such as a sign-in's,
      * does it wait for that run instead, with that run's trigger.
      *
-     * Signed out, it returns [SyncNowResult.SignedOut] after a run that sends nothing; during a logout or reset, or
-     * when one begins during the run, or once the service is cleared, [SyncNowResult.Unavailable]. When it returns,
-     * [syncStatus] and [syncHistory] already show the result. Cancelling the caller stops only the wait: the sync goes
-     * on.
+     * Signed out, or when the signed-in account is unknown, it returns [SyncNowResult.SignedOut] after a run that
+     * sends nothing. During a logout or reset, when one begins during the run, or when the service is cleared before
+     * the run starts, including while it finishes an earlier logout at launch, it returns [SyncNowResult.Unavailable];
+     * a clear during the run ends it [SyncRunResult.CANCELLED] ([SyncNowResult.Ended]). When it returns, [syncStatus]
+     * and [syncHistory] already show the result. Cancelling the caller stops only the wait: the sync goes on.
+     *
+     * @throws Exception when launch recovery (finishing a logout the previous launch left unfinished) failed.
      */
     @NativeCoroutines
     suspend fun syncNow(): SyncNowResult {
@@ -424,8 +427,8 @@ class QuranDataService internal constructor(
             Logger.d { "Sync now skipped because the service was cleared" }
             return SyncNowResult.Unavailable
         } catch (e: Exception) {
-            Logger.e(e) { "Sync now skipped because launch recovery failed" }
-            return SyncNowResult.Unavailable
+            Logger.e(e) { "Sync now failed because launch recovery failed" }
+            throw e
         }
         if (!sessionLifecycleCoordinator.canStartSync()) {
             Logger.d { "Sync now skipped because session is resetting" }

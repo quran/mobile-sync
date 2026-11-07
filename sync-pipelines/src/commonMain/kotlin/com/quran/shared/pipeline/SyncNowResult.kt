@@ -9,8 +9,9 @@ import com.quran.shared.persistence.util.PlatformDateTime
  */
 sealed class SyncNowResult {
     /**
-     * The run ended as [run] says: it succeeded, pulled only (pushes back off), failed with no retries left
-     * ([SyncRun.error] says why), or was cancelled. [run] is the entry [QuranDataService.syncHistory] records for it.
+     * The run ended as [run] says: it succeeded, failed with no retries left ([SyncRun.error] says why), or was
+     * cancelled. It never only pulls: an immediate run pushes even while pushes back off. [run] is the entry
+     * [QuranDataService.syncHistory] records for it.
      */
     data class Ended(val run: SyncRun) : SyncNowResult()
 
@@ -29,14 +30,16 @@ sealed class SyncNowResult {
     ) : SyncNowResult()
 
     /**
-     * Nothing synced: no one is signed in, or the session ended before the run reached the server. Nothing was
-     * recorded. A session that ends after the run reached the server ends it [SyncRunResult.CANCELLED] instead.
+     * Nothing synced: no one is signed in, the signed-in account is unknown, or the session ended before the run
+     * reached the server. Nothing was recorded. A session that ends after the run reached the server ends it
+     * [SyncRunResult.CANCELLED] instead.
      */
     data object SignedOut : SyncNowResult()
 
     /**
      * Sync can't run now: a logout or reset is running or began during the run (which wipes what it did), or the
-     * service was cleared before the run started. Nothing was recorded.
+     * service was cleared before the run started, including while it finished an earlier logout at launch. Nothing
+     * was recorded.
      */
     data object Unavailable : SyncNowResult()
 }

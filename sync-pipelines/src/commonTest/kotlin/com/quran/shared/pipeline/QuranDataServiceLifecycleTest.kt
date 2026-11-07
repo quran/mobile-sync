@@ -630,6 +630,49 @@ class QuranDataServiceLifecycleTest {
         fixture.clearAndJoin()
     }
 
+    /** A launch recovery that failed is thrown, as from every call that waits for it, and nothing syncs. */
+    @Test
+    fun `a sync now after a failed launch recovery throws its failure`() = runTest(dispatcher) {
+        val lifecycleStore = SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings())
+        lifecycleStore.beginReset()
+        val fixture = quranDataServiceFixture(
+            resetRepository = ServiceResetRepository(failDelete = true),
+            lifecycleStore = lifecycleStore,
+            useRecordingSyncClient = true
+        )
+        advanceUntilIdle()
+
+        val error = assertFailsWith<IllegalStateException> { fixture.service.syncNow() }
+
+        assertEquals("delete failed", error.message)
+        assertEquals(0, fixture.syncClient.syncNowCount)
+        fixture.clearAndJoin()
+    }
+
+    /** The caller's own cancellation during launch recovery goes on as a cancellation, not an answer. */
+    @Test
+    fun `cancelling a sync now during launch recovery cancels it`() = runTest(dispatcher) {
+        val lifecycleStore = SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings())
+        lifecycleStore.beginReset()
+        val fixture = quranDataServiceFixture(lifecycleStore = lifecycleStore, useRecordingSyncClient = true)
+        val recovery = CompletableDeferred<Unit>()
+        fixture.syncClient.cancelSyncingAndJoinHold = recovery
+        var outcome: Result<SyncNowResult>? = null
+        val caller = launch { outcome = runCatching { fixture.service.syncNow() } }
+        advanceUntilIdle()
+        withContext(Dispatchers.Default) {
+            withTimeout(1_000) { fixture.syncClient.cancelSyncingAndJoinReached.await() }
+        }
+
+        caller.cancel()
+        caller.join()
+
+        assertIs<CancellationException>(outcome?.exceptionOrNull(), "got $outcome")
+        assertEquals(0, fixture.syncClient.syncNowCount)
+        recovery.complete(Unit)
+        fixture.clearAndJoin()
+    }
+
     /** Clearing the service cancels launch recovery, which the caller didn't cancel: it gets an answer, not a cancel. */
     @Test
     fun `a sync now when the service is cleared before launch recovery returns unavailable`() = runTest(dispatcher) {
@@ -1361,8 +1404,14 @@ private class ServiceSynchronizationClient : SynchronizationClient, AutoCloseabl
         cancelSyncingCount += 1
     }
 
+    /** When set, [cancelSyncingAndJoin] waits for it, as a sync that takes a while to stop would. */
+    var cancelSyncingAndJoinHold: CompletableDeferred<Unit>? = null
+    val cancelSyncingAndJoinReached = CompletableDeferred<Unit>()
+
     override suspend fun cancelSyncingAndJoin() {
         cancelSyncingAndJoinCount += 1
+        cancelSyncingAndJoinReached.complete(Unit)
+        cancelSyncingAndJoinHold?.await()
     }
 }
 
