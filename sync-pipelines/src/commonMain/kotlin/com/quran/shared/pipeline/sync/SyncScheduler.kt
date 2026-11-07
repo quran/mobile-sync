@@ -1,6 +1,9 @@
 package com.quran.shared.pipeline.sync
 
 import co.touchlab.kermit.Logger
+import com.quran.shared.pipeline.SyncNowResult
+import com.quran.shared.pipeline.SyncRun
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -95,6 +98,23 @@ internal enum class SyncTrigger {
 /** One attempt of a sync run: the first is number 0, its retries count up. */
 internal data class SyncAttempt(val trigger: SyncTrigger, val number: Int)
 
+/** A [SyncScheduler.triggerAndAwait] caller's wait for its run. The first report wins, so fallbacks are harmless. */
+internal class RunWaiter {
+    private val result = CompletableDeferred<SyncNowResult>()
+
+    fun report(result: SyncNowResult) {
+        this.result.complete(result)
+    }
+
+    val onReport get() = result.onAwait
+}
+
+internal fun List<RunWaiter>.report(result: SyncNowResult) = forEach { it.report(result) }
+
+internal fun List<RunWaiter>.reportEnded(run: SyncRun?) {
+    if (run != null) report(SyncNowResult.Ended(run))
+}
+
 /** How an attempt ended. */
 internal sealed interface AttemptOutcome {
     /** Synced, or skipped (no session, a reset): nothing to retry. */
@@ -106,7 +126,8 @@ internal sealed interface AttemptOutcome {
 
 /**
  * When syncs run. A trigger schedules a run after its delay ([SchedulerTimings]: an app start, a local change, a return
- * to the foreground, or now), unless one is already due sooner, which then keeps its own trigger. Runs never overlap: a
+ * to the foreground, or now), unless one is already due sooner, which then keeps its own trigger; an immediate trigger
+ * instead replaces any scheduled non-immediate run, even a due one, and joins an immediate one. Runs never overlap: a
  * local change or a return to the foreground during a run runs again after it (once, as the first of them), and an
  * immediate trigger (a user's "sync now") during a run runs right after it; one while a retry waits replaces the retry
  * with an immediate run. An app start (or a restored session) during a run, and any trigger but an immediate one
@@ -121,9 +142,13 @@ internal class SyncScheduler(
     private val now: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     /**
      * Runs one attempt. [retryDelay] says how long until a failure of it is retried, or null when it won't be, so it
-     * can report a final failure or the wait for the retry.
+     * can report a final failure or the wait for the retry. A run's first attempt reports to its `waiters`.
      */
-    private val run: suspend (attempt: SyncAttempt, retryDelay: (AttemptOutcome.Failed) -> Duration?) -> AttemptOutcome,
+    private val run: suspend (
+        attempt: SyncAttempt,
+        waiters: List<RunWaiter>,
+        retryDelay: (AttemptOutcome.Failed) -> Duration?
+    ) -> AttemptOutcome,
     /** A uniform sample in `0 until 1` for each attempt's jitter; tests pass a fixed one. */
     private val random: () -> Double = { Random.nextDouble() }
 ) {
@@ -144,13 +169,30 @@ internal class SyncScheduler(
     private var immediateDuringRun: SyncTrigger? = null
     /** [awaitIdle] callers waiting for the running attempt to finish. */
     private val idleWaiters = mutableListOf<CompletableDeferred<Unit>>()
+    /** [triggerAndAwait] callers for the next run to start. */
+    private val runWaiters = mutableListOf<RunWaiter>()
+    private var runningWaiters = emptyList<RunWaiter>()
 
     init {
         scope.launch { for (command in commands) handle(command) }
     }
 
     fun trigger(trigger: SyncTrigger) {
-        commands.trySend(Command.Trigger(trigger))
+        commands.trySend(Command.Trigger(trigger, waiter = null))
+    }
+
+    /**
+     * [trigger]s the immediate [trigger] and waits for the next run to start (after any in flight) to end or wait to
+     * retry; [SyncNowResult.Unavailable] if a cancel or [close] drops it.
+     */
+    suspend fun triggerAndAwait(trigger: SyncTrigger): SyncNowResult {
+        require(trigger.isImmediate) { "Only an immediate trigger starts the next run: $trigger" }
+        val waiter = RunWaiter()
+        if (commands.trySend(Command.Trigger(trigger, waiter)).isFailure) return SyncNowResult.Unavailable
+        return select {
+            waiter.onReport { it }
+            scope.coroutineContext.job.onJoin { SyncNowResult.Unavailable }
+        }
     }
 
     /** Cancels the scheduled and running work; later triggers schedule again. */
@@ -192,7 +234,7 @@ internal class SyncScheduler(
     }
 
     private sealed interface Command {
-        data class Trigger(val trigger: SyncTrigger) : Command
+        data class Trigger(val trigger: SyncTrigger, val waiter: RunWaiter?) : Command
         data class Fire(val token: Long, val attempt: SyncAttempt) : Command
         data class Finished(
             val generation: Long,
@@ -206,7 +248,10 @@ internal class SyncScheduler(
 
     private suspend fun handle(command: Command) {
         when (command) {
-            is Command.Trigger -> onTrigger(command.trigger)
+            is Command.Trigger -> {
+                command.waiter?.let { runWaiters += it }
+                onTrigger(command.trigger)
+            }
             // A timer replaced after it fired, or a cancelled one, must not start a second run.
             is Command.Fire -> if (command.token == timerToken && timer != null && running == null) start(command.attempt)
             is Command.Finished -> if (command.generation == generation) {
@@ -222,6 +267,10 @@ internal class SyncScheduler(
                 running = null
                 followUpDuringRun = null
                 immediateDuringRun = null
+                // For runs that never start, and an attempt cancelled before it began.
+                (runningWaiters + runWaiters).report(SyncNowResult.Unavailable)
+                runningWaiters = emptyList()
+                runWaiters.clear()
                 releaseIdleWaiters()
                 command.done?.complete(Unit)
             }
@@ -242,6 +291,11 @@ internal class SyncScheduler(
             } else {
                 logger.d { "Ignoring $trigger: a retry is scheduled" }
             }
+            // Replace even a due timer that hasn't fired (late after a suspend), unless it is immediate too: share it.
+            trigger.isImmediate -> {
+                val shared = timerAttempt?.trigger?.isImmediate == true
+                schedule(Duration.ZERO, SyncAttempt(trigger, 0), onlyIfSooner = shared)
+            }
             else -> schedule(delayOf(trigger), SyncAttempt(trigger, 0), onlyIfSooner = true)
         }
     }
@@ -252,14 +306,29 @@ internal class SyncScheduler(
         val generation = generation
         // One sample per attempt, so the delay the attempt reports (Retrying.nextAttemptAt) is the one waited here.
         val jitterSample = random()
+        // Only a run's first attempt takes the waiters.
+        val waiters = if (attempt.number == 0) runWaiters.toList().also { runWaiters.clear() } else emptyList()
+        runningWaiters = waiters
         running = scope.launch {
-            val outcome = run(attempt) { failed -> retryDelay(attempt, failed, jitterSample) }
-            commands.send(Command.Finished(generation, attempt, jitterSample, outcome))
+            var outcome: AttemptOutcome = AttemptOutcome.Done
+            try {
+                outcome = run(attempt, waiters) { failed -> retryDelay(attempt, failed, jitterSample) }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (e: Exception) {
+                logger.e(e) { "A sync attempt failed unexpectedly" }
+            } finally {
+                // An attempt that threw mustn't leave a caller waiting.
+                waiters.report(SyncNowResult.Unavailable)
+                // Even a throwing attempt ends, so the next run is scheduled; a cancel's stale generation is ignored.
+                commands.trySend(Command.Finished(generation, attempt, jitterSample, outcome))
+            }
         }
     }
 
     private fun onFinished(attempt: SyncAttempt, jitterSample: Double, outcome: AttemptOutcome) {
         running = null
+        runningWaiters = emptyList()
         val immediate = immediateDuringRun
         val followUp = followUpDuringRun
         val backoff = (outcome as? AttemptOutcome.Failed)?.let { retryDelay(attempt, it, jitterSample) }
