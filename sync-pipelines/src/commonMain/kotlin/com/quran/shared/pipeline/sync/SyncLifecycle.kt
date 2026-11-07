@@ -82,10 +82,7 @@ internal interface SynchronizationClient {
     fun applicationStarted()
     fun triggerSyncImmediately()
 
-    /**
-     * [triggerSyncImmediately], and waits until the run it asked for ended or waits to retry; a run in flight runs
-     * first. Returns at once when the sync lifecycle is unavailable. Cancelling the caller doesn't stop the run.
-     */
+    /** [triggerSyncImmediately], and waits for that run (see [com.quran.shared.pipeline.QuranDataService.syncNow]). */
     suspend fun syncNow(): SyncNowResult
 
     /** A user signed in: sync now, pushing even during a backoff. */

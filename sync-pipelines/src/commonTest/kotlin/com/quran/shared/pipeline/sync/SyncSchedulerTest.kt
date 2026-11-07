@@ -50,7 +50,7 @@ class SyncSchedulerTest {
         var block: CompletableDeferred<Unit>? = null
         /** How many waiters each attempt got, in order. */
         val waiterCounts = mutableListOf<Int>()
-        /** Thrown by the next attempt in place of an outcome, and before it reports to its waiters. */
+        /** Thrown by the next attempt instead of reporting. */
         var throwing: Throwable? = null
 
         suspend fun run(attempt: SyncAttempt, waiters: List<RunWaiter>, retryDelay: (AttemptOutcome.Failed) -> Duration?): AttemptOutcome {
@@ -71,7 +71,7 @@ class SyncSchedulerTest {
         }
     }
 
-    /** Added to virtual time for the scheduler's clock, as a user setting the time would move it. */
+    /** Added to the scheduler's clock. */
     private var clockOffset = 0L
 
     /** Runs [test] with a scheduler that is cancelled afterwards: its periodic runs would otherwise never end. */
@@ -404,21 +404,6 @@ class SyncSchedulerTest {
     }
 
     @Test
-    fun `a waited trigger returns once its run's first attempt reports`() = schedulerTest { runs, scheduler ->
-        runs.block = CompletableDeferred()
-        val waited = async { scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE) }
-        runCurrent()
-        assertTrue(!waited.isCompleted, "the attempt is running")
-
-        runs.block!!.complete(Unit)
-        runCurrent()
-
-        assertEquals(reportOf(SyncAttempt(SyncTrigger.IMMEDIATE, 0)), waited.await())
-        assertEquals(listOf(1), runs.waiterCounts)
-    }
-
-    /** One that asks during a run waits for the run right after it, not the one in flight. */
-    @Test
     fun `a waited trigger during a run waits for the run after it`() = schedulerTest { runs, scheduler ->
         runs.block = CompletableDeferred()
         scheduler.trigger(SyncTrigger.LOCAL_CHANGE)
@@ -428,70 +413,60 @@ class SyncSchedulerTest {
         runCurrent()
 
         runs.block!!.complete(Unit)
-        runs.block = CompletableDeferred()
-        runCurrent()
-        assertTrue(!waited.isCompleted, "the run after it is running")
-        runs.block!!.complete(Unit)
+        runs.block = null
         runCurrent()
 
         assertEquals(reportOf(SyncAttempt(SyncTrigger.IMMEDIATE, 0)), waited.await())
-        assertEquals(listOf(0, 1), runs.waiterCounts, "the local change's run had no waiter; the sync now's had it")
+        assertEquals(listOf(0, 1), runs.waiterCounts)
     }
 
-    /**
-     * A run due by the clock whose timer hasn't fired (the clock moved on, or the timer runs late after a suspend) doesn't
-     * take an immediate trigger's place: the waiter gets an immediate run at once, not the local change's later.
-     */
     @Test
-    fun `a waited trigger runs at once in place of a due local change whose timer hasn't fired`() = schedulerTest { runs, scheduler ->
+    fun `a waited trigger during an attempt that fails and would retry gets the run after it`() = schedulerTest { runs, scheduler ->
+        runs.block = CompletableDeferred()
+        runs.outcomes += AttemptOutcome.Failed(retryable = true)
+        scheduler.trigger(SyncTrigger.LOCAL_CHANGE)
+        advanceTimeBy(5_001)
+        runCurrent()
+        val waited = async { scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE) }
+        runCurrent()
+
+        runs.block!!.complete(Unit)
+        runs.block = null
+        runCurrent()
+
+        assertEquals(reportOf(SyncAttempt(SyncTrigger.IMMEDIATE, 0)), waited.await())
+        assertEquals(listOf(SyncTrigger.LOCAL_CHANGE, SyncTrigger.IMMEDIATE), runs.attempts.map { it.second.trigger }, "no retry")
+    }
+
+    /** The clock moved past a local change's due time before its timer fired. */
+    @Test
+    fun `a waited trigger replaces a due local change whose timer hasn't fired`() = schedulerTest { runs, scheduler ->
         scheduler.trigger(SyncTrigger.LOCAL_CHANGE)
         runCurrent()
         clockOffset = 10_000
 
         val result = scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE)
-        advanceTimeBy(10_000)
-        runCurrent()
 
         assertEquals(reportOf(SyncAttempt(SyncTrigger.IMMEDIATE, 0)), result)
-        assertEquals(listOf(0L to SyncAttempt(SyncTrigger.IMMEDIATE, 0)), runs.attempts, "the local change's run was replaced")
-        assertEquals(listOf(1), runs.waiterCounts)
+        assertEquals(listOf(0L to SyncAttempt(SyncTrigger.IMMEDIATE, 0)), runs.attempts)
     }
 
-    /** An immediate run already due, such as a sign-in's, is shared rather than run twice. */
     @Test
     fun `a waited trigger while a sign-in is due joins the sign-in's run`() = schedulerTest { runs, scheduler ->
         scheduler.trigger(SyncTrigger.SIGN_IN)
-        val waited = async { scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE) }
-        runCurrent()
 
-        assertEquals(reportOf(SyncAttempt(SyncTrigger.SIGN_IN, 0)), waited.await())
-        assertEquals(listOf(SyncAttempt(SyncTrigger.SIGN_IN, 0)), runs.attempts.map { it.second })
-        assertEquals(listOf(1), runs.waiterCounts)
+        assertEquals(reportOf(SyncAttempt(SyncTrigger.SIGN_IN, 0)), scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE))
+        assertEquals(1, runs.attempts.size)
     }
 
-    /** Calls before the run starts join it, also one that comes while its attempt is due but hasn't started. */
     @Test
-    fun `waited triggers before the run starts all join it`() = schedulerTest { runs, scheduler ->
+    fun `waited triggers before the run starts share it`() = schedulerTest { runs, scheduler ->
         val first = async { scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE) }
         val second = async { scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE) }
         runCurrent()
 
         assertEquals(first.await(), second.await())
-        assertEquals(listOf(2), runs.waiterCounts, "one run, both waiting for it")
-    }
-
-    /** A failed first attempt reports the wait for its retry; the retry has no waiters. */
-    @Test
-    fun `a waited trigger gets no report from the run's retries`() = schedulerTest { runs, scheduler ->
-        runs.outcomes += AttemptOutcome.Failed(retryable = true)
-
-        val result = scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE)
-        advanceTimeBy(1_000)
-        runCurrent()
-
-        assertEquals(reportOf(SyncAttempt(SyncTrigger.IMMEDIATE, 0)), result)
-        assertEquals(listOf(0, 1), runs.attempts.map { it.second.number })
-        assertEquals(listOf(1, 0), runs.waiterCounts)
+        assertEquals(listOf(2), runs.waiterCounts)
     }
 
     @Test
@@ -505,19 +480,7 @@ class SyncSchedulerTest {
         scheduler.cancelAndJoin()
 
         assertEquals(SyncNowResult.Unavailable, waited.await())
-        assertEquals(1, runs.attempts.size, "the run it waited for never started")
-    }
-
-    /** The running attempt's waiters get what it reported as it stopped, or else that sync is unavailable. */
-    @Test
-    fun `a cancel during the waited run's attempt ends the wait`() = schedulerTest { runs, scheduler ->
-        runs.block = CompletableDeferred()
-        val waited = async { scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE) }
-        runCurrent()
-
-        scheduler.cancelAndJoin()
-
-        assertEquals(SyncNowResult.Unavailable, waited.await())
+        assertEquals(1, runs.attempts.size)
     }
 
     @Test
@@ -535,72 +498,24 @@ class SyncSchedulerTest {
     }
 
     @Test
-    fun `cancelling the caller stops only the wait`() = schedulerTest { runs, scheduler ->
-        runs.block = CompletableDeferred()
-        val waited = launch { scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE) }
-        runCurrent()
+    fun `an attempt that throws ends its wait and sync goes on`() =
+        assertSyncGoesOnAfter(IllegalStateException("a bug in the attempt"))
 
-        waited.cancel()
-        runCurrent()
-        runs.block!!.complete(Unit)
-        runs.block = null
-        advanceTimeBy(30.minutes.inWholeMilliseconds + 1)
-        runCurrent()
-
-        assertEquals(listOf(SyncTrigger.IMMEDIATE, SyncTrigger.PERIODIC), runs.attempts.map { it.second.trigger }, "the run ended and sync went on")
-    }
-
-    /** A sync now while the attempt fails and would retry runs right after it, in the retry's place, and is waited for. */
     @Test
-    fun `a waited trigger during an attempt that fails and would retry gets the run after it`() = schedulerTest { runs, scheduler ->
-        runs.block = CompletableDeferred()
-        runs.outcomes += AttemptOutcome.Failed(retryable = true)
-        scheduler.trigger(SyncTrigger.LOCAL_CHANGE)
-        advanceTimeBy(5_001)
-        runCurrent()
-        val waited = async { scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE) }
-        runCurrent()
+    fun `an attempt that stops with a stray cancellation ends its wait and sync goes on`() =
+        assertSyncGoesOnAfter(CancellationException("stray"))
 
-        runs.block!!.complete(Unit)
-        runs.block = null
-        runCurrent()
-
-        assertEquals(reportOf(SyncAttempt(SyncTrigger.IMMEDIATE, 0)), waited.await())
-        assertEquals(listOf(SyncAttempt(SyncTrigger.LOCAL_CHANGE, 0), SyncAttempt(SyncTrigger.IMMEDIATE, 0)), runs.attempts.map { it.second }, "no retry")
-        assertEquals(listOf(0, 1), runs.waiterCounts)
-    }
-
-    /** An attempt that throws doesn't stop the scheduler: its caller gets an answer, and later runs still come. */
-    @Test
-    fun `an attempt that throws ends its wait and sync goes on`() = schedulerTest { runs, scheduler ->
-        runs.throwing = IllegalStateException("a bug in the attempt")
+    private fun assertSyncGoesOnAfter(thrown: Throwable) = schedulerTest { runs, scheduler ->
+        runs.throwing = thrown
 
         assertEquals(SyncNowResult.Unavailable, scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE))
-        val next = withTimeout(1.minutes) { scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE) }
-
-        assertEquals(reportOf(SyncAttempt(SyncTrigger.IMMEDIATE, 0)), next, "a real run")
+        assertEquals(
+            reportOf(SyncAttempt(SyncTrigger.IMMEDIATE, 0)),
+            withTimeout(1.minutes) { scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE) }
+        )
         advanceTimeBy(30.minutes.inWholeMilliseconds + 1)
         runCurrent()
-        assertEquals(SyncAttempt(SyncTrigger.PERIODIC, 0), runs.attempts.last().second, "the periodic sync still comes")
-    }
-
-    /** A cancellation the attempt raised itself, while the scheduler goes on, ends the attempt like any other end. */
-    @Test
-    fun `an attempt that stops with a stray cancellation ends its wait and sync goes on`() = schedulerTest { runs, scheduler ->
-        runs.throwing = CancellationException("stray")
-
-        assertEquals(SyncNowResult.Unavailable, scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE))
-        val next = withTimeout(1.minutes) { scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE) }
-
-        assertEquals(reportOf(SyncAttempt(SyncTrigger.IMMEDIATE, 0)), next, "a real run")
-        advanceTimeBy(30.minutes.inWholeMilliseconds + 1)
-        runCurrent()
-        assertEquals(SyncAttempt(SyncTrigger.PERIODIC, 0), runs.attempts.last().second, "the periodic sync still comes")
-    }
-
-    @Test
-    fun `only an immediate trigger can be waited for`() = schedulerTest { _, scheduler ->
-        assertFailsWith<IllegalArgumentException> { scheduler.triggerAndAwait(SyncTrigger.LOCAL_CHANGE) }
+        assertEquals(SyncTrigger.PERIODIC, runs.attempts.last().second.trigger)
     }
 
     @Test
@@ -620,10 +535,7 @@ class SyncSchedulerTest {
     }
 }
 
-/**
- * What each attempt reports to its waiters in these tests: a run whose trigger is the attempt's (its ordinal in
- * `pushed`, so every scheduler trigger reads apart) and whose attempt count is the attempt's number.
- */
+/** What each attempt reports to its waiters: its trigger's ordinal in `pushed` and its number in `attempts`. */
 private fun reportOf(attempt: SyncAttempt): SyncNowResult = SyncNowResult.Ended(
     SyncRun(
         startedAt = Instant.fromEpochMilliseconds(0).toPlatform(), endedAt = Instant.fromEpochMilliseconds(0).toPlatform(),

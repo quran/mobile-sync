@@ -98,11 +98,7 @@ internal enum class SyncTrigger {
 /** One attempt of a sync run: the first is number 0, its retries count up. */
 internal data class SyncAttempt(val trigger: SyncTrigger, val number: Int)
 
-/**
- * Waits for the end of the run an immediate trigger started ([SyncScheduler.triggerAndAwait]), as
- * [com.quran.shared.pipeline.QuranDataService.syncNow] reports it. The first report wins; later ones are ignored, so an
- * attempt reports the end it knows best and the scheduler's fallback ([SyncNowResult.Unavailable]) changes nothing.
- */
+/** A [SyncScheduler.triggerAndAwait] caller's wait for its run. The first report wins, so fallbacks are harmless. */
 internal class RunWaiter {
     private val result = CompletableDeferred<SyncNowResult>()
 
@@ -110,14 +106,11 @@ internal class RunWaiter {
         this.result.complete(result)
     }
 
-    /** Selects the first report. */
     val onReport get() = result.onAwait
 }
 
-/** Reports [result] to each waiter. */
 internal fun List<RunWaiter>.report(result: SyncNowResult) = forEach { it.report(result) }
 
-/** Reports [run] as the run's end, when there is one. */
 internal fun List<RunWaiter>.reportEnded(run: SyncRun?) {
     if (run != null) report(SyncNowResult.Ended(run))
 }
@@ -133,21 +126,15 @@ internal sealed interface AttemptOutcome {
 
 /**
  * When syncs run. A trigger schedules a run after its delay ([SchedulerTimings]: an app start, a local change, a return
- * to the foreground, or now), unless one is already due sooner, which then keeps its own trigger. Runs never overlap: a
+ * to the foreground, or now), unless one is already due sooner, which then keeps its own trigger; an immediate trigger
+ * instead replaces any scheduled non-immediate run, even a due one, and joins an immediate one. Runs never overlap: a
  * local change or a return to the foreground during a run runs again after it (once, as the first of them), and an
  * immediate trigger (a user's "sync now") during a run runs right after it; one while a retry waits replaces the retry
- * with an immediate run. Otherwise an immediate trigger runs at once as itself, in place of a scheduled run that isn't
- * immediate, even one already due; while an immediate run is due, it joins that one. An app start (or a restored
- * session) during a run, and any trigger but an immediate one while a retry waits, is dropped. A failed attempt is
- * retried with exponential backoff, jittered and capped as [FailureRetryingConfig] says, up to the configured number of
- * retries, unless it is not retryable or asks for a longer backoff. After every run, whatever its outcome (an attempt
- * that throws included), the next one is scheduled after the periodic interval, so sync never stops after its retries
- * run out.
- *
- * [triggerAndAwait] waits for the run an immediate trigger asked for: the next run to start, which is the one after a
- * run in flight. Its first attempt reports how it went ([run]'s `waiters`): it ended, or it failed and waits to retry,
- * which ends the wait too. Waiters of a run that never starts, as a cancel or [close] drops it, get
- * [SyncNowResult.Unavailable].
+ * with an immediate run. An app start (or a restored session) during a run, and any trigger but an immediate one
+ * while a retry waits, is dropped. A failed attempt is retried with exponential backoff, jittered and capped as
+ * [FailureRetryingConfig] says, up to the configured number of retries, unless it is not retryable or asks for a longer
+ * backoff. After every run, whatever its outcome, the next one is scheduled after the periodic interval, so sync never
+ * stops after its retries run out.
  */
 internal class SyncScheduler(
     private val timings: SchedulerTimings,
@@ -155,8 +142,7 @@ internal class SyncScheduler(
     private val now: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     /**
      * Runs one attempt. [retryDelay] says how long until a failure of it is retried, or null when it won't be, so it
-     * can report a final failure or the wait for the retry. A run's first attempt gets the [triggerAndAwait] waiters
-     * for the run (none for a retry), and reports to them how it ended or that it waits to retry.
+     * can report a final failure or the wait for the retry. A run's first attempt reports to its `waiters`.
      */
     private val run: suspend (
         attempt: SyncAttempt,
@@ -183,9 +169,8 @@ internal class SyncScheduler(
     private var immediateDuringRun: SyncTrigger? = null
     /** [awaitIdle] callers waiting for the running attempt to finish. */
     private val idleWaiters = mutableListOf<CompletableDeferred<Unit>>()
-    /** [triggerAndAwait] callers waiting for the next run to start, which they join. */
+    /** [triggerAndAwait] callers for the next run to start. */
     private val runWaiters = mutableListOf<RunWaiter>()
-    /** The waiters the running attempt reports to. */
     private var runningWaiters = emptyList<RunWaiter>()
 
     init {
@@ -197,10 +182,8 @@ internal class SyncScheduler(
     }
 
     /**
-     * [trigger]s the immediate [trigger] and waits for the run it asked for: the next run to start, so one in flight
-     * finishes first and the run right after it is waited for. Calls before that run starts all join it. Returns once
-     * its first attempt reports how it went: the run ended, or it failed and waits to retry. A run that never starts (a
-     * cancel or [close] dropped it) returns [SyncNowResult.Unavailable]. Cancelling the caller stops only the wait.
+     * [trigger]s the immediate [trigger] and waits for the next run to start (after any in flight) to end or wait to
+     * retry; [SyncNowResult.Unavailable] if a cancel or [close] drops it.
      */
     suspend fun triggerAndAwait(trigger: SyncTrigger): SyncNowResult {
         require(trigger.isImmediate) { "Only an immediate trigger starts the next run: $trigger" }
@@ -284,7 +267,7 @@ internal class SyncScheduler(
                 running = null
                 followUpDuringRun = null
                 immediateDuringRun = null
-                // The attempt reported its end as it stopped, unless it was cancelled before it began.
+                // For runs that never start, and an attempt cancelled before it began.
                 (runningWaiters + runWaiters).report(SyncNowResult.Unavailable)
                 runningWaiters = emptyList()
                 runWaiters.clear()
@@ -308,8 +291,7 @@ internal class SyncScheduler(
             } else {
                 logger.d { "Ignoring $trigger: a retry is scheduled" }
             }
-            // An immediate trigger runs now as itself: a run already due but not started yet (its timer may run late,
-            // as after a suspend) would otherwise take its place, unless that run is immediate too, which it shares.
+            // Replace even a due timer that hasn't fired (late after a suspend), unless it is immediate too: share it.
             trigger.isImmediate -> {
                 val shared = timerAttempt?.trigger?.isImmediate == true
                 schedule(Duration.ZERO, SyncAttempt(trigger, 0), onlyIfSooner = shared)
@@ -324,7 +306,7 @@ internal class SyncScheduler(
         val generation = generation
         // One sample per attempt, so the delay the attempt reports (Retrying.nextAttemptAt) is the one waited here.
         val jitterSample = random()
-        // Only a run's first attempt is the run the waiters asked for; an immediate trigger replaces a waiting retry.
+        // Only a run's first attempt takes the waiters.
         val waiters = if (attempt.number == 0) runWaiters.toList().also { runWaiters.clear() } else emptyList()
         runningWaiters = waiters
         running = scope.launch {
@@ -336,11 +318,9 @@ internal class SyncScheduler(
             } catch (e: Exception) {
                 logger.e(e) { "A sync attempt failed unexpectedly" }
             } finally {
-                // The attempt reported how it went; one that failed to (it threw) must not leave a caller waiting.
+                // An attempt that threw mustn't leave a caller waiting.
                 waiters.report(SyncNowResult.Unavailable)
-                // Every attempt ends here, even one that threw or stopped with a cancellation of its own, so the next
-                // run is scheduled. One a cancel stopped has an old generation and is ignored; after close, nothing is
-                // sent.
+                // Even a throwing attempt ends, so the next run is scheduled; a cancel's stale generation is ignored.
                 commands.trySend(Command.Finished(generation, attempt, jitterSample, outcome))
             }
         }

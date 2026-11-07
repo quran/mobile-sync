@@ -49,10 +49,7 @@ enum class SyncRunTrigger {
     /** The periodic sync came due. */
     PERIODIC,
 
-    /**
-     * The app asked for a sync now: `triggerSync(immediately = true)` or [QuranDataService.syncNow], such as a user's
-     * "Sync now".
-     */
+    /** The app asked for a sync now: `triggerSync(immediately = true)`, such as a user's "Sync now". */
     MANUAL,
 
     /** A user signed in. A saved session restored at launch is [APP_START], and a token refresh starts no run. */

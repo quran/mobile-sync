@@ -53,8 +53,7 @@ internal class SignedOutException : IllegalStateException("No session")
  *   reset, or a new access token (a refresh, by any path) ends the backoff: the 403 may have been the old token's.
  * - Each signed-in run starts [profiles]' fetch in the background, which the run never waits for: a manual sync's first
  *   attempt fetches now, and any other attempt when the fetch is due ([profileFetch]).
- * - [syncNow] is a manual sync that waits: a run's first attempt reports to its waiters ([RunWaiter]) after it told
- *   [observer], so `syncStatus` and `syncHistory` show what [syncNow] returns.
+ * - A run's first attempt reports to its [RunWaiter]s after [observer], so `syncStatus` shows what [syncNow] returns.
  */
 internal class SyncClient(
     private val engine: SyncEngineV2,
@@ -113,7 +112,6 @@ internal class SyncClient(
 
     override fun triggerSyncImmediately() = trigger(SyncTrigger.IMMEDIATE)
 
-    /** [triggerSyncImmediately], and waits for the run it asked for (see [SyncScheduler.triggerAndAwait]). */
     override suspend fun syncNow(): SyncNowResult {
         if (!gate.canStartSync()) {
             logger.d { "Sync lifecycle unavailable, skipping a sync now" }
@@ -167,9 +165,8 @@ internal class SyncClient(
     }
 
     /**
-     * Runs one attempt and reports how it went to [waiters]. A run cancelled while the sync lifecycle is open (the
-     * service is cleared) is reported [SyncRunResult.CANCELLED]; one a logout or reset cancels reports nothing, as its
-     * data is wiped (the scheduler then tells [waiters] sync is unavailable).
+     * Runs one attempt. A run cancelled while the sync lifecycle is open (the service is cleared) is reported
+     * [SyncRunResult.CANCELLED]; one a logout or reset cancels reports nothing, as its data is wiped.
      */
     private suspend fun runAttempt(
         attempt: SyncAttempt,
@@ -283,7 +280,6 @@ internal class SyncClient(
      * Ends the attempt without a result. A run that already sent a request (in this attempt, or in one before the
      * retry that found no session) is recorded [SyncRunResult.CANCELLED] with what it did, unless a logout or reset
      * began since; any other is forgotten. Either way it is skipped, so `syncStatus` goes back to what it was.
-     * [waiters] get the recorded run, or else [skip].
      */
     private suspend fun skipped(why: String, waiters: List<RunWaiter>, skip: SyncNowResult): AttemptOutcome {
         val open = run
@@ -330,10 +326,7 @@ internal class SyncClient(
     /** [tally]: the run an attempt belongs to. [replacedWaitingRun]: it ended a run that was waiting to retry. */
     private data class RunStart(val tally: RunTally, val replacedWaitingRun: Boolean)
 
-    /**
-     * Ends the open run as [result] and reports it, with the [held] items it leaves (counted now if not given).
-     * Returns the reported run; null when none was open.
-     */
+    /** Ends the open run as [result] and reports it, with the [held] items it leaves (counted now if not given). */
     private fun end(result: SyncRunResult, error: SyncError? = null, held: Int? = null): SyncRun? {
         val tally = run ?: return null
         run = null
@@ -409,7 +402,6 @@ internal class SyncClient(
             random: () -> Double = { Random.nextDouble() },
             /** The HTTP engine; null uses the platform's (see [createSyncHttpClient]). Tests pass a mock. */
             engine: HttpClientEngine? = null,
-            /** Runs the scheduler and the profile fetches; tests pass one on virtual time. */
             dispatcher: CoroutineDispatcher = Dispatchers.Default,
             now: () -> Long = { Clock.System.now().toEpochMilliseconds() }
         ): SyncClient {
