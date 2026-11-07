@@ -56,6 +56,7 @@ import dev.zacsweers.metro.Provides
 import dev.zacsweers.metro.createDynamicGraphFactory
 import dev.zacsweers.metro.createGraphFactory
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -610,6 +611,68 @@ class QuranDataServiceLifecycleTest {
 
         assertEquals(1, fixture.syncClient.appForegroundedCount)
         assertEquals(0, fixture.syncClient.localDataUpdatedCount, "not a local change")
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `a sync now is unavailable during a reset and forwarded otherwise`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+        advanceUntilIdle()
+
+        assertEquals(SyncNowResult.Unavailable, fixture.lifecycleCoordinator.runManagedReset { fixture.service.syncNow() })
+        assertEquals(0, fixture.syncClient.syncNowCount)
+
+        assertEquals(SyncNowResult.SignedOut, fixture.service.syncNow())
+        assertEquals(1, fixture.syncClient.syncNowCount)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `a sync now after a failed launch recovery throws its failure`() = runTest(dispatcher) {
+        val lifecycleStore = SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings())
+        lifecycleStore.beginReset()
+        val fixture = quranDataServiceFixture(
+            resetRepository = ServiceResetRepository(failDelete = true),
+            lifecycleStore = lifecycleStore,
+            useRecordingSyncClient = true
+        )
+        advanceUntilIdle()
+
+        assertFailsWith<IllegalStateException> { fixture.service.syncNow() }
+        assertEquals(0, fixture.syncClient.syncNowCount)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `cancelling a sync now during launch recovery cancels it`() = runTest(dispatcher) {
+        val lifecycleStore = SettingsSessionLifecycleStateStore(MapSettings().toSuspendSettings())
+        lifecycleStore.beginReset()
+        val fixture = quranDataServiceFixture(lifecycleStore = lifecycleStore, useRecordingSyncClient = true)
+        val recovery = CompletableDeferred<Unit>()
+        fixture.syncClient.cancelSyncingAndJoinHold = recovery
+        var outcome: Result<SyncNowResult>? = null
+        val caller = launch { outcome = runCatching { fixture.service.syncNow() } }
+        advanceUntilIdle()
+        withContext(Dispatchers.Default) {
+            withTimeout(1_000) { fixture.syncClient.cancelSyncingAndJoinReached.await() }
+        }
+
+        caller.cancel()
+        caller.join()
+
+        assertIs<CancellationException>(outcome?.exceptionOrNull())
+        recovery.complete(Unit)
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `a sync now when the service is cleared before launch recovery returns unavailable`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+        val syncNow = async { fixture.service.syncNow() }
+
+        fixture.service.clear()
+
+        assertEquals(SyncNowResult.Unavailable, syncNow.await())
         fixture.clearAndJoin()
     }
 
@@ -1322,6 +1385,8 @@ private class ServiceSynchronizationClient : SynchronizationClient, AutoCloseabl
         private set
     var triggerSyncImmediatelyCount = 0
         private set
+    var syncNowCount = 0
+        private set
     var signedInCount = 0
         private set
     var sessionRestoredCount = 0
@@ -1347,6 +1412,11 @@ private class ServiceSynchronizationClient : SynchronizationClient, AutoCloseabl
         triggerSyncImmediatelyCount += 1
     }
 
+    override suspend fun syncNow(): SyncNowResult {
+        syncNowCount += 1
+        return SyncNowResult.SignedOut
+    }
+
     override fun signedIn() {
         signedInCount += 1
     }
@@ -1363,8 +1433,13 @@ private class ServiceSynchronizationClient : SynchronizationClient, AutoCloseabl
         cancelSyncingCount += 1
     }
 
+    var cancelSyncingAndJoinHold: CompletableDeferred<Unit>? = null
+    val cancelSyncingAndJoinReached = CompletableDeferred<Unit>()
+
     override suspend fun cancelSyncingAndJoin() {
         cancelSyncingAndJoinCount += 1
+        cancelSyncingAndJoinReached.complete(Unit)
+        cancelSyncingAndJoinHold?.await()
     }
 }
 

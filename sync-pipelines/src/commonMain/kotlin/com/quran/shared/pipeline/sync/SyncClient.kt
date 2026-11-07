@@ -6,6 +6,7 @@ import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.persistence.util.toPlatform
 import com.quran.shared.pipeline.SyncError
 import com.quran.shared.pipeline.SyncErrorKind
+import com.quran.shared.pipeline.SyncNowResult
 import com.quran.shared.pipeline.SyncRun
 import com.quran.shared.pipeline.SyncRunResult
 import com.quran.shared.pipeline.SyncRunTrigger
@@ -52,6 +53,7 @@ internal class SignedOutException : IllegalStateException("No session")
  *   reset, or a new access token (a refresh, by any path) ends the backoff: the 403 may have been the old token's.
  * - Each signed-in run starts [profiles]' fetch in the background, which the run never waits for: a manual sync's first
  *   attempt fetches now, and any other attempt when the fetch is due ([profileFetch]).
+ * - A run's first attempt reports to its [RunWaiter]s after [observer], so `syncStatus` shows what [syncNow] returns.
  */
 internal class SyncClient(
     private val engine: SyncEngineV2,
@@ -110,6 +112,14 @@ internal class SyncClient(
 
     override fun triggerSyncImmediately() = trigger(SyncTrigger.IMMEDIATE)
 
+    override suspend fun syncNow(): SyncNowResult {
+        if (!gate.canStartSync()) {
+            logger.d { "Sync lifecycle unavailable, skipping a sync now" }
+            return SyncNowResult.Unavailable
+        }
+        return scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE)
+    }
+
     /** A new session: a push backoff the previous one started ends. */
     override fun signedIn() {
         endPushBackoff("a user signed in")
@@ -158,15 +168,24 @@ internal class SyncClient(
      * Runs one attempt. A run cancelled while the sync lifecycle is open (the service is cleared) is reported
      * [SyncRunResult.CANCELLED]; one a logout or reset cancels reports nothing, as its data is wiped.
      */
-    private suspend fun runAttempt(attempt: SyncAttempt, retryDelay: (AttemptOutcome.Failed) -> Duration?): AttemptOutcome = try {
-        attemptOnce(attempt, retryDelay)
+    private suspend fun runAttempt(
+        attempt: SyncAttempt,
+        waiters: List<RunWaiter>,
+        retryDelay: (AttemptOutcome.Failed) -> Duration?
+    ): AttemptOutcome = try {
+        attemptOnce(attempt, waiters, retryDelay)
     } catch (cancellation: CancellationException) {
-        if (gate.canStartSync()) end(SyncRunResult.CANCELLED) else run = null
+        if (gate.canStartSync()) waiters.reportEnded(end(SyncRunResult.CANCELLED)) else run = null
         throw cancellation
     }
 
-    private suspend fun attemptOnce(attempt: SyncAttempt, retryDelay: (AttemptOutcome.Failed) -> Duration?): AttemptOutcome {
-        val epoch = startEpoch() ?: return skipped("the sync lifecycle is unavailable")
+    private suspend fun attemptOnce(
+        attempt: SyncAttempt,
+        waiters: List<RunWaiter>,
+        retryDelay: (AttemptOutcome.Failed) -> Duration?
+    ): AttemptOutcome {
+        val epoch = startEpoch()
+            ?: return skipped("the sync lifecycle is unavailable", waiters, SyncNowResult.Unavailable)
         val (tally, replacedWaitingRun) = startRun(attempt, epoch)
         // A retry continues a failed run, and an immediate run that replaced one waiting to retry ends that wait: both
         // report syncing at once, before the headers (which may refresh the token), so syncStatus never shows the wait
@@ -176,8 +195,9 @@ internal class SyncClient(
         var push = false
         val result = try {
             val headers = account.authHeaders()
-            if (headers.isEmpty()) return skipped("no one is signed in")
-            val accountId = account.accountId() ?: return skipped("the signed-in account is unknown")
+            if (headers.isEmpty()) return skipped("no one is signed in", waiters, SyncNowResult.SignedOut)
+            val accountId = account.accountId()
+                ?: return skipped("the signed-in account is unknown", waiters, SyncNowResult.SignedOut)
             if (!startReported) observer.syncStarted()
             when (attempt.profileFetch()) {
                 ProfileFetch.NOW -> profiles?.refreshInBackground()
@@ -193,14 +213,17 @@ internal class SyncClient(
         } catch (error: Exception) {
             SyncResult.Failed(error.toString(), retryable = true, cause = error)
         }
-        if (!epochIsCurrent(epoch)) return skipped("a logout or reset began during the run")
+        if (!epochIsCurrent(epoch)) {
+            return skipped("a logout or reset began during the run", waiters, SyncNowResult.Unavailable)
+        }
         return when (result) {
             is SyncResult.Success -> {
                 if (push) endPushBackoff("a push succeeded")
-                end(if (push) SyncRunResult.SUCCEEDED else SyncRunResult.PULLED_ONLY, held = result.held.size)
+                val ended = if (push) SyncRunResult.SUCCEEDED else SyncRunResult.PULLED_ONLY
+                waiters.reportEnded(end(ended, held = result.held.size))
                 AttemptOutcome.Done
             }
-            is SyncResult.Failed -> failed(result, retryDelay)
+            is SyncResult.Failed -> failed(result, waiters, retryDelay)
         }
     }
 
@@ -222,10 +245,16 @@ internal class SyncClient(
         return again.copy(retryable = false)
     }
 
-    private suspend fun failed(result: SyncResult.Failed, retryDelay: (AttemptOutcome.Failed) -> Duration?): AttemptOutcome {
+    private suspend fun failed(
+        result: SyncResult.Failed,
+        waiters: List<RunWaiter>,
+        retryDelay: (AttemptOutcome.Failed) -> Duration?
+    ): AttemptOutcome {
         when (result.cause) {
-            is SignedOutException -> return skipped("the session ended")
-            is SyncOperationInvalidatedException -> return skipped("a logout or reset began during the run")
+            is SignedOutException -> return skipped("the session ended", waiters, SyncNowResult.SignedOut)
+            is SyncOperationInvalidatedException -> {
+                return skipped("a logout or reset began during the run", waiters, SyncNowResult.Unavailable)
+            }
         }
         result.retryAfterMillis?.let {
             pushBackoffUntil = now() + it
@@ -235,11 +264,14 @@ internal class SyncClient(
         val delay = retryDelay(outcome)
         if (delay == null) {
             logger.w { "Sync failed: ${result.reason}" }
-            end(SyncRunResult.FAILED, result.toSyncError())
+            waiters.reportEnded(end(SyncRunResult.FAILED, result.toSyncError()))
         } else {
             val failedAt = now()
-            val nextAttemptAt = failedAt + delay.inWholeMilliseconds
-            observer.syncRetrying(failedAt.toPlatformTime(), result.toSyncError(), nextAttemptAt.toPlatformTime())
+            val retrying = SyncNowResult.Retrying(
+                failedAt.toPlatformTime(), result.toSyncError(), (failedAt + delay.inWholeMilliseconds).toPlatformTime()
+            )
+            observer.syncRetrying(retrying.failedAt, retrying.error, retrying.nextAttemptAt)
+            waiters.report(retrying)
         }
         return outcome
     }
@@ -249,16 +281,19 @@ internal class SyncClient(
      * retry that found no session) is recorded [SyncRunResult.CANCELLED] with what it did, unless a logout or reset
      * began since; any other is forgotten. Either way it is skipped, so `syncStatus` goes back to what it was.
      */
-    private suspend fun skipped(why: String): AttemptOutcome {
+    private suspend fun skipped(why: String, waiters: List<RunWaiter>, skip: SyncNowResult): AttemptOutcome {
         val open = run
-        if (open != null && open.contactedServer && gate.canStartSync() && epochIsCurrent(open.epoch)) {
+        val cancelled = if (open != null && open.contactedServer && gate.canStartSync() && epochIsCurrent(open.epoch)) {
             logger.i { "Sync stopped: $why" }
             end(SyncRunResult.CANCELLED)
         } else {
             logger.i { "Sync skipped: $why" }
             run = null
+            null
         }
         observer.syncSkipped()
+        waiters.reportEnded(cancelled)
+        waiters.report(skip)
         return AttemptOutcome.Done
     }
 
@@ -292,15 +327,15 @@ internal class SyncClient(
     private data class RunStart(val tally: RunTally, val replacedWaitingRun: Boolean)
 
     /** Ends the open run as [result] and reports it, with the [held] items it leaves (counted now if not given). */
-    private fun end(result: SyncRunResult, error: SyncError? = null, held: Int? = null) {
-        val tally = run ?: return
+    private fun end(result: SyncRunResult, error: SyncError? = null, held: Int? = null): SyncRun? {
+        val tally = run ?: return null
         run = null
         when (result) {
             SyncRunResult.SUCCEEDED, SyncRunResult.PULLED_ONLY -> lastPulledAt = now()
             SyncRunResult.FAILED -> lastPulledAt = null
             SyncRunResult.CANCELLED -> Unit
         }
-        observer.syncEnded(tally.toRun(result, now(), held ?: heldCount(), error))
+        return tally.toRun(result, now(), held ?: heldCount(), error).also(observer::syncEnded)
     }
 
     /** The items that don't sync now, for a run's record; 0 when they can't be read. */
@@ -367,15 +402,16 @@ internal class SyncClient(
             random: () -> Double = { Random.nextDouble() },
             /** The HTTP engine; null uses the platform's (see [createSyncHttpClient]). Tests pass a mock. */
             engine: HttpClientEngine? = null,
+            dispatcher: CoroutineDispatcher = Dispatchers.Default,
             now: () -> Long = { Clock.System.now().toEpochMilliseconds() }
         ): SyncClient {
             lateinit var client: SyncClient
             val httpClient = createSyncHttpClient(engine)
             val api = SyncApi(httpClient, environment.endPointURL) { client.requestHeaders() }
             val engine = SyncEngineV2(database, api, syncTypes(database), ENGINE_VERSION)
-            val profiles = ProfileRefresher(ProfileApi(httpClient, environment), account, gate, now = now)
+            val profiles = ProfileRefresher(ProfileApi(httpClient, environment), account, gate, dispatcher, now)
             client = SyncClient(
-                engine, account, gate, observer, timings, now = now, httpClient = httpClient, random = random,
+                engine, account, gate, observer, timings, dispatcher, now, httpClient = httpClient, random = random,
                 profiles = profiles
             )
             return client

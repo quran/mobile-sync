@@ -159,6 +159,7 @@ internal class ImportSyncClientSpy : SynchronizationClient {
     override fun appForegrounded() = Unit
     override fun applicationStarted() = Unit
     override fun triggerSyncImmediately() = Unit
+    override suspend fun syncNow() = SyncNowResult.SignedOut
     override fun signedIn() = Unit
     override fun sessionRestored() = Unit
     override suspend fun refreshProfile() = Unit

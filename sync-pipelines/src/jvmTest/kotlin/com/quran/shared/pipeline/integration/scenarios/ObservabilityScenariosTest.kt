@@ -4,6 +4,7 @@ import com.quran.shared.persistence.TextLengthBound
 import com.quran.shared.persistence.TextLengthField
 import com.quran.shared.persistence.TextLengthLimitException
 import com.quran.shared.pipeline.SyncErrorKind
+import com.quran.shared.pipeline.SyncNowResult
 import com.quran.shared.pipeline.SyncRunResult
 import com.quran.shared.pipeline.SyncStatus
 import com.quran.shared.pipeline.integration.DeviceTimings
@@ -146,5 +147,17 @@ class ObservabilityScenariosTest {
             phone.data.syncHistory.first().map { it.result },
             "the sync now, the run whose retry it replaced, the login's"
         )
+    }
+
+    @Test
+    fun `OBS-05 sync now returns the run it waited for`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.data.addNote("Synced by a sync now", 2, 255, 2, 255)
+
+        val run = assertIs<SyncNowResult.Ended>(phone.data.syncNow()).run
+
+        assertEquals(SyncRunResult.SUCCEEDED to 1, run.result to run.pushed)
+        assertEquals(run, phone.data.syncHistory.first().first())
+        assertEquals(listOf("Synced by a sync now"), server.state(ALICE).notes.map { it.body })
     }
 }

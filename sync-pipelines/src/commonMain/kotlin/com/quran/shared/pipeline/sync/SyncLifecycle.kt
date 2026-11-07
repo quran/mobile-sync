@@ -2,6 +2,7 @@ package com.quran.shared.pipeline.sync
 
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.pipeline.SyncError
+import com.quran.shared.pipeline.SyncNowResult
 import com.quran.shared.pipeline.SyncRun
 
 /**
@@ -80,6 +81,9 @@ internal interface SynchronizationClient {
     fun appForegrounded()
     fun applicationStarted()
     fun triggerSyncImmediately()
+
+    /** [triggerSyncImmediately], and waits for that run (see [com.quran.shared.pipeline.QuranDataService.syncNow]). */
+    suspend fun syncNow(): SyncNowResult
 
     /** A user signed in: sync now, pushing even during a backoff. */
     fun signedIn()

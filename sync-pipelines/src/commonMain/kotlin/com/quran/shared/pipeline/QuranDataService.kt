@@ -51,6 +51,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -394,6 +396,34 @@ class QuranDataService internal constructor(
         } else {
             syncClient.localDataUpdated()
         }
+    }
+
+    /**
+     * Runs the sync `triggerSync(immediately = true)` runs and waits until it ends or its attempt fails and waits to
+     * retry (see [SyncNowResult]). A sync already running finishes first; this waits for the one after it, which calls
+     * made before it starts share. If a sign-in's run was already due, it waits for that run, with its trigger.
+     * Cancelling the caller stops only the wait.
+     *
+     * @throws Exception when launch recovery failed.
+     */
+    @NativeCoroutines
+    suspend fun syncNow(): SyncNowResult {
+        try {
+            awaitInitialization()
+        } catch (e: CancellationException) {
+            // Only a cancelled launch recovery (the service was cleared) becomes Unavailable.
+            currentCoroutineContext().ensureActive()
+            Logger.d { "Sync now skipped because the service was cleared" }
+            return SyncNowResult.Unavailable
+        } catch (e: Exception) {
+            Logger.e(e) { "Sync now failed because launch recovery failed" }
+            throw e
+        }
+        if (!sessionLifecycleCoordinator.canStartSync()) {
+            Logger.d { "Sync now skipped because session is resetting" }
+            return SyncNowResult.Unavailable
+        }
+        return syncClient.syncNow()
     }
 
     /**
