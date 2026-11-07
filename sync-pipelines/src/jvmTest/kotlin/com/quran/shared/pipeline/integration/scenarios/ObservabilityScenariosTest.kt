@@ -4,7 +4,9 @@ import com.quran.shared.persistence.TextLengthBound
 import com.quran.shared.persistence.TextLengthField
 import com.quran.shared.persistence.TextLengthLimitException
 import com.quran.shared.pipeline.SyncErrorKind
+import com.quran.shared.pipeline.SyncNowResult
 import com.quran.shared.pipeline.SyncRunResult
+import com.quran.shared.pipeline.SyncRunTrigger
 import com.quran.shared.pipeline.SyncStatus
 import com.quran.shared.pipeline.integration.DeviceTimings
 import com.quran.shared.pipeline.integration.assertSucceeded
@@ -12,9 +14,11 @@ import com.quran.shared.pipeline.integration.server.ServerFaults
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.Test
@@ -146,5 +150,55 @@ class ObservabilityScenariosTest {
             phone.data.syncHistory.first().map { it.result },
             "the sync now, the run whose retry it replaced, the login's"
         )
+    }
+
+    /**
+     * syncNow returns once the run it started is over, with the run syncHistory records. Offline, it returns as the run
+     * starts waiting for its retry, not after the backoff; signed out, after a run that sends nothing.
+     */
+    @Test
+    fun `OBS-05 sync now returns when its run ends or waits to retry`() = syncScenario {
+        val phone = device("phone", DeviceTimings(retryBaseDelay = 1.hours))
+        assertSucceeded(phone.login(ALICE))
+        phone.data.addNote("Synced by a sync now", 2, 255, 2, 255)
+
+        val run = assertIs<SyncNowResult.Ended>(phone.data.syncNow()).run
+
+        assertEquals(SyncRunResult.SUCCEEDED to SyncRunTrigger.MANUAL, run.result to run.trigger)
+        assertEquals(1, run.pushed)
+        assertEquals(run, phone.data.syncHistory.first().first(), "the run the history records")
+        assertEquals(SyncStatus.Succeeded(run.endedAt), phone.data.syncStatus.value)
+        assertEquals(listOf("Synced by a sync now"), server.state(ALICE).notes.map { it.body })
+
+        server.faults.networkDown()
+        val retrying = assertIs<SyncNowResult.Retrying>(phone.data.syncNow())
+        assertEquals(SyncErrorKind.NETWORK, retrying.error.kind)
+        assertEquals(1.hours, retrying.nextAttemptAt - retrying.failedAt, "the first retry, still an hour away")
+        assertEquals(SyncStatus.Retrying(retrying.failedAt, retrying.error, retrying.nextAttemptAt), phone.data.syncStatus.value)
+
+        server.faults.networkUp()
+        phone.logout()
+        assertEquals(SyncNowResult.SignedOut, phone.data.syncNow())
+        assertEquals(emptyList(), phone.data.syncHistory.first(), "nothing recorded since the logout")
+    }
+
+    /** A logout during the run syncNow waits for stops the run, and syncNow returns rather than hang. */
+    @Test
+    fun `OBS-06 a logout during a sync now ends the wait`() = syncScenario {
+        val (phone) = signedIn("phone")
+        phone.data.addNote("Pushed while logging out", 2, 255, 2, 255)
+        val gate = server.faults.blockGet()
+
+        val result = coroutineScope {
+            val waited = async { phone.data.syncNow() }
+            withContext(Dispatchers.IO) { gate.awaitArrived() }
+            withTimeout(10.seconds) { phone.logout() }
+            withTimeout(10.seconds) { waited.await() }
+        }
+        gate.release()
+
+        assertEquals(SyncNowResult.Unavailable, result)
+        assertEquals(emptyList(), phone.data.syncHistory.first())
+        assertEquals(EMPTY_SNAPSHOT, phone.snapshot())
     }
 }

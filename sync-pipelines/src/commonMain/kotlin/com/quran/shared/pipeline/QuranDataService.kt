@@ -51,6 +51,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -382,7 +384,8 @@ class QuranDataService internal constructor(
      *   starts right away, such as for a user's "Sync now". An immediate request made while a sync
      *   is running starts another right after it; one made while a sync waits to retry starts now.
      *   Signed in, an immediate sync also fetches the user's profile at once (see [refreshProfile]), in
-     *   the background: the sync never waits for it or fails because of it.
+     *   the background: the sync never waits for it or fails because of it. To wait for an immediate
+     *   sync, call [syncNow] instead.
      */
     fun triggerSync(immediately: Boolean = false) {
         if (!sessionLifecycleCoordinator.canStartSync()) {
@@ -394,6 +397,41 @@ class QuranDataService internal constructor(
         } else {
             syncClient.localDataUpdated()
         }
+    }
+
+    /**
+     * Syncs now, as [triggerSync] with `immediately` does, and returns once the user can stop waiting for it, such as
+     * a pull-to-refresh: the run it started ended ([SyncNowResult.Ended]), or its attempt failed and the run waits to
+     * retry ([SyncNowResult.Retrying]), as offline, rather than wait through the backoff. A sync running when it is
+     * called runs to its end first, and the one after it is waited for; calls before that one starts all wait for it.
+     * The run is a manual one ([SyncRunTrigger.MANUAL]), in place of any automatic run that was due: it pushes even
+     * while pushes back off, replaces a run waiting to retry, and fetches the user's profile at once in the background
+     * (see [refreshProfile]). Only when another immediate run is already due and hasn't started, such as a sign-in's,
+     * does it wait for that run instead, with that run's trigger.
+     *
+     * Signed out, it returns [SyncNowResult.SignedOut] after a run that sends nothing; during a logout or reset, or
+     * when one begins during the run, or once the service is cleared, [SyncNowResult.Unavailable]. When it returns,
+     * [syncStatus] and [syncHistory] already show the result. Cancelling the caller stops only the wait: the sync goes
+     * on.
+     */
+    @NativeCoroutines
+    suspend fun syncNow(): SyncNowResult {
+        try {
+            awaitInitialization()
+        } catch (e: CancellationException) {
+            // The caller's own cancellation goes on; one of the launch recovery's means the service was cleared.
+            currentCoroutineContext().ensureActive()
+            Logger.d { "Sync now skipped because the service was cleared" }
+            return SyncNowResult.Unavailable
+        } catch (e: Exception) {
+            Logger.e(e) { "Sync now skipped because launch recovery failed" }
+            return SyncNowResult.Unavailable
+        }
+        if (!sessionLifecycleCoordinator.canStartSync()) {
+            Logger.d { "Sync now skipped because session is resetting" }
+            return SyncNowResult.Unavailable
+        }
+        return syncClient.syncNow()
     }
 
     /**

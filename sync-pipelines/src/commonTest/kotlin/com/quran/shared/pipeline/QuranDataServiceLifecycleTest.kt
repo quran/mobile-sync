@@ -56,6 +56,7 @@ import dev.zacsweers.metro.Provides
 import dev.zacsweers.metro.createDynamicGraphFactory
 import dev.zacsweers.metro.createGraphFactory
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -610,6 +611,35 @@ class QuranDataServiceLifecycleTest {
 
         assertEquals(1, fixture.syncClient.appForegroundedCount)
         assertEquals(0, fixture.syncClient.localDataUpdatedCount, "not a local change")
+        fixture.clearAndJoin()
+    }
+
+    @Test
+    fun `a sync now is unavailable during a reset and forwarded otherwise`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+        advanceUntilIdle()
+
+        val duringReset = fixture.lifecycleCoordinator.runManagedReset { fixture.service.syncNow() }
+        assertEquals(SyncNowResult.Unavailable, duringReset)
+        assertEquals(0, fixture.syncClient.syncNowCount, "skipped during the reset")
+
+        assertEquals(SyncNowResult.SignedOut, fixture.service.syncNow(), "the sync client's result")
+
+        assertEquals(1, fixture.syncClient.syncNowCount)
+        assertEquals(0, fixture.syncClient.triggerSyncImmediatelyCount, "one sync, the waited one")
+        fixture.clearAndJoin()
+    }
+
+    /** Clearing the service cancels launch recovery, which the caller didn't cancel: it gets an answer, not a cancel. */
+    @Test
+    fun `a sync now when the service is cleared before launch recovery returns unavailable`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture(useRecordingSyncClient = true)
+        val syncNow = async { fixture.service.syncNow() }
+
+        fixture.service.clear()
+
+        assertEquals(SyncNowResult.Unavailable, syncNow.await())
+        assertEquals(0, fixture.syncClient.syncNowCount)
         fixture.clearAndJoin()
     }
 
@@ -1283,6 +1313,8 @@ private class ServiceSynchronizationClient : SynchronizationClient, AutoCloseabl
         private set
     var triggerSyncImmediatelyCount = 0
         private set
+    var syncNowCount = 0
+        private set
     var signedInCount = 0
         private set
     var sessionRestoredCount = 0
@@ -1306,6 +1338,11 @@ private class ServiceSynchronizationClient : SynchronizationClient, AutoCloseabl
 
     override fun triggerSyncImmediately() {
         triggerSyncImmediatelyCount += 1
+    }
+
+    override suspend fun syncNow(): SyncNowResult {
+        syncNowCount += 1
+        return SyncNowResult.SignedOut
     }
 
     override fun signedIn() {

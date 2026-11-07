@@ -2,8 +2,15 @@
 
 package com.quran.shared.pipeline.sync
 
+import com.quran.shared.persistence.util.toPlatform
+import com.quran.shared.pipeline.SyncNowResult
+import com.quran.shared.pipeline.SyncRun
+import com.quran.shared.pipeline.SyncRunResult
+import com.quran.shared.pipeline.SyncRunTrigger
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlin.time.Instant
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestResult
 import kotlinx.coroutines.test.TestScope
@@ -39,18 +46,25 @@ class SyncSchedulerTest {
         val retryDelays = mutableListOf<Duration>()
         val outcomes = ArrayDeque<AttemptOutcome>()
         var block: CompletableDeferred<Unit>? = null
+        /** How many waiters each attempt got, in order. */
+        val waiterCounts = mutableListOf<Int>()
 
-        suspend fun run(attempt: SyncAttempt, retryDelay: (AttemptOutcome.Failed) -> Duration?): AttemptOutcome {
+        suspend fun run(attempt: SyncAttempt, waiters: List<RunWaiter>, retryDelay: (AttemptOutcome.Failed) -> Duration?): AttemptOutcome {
             attempts += scope.testScheduler.currentTime to attempt
+            waiterCounts += waiters.size
             block?.await()
             val outcome = outcomes.removeFirstOrNull() ?: AttemptOutcome.Done
             if (outcome is AttemptOutcome.Failed) {
                 val delay = retryDelay(outcome)
                 if (delay == null) finalFailures += scope.testScheduler.currentTime else retryDelays += delay
             }
+            waiters.report(reportOf(attempt))
             return outcome
         }
     }
+
+    /** Added to virtual time for the scheduler's clock, as a user setting the time would move it. */
+    private var clockOffset = 0L
 
     /** Runs [test] with a scheduler that is cancelled afterwards: its periodic runs would otherwise never end. */
     private fun schedulerTest(
@@ -59,7 +73,7 @@ class SyncSchedulerTest {
         test: suspend TestScope.(Runs, SyncScheduler) -> Unit
     ): TestResult = runTest {
         val runs = Runs(this)
-        val scheduler = SyncScheduler(timings, StandardTestDispatcher(testScheduler), { testScheduler.currentTime }, runs::run, random)
+        val scheduler = SyncScheduler(timings, StandardTestDispatcher(testScheduler), { testScheduler.currentTime + clockOffset }, runs::run, random)
         try {
             test(runs, scheduler)
         } finally {
@@ -382,6 +396,158 @@ class SyncSchedulerTest {
     }
 
     @Test
+    fun `a waited trigger returns once its run's first attempt reports`() = schedulerTest { runs, scheduler ->
+        runs.block = CompletableDeferred()
+        val waited = async { scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE) }
+        runCurrent()
+        assertTrue(!waited.isCompleted, "the attempt is running")
+
+        runs.block!!.complete(Unit)
+        runCurrent()
+
+        assertEquals(reportOf(SyncAttempt(SyncTrigger.IMMEDIATE, 0)), waited.await())
+        assertEquals(listOf(1), runs.waiterCounts)
+    }
+
+    /** One that asks during a run waits for the run right after it, not the one in flight. */
+    @Test
+    fun `a waited trigger during a run waits for the run after it`() = schedulerTest { runs, scheduler ->
+        runs.block = CompletableDeferred()
+        scheduler.trigger(SyncTrigger.LOCAL_CHANGE)
+        advanceTimeBy(5_001)
+        runCurrent()
+        val waited = async { scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE) }
+        runCurrent()
+
+        runs.block!!.complete(Unit)
+        runs.block = CompletableDeferred()
+        runCurrent()
+        assertTrue(!waited.isCompleted, "the run after it is running")
+        runs.block!!.complete(Unit)
+        runCurrent()
+
+        assertEquals(reportOf(SyncAttempt(SyncTrigger.IMMEDIATE, 0)), waited.await())
+        assertEquals(listOf(0, 1), runs.waiterCounts, "the local change's run had no waiter; the sync now's had it")
+    }
+
+    /**
+     * A run due by the clock whose timer hasn't fired (the clock moved on, or the timer runs late after a suspend) doesn't
+     * take an immediate trigger's place: the waiter gets an immediate run at once, not the local change's later.
+     */
+    @Test
+    fun `a waited trigger runs at once in place of a due local change whose timer hasn't fired`() = schedulerTest { runs, scheduler ->
+        scheduler.trigger(SyncTrigger.LOCAL_CHANGE)
+        runCurrent()
+        clockOffset = 10_000
+
+        val result = scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE)
+        advanceTimeBy(10_000)
+        runCurrent()
+
+        assertEquals(reportOf(SyncAttempt(SyncTrigger.IMMEDIATE, 0)), result)
+        assertEquals(listOf(0L to SyncAttempt(SyncTrigger.IMMEDIATE, 0)), runs.attempts, "the local change's run was replaced")
+        assertEquals(listOf(1), runs.waiterCounts)
+    }
+
+    /** An immediate run already due, such as a sign-in's, is shared rather than run twice. */
+    @Test
+    fun `a waited trigger while a sign-in is due joins the sign-in's run`() = schedulerTest { runs, scheduler ->
+        scheduler.trigger(SyncTrigger.SIGN_IN)
+        val waited = async { scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE) }
+        runCurrent()
+
+        assertEquals(reportOf(SyncAttempt(SyncTrigger.SIGN_IN, 0)), waited.await())
+        assertEquals(listOf(SyncAttempt(SyncTrigger.SIGN_IN, 0)), runs.attempts.map { it.second })
+        assertEquals(listOf(1), runs.waiterCounts)
+    }
+
+    /** Calls before the run starts join it, also one that comes while its attempt is due but hasn't started. */
+    @Test
+    fun `waited triggers before the run starts all join it`() = schedulerTest { runs, scheduler ->
+        val first = async { scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE) }
+        val second = async { scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE) }
+        runCurrent()
+
+        assertEquals(first.await(), second.await())
+        assertEquals(listOf(2), runs.waiterCounts, "one run, both waiting for it")
+    }
+
+    /** A failed first attempt reports the wait for its retry; the retry has no waiters. */
+    @Test
+    fun `a waited trigger gets no report from the run's retries`() = schedulerTest { runs, scheduler ->
+        runs.outcomes += AttemptOutcome.Failed(retryable = true)
+
+        val result = scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE)
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        assertEquals(reportOf(SyncAttempt(SyncTrigger.IMMEDIATE, 0)), result)
+        assertEquals(listOf(0, 1), runs.attempts.map { it.second.number })
+        assertEquals(listOf(1, 0), runs.waiterCounts)
+    }
+
+    @Test
+    fun `a cancel tells the waiters of a run that never started sync is unavailable`() = schedulerTest { runs, scheduler ->
+        runs.block = CompletableDeferred()
+        scheduler.trigger(SyncTrigger.IMMEDIATE)
+        runCurrent()
+        val waited = async { scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE) }
+        runCurrent()
+
+        scheduler.cancelAndJoin()
+
+        assertEquals(SyncNowResult.Unavailable, waited.await())
+        assertEquals(1, runs.attempts.size, "the run it waited for never started")
+    }
+
+    /** The running attempt's waiters get what it reported as it stopped, or else that sync is unavailable. */
+    @Test
+    fun `a cancel during the waited run's attempt ends the wait`() = schedulerTest { runs, scheduler ->
+        runs.block = CompletableDeferred()
+        val waited = async { scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE) }
+        runCurrent()
+
+        scheduler.cancelAndJoin()
+
+        assertEquals(SyncNowResult.Unavailable, waited.await())
+    }
+
+    @Test
+    fun `close ends the wait and later waited triggers return at once`() = schedulerTest { runs, scheduler ->
+        runs.block = CompletableDeferred()
+        scheduler.trigger(SyncTrigger.IMMEDIATE)
+        runCurrent()
+        val waited = async { scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE) }
+        runCurrent()
+
+        scheduler.close()
+
+        assertEquals(SyncNowResult.Unavailable, waited.await())
+        assertEquals(SyncNowResult.Unavailable, scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE))
+    }
+
+    @Test
+    fun `cancelling the caller stops only the wait`() = schedulerTest { runs, scheduler ->
+        runs.block = CompletableDeferred()
+        val waited = launch { scheduler.triggerAndAwait(SyncTrigger.IMMEDIATE) }
+        runCurrent()
+
+        waited.cancel()
+        runCurrent()
+        runs.block!!.complete(Unit)
+        runs.block = null
+        advanceTimeBy(30.minutes.inWholeMilliseconds + 1)
+        runCurrent()
+
+        assertEquals(listOf(SyncTrigger.IMMEDIATE, SyncTrigger.PERIODIC), runs.attempts.map { it.second.trigger }, "the run ended and sync went on")
+    }
+
+    @Test
+    fun `only an immediate trigger can be waited for`() = schedulerTest { _, scheduler ->
+        assertFailsWith<IllegalArgumentException> { scheduler.triggerAndAwait(SyncTrigger.LOCAL_CHANGE) }
+    }
+
+    @Test
     fun `close stops the command loop for good`() = schedulerTest { runs, scheduler ->
         runs.block = CompletableDeferred()
         scheduler.trigger(SyncTrigger.IMMEDIATE)
@@ -397,3 +563,16 @@ class SyncSchedulerTest {
         scheduler.cancelAndJoin()
     }
 }
+
+/**
+ * What each attempt reports to its waiters in these tests: a run with the attempt's trigger (a sign-in as itself, any
+ * other as manual) whose attempt count is the attempt's number.
+ */
+private fun reportOf(attempt: SyncAttempt): SyncNowResult = SyncNowResult.Ended(
+    SyncRun(
+        startedAt = Instant.fromEpochMilliseconds(0).toPlatform(), endedAt = Instant.fromEpochMilliseconds(0).toPlatform(),
+        trigger = if (attempt.trigger == SyncTrigger.SIGN_IN) SyncRunTrigger.SIGN_IN else SyncRunTrigger.MANUAL,
+        result = SyncRunResult.SUCCEEDED, attempts = attempt.number + 1,
+        pushed = 0, pulled = 0, held = 0, error = null
+    )
+)

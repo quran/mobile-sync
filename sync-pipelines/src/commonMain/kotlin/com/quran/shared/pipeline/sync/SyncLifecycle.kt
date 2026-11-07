@@ -2,6 +2,7 @@ package com.quran.shared.pipeline.sync
 
 import com.quran.shared.persistence.util.PlatformDateTime
 import com.quran.shared.pipeline.SyncError
+import com.quran.shared.pipeline.SyncNowResult
 import com.quran.shared.pipeline.SyncRun
 
 /**
@@ -80,6 +81,12 @@ internal interface SynchronizationClient {
     fun appForegrounded()
     fun applicationStarted()
     fun triggerSyncImmediately()
+
+    /**
+     * [triggerSyncImmediately], and waits until the run it asked for ended or waits to retry; a run in flight runs
+     * first. Returns at once when the sync lifecycle is unavailable. Cancelling the caller doesn't stop the run.
+     */
+    suspend fun syncNow(): SyncNowResult
 
     /** A user signed in: sync now, pushing even during a backoff. */
     fun signedIn()
