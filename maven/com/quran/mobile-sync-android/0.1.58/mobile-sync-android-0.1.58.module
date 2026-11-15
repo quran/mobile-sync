@@ -1,0 +1,284 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "url": "../../mobile-sync/0.1.58/mobile-sync-0.1.58.module",
+    "group": "com.quran",
+    "module": "mobile-sync",
+    "version": "0.1.58",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.9.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "androidApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "androidx.lifecycle",
+          "module": "lifecycle-viewmodel",
+          "version": {
+            "requires": "2.11.0"
+          }
+        },
+        {
+          "group": "com.quran",
+          "module": "persistence",
+          "version": {
+            "requires": "0.1.58"
+          }
+        },
+        {
+          "group": "com.quran",
+          "module": "mutations-definitions",
+          "version": {
+            "requires": "0.1.58"
+          }
+        },
+        {
+          "group": "com.quran",
+          "module": "auth",
+          "version": {
+            "requires": "0.1.58"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "sync-pipelines.aar",
+          "url": "mobile-sync-android-0.1.58.aar",
+          "size": 471929,
+          "sha512": "08ef91e1ac67b813f5c174c0c45be96e2e85aab844c87bb74097a59b1f91df35e8798a669afbdbe21b6a32fef5c83d90e9526b84e8d803e072ef07f03067bef4",
+          "sha256": "f759ed2a482aac10bfb56ba47634a909c7320f576dbbf07639b3b111fcdce3fe",
+          "sha1": "8d53cdf2d56e6e3dba17fb25326e90634401e084",
+          "md5": "ada64b66e82c770aec0c3f575ac03d9f"
+        }
+      ]
+    },
+    {
+      "name": "androidRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "androidx.lifecycle",
+          "module": "lifecycle-viewmodel",
+          "version": {
+            "requires": "2.11.0"
+          }
+        },
+        {
+          "group": "com.quran",
+          "module": "persistence",
+          "version": {
+            "requires": "0.1.58"
+          }
+        },
+        {
+          "group": "com.quran",
+          "module": "mutations-definitions",
+          "version": {
+            "requires": "0.1.58"
+          }
+        },
+        {
+          "group": "com.quran",
+          "module": "auth",
+          "version": {
+            "requires": "0.1.58"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        },
+        {
+          "group": "io.ktor",
+          "module": "ktor-client-okhttp",
+          "version": {
+            "requires": "3.6.1"
+          }
+        },
+        {
+          "group": "dev.zacsweers.metro",
+          "module": "runtime",
+          "version": {
+            "requires": "1.5.2"
+          }
+        },
+        {
+          "group": "com.rickclephas.kmp",
+          "module": "kmp-nativecoroutines-core",
+          "version": {
+            "requires": "1.0.6"
+          }
+        },
+        {
+          "group": "com.rickclephas.kmp",
+          "module": "kmp-nativecoroutines-annotations",
+          "version": {
+            "requires": "1.0.6"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-core",
+          "version": {
+            "requires": "1.11.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-datetime",
+          "version": {
+            "requires": "0.8.0-0.6.x-compat"
+          }
+        },
+        {
+          "group": "co.touchlab",
+          "module": "kermit",
+          "version": {
+            "requires": "2.2.0"
+          }
+        },
+        {
+          "group": "app.cash.sqldelight",
+          "module": "coroutines-extensions",
+          "version": {
+            "requires": "2.4.1"
+          }
+        },
+        {
+          "group": "androidx.datastore",
+          "module": "datastore",
+          "version": {
+            "requires": "1.3.0"
+          }
+        },
+        {
+          "group": "androidx.datastore",
+          "module": "datastore-preferences",
+          "version": {
+            "requires": "1.3.0"
+          }
+        },
+        {
+          "group": "com.russhwolf",
+          "module": "multiplatform-settings",
+          "version": {
+            "requires": "1.3.0"
+          }
+        },
+        {
+          "group": "com.russhwolf",
+          "module": "multiplatform-settings-coroutines",
+          "version": {
+            "requires": "1.3.0"
+          }
+        },
+        {
+          "group": "com.russhwolf",
+          "module": "multiplatform-settings-datastore",
+          "version": {
+            "requires": "1.3.0"
+          }
+        },
+        {
+          "group": "io.github.kalinjul.kotlin.multiplatform",
+          "module": "oidc-tokenstore",
+          "version": {
+            "requires": "0.18.4"
+          }
+        },
+        {
+          "group": "com.quran",
+          "module": "sync-v2",
+          "version": {
+            "requires": "0.1.58"
+          }
+        },
+        {
+          "group": "com.quran",
+          "module": "logging",
+          "version": {
+            "requires": "0.1.58"
+          }
+        },
+        {
+          "group": "io.ktor",
+          "module": "ktor-client-core",
+          "version": {
+            "requires": "3.6.1"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-serialization-json",
+          "version": {
+            "requires": "1.12.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "sync-pipelines.aar",
+          "url": "mobile-sync-android-0.1.58.aar",
+          "size": 471929,
+          "sha512": "08ef91e1ac67b813f5c174c0c45be96e2e85aab844c87bb74097a59b1f91df35e8798a669afbdbe21b6a32fef5c83d90e9526b84e8d803e072ef07f03067bef4",
+          "sha256": "f759ed2a482aac10bfb56ba47634a909c7320f576dbbf07639b3b111fcdce3fe",
+          "sha1": "8d53cdf2d56e6e3dba17fb25326e90634401e084",
+          "md5": "ada64b66e82c770aec0c3f575ac03d9f"
+        }
+      ]
+    },
+    {
+      "name": "androidSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "files": [
+        {
+          "name": "sync-pipelines-android-0.1.58-sources.jar",
+          "url": "mobile-sync-android-0.1.58-sources.jar",
+          "size": 58502,
+          "sha512": "2eaae2faace691af1ef7c02da1c92da529acf2bba81c90d252f004dd09b0b5166f81b6eb8e30bc92a5b233150a66a0948b728d6aed6f09434ca025a28440a5c0",
+          "sha256": "ad555ec2ec2ab1322d821f55d87da8de940a727f43e5970de290ef3bade6afa4",
+          "sha1": "45980620ea58576b8e2223bcc9c73b627c6172af",
+          "md5": "53231a4f868672149852ff9a65820e9a"
+        }
+      ]
+    }
+  ]
+}
