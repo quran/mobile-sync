@@ -13,11 +13,14 @@ class BundleMushafPageCountsTest {
         }
     }
 
-    /** These were checked against the Quran.com API instead: each has the QCF_V2 layout's pages. */
+    /**
+     * INDOPAK, BAZZI and QUMBUL were checked against the Quran.com API: each has QCF_V2 pages.
+     * SHEMERLY uses the separate Android-derived [ShemerlyPages] table, absent from the bundle.
+     */
     @Test
     fun `only the known exceptions are missing from the bundle`() {
         assertEquals(
-            setOf(ServerMushaf.INDOPAK, ServerMushaf.BAZZI, ServerMushaf.QUMBUL),
+            setOf(ServerMushaf.INDOPAK, ServerMushaf.BAZZI, ServerMushaf.QUMBUL, ServerMushaf.SHEMERLY),
             ServerMushaf.entries.filter { it.id !in bundleMushafPageCounts }.toSet()
         )
     }
