@@ -9,9 +9,12 @@ const val AVATARS_HOST = "https://avatars.example.invalid"
 
 /**
  * The profile's `avatars`, as the users backend's `avatarsBuilder` (`packages/services/src/avatar.ts`) builds them from
- * [photoUrl]: a social login's URL (it starts with `http`) at every size; for a photo uploaded on Quran.com
- * (`<file name>.<extension>.<version>`), `{AVATARS_HOST}/events/banner/en/avatars/{file name, else [userId]}/{size}.
- * {extension, else png}?v={version, else 0}`; and `""` at every size for none.
+ * [photoUrl]: a social login's URL (it starts with `http`) at every size; `""` at every size for none; and for a photo
+ * uploaded on Quran.com (`<file name>.<extension>.<version>`), one URL per size:
+ *
+ * `{AVATARS_HOST}/events/banner/en/avatars/{folder}/{size}.{extension}?v={version}`
+ *
+ * The folder is the file name, else [userId]; the extension defaults to png and the version to 0.
  */
 internal fun avatars(userId: String, photoUrl: String?): JsonObject = buildJsonObject {
     AVATAR_SIZES.forEach { size -> put(size, avatarUrl(userId, photoUrl, size)) }

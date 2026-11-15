@@ -70,9 +70,9 @@ internal fun parseProfile(text: String, fetchedAt: Long): FetchedProfile {
 }
 
 /**
- * The profile's photo: the backend's (`avatarsBuilder`) medium avatar, 256 px, which covers the largest avatar the apps
- * show (88 pt on iOS). It is an uploaded photo's URL or a social login's; only an absolute `http(s)` URL is a photo, as
- * the backend answers `""` for none and a relative path where its avatar host isn't configured.
+ * The profile's photo: the backend's medium avatar (an uploaded photo's 256 px URL, or a social login's URL as it is).
+ * Only an absolute `http(s)` URL counts: the backend sends `""` for none and a relative path where its avatar host isn't
+ * set.
  */
 private fun avatarUrl(avatars: JsonObject?): String? =
     avatars?.text("medium")?.takeIf { url -> ABSOLUTE_URL_SCHEMES.any { url.startsWith(it, ignoreCase = true) } }

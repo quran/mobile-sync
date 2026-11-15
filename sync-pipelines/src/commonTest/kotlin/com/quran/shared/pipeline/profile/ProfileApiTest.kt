@@ -36,7 +36,7 @@ class ProfileApiTest {
     @Test
     fun `blank and missing fields are null and the name falls back to the first and last names`() {
         val profile = parseProfile(
-            """{"success":true,"data":{"id":"user-id","firstName":"Muhammad","lastName":"","fullName":"","photoUrl":""}}""",
+            """{"success":true,"data":{"id":"user-id","firstName":"Muhammad","lastName":"","fullName":""}}""",
             fetchedAt = 1_000L
         )
 
@@ -59,19 +59,11 @@ class ProfileApiTest {
     }
 
     @Test
-    fun `a social login's photo is used as it is`() {
+    fun `a social login's photo or any http URL is used as it is`() {
         val photo = "HTTPS://lh3.googleusercontent.com/a/photo"
 
         assertEquals(photo, photoUrl("""{"small":"$photo","medium":"$photo","large":"$photo"}"""))
-    }
-
-    @Test
-    fun `the medium avatar is the photo`() {
-        assertEquals(
-            "http://avatars.example.com/user-id/medium.png?v=1",
-            photoUrl("""{"small":"http://avatars.example.com/user-id/small.png?v=1",""" +
-                """"medium":"http://avatars.example.com/user-id/medium.png?v=1"}""")
-        )
+        assertEquals("http://example.com/medium.png", photoUrl("""{"medium":"http://example.com/medium.png"}"""))
     }
 
     @Test
@@ -82,11 +74,18 @@ class ProfileApiTest {
         assertNull(photoUrl("""{"small":"https://example.com/a.png"}"""), "no medium")
         assertNull(photoUrl("""{"medium":42}"""), "medium not a string")
         assertNull(photoUrl("""{"small":"","medium":"","large":""}"""), "the backend's none")
+        assertNull(
+            parseProfile(
+                """{"success":true,"data":{"id":"user-id","photoUrl":"https://example.com/a.png"}}""",
+                fetchedAt = 0L
+            ).photoUrl,
+            "photoUrl is not a fallback"
+        )
     }
 
     @Test
-    fun `a relative avatar path is no photo`() {
-        // The backend answers this where its avatar host isn't configured.
+    fun `a relative or non-http avatar is no photo`() {
+        // The backend answers a relative path where its avatar host isn't configured.
         assertNull(photoUrl("""{"medium":"./user-id/medium.png?v=1788192266"}"""))
         assertNull(photoUrl("""{"medium":"user-id/medium.png"}"""))
         assertNull(photoUrl("""{"medium":"ftp://example.com/medium.png"}"""))

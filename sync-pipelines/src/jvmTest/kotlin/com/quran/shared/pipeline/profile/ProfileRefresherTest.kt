@@ -10,6 +10,7 @@ import com.quran.shared.auth.persistence.AuthStorage
 import com.quran.shared.auth.repository.OidcAuthRepository
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.pipeline.SynchronizationEnvironment
+import com.quran.shared.pipeline.integration.server.AVATARS_HOST
 import com.quran.shared.pipeline.sync.AuthServiceSyncAccount
 import com.quran.shared.pipeline.sync.SyncClient
 import com.quran.shared.pipeline.sync.SyncLifecycleGate
@@ -451,7 +452,6 @@ class ProfileRefresherTest {
         const val ACCOUNT = "6f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5"
         const val CLIENT_ID = "client-id"
         const val TOKEN_PATH = "/oauth2/token"
-        const val AVATARS_HOST = "https://avatars.example.invalid"
     }
 }
 
