@@ -195,14 +195,14 @@ class ReadingBookmarksRepositoryTest {
         assertEquals(listOf(590, 591), indoPak.map { it.page }, "app pages: server pages 589 and 590")
     }
 
-    /** The server has no Shemerly mushaf yet, so a Shemerly page is stored and sent as the 1440 page with its verses. */
+    /** Native storage preserves exact identity while other layouts are projected when read. */
     @Test
-    fun `a Shemerly page is stored as the 1440 page with its verses and read in each mushaf`() = runTest {
+    fun `a Shemerly page is stored natively and read in each mushaf`() = runTest {
         val set = assertIs<PageReadingBookmark>(repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 250, Mushaf.SHEMERLY, at(100)))
         repository.setPageReadingBookmark(ReadingBookmarkSlot.ORANGE, 300, Mushaf.MADANI_1440, at(100))
 
         assertEquals(250 to Mushaf.SHEMERLY, set.page to set.mushaf)
-        assertEquals(listOf(302L to 1L, 300L to 1L), rows().map { it.location_key to it.mushaf_id })
+        assertEquals(listOf(250L to 27L, 300L to 1L), rows().map { it.location_key to it.mushaf_id })
         assertEquals(listOf(250, 248), pages(Mushaf.SHEMERLY))
         assertEquals(listOf(302, 300), pages(Mushaf.MADANI_1440))
         assertEquals(listOf(303, 301), pages(Mushaf.INDOPAK_15_LINES))
@@ -210,11 +210,20 @@ class ReadingBookmarksRepositoryTest {
 
     /** One of the seven Shemerly pages that don't round-trip through the 1440 layout (ReadingBookmarkPageMapperTest). */
     @Test
-    fun `a Shemerly page without its own 1440 page reads back as its neighbour`() = runTest {
+    fun `a Shemerly page without its own 1440 page retains its exact native identity`() = runTest {
         val set = assertIs<PageReadingBookmark>(repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 9, Mushaf.SHEMERLY, at(100)))
 
-        assertEquals(10, set.page)
-        assertEquals(10L to 1L, slotRow(1).let { it.location_key to it.mushaf_id })
+        assertEquals(9, set.page)
+        assertEquals(9L to 27L, slotRow(1).let { it.location_key to it.mushaf_id })
+    }
+
+    @Test
+    fun `every native Shemerly page restores exactly`() = runTest {
+        (1..521).forEach { page ->
+            repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, page, Mushaf.SHEMERLY, at(100 + page.toLong()))
+            assertEquals(page, pages(Mushaf.SHEMERLY).single(), "native page $page")
+            assertEquals(page.toLong() to 27L, slotRow(1).let { it.location_key to it.mushaf_id })
+        }
     }
 
     @Test

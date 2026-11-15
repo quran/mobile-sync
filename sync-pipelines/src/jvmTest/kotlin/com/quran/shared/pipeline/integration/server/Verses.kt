@@ -40,6 +40,7 @@ internal fun bookmarkGroup(mushafId: Int?, type: String): String = when (type) {
     "page" -> when (mushafId) {
         7 -> "pages_548"
         6 -> "pages_610"
+        27 -> "pages_521"
         else -> "pages_604"
     }
     else -> "default"
@@ -49,6 +50,7 @@ internal fun bookmarkGroup(mushafId: Int?, type: String): String = when (type) {
 internal fun representativeMushafId(group: String): Int = when (group) {
     "pages_548" -> 7
     "pages_610" -> 6
+    "pages_521" -> 27
     else -> 5
 }
 

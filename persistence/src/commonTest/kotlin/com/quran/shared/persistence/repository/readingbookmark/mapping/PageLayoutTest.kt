@@ -26,8 +26,7 @@ class PageLayoutTest {
 
     /**
      * INDOPAK, unused, is added by hand as QCF_V2's pages (the bundle lacks it); the riwayat that number verses
-     * differently have no layout. Each app mushaf is sent as a server mushaf of its layout, except Shemerly, which is
-     * sent as 1440 pages until the server has its own.
+     * differently have no layout. Each app mushaf is sent as a server mushaf of its own layout.
      */
     @Test
     fun `each mushaf id has its layout`() {
@@ -48,13 +47,14 @@ class PageLayoutTest {
                 ServerMushaf.SHUBA to PageLayout.MADANI_1440,
                 ServerMushaf.SOUSI to null,
                 ServerMushaf.BAZZI to null,
-                ServerMushaf.QUMBUL to null
+                ServerMushaf.QUMBUL to null,
+                ServerMushaf.SHEMERLY to PageLayout.SHEMERLY
             ),
             ServerMushaf.entries.associateWith { PageLayout.of(it.id) }
         )
         assertNull(PageLayout.of(10), "in the bundle, but not a backend mushaf")
         Mushaf.entries.forEach { mushaf ->
-            val sent = if (mushaf == Mushaf.SHEMERLY) PageLayout.MADANI_1440 else mushaf.layout
+            val sent = mushaf.layout
             assertEquals(sent, PageLayout.of(mushaf.serverMushaf.id), "$mushaf")
         }
     }

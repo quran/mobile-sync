@@ -5,8 +5,7 @@ import com.quran.shared.syncv2.types.ServerMushaf
 /**
  * A page layout: each page's verses as `[firstVerseId, lastVerseId]`, in canonical Hafs verse ids (1 to 6236, counted
  * through the surahs). Pages are numbered from 1 the way the server numbers them. Consecutive pages share at most one
- * verse, one that runs across the page break (only in the 16-line IndoPak layout). [SHEMERLY] is on no server mushaf
- * yet (see [com.quran.shared.persistence.model.Mushaf.SHEMERLY]).
+ * verse, one that runs across the page break (only in the 16-line IndoPak layout).
  */
 internal enum class PageLayout(private val ranges: IntArray) {
     MADANI_1440(Madani1440Pages.ranges),
@@ -25,7 +24,11 @@ internal enum class PageLayout(private val ranges: IntArray) {
          * verses differently, so their pages don't map.
          */
         fun of(mushafId: Int): PageLayout? = ServerMushaf.fromId(mushafId)?.let { mushaf ->
-            if (mushaf == ServerMushaf.INDOPAK) MADANI_1440 else bundleMushafLayouts[mushaf.id]
+            when (mushaf) {
+                ServerMushaf.INDOPAK -> MADANI_1440
+                ServerMushaf.SHEMERLY -> SHEMERLY
+                else -> bundleMushafLayouts[mushaf.id]
+            }
         }
     }
 

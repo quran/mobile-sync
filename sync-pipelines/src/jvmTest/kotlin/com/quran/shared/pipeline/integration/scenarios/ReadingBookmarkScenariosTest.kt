@@ -213,31 +213,39 @@ class ReadingBookmarkScenariosTest {
         assertEquals(590, indoPak.page, "read from the 1440 layout")
     }
 
-    /**
-     * The server has no Shemerly mushaf yet, so a Shemerly page is sent as the 1440 page with its verses (mushaf 1).
-     * Today's backend echoes it as its `pages_604` stand-in (5, the same layout), which pushes nothing back, and both
-     * devices read it in Shemerly as the page it was set on.
-     */
+    /** Native identity survives push, pull and restore, including a page the historical conversion lost. */
     @Test
-    fun `RB-12 a Shemerly page syncs as its 1440 page and converges on the stand-in echo`() = syncScenario {
+    fun `RB-12 a native Shemerly page syncs exactly to another device`() = syncScenario {
         val (phone, tablet) = signedIn("phone", "tablet")
+        server.account(ALICE).keepsMushafId = true
 
-        phone.data.setPageReadingBookmark(ReadingBookmarkSlot.ORANGE, 250, Mushaf.SHEMERLY)
+        phone.data.setPageReadingBookmark(ReadingBookmarkSlot.ORANGE, 9, Mushaf.SHEMERLY)
         val runs = listOf(phone.syncNow(), tablet.syncNow(), phone.syncNow(), tablet.syncNow())
 
         runs.forEach(::assertSucceeded)
         assertEquals(1, runs.sumOf { it.posts }, "only the set; its echo pushed nothing")
         val sent = runs.first().accepted.of("READING_BOOKMARK").single()
-        assertEquals("302" to "1", sent.data("key") to sent.data("mushafId"))
+        assertEquals("9" to "27", sent.data("key") to sent.data("mushafId"))
         val slot = server.state(ALICE).readingBookmarks.single { it.slot == 2 }
-        assertEquals("pages_604" to 302, slot.group to slot.key)
+        assertEquals(Triple("pages_521", 9, 27), Triple(slot.group, slot.key, slot.mushafId))
         listOf(phone, tablet).forEach { device ->
             val shemerly = assertIs<PageReadingBookmark>(device.data.readingBookmarks(Mushaf.SHEMERLY).first().single(), device.name)
-            assertEquals(250 to Mushaf.SHEMERLY, shemerly.page to shemerly.mushaf, device.name)
+            assertEquals(9 to Mushaf.SHEMERLY, shemerly.page to shemerly.mushaf, device.name)
         }
         val madani = assertIs<PageReadingBookmark>(tablet.data.readingBookmarks(Mushaf.MADANI_1440).first().single())
-        assertEquals(302, madani.page)
-        assertConverged(ALICE, phone, tablet)
+        assertEquals(10, madani.page)
+        // The generic server snapshot only compares pages_604. Native server identity is asserted above.
+        assertEquals(phone.snapshot(), tablet.snapshot())
+
+        phone.data.setPageReadingBookmark(ReadingBookmarkSlot.ORANGE, 521, Mushaf.SHEMERLY)
+        syncUntilQuiescent(phone, tablet)
+        val lastPage = server.state(ALICE).readingBookmarks.single { it.slot == 2 }
+        assertEquals(Triple("pages_521", 521, 27), Triple(lastPage.group, lastPage.key, lastPage.mushafId))
+        listOf(phone, tablet).forEach { device ->
+            val restored = assertIs<PageReadingBookmark>(device.data.readingBookmarks(Mushaf.SHEMERLY).first().single())
+            assertEquals(521 to Mushaf.SHEMERLY, restored.page to restored.mushaf, device.name)
+        }
+        assertEquals(phone.snapshot(), tablet.snapshot())
     }
 
     /**

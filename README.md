@@ -289,12 +289,13 @@ mapping.
 - `Mushaf.MADANI_1405` and `Mushaf.MADANI_1440`, the 1405 and 1440 Madani prints, have pages 1 to 604.
 - `Mushaf.INDOPAK_15_LINES` has app pages 2 to 611: apps skip a cover page, so app page N is the
   server's page N - 1.
-- `Mushaf.SHEMERLY`, the Shemerly print, has pages 1 to 521. The server has no Shemerly mushaf yet
-  (quran/mobile-sync#355), so a Shemerly page is stored and synced as the 1440 page holding its
-  verses (`mushafId` 1) and mapped back when read. Seven Shemerly pages (9, 364, 379, 422, 495, 500
-  and 516) read back as a neighbouring page. Once the server has a Shemerly id, add it to
-  `ServerMushaf` (521 pages), map it to the Shemerly layout in `PageLayout.of`, and send
-  `Mushaf.SHEMERLY` as it; apps don't change.
+- `Mushaf.SHEMERLY`, the Shemerly print, has native pages 1 to 521, stored and synced with
+  `mushafId` 27 (`pages_521`). Deploy the compatible Users Backend (#2084 / pre-live #2089)
+  and web read handling before releasing clients that write ID 27. Apps continue selecting
+  `Mushaf.SHEMERLY` without an adapter change. Historical ID 1 records remain readable through
+  the Madani 1440 mapping; their original native page cannot always be recovered. New writes
+  preserve all 521 native pages exactly, including the seven formerly lossy pages (9, 364, 379,
+  422, 495, 500 and 516).
 - `Mushaf.WARSH` and `Mushaf.QALOUN`, the Warsh and Qaloun riwayat, have pages 1 to 604. They number
   verses differently, so their pages are never mapped: a page is stored with its own `mushafId` (20
   or 22), reads unchanged in the same mushaf, and reads as `EmptyReadingBookmark` in any other.
