@@ -10,6 +10,7 @@ import com.quran.shared.auth.persistence.AuthStorage
 import com.quran.shared.auth.repository.OidcAuthRepository
 import com.quran.shared.auth.service.AuthService
 import com.quran.shared.pipeline.SynchronizationEnvironment
+import com.quran.shared.pipeline.integration.server.AVATARS_HOST
 import com.quran.shared.pipeline.sync.AuthServiceSyncAccount
 import com.quran.shared.pipeline.sync.SyncClient
 import com.quran.shared.pipeline.sync.SyncLifecycleGate
@@ -387,7 +388,7 @@ class ProfileRefresherTest {
         )
         authService = AuthService(OidcAuthRepository(authConfig, storage, oidcClient))
         advanceUntilIdle()
-        val environment = SynchronizationEnvironment("https://apis.quran.foundation/auth", avatarsHost = AVATARS_HOST)
+        val environment = SynchronizationEnvironment("https://apis.quran.foundation/auth")
         refresher = ProfileRefresher(
             ProfileApi(SyncClient.createSyncHttpClient(engine), environment),
             AuthServiceSyncAccount(authService),
@@ -439,7 +440,10 @@ class ProfileRefresherTest {
     ): String =
         """{"success":true,"data":{"id":"$id","createdAt":"2022-12-06T06:16:20.229Z","email":"user@example.com",""" +
             """"firstName":"$firstName","lastName":"$lastName","username":"user","fullName":"$fullName",""" +
-            """"photoUrl":".png.1788192266","isAdmin":false,"isPasswordSet":true}}"""
+            """"photoUrl":".png.1788192266","avatars":{"small":"${avatar("small")}","medium":"${avatar("medium")}",""" +
+            """"large":"${avatar("large")}"},"isAdmin":false,"isPasswordSet":true}}"""
+
+    private fun avatar(size: String): String = "$AVATARS_HOST/events/banner/en/avatars/$ACCOUNT/$size.png?v=1788192266"
 
     private fun MockRequestHandleScope.respondJson(body: String): HttpResponseData =
         respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
@@ -448,7 +452,6 @@ class ProfileRefresherTest {
         const val ACCOUNT = "6f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5"
         const val CLIENT_ID = "client-id"
         const val TOKEN_PATH = "/oauth2/token"
-        const val AVATARS_HOST = "https://avatars.example.invalid"
     }
 }
 

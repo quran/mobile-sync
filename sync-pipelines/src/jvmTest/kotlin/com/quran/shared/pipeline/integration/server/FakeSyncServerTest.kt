@@ -199,6 +199,31 @@ class FakeSyncServerTest {
         assertEquals("true", entries.single()["data"]!!.jsonObject.str("isInDefaultCollection"))
     }
 
+    @Test
+    fun `the profile's avatars are built as avatarsBuilder builds them`() {
+        fun avatarsFor(photoUrl: String?): Map<String, String> {
+            server.web(ALICE).editProfile(firstName = "Alice", photoUrl = photoUrl)
+            val response = http.send(
+                HttpRequest.newBuilder(URI("${server.url}/v1/users/profile")).header("x-auth-token", token).GET().build(),
+                HttpResponse.BodyHandlers.ofString()
+            )
+            assertEquals(200, response.statusCode(), response.body())
+            val avatars = Json.parseToJsonElement(response.body()).jsonObject["data"]!!.jsonObject["avatars"]!!.jsonObject
+            return avatars.mapValues { it.value.jsonPrimitive.content }
+        }
+
+        assertEquals(
+            listOf("small", "medium", "large").associateWith { "$AVATARS_HOST/events/banner/en/avatars/alice/$it.png?v=7" },
+            avatarsFor(".png.7")
+        )
+        assertEquals(
+            "$AVATARS_HOST/events/banner/en/avatars/folder/medium.png?v=0",
+            avatarsFor("folder")["medium"],
+            "a file name names the folder; the extension and version default"
+        )
+        assertEquals(mapOf("small" to "", "medium" to "", "large" to ""), avatarsFor(null))
+    }
+
     private fun mutation(resource: String, type: String, resourceId: String? = null, data: String? = null) = buildString {
         append("""{"resource":"$resource","type":"$type"""")
         resourceId?.let { append(""","resourceId":"$it"""") }

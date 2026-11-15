@@ -175,6 +175,7 @@ class FakeSyncServer : AutoCloseable {
                     put("username", account)
                     put("fullName", listOfNotNull(profile.firstName, profile.lastName).filter { it.isNotBlank() }.joinToString(" "))
                     profile.photoUrl?.let { put("photoUrl", it) }
+                    put("avatars", avatars(account, profile.photoUrl))
                     put("isAdmin", false)
                     put("isPasswordSet", true)
                 })
