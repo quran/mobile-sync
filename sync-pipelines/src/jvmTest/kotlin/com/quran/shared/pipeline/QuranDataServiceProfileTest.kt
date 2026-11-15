@@ -154,10 +154,7 @@ class QuranDataServiceProfileTest {
                     notesRepository = NotesRepositoryImpl(synced),
                     readingSessionsRepository = ReadingSessionsRepositoryImpl(synced)
                 ),
-                environment = SynchronizationEnvironment(
-                    "https://apis.quran.foundation/auth",
-                    avatarsHost = "https://avatars.example.invalid"
-                ),
+                environment = SynchronizationEnvironment("https://apis.quran.foundation/auth"),
                 persistenceResetRepository = PersistenceResetRepositoryImpl(synced),
                 persistenceImportRepository = PersistenceImportRepositoryImpl(database.quran, synced),
                 sessionLifecycleCoordinator = SessionLifecycleCoordinator(

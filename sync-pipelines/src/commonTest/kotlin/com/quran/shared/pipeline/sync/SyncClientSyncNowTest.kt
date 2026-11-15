@@ -76,7 +76,7 @@ class SyncClientSyncNowTest {
             1.hours, 1.hours, 1.hours, 1.hours, Duration.ZERO,
             FailureRetryingConfig(baseDelay = 10.seconds, multiplier = 2.0, maximumRetries = maximumRetries)
         )
-        val environment = SynchronizationEnvironment("https://sync.example.invalid", avatarsHost = "https://avatars.example.invalid")
+        val environment = SynchronizationEnvironment("https://sync.example.invalid")
         val client = SyncClient.create(
             database.synced, environment, account, gate, observer, timings, random = { 0.5 }, engine = engine,
             dispatcher = dispatcher, now = { testScheduler.currentTime }

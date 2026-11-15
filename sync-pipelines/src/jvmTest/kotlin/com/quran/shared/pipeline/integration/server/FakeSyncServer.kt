@@ -145,7 +145,7 @@ class FakeSyncServer : AutoCloseable {
 
     /**
      * `GET /v1/users/profile` (`getUserProfile`): `processOAuth2User`, then the account read live, in the users API's
-     * envelope. `fullName` is the first and last names joined, as `getFullName` makes it.
+     * envelope. `fullName` is the first and last names joined, as `getFullName` makes it, and `avatars` is [avatars]'s.
      */
     private fun handleProfile(exchange: HttpExchange) {
         val token = exchange.requestHeaders.getFirst("x-auth-token")
@@ -175,6 +175,7 @@ class FakeSyncServer : AutoCloseable {
                     put("username", account)
                     put("fullName", listOfNotNull(profile.firstName, profile.lastName).filter { it.isNotBlank() }.joinToString(" "))
                     profile.photoUrl?.let { put("photoUrl", it) }
+                    put("avatars", avatars(account, profile.photoUrl))
                     put("isAdmin", false)
                     put("isPasswordSet", true)
                 })

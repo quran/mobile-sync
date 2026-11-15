@@ -39,16 +39,16 @@ internal class ProfileApi(
         }
         val text = response.bodyAsText()
         if (!response.status.isSuccess()) throw ProfileHttpException(response.status.value)
-        return parseProfile(text, environment.avatarsHost, fetchedAt())
+        return parseProfile(text, fetchedAt())
     }
 }
 
 /**
- * Reads the users API's envelope, `{success: true, data: {id, email, firstName, lastName, fullName, photoUrl, ...}}`.
+ * Reads the users API's envelope, `{success: true, data: {id, email, firstName, lastName, fullName, avatars, ...}}`.
  * The name is `fullName`, or the first and last names joined when it is empty; blank fields are null. The photo is
- * [profilePhotoUrl]'s.
+ * [avatarUrl]'s.
  */
-internal fun parseProfile(text: String, avatarsHost: String, fetchedAt: Long): FetchedProfile {
+internal fun parseProfile(text: String, fetchedAt: Long): FetchedProfile {
     val root = runCatching { Json.parseToJsonElement(text) as? JsonObject }.getOrNull()
         ?: throw UnexpectedProfileResponseException("not a JSON object")
     if ((root["success"] as? JsonPrimitive)?.booleanOrNull == false) {
@@ -64,38 +64,21 @@ internal fun parseProfile(text: String, avatarsHost: String, fetchedAt: Long): F
         firstName = firstName,
         lastName = lastName,
         email = profile.text("email"),
-        photoUrl = profilePhotoUrl(profile.text("photoUrl"), id, avatarsHost),
+        photoUrl = avatarUrl(profile["avatars"] as? JsonObject),
         fetchedAt = fetchedAt
     )
 }
 
 /**
- * The URL of the profile's photo, from the profile's `photoUrl`, as the users backend's `avatarsBuilder` builds it
- * (`packages/services/src/avatar.ts`):
- * - none (null or blank): no photo;
- * - a full URL (it starts with `http`, as a social login's photo does): as it is;
- * - a photo uploaded on Quran.com: `photoUrl` is `<file name>.<extension>.<version>` (the file name usually empty), and
- *   the image is `{avatarsHost}/events/banner/en/avatars/{file name, else the user's id}/medium.{extension, else
- *   png}?v={version, else 0}`.
- *
- * It uses the medium size, 256 px, which covers the largest avatar the apps show (88 pt on iOS).
+ * The profile's photo: the backend's (`avatarsBuilder`) medium avatar, 256 px, which covers the largest avatar the apps
+ * show (88 pt on iOS). It is an uploaded photo's URL or a social login's; only an absolute `http(s)` URL is a photo, as
+ * the backend answers `""` for none and a relative path where its avatar host isn't configured.
  */
-internal fun profilePhotoUrl(photoUrl: String?, userId: String, avatarsHost: String): String? {
-    if (photoUrl.isNullOrBlank()) return null
-    if (photoUrl.startsWith("http", ignoreCase = true)) return photoUrl
-    val parts = photoUrl.split('.')
-    val directory = parts[0].ifEmpty { userId }
-    val extension = parts.getOrNull(1) ?: DEFAULT_EXTENSION
-    val version = parts.getOrNull(2) ?: DEFAULT_VERSION
-    return "$avatarsHost/$AVATARS_PATH/$directory/$PHOTO_SIZE.$extension?v=$version"
-}
+private fun avatarUrl(avatars: JsonObject?): String? =
+    avatars?.text("medium")?.takeIf { url -> ABSOLUTE_URL_SCHEMES.any { url.startsWith(it, ignoreCase = true) } }
 
 /** A string field, or null when it is missing, not a string, or blank. */
 private fun JsonObject.text(key: String): String? =
     (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
 
-/** The backend's `USER_AVATAR_URL_S3_PATH`. */
-private const val AVATARS_PATH = "events/banner/en/avatars"
-private const val PHOTO_SIZE = "medium"
-private const val DEFAULT_EXTENSION = "png"
-private const val DEFAULT_VERSION = "0"
+private val ABSOLUTE_URL_SCHEMES = listOf("https://", "http://")

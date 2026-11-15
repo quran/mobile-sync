@@ -1206,7 +1206,7 @@ private class QuranDataServiceFixture(
         return factory.create(
             authService = authService,
             pipeline = pipeline,
-            environment = SynchronizationEnvironment("https://example.invalid", avatarsHost = "https://avatars.example.invalid"),
+            environment = SynchronizationEnvironment("https://example.invalid"),
             persistenceResetRepository = resetRepository,
             persistenceImportRepository = importRepository,
             sessionLifecycleCoordinator = lifecycleCoordinator,

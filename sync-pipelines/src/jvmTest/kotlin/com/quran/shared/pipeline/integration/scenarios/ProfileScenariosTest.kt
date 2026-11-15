@@ -2,12 +2,12 @@ package com.quran.shared.pipeline.integration.scenarios
 
 import com.quran.shared.auth.model.AuthState
 import com.quran.shared.auth.model.UserInfo
-import com.quran.shared.pipeline.integration.AVATARS_HOST
 import com.quran.shared.pipeline.integration.DeviceTimings
 import com.quran.shared.pipeline.integration.SyncDevice
 import com.quran.shared.pipeline.integration.SyncScenario
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.awaitUntil
+import com.quran.shared.pipeline.integration.server.AVATARS_HOST
 import com.quran.shared.pipeline.integration.server.HttpError
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.Dispatchers
