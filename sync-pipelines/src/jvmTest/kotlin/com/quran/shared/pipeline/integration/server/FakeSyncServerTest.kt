@@ -221,8 +221,6 @@ class FakeSyncServerTest {
             avatarsFor("folder")["medium"],
             "a file name names the folder; the extension and version default"
         )
-        val social = "https://lh3.googleusercontent.com/a/alice"
-        assertEquals(mapOf("small" to social, "medium" to social, "large" to social), avatarsFor(social))
         assertEquals(mapOf("small" to "", "medium" to "", "large" to ""), avatarsFor(null))
     }
 

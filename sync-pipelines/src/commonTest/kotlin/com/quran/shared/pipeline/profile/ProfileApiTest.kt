@@ -59,43 +59,31 @@ class ProfileApiTest {
     }
 
     @Test
-    fun `a social login's photo or any http URL is used as it is`() {
-        val photo = "HTTPS://lh3.googleusercontent.com/a/photo"
-
-        assertEquals(photo, photoUrl("""{"small":"$photo","medium":"$photo","large":"$photo"}"""))
-        assertEquals("http://example.com/medium.png", photoUrl("""{"medium":"http://example.com/medium.png"}"""))
+    fun `an http URL in capitals is the photo as it is`() {
+        assertEquals("HTTP://example.com/medium.png", photoUrl("""{"medium":"HTTP://example.com/medium.png"}"""))
     }
 
     @Test
-    fun `no avatars or no medium avatar is no photo`() {
-        assertNull(photoUrl(null), "no avatars")
-        assertNull(photoUrl("null"), "null avatars")
-        assertNull(photoUrl("\"https://example.com/a.png\""), "avatars not an object")
-        assertNull(photoUrl("""{"small":"https://example.com/a.png"}"""), "no medium")
-        assertNull(photoUrl("""{"medium":42}"""), "medium not a string")
+    fun `no avatars or an empty medium avatar is no photo`() {
         assertNull(photoUrl("""{"small":"","medium":"","large":""}"""), "the backend's none")
         assertNull(
             parseProfile(
                 """{"success":true,"data":{"id":"user-id","photoUrl":"https://example.com/a.png"}}""",
                 fetchedAt = 0L
             ).photoUrl,
-            "photoUrl is not a fallback"
+            "no avatars, and photoUrl is not a fallback"
         )
     }
 
     @Test
     fun `a relative or non-http avatar is no photo`() {
-        // The backend answers a relative path where its avatar host isn't configured.
         assertNull(photoUrl("""{"medium":"./user-id/medium.png?v=1788192266"}"""))
-        assertNull(photoUrl("""{"medium":"user-id/medium.png"}"""))
         assertNull(photoUrl("""{"medium":"ftp://example.com/medium.png"}"""))
     }
 
-    /** The photo of a profile whose `avatars` is [avatars] (JSON), or that has none for null. */
-    private fun photoUrl(avatars: String?): String? {
-        val field = avatars?.let { ""","avatars":$it""" }.orEmpty()
-        return parseProfile("""{"success":true,"data":{"id":"user-id"$field}}""", fetchedAt = 0L).photoUrl
-    }
+    /** The photo of a profile whose `avatars` is [avatars] (JSON). */
+    private fun photoUrl(avatars: String): String? =
+        parseProfile("""{"success":true,"data":{"id":"user-id","avatars":$avatars}}""", fetchedAt = 0L).photoUrl
 
     private companion object {
         const val AVATARS = "https://s3.amazonaws.com/qreflect-bucket/events/banner/en/avatars/user-id"

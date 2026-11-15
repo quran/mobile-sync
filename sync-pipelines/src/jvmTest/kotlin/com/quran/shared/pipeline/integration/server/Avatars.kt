@@ -8,13 +8,8 @@ import kotlinx.serialization.json.put
 const val AVATARS_HOST = "https://avatars.example.invalid"
 
 /**
- * The profile's `avatars`, as the users backend's `avatarsBuilder` (`packages/services/src/avatar.ts`) builds them from
- * [photoUrl]: a social login's URL (it starts with `http`) at every size; `""` at every size for none; and for a photo
- * uploaded on Quran.com (`<file name>.<extension>.<version>`), one URL per size:
- *
- * `{AVATARS_HOST}/events/banner/en/avatars/{folder}/{size}.{extension}?v={version}`
- *
- * The folder is the file name, else [userId]; the extension defaults to png and the version to 0.
+ * The profile's `avatars`, built from [photoUrl] as the users backend's `avatarsBuilder`
+ * (`packages/services/src/avatar.ts`) builds them.
  */
 internal fun avatars(userId: String, photoUrl: String?): JsonObject = buildJsonObject {
     AVATAR_SIZES.forEach { size -> put(size, avatarUrl(userId, photoUrl, size)) }

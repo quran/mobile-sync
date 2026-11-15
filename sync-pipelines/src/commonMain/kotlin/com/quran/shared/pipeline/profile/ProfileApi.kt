@@ -70,9 +70,8 @@ internal fun parseProfile(text: String, fetchedAt: Long): FetchedProfile {
 }
 
 /**
- * The profile's photo: the backend's medium avatar (an uploaded photo's 256 px URL, or a social login's URL as it is).
- * Only an absolute `http(s)` URL counts: the backend sends `""` for none and a relative path where its avatar host isn't
- * set.
+ * The medium avatar, when it is an absolute `http(s)` URL: the backend sends `""` for no photo, and a relative path
+ * where its avatar host isn't set.
  */
 private fun avatarUrl(avatars: JsonObject?): String? =
     avatars?.text("medium")?.takeIf { url -> ABSOLUTE_URL_SCHEMES.any { url.startsWith(it, ignoreCase = true) } }
