@@ -168,7 +168,7 @@ internal class SyncClient(
      * Runs one attempt. A run cancelled while the sync lifecycle is open (the service is cleared) is reported
      * [SyncRunResult.CANCELLED]; one a logout or reset cancels reports nothing, as its data is wiped. An attempt that
      * throws ends its run [SyncRunResult.FAILED], without a retry, or skips it if the lifecycle closed, so `syncStatus`
-     * never stays [com.quran.shared.pipeline.SyncStatus.Syncing].
+     * no longer stays [com.quran.shared.pipeline.SyncStatus.Syncing].
      */
     private suspend fun runAttempt(
         attempt: SyncAttempt,
@@ -183,10 +183,7 @@ internal class SyncClient(
         logger.e(error) { "A sync attempt failed unexpectedly" }
         if (gate.canStartSync()) {
             val failure = SyncResult.Failed(error.toString(), retryable = false, cause = error)
-            val ended = end(SyncRunResult.FAILED, failure.toSyncError())
-            // No run was open (it threw as it ended, say): the status may still show it running.
-            if (ended == null) observer.syncSkipped()
-            waiters.reportEnded(ended)
+            waiters.reportEnded(end(SyncRunResult.FAILED, failure.toSyncError()))
         } else {
             run = null
             observer.syncSkipped()

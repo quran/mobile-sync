@@ -24,6 +24,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestResult
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -200,6 +201,37 @@ class SyncClientSyncNowTest {
     }
 
     @Test
+    fun `an attempt that throws once a logout began skips its run`() = syncTest { client ->
+        val answer = CompletableDeferred<Unit>().also { hold = it }
+        val waited = async { client.syncNow() }
+        runCurrent()
+        assertEquals(SyncStatus.Syncing, syncStatus.status.value)
+
+        gate.beginReset()
+        gate.epochChecksThrow = IllegalStateException("The gate broke")
+        answer.complete(Unit)
+
+        assertEquals(SyncNowResult.Unavailable, waited.await())
+        assertEquals(emptyList(), ended)
+        assertEquals(SyncStatus.Idle, syncStatus.status.value)
+    }
+
+    /** A retry reports syncing before its headers, so it throws after it started too. */
+    @Test
+    fun `a retry that throws ends its run as failed`() = syncTest { client ->
+        status = HttpStatusCode.ServiceUnavailable
+        assertIs<SyncNowResult.Retrying>(client.syncNow())
+
+        gate.epochChecksThrow = IllegalStateException("The gate broke")
+        advanceTimeBy(10.seconds)
+        runCurrent()
+
+        val run = ended.single()
+        assertEquals(SyncRunResult.FAILED to 2, run.result to run.attempts)
+        assertEquals(SyncStatus.Failed(run.endedAt, checkNotNull(run.error)), syncStatus.status.value)
+    }
+
+    @Test
     fun `closing the client during the run returns the cancelled run`() = syncTest { client ->
         hold = CompletableDeferred()
         val waited = async { client.syncNow() }
@@ -218,15 +250,19 @@ class SyncClientSyncNowTest {
 private class ResettableGate : SyncLifecycleGate {
     private var resetting = false
 
-    /** When set, every epoch check throws it, as a broken gate would. */
+    /** When set, every epoch check after the capture throws it, as a broken gate would. */
     var epochChecksThrow: Exception? = null
 
     override fun canStartSync() = !resetting
 
-    override suspend fun captureSyncEpoch(): Long = 0L.also { checkSyncEpoch(it) }
+    override suspend fun captureSyncEpoch(): Long = 0L.also { checkNotResetting() }
 
     override suspend fun checkSyncEpoch(epoch: Long) {
         epochChecksThrow?.let { throw it }
+        checkNotResetting()
+    }
+
+    private fun checkNotResetting() {
         if (resetting) throw SyncOperationInvalidatedException("A reset began")
     }
 
