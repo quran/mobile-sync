@@ -473,11 +473,24 @@ To regenerate it from a newer bundle:
    changed layout shows up as a failing test. Mushaf IDs the bundle lacks (such as `INDOPAK`, 3)
    are mapped by hand in `PageLayout.of`.
 
-The Shemerly layout comes from `scripts/data/shemerly-pages.json`: the `[sura, ayah]` each of its 521
-pages starts with, exported from the Android app's `ShemerlyDataSource` (`suraForPageArray` and
-`ayahForPageArray`; the file records the source repository, path and commit). The generator ends
-each page one verse before the next starts and checks the layout like the bundle's. To update it,
-replace `pageStarts` (and `source`) in that file and run the generator as above.
+The Shemerly layout comes from `scripts/data/shemerly-pages.json`: explicit `[sura, ayah]` starts
+and ends for all 521 physical pages, exported from Content's checksum-pinned
+`config/qdc/mushaf_content/shemerly.words.v1.json` (Content PR #1037). It preserves all 6,604
+ayah/page memberships and 368 split ayahs. The historical Android start-only array had three
+incorrect anchors; `androidStartsCorrected` records the differences (305, 438, 510).
+
+To regenerate the shared Shemerly input from the reviewed Content artifact:
+
+```bash
+python3 scripts/generate-shemerly-pages.py /path/to/shemerly.words.v1.json
+python3 scripts/generate-page-layouts.py /tmp/client_bundle.v1.json
+```
+
+The exporter refuses an unreviewed artifact checksum. Copy its JSON unchanged to users-backend's
+`apps/api/src/services/shemerly-page-starts.json` on main and pre-live. Page lookup selects the
+first page holding a split ayah; restoring an existing native page bookmark retains its exact page.
+Changing a projection table never rewrites saved bookmarks. Native Android's own image reader
+continues using the same physical page numbers; coordinate/first-word data is the content authority.
 
 ### Releases
 

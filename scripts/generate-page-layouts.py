@@ -11,8 +11,8 @@ are written with their layout (bundleMushafLayouts), and every group's mushaf id
 Update SOURCE_COMMIT when generating from another bundle; the revision is read from the bundle.
 
 The Shemerly layout, which the bundle lacks, is read from scripts/data/shemerly-pages.json: the [sura, ayah] each
-page starts with, exported from the Android app's page data (the file records its source). A page ends one verse
-before the next page starts; the last page ends at the last verse.
+page starts and ends with, exported from the pinned Content word placements (the file records its source).
+Explicit ends preserve the 368 ayahs shared across physical pages.
 """
 
 import json
@@ -71,7 +71,7 @@ def main() -> None:
             sys.exit(f"No page group for mushafs {mushaf_ids}")
         lines += layout_object(name, pages, page_count, description)
     name, page_count, description = SHEMERLY
-    lines += layout_object(name, pages_from_starts(name, shemerly["pageStarts"]), page_count, description)
+    lines += layout_object(name, pages_from_bounds(name, shemerly["pageStarts"], shemerly["pageEnds"]), page_count, description)
     lines += mushaf_layouts()
     lines += mushaf_page_counts(bundle["pageGroups"])
     output.write_text("\n".join(lines))
@@ -94,19 +94,26 @@ def layout_object(name: str, pages: list, page_count: int, description: str) -> 
 
 
 def source_url(source: dict) -> str:
+    if "url" in source:
+        return f"{source['url']} (artifact SHA256 {source['sha256']})"
     return f"{source['repository']}/blob/{source['commit']}/{source['path']}"
 
 
-def pages_from_starts(name: str, starts: list) -> list:
-    """Pages as [firstVerseId, lastVerseId] from the [sura, ayah] each page starts with."""
+def pages_from_bounds(name: str, starts: list, ends: list) -> list:
+    """Pages as [firstVerseId, lastVerseId], preserving split ayah membership."""
     if sum(SURA_VERSES) != VERSES:
         sys.exit("SURA_VERSES does not add up to every verse")
-    firsts = []
-    for page, (sura, ayah) in enumerate(starts, start=1):
-        if not 1 <= sura <= len(SURA_VERSES) or not 1 <= ayah <= SURA_VERSES[sura - 1]:
-            sys.exit(f"{name}: page {page} starts at {sura}:{ayah}, which doesn't exist")
-        firsts.append(sum(SURA_VERSES[:sura - 1]) + ayah)
-    return [[first, last - 1] for first, last in zip(firsts, firsts[1:] + [VERSES + 1])]
+    if len(starts) != len(ends):
+        sys.exit(f"{name}: page starts/ends count mismatch")
+    pages = []
+    for page, bounds in enumerate(zip(starts, ends), start=1):
+        ids = []
+        for sura, ayah in bounds:
+            if not 1 <= sura <= len(SURA_VERSES) or not 1 <= ayah <= SURA_VERSES[sura - 1]:
+                sys.exit(f"{name}: page {page} bound {sura}:{ayah} doesn't exist")
+            ids.append(sum(SURA_VERSES[:sura - 1]) + ayah)
+        pages.append(ids)
+    return pages
 
 
 def mushaf_layouts() -> list:

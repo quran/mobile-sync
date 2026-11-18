@@ -208,7 +208,7 @@ class ReadingBookmarksRepositoryTest {
         assertEquals(listOf(303, 301), pages(Mushaf.INDOPAK_15_LINES))
     }
 
-    /** One of the seven Shemerly pages that don't round-trip through the 1440 layout (ReadingBookmarkPageMapperTest). */
+    /** A Shemerly page that loses its identity when projected through the 1440 layout. */
     @Test
     fun `a Shemerly page without its own 1440 page retains its exact native identity`() = runTest {
         val set = assertIs<PageReadingBookmark>(repository.setPageReadingBookmark(ReadingBookmarkSlot.TEAL, 9, Mushaf.SHEMERLY, at(100)))

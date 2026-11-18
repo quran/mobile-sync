@@ -5,7 +5,7 @@ import com.quran.shared.syncv2.types.ServerMushaf
 /**
  * A page layout: each page's verses as `[firstVerseId, lastVerseId]`, in canonical Hafs verse ids (1 to 6236, counted
  * through the surahs). Pages are numbered from 1 the way the server numbers them. Consecutive pages share at most one
- * verse, one that runs across the page break (only in the 16-line IndoPak layout).
+ * verse, one that runs across the page break (in the 16-line IndoPak and Shemerly layouts).
  */
 internal enum class PageLayout(private val ranges: IntArray) {
     MADANI_1440(Madani1440Pages.ranges),
