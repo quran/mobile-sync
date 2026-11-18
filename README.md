@@ -294,8 +294,8 @@ mapping.
   and web read handling before releasing clients that write ID 27. Apps continue selecting
   `Mushaf.SHEMERLY` without an adapter change. Historical ID 1 records remain readable through
   the Madani 1440 mapping; their original native page cannot always be recovered. New writes
-  preserve all 521 native pages exactly, including the seven formerly lossy pages (9, 364, 379,
-  422, 495, 500 and 516).
+  preserve all 521 native pages exactly, including the ten pages with lossy historical projections
+  (10, 207, 357, 364, 379, 400, 422, 495, 500 and 516).
 - `Mushaf.WARSH` and `Mushaf.QALOUN`, the Warsh and Qaloun riwayat, have pages 1 to 604. They number
   verses differently, so their pages are never mapped: a page is stored with its own `mushafId` (20
   or 22), reads unchanged in the same mushaf, and reads as `EmptyReadingBookmark` in any other.
