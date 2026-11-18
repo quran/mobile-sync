@@ -179,7 +179,7 @@ class OidcAuthRepositoryIdTokenRefreshTest {
         )
         AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(newLogin))
         newLogin.loginCanFinish.complete(Unit)
-        repository.login()
+        repository.login(uiLocales = emptyList())
         val newUser = UserInfo(id = "new-user", name = "New User")
         assertEquals(newUser, repository.getCurrentUser())
 

@@ -145,7 +145,7 @@ class OidcAuthRepositoryTest {
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(authFlow))
 
             authFlow.loginCanFinish.complete(Unit)
-            restartedRepository.login()
+            restartedRepository.login(uiLocales = emptyList())
 
             assertEquals("fresh-access-token", restartedRepository.getAccessToken())
             assertEquals("fresh-refresh-token", tokenStore.getRefreshToken())
@@ -188,7 +188,7 @@ class OidcAuthRepositoryTest {
                 )
             )
             assertFailsWith<IllegalStateException> {
-                postLogoutRepository.login()
+                postLogoutRepository.login(uiLocales = emptyList())
             }
 
             val restartedRepository = oidcRepository(
@@ -218,7 +218,7 @@ class OidcAuthRepositoryTest {
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(successfulAuthFlow))
 
             successfulAuthFlow.loginCanFinish.complete(Unit)
-            restartedRepository.login()
+            restartedRepository.login(uiLocales = emptyList())
 
             assertEquals("fresh-access-token", restartedRepository.getAccessToken())
             assertEquals("fresh-refresh-token", tokenStore.getRefreshToken())
@@ -279,7 +279,7 @@ class OidcAuthRepositoryTest {
             }
 
             val explicitLogin = async(start = CoroutineStart.UNDISPATCHED) {
-                repository.login()
+                repository.login(uiLocales = emptyList())
             }
             withContext(Dispatchers.Default) {
                 withTimeout(1_000) {
@@ -334,7 +334,7 @@ class OidcAuthRepositoryTest {
             )
 
             val explicitLogin = async(start = CoroutineStart.UNDISPATCHED) {
-                runCatching { repository.login() }
+                runCatching { repository.login(uiLocales = emptyList()) }
             }
             withContext(Dispatchers.Default) {
                 withTimeout(1_000) {
@@ -446,7 +446,7 @@ class OidcAuthRepositoryTest {
             val repository = oidcRepository(storage)
 
             val login = async(start = CoroutineStart.UNDISPATCHED) {
-                runCatching { repository.login() }
+                runCatching { repository.login(uiLocales = emptyList()) }
             }
             authFlow.loginStarted.await()
 
@@ -504,7 +504,7 @@ class OidcAuthRepositoryTest {
             )
 
             authFlow.loginCanFinish.complete(Unit)
-            repository.login()
+            repository.login(uiLocales = emptyList())
 
             assertEquals(1, authFlow.getAccessTokenCalls)
             assertEquals(0, authFlow.continueLoginCalls)
@@ -551,7 +551,7 @@ class OidcAuthRepositoryTest {
                 )
             )
             authFlow.loginCanFinish.complete(Unit)
-            restartedRepository.login()
+            restartedRepository.login(uiLocales = emptyList())
 
             assertEquals(1, authFlow.getAccessTokenCalls)
             assertEquals("fresh-access-token", tokenStore.getAccessToken())
@@ -645,7 +645,7 @@ class OidcAuthRepositoryTest {
             authFlow.loginCanFinish.complete(Unit)
 
             assertFailsWith<IllegalStateException> {
-                repository.login()
+                repository.login(uiLocales = emptyList())
             }
             assertEquals("partial-access-token", tokenStore.getAccessToken())
 
@@ -686,7 +686,7 @@ class OidcAuthRepositoryTest {
             val repository = oidcRepository(storage)
 
             assertFailsWith<IllegalStateException> {
-                repository.login()
+                repository.login(uiLocales = emptyList())
             }
 
             assertEquals("old-access-token", repository.getAccessToken())
@@ -1129,7 +1129,7 @@ class OidcAuthRepositoryTest {
 
             val firstLogin = async(start = CoroutineStart.UNDISPATCHED) {
                 val failure: Exception? = try {
-                    repository.login()
+                    repository.login(uiLocales = emptyList())
                     null
                 } catch (e: Exception) {
                     e
@@ -1140,7 +1140,7 @@ class OidcAuthRepositoryTest {
 
             val duplicateLogin = async(start = CoroutineStart.UNDISPATCHED) {
                 val failure: Exception? = try {
-                    repository.login()
+                    repository.login(uiLocales = emptyList())
                     null
                 } catch (e: Exception) {
                     e
@@ -1188,7 +1188,7 @@ class OidcAuthRepositoryTest {
 
             val firstLogin = async(start = CoroutineStart.UNDISPATCHED) {
                 val failure: Exception? = try {
-                    repository.login()
+                    repository.login(uiLocales = emptyList())
                     null
                 } catch (e: Exception) {
                     e
@@ -1199,7 +1199,7 @@ class OidcAuthRepositoryTest {
 
             val duplicateLogin = async(start = CoroutineStart.UNDISPATCHED) {
                 val failure: Exception? = try {
-                    repository.login()
+                    repository.login(uiLocales = emptyList())
                     null
                 } catch (e: Exception) {
                     e
@@ -1247,12 +1247,12 @@ class OidcAuthRepositoryTest {
             val repository = oidcRepository(storage)
 
             val firstLogin = async(start = CoroutineStart.UNDISPATCHED) {
-                runCatching { repository.login() }
+                runCatching { repository.login(uiLocales = emptyList()) }
             }
             authFlow.loginStarted.await()
 
             val duplicateLogin = async(start = CoroutineStart.UNDISPATCHED) {
-                runCatching { repository.login() }
+                runCatching { repository.login(uiLocales = emptyList()) }
             }
             assertFalse(duplicateLogin.isCompleted)
 
@@ -1390,7 +1390,7 @@ class OidcAuthRepositoryTest {
             val repository = oidcRepository(storage)
 
             authFlow.loginCanFinish.complete(Unit)
-            repository.login()
+            repository.login(uiLocales = emptyList())
 
             assertEquals(1, authFlow.promptLoginCalls)
             assertEquals("login-access-token", repository.getAccessToken())
@@ -1424,12 +1424,12 @@ class OidcAuthRepositoryTest {
             )
 
             val staleLogin = async(start = CoroutineStart.UNDISPATCHED) {
-                runCatching { staleRepository.login() }
+                runCatching { staleRepository.login(uiLocales = emptyList()) }
             }
             staleAuthFlow.loginStarted.await()
 
             val duplicateLogin = async(start = CoroutineStart.UNDISPATCHED) {
-                runCatching { staleRepository.login() }
+                runCatching { staleRepository.login(uiLocales = emptyList()) }
             }
             assertFalse(duplicateLogin.isCompleted)
 
@@ -1451,7 +1451,7 @@ class OidcAuthRepositoryTest {
             AuthFlowFactoryProvider.initialize(StaticCodeAuthFlowFactory(freshAuthFlow))
 
             val freshLogin = async(start = CoroutineStart.UNDISPATCHED) {
-                staleRepository.login()
+                staleRepository.login(uiLocales = emptyList())
             }
             freshAuthFlow.loginStarted.await()
 
@@ -1494,12 +1494,12 @@ class OidcAuthRepositoryTest {
             val repository = oidcRepository(storage)
 
             val login = async(start = CoroutineStart.UNDISPATCHED) {
-                runCatching { repository.login() }
+                runCatching { repository.login(uiLocales = emptyList()) }
             }
             authFlow.loginStarted.await()
 
             val duplicateLogin = async(start = CoroutineStart.UNDISPATCHED) {
-                runCatching { repository.login() }
+                runCatching { repository.login(uiLocales = emptyList()) }
             }
             assertFalse(duplicateLogin.isCompleted)
 
@@ -1547,7 +1547,7 @@ class OidcAuthRepositoryTest {
             )
 
             val interruptedLogin = async(start = CoroutineStart.UNDISPATCHED) {
-                repository.login()
+                repository.login(uiLocales = emptyList())
             }
             withContext(Dispatchers.Default) {
                 withTimeout(1_000) {
@@ -1602,7 +1602,7 @@ class OidcAuthRepositoryTest {
             )
 
             val staleLogin = async(start = CoroutineStart.UNDISPATCHED) {
-                runCatching { staleRepository.login() }
+                runCatching { staleRepository.login(uiLocales = emptyList()) }
             }
             withContext(Dispatchers.Default) {
                 withTimeout(1_000) {
@@ -1656,7 +1656,7 @@ class OidcAuthRepositoryTest {
             )
 
             val firstLogin = async(start = CoroutineStart.UNDISPATCHED) {
-                runCatching { firstRepository.login() }
+                runCatching { firstRepository.login(uiLocales = emptyList()) }
             }
             withContext(Dispatchers.Default) {
                 withTimeout(1_000) {
@@ -1673,7 +1673,7 @@ class OidcAuthRepositoryTest {
             )
 
             val duplicateLogin = async(start = CoroutineStart.UNDISPATCHED) {
-                duplicateRepository.login()
+                duplicateRepository.login(uiLocales = emptyList())
             }
             assertFalse(duplicateLogin.isCompleted)
 
@@ -1749,7 +1749,7 @@ class OidcAuthRepositoryTest {
                 )
             )
             authFlow.loginCanFinish.complete(Unit)
-            movedRepository.login()
+            movedRepository.login(uiLocales = emptyList())
 
             assertEquals("fresh-access-token", tokenStore.getAccessToken())
             assertEquals("fresh-refresh-token", tokenStore.getRefreshToken())
@@ -1829,7 +1829,7 @@ class OidcAuthRepositoryTest {
                 )
             )
             freshAuthFlow.loginCanFinish.complete(Unit)
-            freshRepository.login()
+            freshRepository.login(uiLocales = emptyList())
 
             assertEquals("fresh-user", freshRepository.getCurrentUser()?.id)
 
@@ -1877,7 +1877,7 @@ class OidcAuthRepositoryTest {
             authFlow.loginCanFinish.complete(Unit)
 
             val login = runCatching {
-                repository.login(onDurableCommit = { clearingRepository.clearLocalSession() })
+                repository.login(uiLocales = emptyList(), onDurableCommit = { clearingRepository.clearLocalSession() })
             }
 
             assertTrue(login.isFailure)
@@ -1911,13 +1911,13 @@ class OidcAuthRepositoryTest {
             val commit = BlockingDurableCommit()
 
             val firstLogin = async(start = CoroutineStart.UNDISPATCHED) {
-                repository.login(onDurableCommit = commit::run)
+                repository.login(uiLocales = emptyList(), onDurableCommit = commit::run)
             }
             authFlow.loginCanFinish.complete(Unit)
             commit.started.await()
 
             val duplicateLogin = async(start = CoroutineStart.UNDISPATCHED) {
-                runCatching { repository.login() }
+                runCatching { repository.login(uiLocales = emptyList()) }
             }
             assertFalse(duplicateLogin.isCompleted)
 
@@ -1966,13 +1966,13 @@ class OidcAuthRepositoryTest {
             val commit = BlockingDurableCommit()
 
             val firstLogin = async(start = CoroutineStart.UNDISPATCHED) {
-                repository.login(onDurableCommit = commit::run)
+                repository.login(uiLocales = emptyList(), onDurableCommit = commit::run)
             }
             authFlow.loginCanFinish.complete(Unit)
             commit.started.await()
 
             val duplicateLogin = async(start = CoroutineStart.UNDISPATCHED) {
-                runCatching { repository.login() }
+                runCatching { repository.login(uiLocales = emptyList()) }
             }
             assertFalse(duplicateLogin.isCompleted)
 

@@ -80,11 +80,12 @@ class OidcAuthRepository(
         }
     }
 
-    override suspend fun login() {
-        login(onDurableCommit = {})
+    override suspend fun login(uiLocales: List<String>) {
+        login(uiLocales = uiLocales, onDurableCommit = {})
     }
 
-    override suspend fun login(onDurableCommit: suspend () -> Unit) {
+    override suspend fun login(uiLocales: List<String>, onDurableCommit: suspend () -> Unit) {
+        val uiLocalesParameter = uiLocales.map(String::trim).filter(String::isNotEmpty).joinToString(" ")
         val exchange = beginReplacementTokenExchange() ?: return
         var failure: Throwable? = null
         try {
@@ -93,6 +94,9 @@ class OidcAuthRepository(
                 configureAuthUrl = {
                     // Always ask for credentials, so a sign-in after a logout never reuses the provider's browser session.
                     parameters.append("prompt", "login")
+                    if (uiLocalesParameter.isNotEmpty()) {
+                        parameters.append("ui_locales", uiLocalesParameter)
+                    }
                 },
                 configureTokenExchange = configureTokenExchange
             )

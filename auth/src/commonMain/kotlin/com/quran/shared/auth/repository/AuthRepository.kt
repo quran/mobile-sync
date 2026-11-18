@@ -50,9 +50,11 @@ interface AuthRepository {
      * This launches the browser, handles the redirect, and exchanges the code for tokens. The provider always
      * asks for credentials again (`prompt=login` in the OIDC authorization request).
      *
+     * @param uiLocales BCP 47 language tags, most preferred first, sent as `ui_locales` so the sign-in page can match
+     * the app's language; blank tags are dropped, and with none left, `ui_locales` is omitted.
      * @throws Exception if authentication fails or is cancelled
      */
-    suspend fun login()
+    suspend fun login(uiLocales: List<String>)
 
     /**
      * Refreshes the access token if it's expired or near expiration.
@@ -139,5 +141,5 @@ interface AuthRepository {
 }
 
 internal interface AuthRepositoryLoginCommitCallbacks : AuthRepository {
-    suspend fun login(onDurableCommit: suspend () -> Unit)
+    suspend fun login(uiLocales: List<String>, onDurableCommit: suspend () -> Unit)
 }

@@ -39,7 +39,7 @@ class UnconfiguredAuthRepositoryTest {
         val repository = UnconfiguredAuthRepository(authStorage = authStorage(UnconfiguredRecordingTokenStore()))
 
         assertFailsWith<AuthNotConfiguredException> {
-            repository.login()
+            repository.login(uiLocales = emptyList())
         }
         assertFalse(repository.refreshTokensIfNeeded())
         assertFalse(repository.isLoggedIn())

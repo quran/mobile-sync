@@ -188,15 +188,16 @@ class AuthService private constructor(
     }
 
     /**
-     * Signs in through the browser, asking the identity provider for credentials again (`prompt=login`).
+     * Signs in through the browser, asking the identity provider for credentials again (`prompt=login`) and showing
+     * its page in the first of [uiLocales] (BCP 47 language tags, sent as `ui_locales`) that it supports.
      * A call made while another sign-in runs waits on that one instead of opening the browser again, and ends as it
      * does; when that one is cancelled, this call throws [AuthenticationCancelledException].
      */
-    suspend fun login() {
+    suspend fun login(uiLocales: List<String> = emptyList()) {
         try {
             val loginReservation = reserveLoginOrAwaitActive() ?: return
             runActiveLogin(loginReservation) {
-                runRepositoryLogin(loginReservation)
+                runRepositoryLogin(loginReservation, uiLocales)
             }
         } catch (e: CancellationException) {
             throw e
@@ -205,14 +206,14 @@ class AuthService private constructor(
         }
     }
 
-    private suspend fun runRepositoryLogin(loginReservation: LoginReservation) {
+    private suspend fun runRepositoryLogin(loginReservation: LoginReservation, uiLocales: List<String>) {
         val commitAwareRepository = authRepository as? AuthRepositoryLoginCommitCallbacks
         if (commitAwareRepository != null) {
-            commitAwareRepository.login(onDurableCommit = {
+            commitAwareRepository.login(uiLocales = uiLocales, onDurableCommit = {
                 completeRepositoryCommitIfLoadingCurrent(loginReservation)
             })
         } else {
-            authRepository.login()
+            authRepository.login(uiLocales)
             completeRepositoryCommitIfLoadingCurrent(loginReservation)
         }
     }

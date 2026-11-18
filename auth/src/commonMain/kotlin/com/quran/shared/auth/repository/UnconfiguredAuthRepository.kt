@@ -27,7 +27,7 @@ class AuthNotConfiguredException : IllegalStateException(
 class UnconfiguredAuthRepository(
     private val authStorage: AuthStorage
 ) : AuthRepository {
-    override suspend fun login() {
+    override suspend fun login(uiLocales: List<String>) {
         throw AuthNotConfiguredException()
     }
 

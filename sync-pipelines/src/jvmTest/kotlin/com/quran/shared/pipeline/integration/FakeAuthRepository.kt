@@ -114,7 +114,7 @@ class FakeAuthRepository(private val device: String, private val server: FakeSyn
     /** Keeps tokens in [store], the device graph's `MobileSyncStorage` token store. */
     internal fun useTokenStore(store: TokenStore): FakeAuthRepository = also { tokenStore = store }
 
-    override suspend fun login() {
+    override suspend fun login(uiLocales: List<String>) {
         val account = checkNotNull(pendingAccount) { "Call signInAs(account) before login()" }
         loginHold?.let { hold ->
             loginHold = null

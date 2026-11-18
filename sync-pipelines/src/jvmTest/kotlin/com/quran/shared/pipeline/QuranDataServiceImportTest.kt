@@ -169,7 +169,7 @@ internal class ImportSyncClientSpy : SynchronizationClient {
 }
 
 internal class LoggedOutAuthRepository : AuthRepository {
-    override suspend fun login(): Unit = error("Login is not used by import tests")
+    override suspend fun login(uiLocales: List<String>): Unit = error("Login is not used by import tests")
     override suspend fun refreshTokensIfNeeded() = false
     override suspend fun logout() = Unit
     override suspend fun captureLogoutTokenMaterial() = LogoutTokenMaterial(null, null)

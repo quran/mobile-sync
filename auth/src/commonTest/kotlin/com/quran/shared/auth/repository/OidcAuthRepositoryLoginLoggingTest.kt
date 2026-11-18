@@ -55,7 +55,7 @@ class OidcAuthRepositoryLoginLoggingTest {
     fun `a login the user cancelled at the system prompt logs at info`() = runTest(UnconfinedTestDispatcher()) {
         useAuthFlow { throw OpenIdConnectException.AuthenticationCancelled() }
 
-        assertFailsWith<OpenIdConnectException.AuthenticationCancelled> { repository().login() }
+        assertFailsWith<OpenIdConnectException.AuthenticationCancelled> { repository().login(uiLocales = emptyList()) }
 
         assertTrue(entries.none { it.severity >= Severity.Warn }, "no warning or error: $entries")
         val loginEnd = entries.single { it.message == "Login ended without a session: AuthenticationCancelled" }
@@ -68,7 +68,7 @@ class OidcAuthRepositoryLoginLoggingTest {
         val failure = OpenIdConnectException.AuthenticationFailure("invalid_client")
         useAuthFlow { throw failure }
 
-        assertFailsWith<OpenIdConnectException.AuthenticationFailure> { repository().login() }
+        assertFailsWith<OpenIdConnectException.AuthenticationFailure> { repository().login(uiLocales = emptyList()) }
 
         val loginFailure = entries.single { it.message == "Login failed" }
         assertEquals(Severity.Error, loginFailure.severity)
@@ -87,7 +87,7 @@ class OidcAuthRepositoryLoginLoggingTest {
             var loginEnd: Throwable? = null
             val login = launch {
                 try {
-                    repository.login()
+                    repository.login(uiLocales = emptyList())
                 } catch (e: Throwable) {
                     loginEnd = e
                     throw e
@@ -107,7 +107,7 @@ class OidcAuthRepositoryLoginLoggingTest {
             val failure = OpenIdConnectException.TechnicalFailure("cancelled", CancellationException("cancelled"))
             useAuthFlow { throw failure }
 
-            assertFailsWith<OpenIdConnectException.TechnicalFailure> { repository().login() }
+            assertFailsWith<OpenIdConnectException.TechnicalFailure> { repository().login(uiLocales = emptyList()) }
 
             val loginFailure = entries.single { it.message == "Login failed" }
             assertEquals(Severity.Error, loginFailure.severity)
