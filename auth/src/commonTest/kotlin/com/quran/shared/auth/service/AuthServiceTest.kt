@@ -1862,11 +1862,11 @@ private class RecordingAuthRepository(
     private var currentUserCalls = 0
     private var currentUserFailureThrown = false
 
-    override suspend fun login() {
-        login(onDurableCommit = {})
+    override suspend fun login(uiLocales: List<String>) {
+        login(uiLocales = uiLocales, onDurableCommit = {})
     }
 
-    override suspend fun login(onDurableCommit: suspend () -> Unit) {
+    override suspend fun login(uiLocales: List<String>, onDurableCommit: suspend () -> Unit) {
         loginCalls += 1
         if (
             duplicateLoginReturnsWithoutTokenWhileFirstSuspended &&

@@ -32,12 +32,12 @@ class AuthViewModel(
     val authState: StateFlow<AuthState> = authService.authState
 
     /**
-     * Initiates the OAuth login flow.
+     * Initiates the OAuth login flow, with the sign-in page in the first of [uiLocales] (BCP 47 tags) it supports.
      */
-    fun login() {
+    fun login(uiLocales: List<String> = emptyList()) {
         viewModelScope.launch {
             try {
-                authService.login()
+                authService.login(uiLocales)
             } catch (e: Exception) {
                 // Error is handled by the service state
             }

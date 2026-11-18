@@ -41,6 +41,8 @@ class SyncAuthService internal constructor(
     /**
      * Signs in through the browser and publishes the session, which starts a sync. The identity provider always
      * asks for credentials again (`prompt=login`), so a sign-in after a logout never reuses its browser session.
+     * [uiLocales] are BCP 47 language tags, most preferred first, sent as `ui_locales` so the sign-in page can match
+     * the app's language; with none, the page follows the browser's language.
      *
      * Local writes and imports don't wait for it, however long the user takes. A logout during it ends
      * the sign-in: the call that opened the browser throws [CancellationException], and a call made
@@ -52,10 +54,10 @@ class SyncAuthService internal constructor(
      * Started while a logout is running, it fails with [SessionResetInProgressException].
      */
     @NativeCoroutines
-    suspend fun login() {
+    suspend fun login(uiLocales: List<String> = emptyList()) {
         quranDataService.awaitInitialization()
         sessionLifecycleCoordinator.withLogin {
-            authService.login()
+            authService.login(uiLocales)
         }
     }
 

@@ -7,6 +7,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.quran.shared.auth.model.AuthState
@@ -37,6 +38,7 @@ fun AuthScreen(
     val notes by viewModel.notes.collectAsState(initial = emptyList())
     val readingSessions by viewModel.readingSessions.collectAsState(initial = emptyList())
     val authenticationConfigured = viewModel.isAuthenticationConfigured
+    val uiLocales = listOf(LocalContext.current.resources.configuration.locales[0].toLanguageTag())
 
     val scope = rememberCoroutineScope()
     Box(
@@ -83,7 +85,7 @@ fun AuthScreen(
                                 onLoginClick = {
                                     scope.launch {
                                         try {
-                                            viewModel.login()
+                                            viewModel.login(uiLocales)
                                         } catch (e: Exception) {
                                         }
                                     }
@@ -143,7 +145,7 @@ fun AuthScreen(
                         onRetry = {
                             scope.launch {
                                 try {
-                                    viewModel.login()
+                                    viewModel.login(uiLocales)
                                 } catch (e: Exception) {
                                 }
                             }

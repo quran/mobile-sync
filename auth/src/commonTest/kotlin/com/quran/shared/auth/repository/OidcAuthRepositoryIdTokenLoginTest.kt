@@ -103,7 +103,7 @@ class OidcAuthRepositoryIdTokenLoginTest {
                 )
             )
 
-            repository.login()
+            repository.login(uiLocales = emptyList())
 
             assertEquals(listOf(authConfig.tokenEndpoint), requests)
             val expected = UserInfo(
@@ -139,7 +139,7 @@ class OidcAuthRepositoryIdTokenLoginTest {
     fun `login without an ID token fails and leaves no session`() = runTest(UnconfinedTestDispatcher()) {
         val repository = repositoryAnsweringTokenRequestsWith(idToken = null)
 
-        val failure = assertFailsWith<IllegalStateException> { repository.login() }
+        val failure = assertFailsWith<IllegalStateException> { repository.login(uiLocales = emptyList()) }
 
         assertTrue("no ID token" in failure.message.orEmpty(), failure.message)
         assertNoSession(repository)
@@ -157,7 +157,7 @@ class OidcAuthRepositoryIdTokenLoginTest {
             ).forEach { idToken ->
                 val repository = repositoryAnsweringTokenRequestsWith(idToken = idToken)
 
-                assertFailsWith<IllegalStateException>(idToken) { repository.login() }
+                assertFailsWith<IllegalStateException>(idToken) { repository.login(uiLocales = emptyList()) }
 
                 assertNoSession(repository)
             }
@@ -181,12 +181,12 @@ class OidcAuthRepositoryIdTokenLoginTest {
     @Test
     fun `a new login with an unusable ID token keeps the previous session and its account`() =
         runTest(UnconfinedTestDispatcher()) {
-            repositoryAnsweringTokenRequestsWith(idToken = testIdToken(claims = mapOf("name" to "Old Name"))).login()
+            repositoryAnsweringTokenRequestsWith(idToken = testIdToken(claims = mapOf("name" to "Old Name"))).login(uiLocales = emptyList())
             val repository = repositoryAnsweringTokenRequestsWith(
                 idToken = testIdToken(issuer = "https://evil.example")
             )
 
-            assertFailsWith<IllegalStateException> { repository.login() }
+            assertFailsWith<IllegalStateException> { repository.login(uiLocales = emptyList()) }
 
             assertTrue(repository.isLoggedIn())
             assertEquals(UserInfo(id = TEST_SUBJECT, name = "Old Name"), repository.getCurrentUser())

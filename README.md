@@ -200,8 +200,8 @@ if (graph.authService.isAuthenticationConfigured) {
     AuthFlowFactoryProvider.initialize(authFactory)
 }
 
-// Later, from the login UI:
-graph.authService.login()
+// Later, from the login UI. The activity's locale reflects a per-app language:
+graph.authService.login(uiLocales = listOf(activity.resources.configuration.locales[0].toLanguageTag()))
 ```
 
 ### 2. Initialize managed app graph (iOS/Swift)
@@ -280,7 +280,7 @@ Core API examples:
 - Mutations: `addBookmark`, `deleteBookmark`, `addCollection`, `deleteCollection`, `addNote`, `deleteNote`
 - Trigger sync: `triggerSync()` after a burst of edits, `triggerSync(immediately = true)` for a user's "Sync now", `syncNow()` to wait for that sync (a pull-to-refresh), or `syncOnForeground()` each time the app returns from the background
 - Profile: `refreshProfile()` when the user may have just edited their name or photo on Quran.com, such as when a Quran.com account page the app opened closes
-- Auth: use `SyncAuthService.login()` (it always sends `prompt=login`, so the provider asks for credentials again), `logout()`, and `clearError()`
+- Auth: use `SyncAuthService.login(uiLocales)` (it always sends `prompt=login`, so the provider asks for credentials again, and the app's BCP 47 language tags as `ui_locales`), `logout()`, and `clearError()`
 
 Reading bookmarks are three slots (`ReadingBookmarkSlot`), each an ayah, a page, or empty. Page
 bookmarks work across mushafs: tell the library which `Mushaf` the app shows, and it does the page

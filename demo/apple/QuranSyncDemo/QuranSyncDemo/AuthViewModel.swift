@@ -33,7 +33,8 @@ class AuthViewModel: ObservableObject {
     }
 
     func login() async throws {
-        try await asyncFunction(for: authService.login())
+        let uiLocales = Array(Bundle.main.preferredLocalizations.prefix(1))
+        try await asyncFunction(for: authService.login(uiLocales: uiLocales))
     }
 
     func logout() async throws {

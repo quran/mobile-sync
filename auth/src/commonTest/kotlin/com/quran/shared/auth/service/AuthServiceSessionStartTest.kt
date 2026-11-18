@@ -94,7 +94,7 @@ class AuthServiceSessionStartTest {
 private class TokenAuthRepository(private var accessToken: String?) : AuthRepository {
     var currentUser: UserInfo? = null
 
-    override suspend fun login() {
+    override suspend fun login(uiLocales: List<String>) {
         accessToken = "signed-in"
     }
 

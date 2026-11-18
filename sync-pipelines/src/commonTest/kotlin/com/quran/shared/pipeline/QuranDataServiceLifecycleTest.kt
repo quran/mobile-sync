@@ -210,6 +210,17 @@ class QuranDataServiceLifecycleTest {
     }
 
     @Test
+    fun `a sign-in hands its UI locales to the auth repository`() = runTest(dispatcher) {
+        val fixture = quranDataServiceFixture(lifecycleStore = virtualTimeLifecycleStore())
+        advanceUntilIdle()
+        val authFacade = SyncAuthService(fixture.authService, fixture.service, fixture.lifecycleCoordinator)
+
+        authFacade.login(uiLocales = listOf("ar"))
+
+        assertEquals(listOf(listOf("ar")), fixture.authRepository.loginUiLocales)
+    }
+
+    @Test
     fun `remote logout failures return warnings after local auth data and token are cleared`() = runTest(dispatcher) {
         val fixture = quranDataServiceFixture(
             authRepository = ServiceAuthRepository(
@@ -1286,10 +1297,12 @@ private class ServiceAuthRepository(
     val remoteLogoutModes = mutableListOf<RemoteLogoutMode>()
     var loginCalls = 0
         private set
+    val loginUiLocales = mutableListOf<List<String>>()
     private var authHeadersCalls = 0
 
-    override suspend fun login() {
+    override suspend fun login(uiLocales: List<String>) {
         loginCalls += 1
+        loginUiLocales += uiLocales
         accessToken = "access-token"
     }
 

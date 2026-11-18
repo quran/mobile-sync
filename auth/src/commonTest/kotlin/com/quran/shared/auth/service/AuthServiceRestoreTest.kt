@@ -135,7 +135,7 @@ private class StoredSessionAuthRepository(
     var refreshCalls = 0
         private set
 
-    override suspend fun login() {
+    override suspend fun login(uiLocales: List<String>) {
         accessToken = "signed-in"
     }
 

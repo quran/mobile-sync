@@ -31,8 +31,8 @@ class SyncViewModel(
     val notes: Flow<List<Note>> = service.notes
     val readingSessions: Flow<List<ReadingSession>> = service.readingSessions
 
-    suspend fun login() {
-        authService.login()
+    suspend fun login(uiLocales: List<String>) {
+        authService.login(uiLocales)
     }
 
     suspend fun logout(clearLocalData: Boolean = true) {
