@@ -28,7 +28,8 @@ multiplatform-settings = "1.3.0"
 buildkonfig = "0.24.1"
 
 # Android configuration
-android-compile-sdk = "37"
+android-compile-sdk-major = "37"
+android-compile-sdk-minor = "1"
 android-min-sdk = "24"
 
 # Project metadata

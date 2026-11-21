@@ -18,7 +18,11 @@ plugins {
 }
 
 android {
-    compileSdk = libs.versions.android.compile.sdk.get().toInt()
+    compileSdk {
+        version = release(libs.versions.android.compile.sdk.major.get().toInt()) {
+            minorApiLevel = libs.versions.android.compile.sdk.minor.get().toInt()
+        }
+    }
     namespace = "com.quran.shared.demo.android"
 
     defaultConfig {
