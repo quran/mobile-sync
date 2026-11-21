@@ -75,7 +75,7 @@ internal object MutationValidation {
 
 /** The Joi schemas the sync resources use, reduced to what the backend enforces. */
 internal object ResourceSchemas {
-    private val MUSHAF_IDS = setOf(1, 2, 3, 4, 5, 6, 7, 11, 19)
+    private val MUSHAF_IDS = setOf(1, 2, 3, 4, 5, 6, 7, 11, 19, 27)
     private val TIMESTAMPS = setOf("clientCreatedAt", "clientUpdatedAt")
     private val RANGE = Regex("^(\\d+):(\\d+)-(\\d+):(\\d+)$")
 

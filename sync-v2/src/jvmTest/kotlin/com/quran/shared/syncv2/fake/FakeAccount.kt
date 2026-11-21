@@ -189,6 +189,7 @@ class FakeAccount(
     private fun representativeMushaf(group: String) = when (group) {
         "pages_548" -> 7
         "pages_610" -> 6
+        "pages_521" -> 27
         "pages_604" -> pages604StandIn
         else -> 5
     }
