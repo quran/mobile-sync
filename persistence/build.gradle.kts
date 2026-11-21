@@ -18,7 +18,11 @@ kotlin {
     jvm()
     android {
         namespace = "com.quran.shared.persistence"
-        compileSdk = libs.versions.android.compile.sdk.get().toInt()
+        compileSdk {
+            version = release(libs.versions.android.compile.sdk.major.get().toInt()) {
+                minorApiLevel = libs.versions.android.compile.sdk.minor.get().toInt()
+            }
+        }
         minSdk = libs.versions.android.min.sdk.get().toInt()
 
         compilerOptions {
