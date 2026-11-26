@@ -41,16 +41,16 @@ class ReadingBookmarkPageMapperTest {
     }
 
     /**
-     * Shemerly pages are sent as 1440 pages until the server has a Shemerly mushaf, so these come back one page off.
-     * Accepted: the Android app, which maps Shemerly through its 1440 layout by the same rule, gets the same pages.
+     * Historical 1440 stand-in bookmarks can lose a page when crossing layouts. Native ID 27 avoids this
+     * projection entirely. Preserve the known lossy cases rather than claiming every old page can be recovered.
      */
     @Test
-    fun `only seven Shemerly pages don't round-trip through the 1440 layout`() {
+    fun `historical Shemerly projections have ten known lossy round trips`() {
         val changed = (1..PageLayout.SHEMERLY.pageCount)
             .associateWith { map(map(it, PageLayout.SHEMERLY, PageLayout.MADANI_1440), PageLayout.MADANI_1440, PageLayout.SHEMERLY) }
             .filter { (page, back) -> page != back }
 
-        assertEquals(mapOf(9 to 10, 364 to 363, 379 to 380, 422 to 423, 495 to 494, 500 to 501, 516 to 517), changed)
+        assertEquals(mapOf(10 to 9, 207 to 206, 357 to 356, 364 to 363, 379 to 380, 400 to 399, 422 to 423, 495 to 494, 500 to 501, 516 to 517), changed)
     }
 
     private fun map(page: Int, source: PageLayout, target: PageLayout) = ReadingBookmarkPageMapper.mapPage(page, source, target)

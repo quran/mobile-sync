@@ -121,6 +121,7 @@ class FakeReadingBookmarks(private val account: FakeAccount) {
         "page" -> when (mushafId) {
             7 -> "pages_548"
             6 -> "pages_610"
+            27 -> "pages_521"
             else -> "pages_604"
         }
         else -> "default"
@@ -139,7 +140,7 @@ class FakeReadingBookmarks(private val account: FakeAccount) {
 
     companion object {
         /** The backend's `Mushaf` enum. */
-        private val MUSHAFS = setOf(1, 2, 3, 4, 5, 6, 7, 11, 19)
+        private val MUSHAFS = setOf(1, 2, 3, 4, 5, 6, 7, 11, 19, 27)
         private val LOCATION_KEYS = setOf("mushafId", "type", "group", "key", "verseNumber")
 
         /** `collapseReadingBookmarkCreates`: the request indices the server applies. */

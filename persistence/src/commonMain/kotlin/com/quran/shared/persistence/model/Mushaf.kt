@@ -21,12 +21,11 @@ enum class Mushaf(internal val serverMushaf: ServerMushaf) {
     INDOPAK_15_LINES(ServerMushaf.INDOPAK_15_LINES),
 
     /**
-     * The Shemerly print, 521 pages. The server has no Shemerly mushaf yet (quran/mobile-sync#355), so for now a page
-     * is sent as the [MADANI_1440] page that holds its verses (`QCF_V2`, id 1) and read back like any other layout's.
-     * This is temporary: once the server has an id, add it to [ServerMushaf] (521 pages), map it to the Shemerly
-     * layout in `PageLayout.of`, and send this mushaf as it. Apps don't change.
+     * The Shemerly print, 521 pages, stored and synced with its native page and id 27.
+     * Deploy compatible backend support (quran/mobile-sync#355) before enabling these writes.
+     * Historical id 1 bookmarks remain readable through the Madani 1440 layout.
      */
-    SHEMERLY(ServerMushaf.QCF_V2),
+    SHEMERLY(ServerMushaf.SHEMERLY),
 
     /**
      * The Warsh riwayah, 604 pages: stored as the server's `WARSH` (id 20). Its pages map to no other mushaf: locally a

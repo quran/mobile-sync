@@ -141,7 +141,7 @@ class ReadingBookmarksImportTest {
         )
 
         assertEquals(
-            listOf(536L to 6L, 584L to 2L, 302L to 1L),
+            listOf(536L to 6L, 584L to 2L, 250L to 27L),
             rows().map { it.location_key to it.mushaf_id }
         )
     }

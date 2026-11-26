@@ -36,7 +36,8 @@ class ReadingBookmarksSyncTest {
             ReadingLocation.page(300, ServerMushaf.QCF_V1) to 5,
             ReadingLocation.page(300, ServerMushaf.QCF_V2) to 5,
             ReadingLocation.page(300, ServerMushaf.INDOPAK_16_LINES) to 7,
-            ReadingLocation.page(300, ServerMushaf.INDOPAK_15_LINES) to 6
+            ReadingLocation.page(300, ServerMushaf.INDOPAK_15_LINES) to 6,
+            ReadingLocation.page(521, ServerMushaf.SHEMERLY) to 27
         ).forEach { (location, echoed) ->
             FakeSyncServer().use { server ->
                 Device(server).use { device ->

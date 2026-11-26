@@ -26,8 +26,7 @@ class PageLayoutTest {
 
     /**
      * INDOPAK, unused, is added by hand as QCF_V2's pages (the bundle lacks it); the riwayat that number verses
-     * differently have no layout. Each app mushaf is sent as a server mushaf of its layout, except Shemerly, which is
-     * sent as 1440 pages until the server has its own.
+     * differently have no layout. Each app mushaf is sent as a server mushaf of its own layout.
      */
     @Test
     fun `each mushaf id has its layout`() {
@@ -48,13 +47,14 @@ class PageLayoutTest {
                 ServerMushaf.SHUBA to PageLayout.MADANI_1440,
                 ServerMushaf.SOUSI to null,
                 ServerMushaf.BAZZI to null,
-                ServerMushaf.QUMBUL to null
+                ServerMushaf.QUMBUL to null,
+                ServerMushaf.SHEMERLY to PageLayout.SHEMERLY
             ),
             ServerMushaf.entries.associateWith { PageLayout.of(it.id) }
         )
         assertNull(PageLayout.of(10), "in the bundle, but not a backend mushaf")
         Mushaf.entries.forEach { mushaf ->
-            val sent = if (mushaf == Mushaf.SHEMERLY) PageLayout.MADANI_1440 else mushaf.layout
+            val sent = mushaf.layout
             assertEquals(sent, PageLayout.of(mushaf.serverMushaf.id), "$mushaf")
         }
     }
@@ -76,7 +76,7 @@ class PageLayoutTest {
     }
 
     @Test
-    fun `only the 16-line IndoPak layout shares a verse between pages`() {
+    fun `Shemerly and the 16-line IndoPak layout preserve split ayahs`() {
         val shared = PageLayout.entries.associateWith { layout ->
             (1 until layout.pageCount).count { layout.firstVerse(it + 1) == layout.lastVerse(it) }
         }
@@ -84,18 +84,30 @@ class PageLayoutTest {
         assertEquals(0, shared.getValue(PageLayout.MADANI_1440))
         assertEquals(0, shared.getValue(PageLayout.MADANI_1405))
         assertEquals(0, shared.getValue(PageLayout.INDOPAK_15_LINES))
-        assertEquals(0, shared.getValue(PageLayout.SHEMERLY))
+        assertEquals(368, shared.getValue(PageLayout.SHEMERLY))
         assertTrue(shared.getValue(PageLayout.INDOPAK_16_LINES) > 0)
     }
 
-    /** From the Android app's Shemerly page starts (`scripts/data/shemerly-pages.json`): 1:1, 3:7 and 112:1. */
+    /** From the pinned physical ranges (`scripts/data/shemerly-pages.json`): 1:1, 3:7 and 112:1. */
     @Test
     fun `the Shemerly layout's pages start where the app's do`() {
         val layout = PageLayout.SHEMERLY
 
         assertEquals(1 to 7, layout.firstVerse(1) to layout.lastVerse(1))
-        assertEquals(299 to 300, layout.lastVerse(41) to layout.firstVerse(42))
+        assertEquals(300 to 300, layout.lastVerse(41) to layout.firstVerse(42))
         assertEquals(6222 to VERSES, layout.firstVerse(521) to layout.lastVerse(521))
+    }
+
+    @Test
+    fun `Shemerly uses verified page ranges including shared ayahs`() {
+        val layout = PageLayout.SHEMERLY
+        assertEquals(2928, layout.firstVerse(305)) // continuation of 25:73
+        assertEquals(4664, layout.firstVerse(438)) // 50:34, not 50:24
+        assertEquals(6017, layout.firstVerse(510)) // continuation of 89:24
+        assertEquals(23, layout.lastVerse(3)) // 2:16 continues on page 4
+        assertEquals(3, layout.pageOf(23))
+        assertEquals(304, layout.pageOf(2928))
+        assertEquals(509, layout.pageOf(6017))
     }
 
     @Test

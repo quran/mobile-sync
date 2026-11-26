@@ -60,7 +60,10 @@ enum class ServerMushaf(val id: Int, val pageCount: Int) {
     BAZZI(25, 604),
 
     /** The Qumbul riwayah, paged like [QCF_V2] (checked against the Quran.com API: the mapping bundle lacks it). */
-    QUMBUL(26, 604);
+    QUMBUL(26, 604),
+
+    /** The native 521-page Shemerly Hafs print. Requires the backend support for mobile-sync#355. */
+    SHEMERLY(27, 521);
 
     companion object {
         /** The mushaf with [id], or null for an id the backend doesn't have. */
