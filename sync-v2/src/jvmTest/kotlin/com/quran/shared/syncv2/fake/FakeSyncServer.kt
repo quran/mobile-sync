@@ -15,7 +15,8 @@ import java.net.InetSocketAddress
 /**
  * An in-process stand-in for quran.com `/v1/sync`, at the network boundary only. Per account (the bearer token):
  * - GET returns one collapsed entry per changed resource with its current data, ordered by lastChangeAt, and the
- *   virtual Favorites collection on page 1; `lastMutationAt` is the account head.
+ *   virtual Favorites collection on page 1; `lastMutationAt` is the account head. A page after the first must send
+ *   that head as its `lastMutationAt` query parameter (409 OutOfSyncError when it is missing or stale).
  * - POST requires `lastMutationAt == head` (409 OutOfSyncError), applies the batch atomically, and echoes the request
  *   data. Errors are the backend's `{success:false, error:{code, message, details}}` wrapped in the API gateway's
  *   `{message, type, success, requestId, details}`, with `error.details.mutationIndex` when enabled.
@@ -115,8 +116,20 @@ class FakeSyncServer : AutoCloseable {
             parts[0] to (parts.getOrNull(1) ?: "")
         }
         val since = query.getValue("mutationsSince").toLong()
+        val continuationHead = try {
+            query["lastMutationAt"]?.let { nonNegativeInteger("lastMutationAt", it) }
+        } catch (error: HttpError) {
+            respond(exchange, error.status, errorBody(error, null))
+            return
+        }
         val page = query["page"]?.toInt() ?: 1
         beforeGetPage?.takeIf { it.first == page }?.let { beforeGetPage = null; it.second() }
+        // getSync's continuation guard: ResourceLog order changes when a resource is updated, so a page after the
+        // first must name the head page 1 returned, or its offset could skip resources. A missing head is stale too.
+        if (page > 1 && continuationHead != account.head) {
+            respond(exchange, 409, errorBody(HttpError(409, "OutOfSyncError", "Client is out of sync"), null))
+            return
+        }
         val limit = query["limit"]?.toInt() ?: 100
         val includeDefault = account.defaultCollectionAt > since && !omitDefaultCollection
         val rows = account.logs.values.filter { it.lastChangeAt > since }.sortedBy { it.lastChangeAt }
@@ -137,6 +150,19 @@ class FakeSyncServer : AutoCloseable {
             })
         }
         respond(exchange, 200, body.toString())
+    }
+
+    /** Joi's `number().integer().min(0)` on a query string; failures are the backend's 422 ValidationError. */
+    private fun nonNegativeInteger(name: String, raw: String): Long {
+        fun invalid(rule: String) = HttpError(422, "ValidationError", "\"$name\" $rule")
+        val value = raw.toLongOrNull()
+            ?: raw.toDoubleOrNull()?.takeIf { it.isFinite() }?.let { number ->
+                if (number % 1.0 != 0.0) throw invalid("must be an integer")
+                number.toLong()
+            }
+            ?: throw invalid("must be a number")
+        if (value < 0) throw invalid("must be greater than or equal to 0")
+        return value
     }
 
     private fun defaultCollection(account: FakeAccount) = buildJsonObject {
@@ -256,12 +282,11 @@ class FakeSyncServer : AutoCloseable {
             put("error", buildJsonObject {
                 put("code", error.code)
                 put("message", error.message)
-                if (error.details.isNotEmpty() || index != null) {
-                    put("details", buildJsonObject {
-                        error.details.forEach { (key, value) -> put(key, value) }
-                        index?.let { put("mutationIndex", it) }
-                    })
-                }
+                // Typed backend errors always carry `details`, `{}` when there is nothing in it.
+                put("details", buildJsonObject {
+                    error.details.forEach { (key, value) -> put(key, value) }
+                    index?.let { put("mutationIndex", it) }
+                })
             })
         }
         // An empty code is the gateway's own error (routing, maintenance, rate limit): no backend body at all.

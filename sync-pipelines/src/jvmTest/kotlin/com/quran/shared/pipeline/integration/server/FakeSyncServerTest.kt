@@ -15,6 +15,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 
 /** The fake server's own contract with the backend, checked over raw HTTP. */
@@ -164,13 +165,93 @@ class FakeSyncServerTest {
         repeat(5) { server.web(ALICE).addReadingSession(1, it + 1) }
 
         val page1 = get(since = 0, page = 1, limit = 3)
-        val page2 = get(since = 0, page = 2, limit = 3)
+        val page2 = get(since = 0, page = 2, limit = 3, lastMutationAt = server.head(ALICE))
 
         assertEquals("__default__", page1.first().str("resourceId"))
         assertEquals(3, page1.size)
         assertEquals(3, page2.size)
         assertEquals(5, (page1 + page2).count { it.str("resource") == "READING_SESSION" })
         assertFalse((page1 + page2).groupBy { it.str("resourceId") }.any { it.value.size > 1 })
+    }
+
+    @Test
+    fun `a page after the first without lastMutationAt is a 409 OutOfSyncError`() {
+        repeat(3) { server.web(ALICE).addReadingSession(1, it + 1) }
+
+        val response = getResponse(since = 0, page = 2, limit = 2)
+
+        assertEquals(409, response.statusCode(), response.body())
+        val body = Json.parseToJsonElement(response.body()).jsonObject
+        assertEquals("Client is out of sync", body.str("message"))
+        val error = errorOf(response)
+        assertEquals("OutOfSyncError", error.str("code"))
+        assertEquals("Client is out of sync", error.str("message"))
+        assertEquals(JsonObject(emptyMap()), error["details"])
+    }
+
+    @Test
+    fun `a page after the first with a stale lastMutationAt is a 409 OutOfSyncError`() {
+        repeat(3) { server.web(ALICE).addReadingSession(1, it + 1) }
+        val page1Head = server.head(ALICE)
+        server.clock.advanceBy(1_000)
+        server.web(ALICE).addReadingSession(2, 1)
+        assertNotEquals(page1Head, server.head(ALICE))
+
+        val response = getResponse(since = 0, page = 2, limit = 2, lastMutationAt = page1Head)
+
+        assertEquals(409, response.statusCode(), response.body())
+        assertEquals("OutOfSyncError", errorOf(response).str("code"))
+    }
+
+    /** The guard runs after the between-pages write lands, so page 1's head is stale by then. */
+    @Test
+    fun `a write between pages makes page 1's head stale for page 2`() {
+        repeat(3) { server.web(ALICE).addReadingSession(1, it + 1) }
+        server.faults.betweenPages {
+            server.clock.advanceBy(1_000)
+            server.web(ALICE).addReadingSession(2, 1)
+        }
+        val page1 = getResponse(since = 0, page = 1, limit = 2)
+        val page1Head = Json.parseToJsonElement(page1.body()).jsonObject["data"]!!.jsonObject["lastMutationAt"]!!.jsonPrimitive.long
+
+        val response = getResponse(since = 0, page = 2, limit = 2, lastMutationAt = page1Head)
+
+        assertEquals(409, response.statusCode(), response.body())
+        assertEquals("OutOfSyncError", errorOf(response).str("code"))
+        assertNotEquals(page1Head, server.head(ALICE), "the write landed")
+    }
+
+    @Test
+    fun `a page after the first with page 1's head is served`() {
+        repeat(3) { server.web(ALICE).addReadingSession(1, it + 1) }
+        val page1 = getResponse(since = 0, page = 1, limit = 2)
+        val page1Head = Json.parseToJsonElement(page1.body()).jsonObject["data"]!!.jsonObject["lastMutationAt"]!!.jsonPrimitive.long
+
+        val page2 = get(since = 0, page = 2, limit = 2, lastMutationAt = page1Head)
+
+        assertEquals(2, page2.size)
+    }
+
+    @Test
+    fun `page 1 never needs lastMutationAt`() {
+        repeat(3) { server.web(ALICE).addReadingSession(1, it + 1) }
+
+        assertEquals(200, getResponse(since = 0, page = 1, limit = 2).statusCode())
+        assertEquals(200, getResponse(since = 0, page = 1, limit = 2, lastMutationAt = 1).statusCode(), "a stale head on page 1 is ignored")
+    }
+
+    @Test
+    fun `GET validates lastMutationAt as a non-negative integer`() {
+        mapOf(
+            "-1" to "\"lastMutationAt\" must be greater than or equal to 0",
+            "1.5" to "\"lastMutationAt\" must be an integer",
+            "soon" to "\"lastMutationAt\" must be a number"
+        ).forEach { (value, message) ->
+            val response = getResponse(since = 0, page = 1, limit = 2, lastMutationAt = value)
+            assertEquals(422, response.statusCode(), value)
+            assertEquals("ValidationError", errorOf(response).str("code"))
+            assertEquals(message, errorOf(response).str("message"))
+        }
     }
 
     @Test
@@ -240,12 +321,17 @@ class FakeSyncServerTest {
         HttpResponse.BodyHandlers.ofString()
     )
 
-    private fun get(since: Long, page: Int = 1, limit: Int = 1000): List<JsonObject> {
-        val response = http.send(
-            HttpRequest.newBuilder(URI("${server.url}/v1/sync?mutationsSince=$since&page=$page&limit=$limit"))
+    private fun getResponse(since: Long, page: Int = 1, limit: Int = 1000, lastMutationAt: Any? = null): HttpResponse<String> {
+        val continuation = lastMutationAt?.let { "&lastMutationAt=$it" }.orEmpty()
+        return http.send(
+            HttpRequest.newBuilder(URI("${server.url}/v1/sync?mutationsSince=$since&page=$page&limit=$limit$continuation"))
                 .header("x-auth-token", token).GET().build(),
             HttpResponse.BodyHandlers.ofString()
         )
+    }
+
+    private fun get(since: Long, page: Int = 1, limit: Int = 1000, lastMutationAt: Long? = null): List<JsonObject> {
+        val response = getResponse(since, page, limit, lastMutationAt)
         assertEquals(200, response.statusCode(), response.body())
         val data = Json.parseToJsonElement(response.body()).jsonObject["data"]!!.jsonObject
         return (data["mutations"] as JsonArray).map { it.jsonObject }
