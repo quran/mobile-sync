@@ -68,7 +68,7 @@ Synced types (`sync-v2` `syncTypes`, in dependency order): collections, verses i
 
 ## Sync Protocol Notes
 
-- `GET /v1/sync` is offset-paginated and returns the account's sync head as `lastMutationAt`. `SyncApi` fetches every page before anything is merged and fetches again when the head moves between pages.
+- `GET /v1/sync` is offset-paginated and returns the account's sync head as `lastMutationAt`. Every page after the first must send page 1's head as `lastMutationAt`; a missing or changed head, or a write committed while any page is read, answers 409 `OutOfSyncError`. `SyncApi` fetches every page before anything is merged and, on that 409, fetches again from page 1 with the same `mutationsSince` (3 attempts, then the run fails as retryable). It also compares the head of every page, as a safety net the guard leaves unreachable today.
 - `POST /v1/sync` accepts at most 100 mutations; each POST is chained on the previous one's head. The stored token stays at the GET head, so the next GET brings back this device's pushes and their server side effects.
 
 ## Scheduler Notes

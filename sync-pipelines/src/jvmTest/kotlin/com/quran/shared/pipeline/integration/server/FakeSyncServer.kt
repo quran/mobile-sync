@@ -43,7 +43,8 @@ data class FakeProfile(val firstName: String?, val lastName: String? = null, val
  *
  * It mirrors `apps/api/src/modules/v1/sync/` and the services it calls (see [CollectionRules],
  * [NoteSessionRules], [MutationValidation] and [ResourceRendering]): per-user `ResourceLog` and
- * head, the virtual Favorites collection, POST check order (query, body validation, scopes, head),
+ * head, the virtual Favorites collection, GET's continuation check (a page after the first must send page 1's
+ * head as `lastMutationAt`, or 409 OutOfSyncError), POST check order (query, body validation, scopes, head),
  * atomic POSTs, echoes of the validated request data, and errors in the API gateway's envelope.
  * [faults] injects failures; [web] writes like the website does.
  */
@@ -283,6 +284,7 @@ class FakeSyncServer : AutoCloseable {
     private fun handleGet(account: FakeAccount, request: FakeRequest): String {
         val query = request.query
         val since = query["mutationsSince"]?.toLongOrNull() ?: throw validationError("\"mutationsSince\" is required")
+        val continuationHead = query["lastMutationAt"]?.let { nonNegativeInteger("lastMutationAt", it) }
         val page = (query["page"]?.toIntOrNull() ?: 1).also { if (it < 1) throw validationError("\"page\" must be greater than or equal to 1") }
         val requestedLimit = query["limit"]?.toIntOrNull() ?: 100
         if (requestedLimit !in 1..1000) throw validationError("\"limit\" must be less than or equal to 1000")
@@ -291,6 +293,10 @@ class FakeSyncServer : AutoCloseable {
             throw validationError("Invalid resources: ${it.joinToString(", ")}. Valid resources are: ${RESOURCE_SCOPES.keys.joinToString(", ")}")
         }
         runCallbacks(request)
+        // getSync's continuation guard: ResourceLog order changes when a resource is updated, so a page after the
+        // first must name the head page 1 returned, or its offset could skip resources. A missing head is stale too.
+        // (The backend checks `metadataOnly` first, which the fake doesn't model.)
+        if (page > 1 && continuationHead != account.head) throw HttpError(409, "OutOfSyncError", "Client is out of sync")
         val limit = faults.pageSizeCap?.let { minOf(it, requestedLimit) } ?: requestedLimit
 
         val excluded = RESOURCE_SCOPES.filter { (_, scopes) -> !account.scopes.containsAll(scopes) }.keys
@@ -318,6 +324,19 @@ class FakeSyncServer : AutoCloseable {
             put("hasMore", page.toLong() * limit < total)
         })
     }
+
+    /** Joi's `number().integer().min(0)` on a query string. */
+    private fun nonNegativeInteger(name: String, raw: String): Long {
+        val value = raw.toLongOrNull()
+            ?: raw.toDoubleOrNull()?.takeIf { it.isFinite() }?.let { number ->
+                if (number % 1.0 != 0.0) throw validationError("\"$name\" must be an integer")
+                number.toLong()
+            }
+            ?: throw validationError("\"$name\" must be a number")
+        if (value < 0) throw validationError("\"$name\" must be greater than or equal to 0")
+        return value
+    }
+
     private fun JsonObject.withoutMembershipTimes(): JsonObject {
         val omitted = faults.omitMembershipTimes
         val data = this["data"] as? JsonObject

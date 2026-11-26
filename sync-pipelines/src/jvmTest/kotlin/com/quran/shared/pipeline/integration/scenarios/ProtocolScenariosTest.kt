@@ -9,6 +9,7 @@ import com.quran.shared.pipeline.integration.DeviceTimings
 import com.quran.shared.pipeline.integration.SyncRun
 import com.quran.shared.pipeline.integration.assertSucceeded
 import com.quran.shared.pipeline.integration.server.ClientTimes
+import com.quran.shared.pipeline.integration.server.RequestRecord
 import com.quran.shared.pipeline.integration.server.ServerFaults
 import com.quran.shared.pipeline.integration.syncScenario
 import kotlinx.coroutines.flow.first
@@ -96,6 +97,7 @@ class ProtocolScenariosTest {
         val pages = run.requests.filter { it.method == "GET" }
         assertTrue(pages.size >= 2, "GET pages: ${pages.size}")
         assertEquals((1..pages.size).map { it.toString() }, pages.map { it.query["page"] })
+        assertContinuation(pages)
         val total = Json.parseToJsonElement(pages.first().response!!).jsonObject["data"]!!.jsonObject["total"]!!.jsonPrimitive.int
         assertEquals(server.state(ALICE).log.size + 1, total, "total counts Favorites")
         assertEquals(995, phone.data.notes.first().size)
@@ -117,6 +119,12 @@ class ProtocolScenariosTest {
 
         assertSucceeded(run)
         assertTrue(run.gets > 2, "the paging was retried: ${run.gets} GETs")
+        val passes = run.getPasses()
+        assertEquals(listOf(listOf("1", "2"), listOf("1", "2")), passes.map { pass -> pass.map { it.query["page"] } })
+        assertEquals(409, passes[0][1].status, "page 2 sent a head the write made stale")
+        assertTrue("OutOfSyncError" in passes[0][1].response.orEmpty(), passes[0][1].response)
+        assertEquals(1, passes.flatten().map { it.query["mutationsSince"] }.distinct().size, "the restart kept the token")
+        passes.forEach(::assertContinuation)
         assertEquals(1_051, phone.data.notes.first().size)
         assertTrue("Written between pages" in phone.noteBodies())
         assertConverged(ALICE, phone)
@@ -238,6 +246,28 @@ class ProtocolScenariosTest {
         val slot = server.state(ALICE).readingBookmarks.single { it.slot == 1 }
         assertEquals("page" to 300, slot.type to slot.key)
         assertConverged(ALICE, phone)
+    }
+
+    /** The run's GETs, one list per pass over the pages: each pass starts at page 1. */
+    private fun SyncRun.getPasses(): List<List<RequestRecord>> =
+        requests.filter { it.method == "GET" }.fold(mutableListOf<MutableList<RequestRecord>>()) { passes, get ->
+            passes.apply { if (get.query["page"] == "1" || isEmpty()) add(mutableListOf(get)) else last() += get }
+        }
+
+    /**
+     * The backend's continuation contract for one pass: page 1 sends no `lastMutationAt`, and every later page sends
+     * the head page 1 returned, with page 1's `mutationsSince` and `limit`.
+     */
+    private fun assertContinuation(pass: List<RequestRecord>) {
+        val first = pass.first()
+        assertEquals(null, first.query["lastMutationAt"], "page 1 sends no continuation head")
+        val head = Json.parseToJsonElement(first.response!!).jsonObject["data"]!!.jsonObject["lastMutationAt"]!!.jsonPrimitive.content
+        pass.drop(1).forEach { page ->
+            val name = "page ${page.query["page"]}"
+            assertEquals(head, page.query["lastMutationAt"], "$name sends page 1's head")
+            assertEquals(first.query["mutationsSince"], page.query["mutationsSince"], name)
+            assertEquals(first.query["limit"], page.query["limit"], name)
+        }
     }
 
     private fun SyncRun.malformed(): List<String> = requests.mapNotNull { it.response?.takeIf { body -> body in MALFORMED } }
