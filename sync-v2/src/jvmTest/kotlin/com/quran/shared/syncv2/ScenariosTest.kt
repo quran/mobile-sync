@@ -77,21 +77,39 @@ class ScenariosTest {
         Device(server, pageSize = 2).use { device ->
             val remote = Remote(server)
             repeat(4) { remote.createSession(1, it + 1, t(it)) }
+            val firstHead = server.account(Device.ACCOUNT).head
             server.beforeGetPage = 2 to { remote.createSession(9, 9, t(10)) }
 
             device.syncOk()
 
             assertEquals(setOf("1:1", "1:2", "1:3", "1:4", "9:9"), device.sessionVerses().toSet())
             assertEquals(2 + 3, server.getCount, "two pages until the head moved, then all three again")
+            val newHead = server.account(Device.ACCOUNT).head
+            assertEquals(listOf("1", "2", "1", "2", "3"), server.getQueries.map { it["page"] })
+            assertEquals(
+                listOf(null, "$firstHead", null, "$newHead", "$newHead"),
+                server.getQueries.map { it["lastMutationAt"] },
+                "page 2 sent the head the write made stale (409); the restart sent the new one"
+            )
+            assertEquals(listOf("0"), server.getQueries.map { it["mutationsSince"] }.distinct(), "the restart kept the token")
+            assertEquals(listOf("2"), server.getQueries.map { it["limit"] }.distinct())
+            assertEquals(newHead, device.engine.store.token)
         }
     }
 
-    /** When the head keeps moving, the run fails as retryable without merging any page, and the next one recovers. */
+    /**
+     * When the head keeps moving, the run fails as retryable without merging any page or moving its (nonzero) token,
+     * and the next one recovers.
+     */
     @Test
     fun `a head that keeps changing during pagination fails the run without merging`() = FakeSyncServer().use { server ->
         Device(server, pageSize = 2).use { device ->
             val remote = Remote(server)
-            repeat(4) { remote.createSession(1, it + 1, t(it)) }
+            remote.createSession(5, 5, t(0))
+            device.syncOk()
+            val token = device.engine.store.token
+            repeat(4) { remote.createSession(1, it + 1, t(it + 1)) }
+            server.getQueries.clear()
             var writes = 0
             fun writeBetweenPages() {
                 server.beforeGetPage = 2 to {
@@ -104,10 +122,15 @@ class ScenariosTest {
             val failed = assertIs<SyncResult.Failed>(device.sync())
 
             assertTrue(failed.retryable, failed.reason)
-            assertEquals(emptyList(), device.sessionVerses(), "no page was merged")
-            assertEquals(0L, device.engine.store.token)
+            assertIs<HeadChangedException>(failed.cause)
+            assertEquals(listOf("1", "2", "1", "2", "1", "2"), server.getQueries.map { it["page"] }, "three passes from page 1")
+            assertEquals(listOf("$token"), server.getQueries.map { it["mutationsSince"] }.distinct(), "every pass kept the token")
+            assertEquals(listOf(null), server.getQueries.filter { it["page"] == "1" }.map { it["lastMutationAt"] }.distinct())
+            assertTrue(server.getQueries.filter { it["page"] == "2" }.all { it["lastMutationAt"] != null })
+            assertEquals(listOf("5:5"), device.sessionVerses(), "no page was merged")
+            assertEquals(token, device.engine.store.token)
             device.settle()
-            assertEquals(7, device.sessionVerses().size)
+            assertEquals(1 + 4 + 3, device.sessionVerses().size)
         }
     }
 

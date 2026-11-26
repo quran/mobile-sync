@@ -34,6 +34,8 @@ class FakeSyncServer : AutoCloseable {
     /** Every request in order, as "GET" or "POST". */
     val requests = mutableListOf<String>()
     var getCount = 0
+    /** Every GET's query parameters, in order. */
+    val getQueries = mutableListOf<Map<String, String>>()
 
     // Fault injection (server behavior, not client mocking). The defaults are production's.
     /** `error.details.mutationIndex`, which the backend sends only with quran.com-users-backend#1932: off by default. */
@@ -71,6 +73,8 @@ class FakeSyncServer : AutoCloseable {
     @Volatile var duringNextGet: (() -> Unit)? = null
     /** Runs before answering the next GET of that page number: another device writing between pages. */
     @Volatile var beforeGetPage: Pair<Int, () -> Unit>? = null
+    /** Answers a GET of that page number with the error instead, such as a 409 for a write committed while it was read. */
+    @Volatile var rejectGet: ((page: Int) -> HttpError?)? = null
 
     init {
         server.createContext("/v1/sync") { exchange ->
@@ -115,6 +119,7 @@ class FakeSyncServer : AutoCloseable {
             val parts = it.split("=", limit = 2)
             parts[0] to (parts.getOrNull(1) ?: "")
         }
+        getQueries += query
         val since = query.getValue("mutationsSince").toLong()
         val continuationHead = try {
             query["lastMutationAt"]?.let { nonNegativeInteger("lastMutationAt", it) }
@@ -124,6 +129,10 @@ class FakeSyncServer : AutoCloseable {
         }
         val page = query["page"]?.toInt() ?: 1
         beforeGetPage?.takeIf { it.first == page }?.let { beforeGetPage = null; it.second() }
+        rejectGet?.invoke(page)?.let { error ->
+            respond(exchange, error.status, errorBody(error, null))
+            return
+        }
         // getSync's continuation guard: ResourceLog order changes when a resource is updated, so a page after the
         // first must name the head page 1 returned, or its offset could skip resources. A missing head is stale too.
         if (page > 1 && continuationHead != account.head) {

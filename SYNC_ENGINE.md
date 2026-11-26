@@ -20,8 +20,10 @@ A run compares three states of each item, all in the same canonical shape (`Stat
 
 `SyncEngineV2.sync` (one at a time):
 
-1. **Fetch:** `SyncApi` reads every page of `GET /v1/sync` since the token. A POST whose response was lost is
-   resolved from the outbox (`OutboxResolver`).
+1. **Fetch:** `SyncApi` reads every page of `GET /v1/sync` since the token, each page after the first sending page 1's
+   head as `lastMutationAt`. When the head moves, the server answers 409 `OutOfSyncError` (on any page) and the fetch
+   starts over from page 1, a few times at most; a page with another head does the same, as a safety net. Nothing is
+   merged until every page arrived. A POST whose response was lost is resolved from the outbox (`OutboxResolver`).
 2. **Merge:** per type, in dependency order (`syncTypes`), `Reconciler` runs natural-key revival, the three-way merge
    (`Merger`: an edit beats a delete, both ways), the linking of equal new items (`SyncType.linkKey`; notes by
    `noteIdentity`, as the legacy importer matches), and `UniquenessRepair`, then writes back in one transaction with

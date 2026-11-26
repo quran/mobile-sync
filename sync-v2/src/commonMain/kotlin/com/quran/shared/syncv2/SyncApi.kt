@@ -37,8 +37,11 @@ class SyncHttpException(
     message: String
 ) : Exception("HTTP $status $code: $message")
 
-/** The sync head changed between GET pages (retryable). */
-class HeadChangedException : IllegalStateException("Sync head changed during pagination")
+/**
+ * The sync head changed during a GET (retryable): the server answered 409 `OutOfSyncError` ([cause]) because a write
+ * committed after page 1 or while a page was read, or, as a safety net only, a page reported another head.
+ */
+class HeadChangedException(cause: Throwable? = null) : IllegalStateException("Sync head changed during pagination", cause)
 
 /** `/v1/sync` over Ktor. Network failures surface as the engine's exceptions (IOException on JVM). */
 class SyncApi(
@@ -51,19 +54,26 @@ class SyncApi(
 
     /**
      * Every page since [since]. Pages are offset-based, so they describe one state only if the head stays the same:
-     * when another device writes between pages, the fetch starts over, up to [GET_ATTEMPTS] times.
+     * when another device writes during the fetch ([HeadChangedException]), it starts over from page 1 with the same
+     * [since], up to [GET_ATTEMPTS] times. Any other failure ends it at once.
      */
     suspend fun get(since: Long): RemoteChanges {
         repeat(GET_ATTEMPTS - 1) {
             try {
                 return fetch(since)
             } catch (changed: HeadChangedException) {
-                // Another device wrote between pages: fetch again from the first page.
+                // The head moved during the fetch: start again from page 1.
             }
         }
         return fetch(since)
     }
 
+    /**
+     * One pass over the pages. Page 1 sends no `lastMutationAt`; every later page sends page 1's, which the backend
+     * requires (409 `OutOfSyncError` when it is missing or no longer the head). That 409, on any page, throws
+     * [HeadChangedException]. So does a page that reports another head, a safety net the backend's guard leaves
+     * unreachable today.
+     */
     private suspend fun fetch(since: Long): RemoteChanges {
         val entries = mutableListOf<RemoteEntry>()
         var page = 1
@@ -75,8 +85,14 @@ class SyncApi(
                 parameter("mutationsSince", since)
                 parameter("page", page)
                 parameter("limit", pageSize)
+                head?.let { parameter("lastMutationAt", it) }
             }
-            val data = response.successData()
+            val data = try {
+                response.successData()
+            } catch (error: SyncHttpException) {
+                if (error.status == 409 && error.code == SyncErrors.OUT_OF_SYNC) throw HeadChangedException(error)
+                throw error
+            }
             val pageHead = data.long("lastMutationAt")
             if (head != null && head != pageHead) throw HeadChangedException()
             head = pageHead
